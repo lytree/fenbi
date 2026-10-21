@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  粉笔风格单题块。对齐 ObjectiveExerciseActivity 的 exercise_pad_question_container：
+  question_action_bar（题号 + 题型标签 + 右侧 标记/草稿/收藏）+ stem（题干 + 选项）
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <!-- ===== 题目行：题号 + 题型 + 三图标 ===== -->
+    <LinearLayout
+        android:id="@+id/questionActionBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="16dp"
+        android:paddingTop="18dp"
+        android:paddingBottom="6dp">
+
+        <TextView
+            android:id="@+id/tvIndex"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/fb_text_title"
+            android:textSize="15sp"
+            tools:text="2." />
+
+        <TextView
+            android:id="@+id/tvType"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/bg_fb_tag"
+            android:paddingHorizontal="7dp"
+            android:paddingVertical="3dp"
+            android:textColor="@color/fb_type_tag_text"
+            android:textSize="12sp"
+            tools:text="单选题" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <!-- 标记 / 草稿笔记 / 收藏 -->
+        <ImageView
+            android:id="@+id/btnMark"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/action_mark"
+            android:padding="7dp"
+            android:src="@drawable/ic_fb_bookmark" />
+
+        <ImageView
+            android:id="@+id/btnScratch"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/action_note_edit"
+            android:padding="7dp"
+            android:src="@drawable/ic_fb_edit" />
+
+        <ImageView
+            android:id="@+id/btnFavorite"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/action_favorite"
+            android:padding="7dp"
+            android:src="@drawable/ic_fb_star" />
+    </LinearLayout>
+
+    <!-- ===== 题干 ===== -->
+    <TextView
+        android:id="@+id/tvStem"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:lineSpacingExtra="7dp"
+        android:paddingHorizontal="16dp"
+        android:textColor="@color/fb_text_body"
+        android:textSize="16sp"
+        tools:text="习近平总书记强调，必须从全局和战略高度推进党和国家各项事业……下列选项中，与该论述蕴含的哲学原理一致的是（ ）。" />
+
+    <!-- ===== 材料（资料分析题） ===== -->
+    <LinearLayout
+        android:id="@+id/materialBox"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/bg_fb_material"
+        android:orientation="vertical"
+        android:padding="12dp"
+        android:visibility="gone"
+        tools:visibility="visible">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_fb_material_tag"
+            android:paddingHorizontal="6dp"
+            android:paddingVertical="2dp"
+            android:text="@string/tag_material"
+            android:textColor="@color/fb_type_tag_text"
+            android:textSize="11sp" />
+
+        <LinearLayout
+            android:id="@+id/materialContent"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="vertical" />
+    </LinearLayout>
+
+    <!-- ===== 选项 ===== -->
+    <LinearLayout
+        android:id="@+id/optionsBox"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:orientation="vertical"
+        android:paddingHorizontal="16dp" />
+
+    <!-- ===== 笔记 ===== -->
+    <TextView
+        android:id="@+id/tvNote"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="12dp"
+        android:background="@color/partial_bg"
+        android:padding="12dp"
+        android:textColor="@color/fb_text_primary"
+        android:textSize="13sp"
+        android:visibility="gone"
+        tools:text="笔记：注意区分前瞻性与创新性"
+        tools:visibility="visible" />
+
+    <!-- ===== 解析 ===== -->
+    <TextView
+        android:id="@+id/tvAnalysis"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="16dp"
+        android:background="@color/right_bg"
+        android:lineSpacingExtra="4dp"
+        android:padding="12dp"
+        android:textColor="@color/fb_text_primary"
+        android:textSize="13sp"
+        android:visibility="gone" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="14dp" />
+</LinearLayout>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 答题卡圆形题号（对齐粉笔：直径 40dp 圆形） -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:padding="5dp">
+
+    <TextView
+        android:id="@+id/tvNum"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:layout_gravity="center"
+        android:background="@drawable/bg_num_blank"
+        android:gravity="center"
+        android:textColor="@color/fb_card_num_blank_text"
+        android:textSize="14sp"
+        tools:text="1" />
+</FrameLayout>

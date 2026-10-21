@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  粉笔真品实测色板（1080x1920 @ 280dpi 抓取自 com.fenbi.android.servant 的
+  ObjectiveExerciseActivity / 答题卡弹层）。所有色值均为像素采样结果，非估计值。
+-->
+<resources>
+    <color name="primary">#3C7BFC</color>
+    <color name="primary_dark">#2A5FD6</color>
+    <color name="accent">#FF7A45</color>
+
+    <color name="bg">#F9FAFC</color>
+    <color name="card">#FFFFFF</color>
+    <color name="text_primary">#3C3D3F</color>
+    <color name="text_secondary">#8A8F99</color>
+    <color name="divider">#ECEDEF</color>
+
+    <color name="option_border">#E8EBF2</color>
+    <color name="option_selected_bg">#EAF1FF</color>
+    <color name="option_selected_border">#3C7BFC</color>
+    <color name="right">#21B36B</color>
+    <color name="right_bg">#E8F8F0</color>
+    <color name="wrong">#F04C4C</color>
+    <color name="wrong_bg">#FDEDED</color>
+    <color name="partial">#F5A623</color>
+    <color name="partial_bg">#FFF6E6</color>
+    <color name="blank">#C3C7CE</color>
+
+    <!-- ===== 粉笔风格主色（实测 #3C7BFC） ===== -->
+    <color name="fb_primary">#3C7BFC</color>
+    <color name="fb_primary_deep">#2A5FD6</color>
+    <color name="fb_primary_soft">#EAF1FF</color>
+    <!-- 兼容别名（旧分屏页仍引用） -->
+    <color name="fb_blue">#3C7BFC</color>
+    <color name="fb_blue_deep">#2A5FD6</color>
+    <color name="fb_blue_soft">#EAF1FF</color>
+    <color name="fb_blue_ink">#3C7BFC</color>
+    <!-- 内容区底色（实测 #F9FAFC） -->
+    <color name="fb_page_bg">#F9FAFC</color>
+    <color name="fb_card_bg">#FFFFFF</color>
+    <color name="fb_divider">#ECEDEF</color>
+
+    <!-- 文字层级 -->
+    <color name="fb_text_title">#3C3D3F</color>
+    <color name="fb_text_body">#4A4B4D</color>
+    <color name="fb_text_primary">#3C3D3F</color>
+    <color name="fb_text_meta">#8A8F99</color>
+    <color name="fb_text_group">#A9AEB8</color>
+
+    <!-- 题型标签（实测底 #F1F3FF） -->
+    <color name="fb_type_tag_bg">#F1F3FF</color>
+    <color name="fb_type_tag_text">#3C7BFC</color>
+
+    <!-- 选项圆形徽标：未选描边/字色，选中填充 -->
+    <color name="fb_circle_stroke">#E8EBF2</color>
+    <color name="fb_circle_text">#8A90A6</color>
+    <color name="fb_circle_fill">#3C7BFC</color>
+    <color name="fb_circle_on">#FFFFFF</color>
+
+    <!-- 顶部栏 -->
+    <color name="fb_bar_bg">#FFFFFF</color>
+    <color name="fb_icon">#5C6472</color>
+    <color name="fb_icon_on">#3C7BFC</color>
+    <color name="fb_blue_on">#3C7BFC</color>
+    <!-- 计时区（粉笔无胶囊底色） -->
+    <color name="fb_timer_bg">#F2F5FA</color>
+    <color name="fb_timer_text">#4A5568</color>
+
+    <!-- 材料区 -->
+    <color name="fb_material_bg">#FAFBFC</color>
+    <color name="fb_table_header_bg">#F3F5F8</color>
+    <color name="fb_table_line">#D8DCE3</color>
+    <color name="fb_split_bg">#FAFBFC</color>
+
+    <!-- 答题卡弹层 -->
+    <color name="fb_sheet_mask">#4C4C4C</color>
+    <color name="fb_card_num_answered">#3C7BFC</color>
+    <color name="fb_card_num_blank_stroke">#EDEFF2</color>
+    <color name="fb_card_num_blank_text">#5C6472</color>
+    <color name="fb_card_num_marked">#FF8A3D</color>
+    <color name="fb_card_num_favorite">#F2557A</color>
+
+    <!-- 更多面板 segmented 控件 -->
+    <color name="fb_segment_bg">#F2F3F5</color>
+    <color name="fb_segment_sel_bg">#FFFFFF</color>
+    <color name="fb_segment_text">#8A8F99</color>
+    <color name="fb_segment_text_sel">#3C7BFC</color>
+
+    <!-- 夜间模式 -->
+    <color name="fb_night_bg">#17181C</color>
+    <color name="fb_night_card">#24262C</color>
+    <color name="fb_night_text">#D8D9DD</color>
+</resources>

@@ -1,0 +1,313 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  粉笔风格答题页。对齐 com.fenbi.android.servant 的 ObjectiveExerciseActivity（竖屏多题浏览）：
+  · 顶栏：X / 闹钟+倒计时 / 居中标题（试卷名+题数）/ 右侧「下载 交卷 答题卡 更多」
+  · 内容：连续滚动多题，每题 = 题目行（题号+题型+三图标）+ 题干 + 选项
+  · 无底部操作条（粉笔把上一题/下一题交给滑动与答题卡）
+-->
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/fb_page_bg">
+
+    <!-- ===== 顶栏 ===== -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/topBar"
+        android:layout_width="0dp"
+        android:layout_height="56dp"
+        android:background="@color/fb_bar_bg"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <!-- 返回/关闭 -->
+        <ImageView
+            android:id="@+id/btnClose"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginStart="8dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/action_close"
+            android:padding="9dp"
+            android:src="@drawable/ic_fb_close"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <!-- 计时：闹钟图标 + 倒计时（粉笔无胶囊底色） -->
+        <LinearLayout
+            android:id="@+id/timerPill"
+            android:layout_width="wrap_content"
+            android:layout_height="34dp"
+            android:layout_marginStart="2dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toEndOf="@id/btnClose"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <ImageView
+                android:layout_width="19dp"
+                android:layout_height="19dp"
+                android:contentDescription="@string/action_timer"
+                android:src="@drawable/ic_fb_clock" />
+
+            <TextView
+                android:id="@+id/tvTimer"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:textColor="@color/fb_text_body"
+                android:textSize="15sp"
+                tools:text="08:25" />
+        </LinearLayout>
+
+        <!-- 居中标题：试卷名（题数） -->
+        <TextView
+            android:id="@+id/tvPaperName"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_marginEnd="12dp"
+            android:ellipsize="end"
+            android:gravity="center"
+            android:maxLines="1"
+            android:textColor="@color/fb_text_title"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toStartOf="@id/topActions"
+            app:layout_constraintStart_toEndOf="@id/timerPill"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:text="2027年国考第三十六季行测模考大赛（副省级）（135题）" />
+
+        <!-- 右侧动作区 -->
+        <LinearLayout
+            android:id="@+id/topActions"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <ImageView
+                android:id="@+id/btnSubmitTop"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/action_submit"
+                android:padding="9dp"
+                android:src="@drawable/ic_fb_submit" />
+
+            <ImageView
+                android:id="@+id/btnCard"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/action_answer_card"
+                android:padding="9dp"
+                android:src="@drawable/ic_fb_card" />
+
+            <ImageView
+                android:id="@+id/btnMore"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginEnd="4dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/action_more"
+                android:padding="9dp"
+                android:src="@drawable/ic_fb_more" />
+        </LinearLayout>
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <View
+        android:id="@+id/topDivider"
+        android:layout_width="0dp"
+        android:layout_height="0.5dp"
+        android:background="@color/fb_divider"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/topBar" />
+
+    <!-- ===== 题目列表（多题连续滚动） ===== -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/questionList"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:clipToPadding="false"
+        android:paddingBottom="16dp"
+        android:scrollbars="none"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/topDivider" />
+
+    <!-- ===== 单题浏览：左右滑动切题 ===== -->
+    <androidx.viewpager2.widget.ViewPager2
+        android:id="@+id/pager"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/topDivider" />
+
+    <!-- ===== 手写标注层 ===== -->
+    <com.lytree.qbank.ui.InkOverlay
+        android:id="@+id/inkOverlay"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/topDivider" />
+
+    <!-- ===== 悬浮：标注工具条 ===== -->
+    <LinearLayout
+        android:id="@+id/inkBar"
+        android:layout_width="wrap_content"
+        android:layout_height="44dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="24dp"
+        android:background="@drawable/bg_fb_action"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="6dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <TextView
+            android:id="@+id/btnInkUndo"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:gravity="center"
+            android:paddingHorizontal="12dp"
+            android:text="@string/action_undo"
+            android:textColor="@color/fb_text_primary"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/btnInkClear"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:gravity="center"
+            android:paddingHorizontal="12dp"
+            android:text="@string/action_clear_ink"
+            android:textColor="@color/wrong"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/btnInkFinger"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:gravity="center"
+            android:paddingHorizontal="12dp"
+            android:text="@string/action_finger_draw"
+            android:textColor="@color/fb_text_primary"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/btnInkDone"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:gravity="center"
+            android:paddingHorizontal="12dp"
+            android:text="@string/action_done"
+            android:textColor="@color/fb_primary"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <!-- ===== 更多面板（字号 / 日夜 / 浏览模式） ===== -->
+    <LinearLayout
+        android:id="@+id/morePanel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:layout_marginEnd="8dp"
+        android:background="@drawable/bg_fb_panel"
+        android:orientation="vertical"
+        android:padding="10dp"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/topBar"
+        tools:visibility="visible">
+
+        <!-- 字号：小 / 中 / 大 -->
+        <LinearLayout
+            android:id="@+id/rowFontSize"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/btnFontSmall"
+                style="@style/FbSegment"
+                android:text="Aa" />
+
+            <TextView
+                android:id="@+id/btnFontMedium"
+                style="@style/FbSegmentSelected"
+                android:text="Aa" />
+
+            <TextView
+                android:id="@+id/btnFontLarge"
+                style="@style/FbSegment"
+                android:text="Aa" />
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="0.5dp"
+            android:layout_marginVertical="8dp"
+            android:background="@color/fb_divider" />
+
+        <!-- 日间 / 夜间 -->
+        <LinearLayout
+            android:id="@+id/rowDayNight"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/btnDay"
+                style="@style/FbSegmentSelected"
+                android:text="@string/mode_day" />
+
+            <TextView
+                android:id="@+id/btnNight"
+                style="@style/FbSegment"
+                android:text="@string/mode_night" />
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="0.5dp"
+            android:layout_marginVertical="8dp"
+            android:background="@color/fb_divider" />
+
+        <!-- 多题浏览 / 单题浏览 -->
+        <LinearLayout
+            android:id="@+id/rowBrowseMode"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/btnMultiBrowse"
+                style="@style/FbSegmentSelected"
+                android:text="@string/mode_multi_browse" />
+
+            <TextView
+                android:id="@+id/btnSingleBrowse"
+                style="@style/FbSegment"
+                android:text="@string/mode_single_browse" />
+        </LinearLayout>
+    </LinearLayout>
+</androidx.constraintlayout.widget.ConstraintLayout>

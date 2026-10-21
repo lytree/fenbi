@@ -1,0 +1,64 @@
+# ---- Gradle ----
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# ---- Kotlin ----
+.kotlin/
+
+# ---- Android Studio / IntelliJ ----
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+
+# ---- 本地配置（含 SDK 路径、机器相关设置）----
+local.properties
+keystore.properties
+gradle.properties.bak
+
+# ---- 签名与密钥（严禁入库）----
+*.jks
+*.keystore
+*.p12
+*.pfx
+
+# ---- 构建产物 ----
+*.apk
+*.aab
+*.ap_
+*.aar
+*.dex
+*.class
+*.so
+bin/
+gen/
+release/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# ---- 反编译中间产物 ----
+jadx-out/
+*-jadx/
+*.smali
+jadx-launcher*.jar
+
+# ---- 日志与临时文件 ----
+*.log
+*.tmp
+*.swp
+*~
+tmp/
+.temp/
+
+# ---- 工具与会话目录 ----
+.codebuddy/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- 本地环境 ----
+.env
+.env.local

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 粉笔风格选项：26dp 圆形徽标（实测未选描边 #E8EBF2 / 字色 #8A90A6）+ 无框文本 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="?attr/selectableItemBackground"
+    android:gravity="top"
+    android:orientation="horizontal"
+    android:paddingVertical="11dp">
+
+    <TextView
+        android:id="@+id/tvKey"
+        android:layout_width="26dp"
+        android:layout_height="26dp"
+        android:background="@drawable/bg_fb_circle"
+        android:gravity="center"
+        android:textColor="@color/fb_circle_text"
+        android:textSize="14sp"
+        tools:text="A" />
+
+    <TextView
+        android:id="@+id/tvText"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="10dp"
+        android:layout_weight="1"
+        android:lineSpacingExtra="5dp"
+        android:textColor="@color/fb_text_body"
+        android:textSize="16sp"
+        tools:text="大力推进健康学校建设，坚持健康第一的教育理念，提升学生健康素养" />
+</LinearLayout>

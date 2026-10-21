@@ -1,0 +1,31 @@
+# 行尾统一：仓库内文本一律 LF，检出按平台处理
+* text=auto eol=lf
+
+# 明确二进制，禁止任何行尾转换（避免损坏）
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.xlsx binary
+*.xls binary
+*.jar binary
+*.apk binary
+*.aab binary
+*.so binary
+*.keystore binary
+*.jks binary
+
+# 脚本
+gradlew text eol=lf
+*.sh text eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Kotlin / Java / 资源
+*.kt text
+*.java text
+*.xml text
+*.json text
+*.md text
+*.pro text

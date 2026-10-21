@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 通栏交卷按钮：实测 #3C7BFC，圆角胶囊 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/fb_primary" />
+    <corners android:radius="23dp" />
+</shape>
