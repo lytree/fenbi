@@ -53,9 +53,9 @@
         android:paddingBottom="10dp">
 
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnCompose"
+            android:id="@+id/btnStart"
             style="@style/FbPrimaryButton"
             android:layout_width="match_parent"
-            android:text="组卷并开始" />
+            android:text="@string/action_start" />
     </FrameLayout>
 </LinearLayout>

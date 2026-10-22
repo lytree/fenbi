@@ -54,7 +54,7 @@ class BankListFragment : Fragment(), Refreshable {
         adapter.submit(list)
         binding.emptyBox.visibility = if (list.isEmpty()) View.VISIBLE else View.GONE
         binding.emptyAction.visibility = if (list.isEmpty()) View.VISIBLE else View.GONE
-        binding.empty.setText(if (list.isEmpty()) "还没有题库，导入一份 JSON / CSV / Excel / TXT 就能开始刷题" else "")
+        binding.empty.setText(if (list.isEmpty()) getString(com.lytree.qbank.R.string.empty_banks) else "")
         binding.emptyAction.isEnabled = list.isEmpty()
     }
 

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  单题浏览的一页（ViewPager2 的 item）。
+  · 一屏一题：外层 NestedScrollView 让长题目 / 带材料的题可以在本页内纵向滚动，
+    横向手势留给 ViewPager2 翻页；
+  · 卡片本体直接复用 item_question_page.xml，与多题浏览保持同一套版式。
+-->
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/pageScroll"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:clipToPadding="false"
+    android:fillViewport="false"
+    android:paddingTop="@dimen/fb_card_gap"
+    android:paddingBottom="24dp"
+    android:scrollbars="none">
+
+    <include
+        android:id="@+id/card"
+        layout="@layout/item_question_page"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
+</androidx.core.widget.NestedScrollView>

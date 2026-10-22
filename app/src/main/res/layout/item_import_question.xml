@@ -58,7 +58,7 @@
             android:layout_marginTop="6dp"
             android:ellipsize="end"
             android:lineSpacingExtra="2dp"
-            android:maxLines="3" />
+            android:maxLines="6" />
 
         <TextView
             android:id="@+id/tvAnswer"

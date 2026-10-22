@@ -1,15 +1,18 @@
 package com.lytree.qbank.ui
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.os.CountDownTimer
 import android.view.View
 import android.widget.EditText
 import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.viewpager2.widget.ViewPager2
 import com.lytree.qbank.R
 import com.lytree.qbank.data.db.QBankDb
 import com.lytree.qbank.data.model.ExamRecord
@@ -51,7 +54,11 @@ class ExamActivity : AppCompatActivity() {
     private lateinit var binding: ActivityExamBinding
     private lateinit var db: QBankDb
 
-    private var questions: List<Question> = emptyList()
+    /**
+     * 题目的唯一持有者。两套适配器共享这一个可变列表实例，
+     * 补完答案后就地 clear + addAll，列表位置与作答状态都不用重建。
+     */
+    private val questions = ArrayList<Question>()
     private val answers = HashMap<Long, String>()
     private val marked = HashSet<Long>()
     private val favorites = HashSet<Long>()
@@ -62,6 +69,10 @@ class ExamActivity : AppCompatActivity() {
     private var submitted = false
     private var revealAnswers = false
     private var inkMode = false
+    /** 「笔」按钮的用法提示只在本次进入页面时弹一次，别每点一下都弹 */
+    private var inkHintShown = false
+    /** 是从「交卷时提示缺答案」跳去导入的：补完就直接交卷出结果 */
+    private var submitAfterImport = false
 
     /** 字号缩放系数 */
     private var fontScale = 1f
@@ -75,7 +86,15 @@ class ExamActivity : AppCompatActivity() {
     private var currentPos = 0
 
     private lateinit var inkToolbar: InkToolbarController
+    /** 多题浏览适配器（连续滚动） */
     private lateinit var adapter: QuestionListAdapter
+    /** 单题浏览适配器（ViewPager2，一屏一题） */
+    private lateinit var pagerAdapter: QuestionPagerAdapter
+
+    /** 补答案：选一个答案文件，解析匹配后写回本卷题目 */
+    private val answerPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) importAnswers(uri) else submitAfterImport = false
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -92,16 +111,21 @@ class ExamActivity : AppCompatActivity() {
             finish()
             return
         }
-        questions = paper.questions
+        questions.addAll(paper.questions)
         durationMin = paper.durationMin
         startedAt = System.currentTimeMillis()
 
         setupList()
+        setupPager()
         setupTopBar()
         setupMorePanel()
         setupInk()
         applyWindowInsets()
 
+        // 启动时就把上次选的浏览模式落到位（旧实现只在点按钮时才应用，偏好读了等于没读）
+        applyBrowseMode()
+        // 夜间模式同理：偏好读进来后必须真的落到界面上，否则重进 App 面板显示「夜间」、界面却是白底
+        applyNightMode()
         updateHeader()
         startTimer()
     }
@@ -120,29 +144,75 @@ class ExamActivity : AppCompatActivity() {
             onMarkToggle = { q -> toggleMark(q) },
             onFavoriteToggle = { q -> toggleFavorite(q) },
             onNoteClicked = { q -> showNoteDialog(q) },
-            onAnswerChanged = { q -> onAnswered(q) }
+            onInkClicked = { q -> startInkFor(q) },
+            onAnswerChanged = { q -> onAnswered(q) },
+            onMaterialExpand = { q -> MaterialDialog.show(this, q.material, nightMode) }
         )
         binding.questionList.layoutManager = LinearLayoutManager(this)
         binding.questionList.adapter = adapter
         binding.questionList.itemAnimator = null
         binding.questionList.addOnScrollListener(object : androidx.recyclerview.widget.RecyclerView.OnScrollListener() {
             override fun onScrolled(rv: androidx.recyclerview.widget.RecyclerView, dx: Int, dy: Int) {
+                // 只有多题模式在滚动；单题模式的当前位置由 ViewPager2 回调维护，
+                // 否则隐藏的列表会把手写笔迹 / 答题卡高亮带偏。
+                if (!multiBrowse) return
                 (rv.layoutManager as? LinearLayoutManager)?.findFirstVisibleItemPosition()
-                    ?.let { if (it >= 0) currentPos = it }
+                    ?.let {
+                        if (it >= 0 && it != currentPos) {
+                            currentPos = it
+                            // 遮盖层常驻可见，滚动换题时要跟着换绑笔迹
+                            syncInkQuestion()
+                        }
+                    }
             }
         })
     }
 
-    /** 作答后的联动：单选题「自动展示下一题」时滚到下一题 */
+    /**
+     * 单题浏览的容器。适配器在启动时就挂上，之后只是在两个容器之间切显隐，
+     * 这样来回切换不会丢题、也不会重新走一遍 inflate。
+     */
+    private fun setupPager() {
+        pagerAdapter = QuestionPagerAdapter(
+            questions = questions,
+            answers = answers,
+            marked = marked,
+            favorites = favorites,
+            policyProvider = { db.getPolicy() },
+            fontScale = fontScale,
+            revealAnswers = revealAnswers,
+            onMarkToggle = { q -> toggleMark(q) },
+            onFavoriteToggle = { q -> toggleFavorite(q) },
+            onNoteClicked = { q -> showNoteDialog(q) },
+            onInkClicked = { q -> startInkFor(q) },
+            onAnswerChanged = { q -> onAnswered(q) },
+            onMaterialExpand = { q -> MaterialDialog.show(this, q.material, nightMode) }
+        )
+        binding.pager.offscreenPageLimit = 1
+        binding.pager.adapter = pagerAdapter
+        binding.pager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
+            override fun onPageSelected(position: Int) {
+                // 单题模式下由翻页维护「当前题」；多题模式以列表为准，不受影响
+                if (multiBrowse) return
+                currentPos = position
+                syncInkQuestion()
+            }
+        })
+    }
+
+    /** 作答后的联动：单选题「自动展示下一题」时翻到 / 滚到下一题 */
     private fun onAnswered(q: Question) {
-        currentPos = questions.indexOfFirst { it.id == q.id }.coerceAtLeast(0)
+        questions.indexOfFirst { it.id == q.id }.takeIf { it >= 0 }?.let { currentPos = it }
         if (!autoNext) return
         if (q.type != com.lytree.qbank.data.model.QuestionType.SINGLE) return
         val next = currentPos + 1
-        if (next < questions.size) {
+        if (next >= questions.size) return
+        if (multiBrowse) {
             binding.questionList.postDelayed({
                 binding.questionList.smoothScrollToPosition(next)
             }, 220)
+        } else {
+            binding.pager.postDelayed({ binding.pager.setCurrentItem(next, true) }, 220)
         }
     }
 
@@ -215,8 +285,70 @@ class ExamActivity : AppCompatActivity() {
             autoNext = checked
             savePrefs()
         }
+        // 手写标注：打开就是「给题目盖一张可写的薄纸」，收起面板直接开写
+        binding.switchInkMode.setChecked(inkMode, animate = false)
+        binding.switchInkMode.onCheckedChange = { on ->
+            binding.morePanel.visibility = View.GONE
+            inkToolbar.setInkMode(on)
+        }
         refreshMorePanelState()
         setupSplitEntry()
+        setupAnswerEntry()
+    }
+
+    /**
+     * 「导入答案」入口。试卷先导入、答案后补是这个 App 的常态：
+     * 导入时没答案的题按「待补答案」入库，这里补上答案后就能正常判分对比。
+     */
+    private fun setupAnswerEntry() {
+        binding.rowImportAnswer.setOnClickListener {
+            binding.morePanel.visibility = View.GONE
+            submitAfterImport = false
+            launchAnswerPicker()
+        }
+        refreshAnswerEntry()
+    }
+
+    private fun refreshAnswerEntry() {
+        val missing = questions.count { !Judge.hasStandard(it) }
+        binding.tvImportAnswerLabel.text = if (missing > 0) {
+            getString(R.string.more_import_answer_missing, missing)
+        } else {
+            getString(R.string.more_import_answer_ready)
+        }
+    }
+
+    private fun launchAnswerPicker() {
+        try {
+            answerPicker.launch(AnswerImportUi.MIME)
+        } catch (_: Exception) {
+            answerPicker.launch(arrayOf("*/*"))
+        }
+    }
+
+    private fun importAnswers(uri: Uri) {
+        AnswerImportUi.handle(this, db, questions, uri) {
+            reloadQuestions()
+            // 已交卷状态下补答案：题面解析区要跟着换成真正的标准答案
+            if (revealAnswers) {
+                adapter.revealAnswers = true
+                pagerAdapter.revealAnswers = true
+            }
+            refreshCards()
+            if (submitAfterImport) {
+                submitAfterImport = false
+                submit(auto = false)
+            }
+        }
+    }
+
+    /** 从库里重新读一遍题目（答案已更新），就地刷新共享列表 */
+    private fun reloadQuestions() {
+        val fresh = db.getPaper(paperId)?.questions ?: return
+        questions.clear()
+        questions.addAll(fresh)
+        refreshAnswerEntry()
+        updateHeader()
     }
 
     /**
@@ -250,7 +382,10 @@ class ExamActivity : AppCompatActivity() {
         fontScale = FONT_SCALES[idx.coerceIn(0, FONT_SCALES.size - 1)]
         savePrefs()
         refreshMorePanelState()
+        adapter.fontScale = fontScale
         adapter.notifyDataSetChanged()
+        pagerAdapter.fontScale = fontScale
+        pagerAdapter.notifyDataSetChanged()
     }
 
     private fun setNightMode(on: Boolean) {
@@ -262,15 +397,29 @@ class ExamActivity : AppCompatActivity() {
         applyNightMode()
     }
 
+    /**
+     * 单题 / 多题浏览切换。
+     *
+     * 两套容器常驻，只切显隐，位置按「当前正在看的题」双向对齐：
+     * 切过去时把目标容器定位到同一道题，所以从第 7 题切过去还在第 7 题。
+     */
     private fun setBrowseMode(multi: Boolean) {
         if (multiBrowse == multi) return
+        // 以「当前正在看的容器」为位置真值：多题看列表首个可见题，单题看 ViewPager2 当前页。
+        // 不直接信 currentPos——它可能被隐藏容器的回调改写。
+        currentPos = if (multiBrowse) listFirstVisible() else binding.pager.currentItem
         multiBrowse = multi
         savePrefs()
         refreshMorePanelState()
-        // 参考应用的多题浏览=连续滚动，单题浏览=一屏一题。当前实现统一为连续滚动，
-        // 单题模式通过「每次只显示一题」的方式收敛——用滚动定位 + 隐藏其余题实现。
         applyBrowseMode()
+        // 选完即收起面板，避免挡住题目
+        binding.morePanel.visibility = View.GONE
     }
+
+    private fun listFirstVisible(): Int =
+        (binding.questionList.layoutManager as? LinearLayoutManager)
+            ?.findFirstVisibleItemPosition()
+            ?.takeIf { it >= 0 } ?: currentPos
 
     /**
      * Android 15 起强制 edge-to-edge，顶栏会被状态栏压住。
@@ -299,17 +448,101 @@ class ExamActivity : AppCompatActivity() {
         inkToolbar = InkToolbarController(
             inkOverlay = binding.inkOverlay,
             inkBar = binding.inkBar,
-            btnInkFinger = binding.btnInkFinger,
+            btnInkShade = binding.btnInkShade,
+            btnInkMark = binding.btnInkMark,
             btnInkDone = binding.btnInkDone,
             styleInkButton = { on ->
                 binding.inkBar.alpha = if (on) 1f else 0.95f
-            }
+            },
+            onToggleMark = { currentQuestion()?.let { toggleMark(it) } }
         )
         inkToolbar.onModeChanged = { on ->
             inkMode = on
+            // 面板里的开关与工具条是同一份状态：从顶栏「更多」进、从工具条「完成」出，两边都要对得上
+            binding.switchInkMode.setChecked(on, animate = true)
+            if (on) syncInkQuestion()
         }
         binding.btnInkUndo.setOnClickListener { binding.inkOverlay.undo() }
         binding.btnInkClear.setOnClickListener { binding.inkOverlay.clear() }
+
+        // 写画模式的滚动通道：多题滚列表，单题滚当前页；屏幕右边缘那一条留给它
+        binding.inkOverlay.scrollTargetResolver = { _, _ ->
+            if (multiBrowse) binding.questionList else currentPageScroll()
+        }
+        // 工具条悬在右下角，轨道底部让开 76dp，别画到它背后
+        binding.inkOverlay.scrollBarBottomInset = (76 * resources.displayMetrics.density).toInt()
+        // 竖屏答题页不画那条手柄：屏幕窄，轨道贴着题目文字太抢眼；
+        // 热区收窄到屏幕最外沿 16dp，正文里写字不会被当成滚动，贴着边拖仍可滚动
+        binding.inkOverlay.railVisible = false
+        binding.inkOverlay.barTouchWidth = 16f * resources.displayMetrics.density
+        syncInkQuestion()
+    }
+
+    /** 单题浏览时当前页的滚动容器（每页外面套了一层 NestedScrollView） */
+    private fun currentPageScroll(): View? {
+        val rv = binding.pager.getChildAt(0) as? androidx.recyclerview.widget.RecyclerView ?: return null
+        for (i in 0 until rv.childCount) {
+            val page = rv.getChildAt(i) ?: continue
+            if (rv.getChildAdapterPosition(page) == binding.pager.currentItem) {
+                return page.findViewById(R.id.pageScroll)
+            }
+        }
+        return null
+    }
+
+    /** 当前正在看的那道题 */
+    private fun currentQuestion(): Question? = questions.getOrNull(currentPos)
+
+    /**
+     * 把遮盖层绑到「当前题」。
+     *
+     * 遮盖层常驻可见——退出写画模式后笔迹还留在题目上，所以切题 / 翻页 / 滚动时都要换绑，
+     * 否则上一题的圈画会浮在下一题上面。
+     */
+    private fun syncInkQuestion() {
+        if (!::inkToolbar.isInitialized) return   // onCreate 期间滚动回调可能先到
+        val q = currentQuestion()
+        binding.inkOverlay.bindQuestion(q?.id ?: 0L)
+        inkToolbar.setMarked(q != null && q.id in marked)
+    }
+
+    /**
+     * 从题目卡上的「笔」直接进手写标注。
+     *
+     * 以前这支笔点开的是「文字笔记」输入框，跟遮盖层没有任何关系——用户点了笔却看不到画布。
+     * 现在点笔 = 给**这一题**盖上可写薄纸，并把这题顶到内容区最上面（笔迹是屏幕坐标，
+     * 卡片对齐了圈画才落在题面上）；文字笔记改成长按这支笔。
+     */
+    private fun startInkFor(q: Question) {
+        val idx = questions.indexOfFirst { it.id == q.id }
+        if (idx >= 0) {
+            currentPos = idx
+            if (multiBrowse) {
+                (binding.questionList.layoutManager as? LinearLayoutManager)
+                    ?.scrollToPositionWithOffset(idx, 0)
+            } else {
+                binding.pager.setCurrentItem(idx, false)
+            }
+        }
+        syncInkQuestion()
+        // 滚动的落位要等下一帧，等排版好了再进写画，遮罩才是对着这张卡铺的
+        binding.inkOverlay.post {
+            if (idx >= 0) {
+                currentPos = idx
+                if (multiBrowse) {
+                    (binding.questionList.layoutManager as? LinearLayoutManager)
+                        ?.scrollToPositionWithOffset(idx, 0)
+                }
+            }
+            syncInkQuestion()
+            inkToolbar.setInkMode(true)
+            if (!inkHintShown) {
+                inkHintShown = true
+                android.widget.Toast.makeText(
+                    this, R.string.ink_enter_hint, android.widget.Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
     }
 
     // ---------------- 顶栏状态 ----------------
@@ -358,12 +591,31 @@ class ExamActivity : AppCompatActivity() {
 
     private fun toggleMark(q: Question) {
         if (!marked.add(q.id)) marked.remove(q.id)
-        adapter.notifyDataSetChanged()
+        refreshCard(q)
+        inkToolbar.setMarked(q.id in marked)
     }
 
     private fun toggleFavorite(q: Question) {
         if (!favorites.add(q.id)) favorites.remove(q.id)
+        refreshCard(q)
+    }
+
+    /**
+     * 单张卡的状态变化只刷新这一条。
+     * 不要用 notifyDataSetChanged——ViewPager2 在数据全集变更后会重新定位，
+     * 可能回调一个偏移过的页码，把「当前题」带偏。
+     */
+    private fun refreshCard(q: Question) {
+        val idx = questions.indexOfFirst { it.id == q.id }
+        if (idx < 0) return
+        adapter.notifyItemChanged(idx)
+        pagerAdapter.notifyItemChanged(idx)
+    }
+
+    /** 字号 / 夜间 / 交卷这类全局状态变化，两套容器都要重绘 */
+    private fun refreshCards() {
         adapter.notifyDataSetChanged()
+        pagerAdapter.notifyDataSetChanged()
     }
 
     private fun showNoteDialog(q: Question) {
@@ -408,21 +660,36 @@ class ExamActivity : AppCompatActivity() {
     private fun styleAa(view: TextView, selected: Boolean) {
         view.setTextColor(
             ContextCompat.getColor(
-                this, if (selected) R.color.fb_text_title else R.color.fb_text_meta
+                this,
+                when {
+                    selected && nightMode -> R.color.fb_night_text
+                    selected -> R.color.fb_text_title
+                    nightMode -> R.color.fb_night_text_meta
+                    else -> R.color.fb_text_meta
+                }
             )
         )
         view.setTypeface(null, if (selected) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
     }
 
-    /** segmented 项（分段胶囊）：选中项白底深字，未选中透明底灰字 */
+    /** segmented 项（分段胶囊）：选中项白底深字，未选中透明底灰字；夜间换成深色胶囊 */
     private fun styleSegment(view: TextView, selected: Boolean) {
         view.setBackgroundResource(
-            if (selected) R.drawable.bg_fb_segment_pill else R.drawable.bg_fb_segment_pill_off
+            when {
+                selected && nightMode -> R.drawable.bg_fb_segment_pill_night
+                selected -> R.drawable.bg_fb_segment_pill
+                else -> R.drawable.bg_fb_segment_pill_off
+            }
         )
         view.setTextColor(
             ContextCompat.getColor(
                 this,
-                if (selected) R.color.fb_segment_text_sel else R.color.fb_segment_text
+                when {
+                    selected && nightMode -> R.color.fb_night_segment_text_sel
+                    selected -> R.color.fb_segment_text_sel
+                    nightMode -> R.color.fb_night_segment_text
+                    else -> R.color.fb_segment_text
+                }
             )
         )
     }
@@ -430,50 +697,122 @@ class ExamActivity : AppCompatActivity() {
     // ---------------- 浏览模式 ----------------
 
     /**
-     * 多题浏览：连续滚动所有题。
-     * 单题浏览：一屏一题，用一个 ViewPager2 承载（左右滑动切题）。
+     * 把当前模式落到界面上，并把视图定位到 [currentPos]。
+     * 多题浏览：连续滚动所有题；单题浏览：一屏一题，左右滑动切题。
      */
     private fun applyBrowseMode() {
+        val target = currentPos.coerceIn(0, (questions.size - 1).coerceAtLeast(0))
         if (multiBrowse) {
-            binding.questionList.visibility = View.VISIBLE
             binding.pager.visibility = View.GONE
+            binding.questionList.visibility = View.VISIBLE
+            binding.questionList.scrollToPosition(target)
         } else {
             binding.questionList.visibility = View.GONE
             binding.pager.visibility = View.VISIBLE
-            binding.pager.adapter = pagerAdapter
-            binding.pager.setCurrentItem(currentPagerIndex, false)
+            binding.pager.setCurrentItem(target, false)
         }
+        // 容器刚切完还没排版，遮盖层这一帧拿不到「能不能滚动」，等排版完再让它重画一次右侧轨道
+        binding.inkOverlay.post { binding.inkOverlay.invalidate() }
     }
 
-    private var currentPagerIndex = 0
-
-    private val pagerAdapter by lazy {
-        QuestionPagerAdapter(
-            questions = questions,
-            answers = answers,
-            marked = marked,
-            revealAnswers = revealAnswers,
-            policyProvider = { db.getPolicy() },
-            onAnswerChanged = { },
-            onNoteClicked = { q -> showNoteDialog(q) }
-        )
+    /** 定位到第 [position] 题（答题卡跳转 / 单题内切换共用），两种模式都生效 */
+    private fun jumpTo(position: Int) {
+        if (position !in questions.indices) return
+        currentPos = position
+        if (multiBrowse) {
+            binding.questionList.scrollToPosition(position)
+        } else {
+            binding.pager.setCurrentItem(position, false)
+        }
+        syncInkQuestion()
     }
 
     // ---------------- 夜间模式 ----------------
 
+    /**
+     * 把夜间配色铺到整页。
+     *
+     * 本 App 的夜间是「答题页局部换色」，不用系统 DayNight（见 themes.xml 的说明），
+     * 所以每一处颜色都得显式处理——早期版本只换了页面底色和顶栏，题目卡、状态栏、
+     * 更多面板全是日间色，看起来就像「主题没生效」。
+     *
+     * 顺序有讲究：先定面板分段控件的选中态（依赖 [nightMode]），再统一刷新卡片。
+     */
     private fun applyNightMode() {
         val night = nightMode
-        val bg = ContextCompat.getColor(this, if (night) R.color.fb_night_bg else R.color.fb_page_bg)
-        val card = ContextCompat.getColor(this, if (night) R.color.fb_night_card else R.color.fb_card_bg)
-        val text = ContextCompat.getColor(this, if (night) R.color.fb_night_text else R.color.fb_text_body)
-        val title = ContextCompat.getColor(this, if (night) R.color.fb_night_text else R.color.fb_text_title)
 
-        binding.root.setBackgroundColor(bg)
-        binding.topBar.setBackgroundColor(card)
-        binding.tvPaperName.setTextColor(title)
-        binding.tvTimer.setTextColor(text)
-        adapter.notifyDataSetChanged()
+        val pageBg = color(if (night) R.color.fb_night_bg else R.color.fb_page_bg)
+        val barBg = color(if (night) R.color.fb_night_bar else R.color.fb_bar_bg)
+        val titleColor = color(if (night) R.color.fb_night_text else R.color.fb_text_title)
+        val bodyColor = color(if (night) R.color.fb_night_text_body else R.color.fb_text_secondary)
+        val metaColor = color(if (night) R.color.fb_night_text_meta else R.color.fb_text_meta)
+        val iconColor = color(if (night) R.color.fb_night_icon else R.color.fb_icon)
+        val dividerColor = color(if (night) R.color.fb_night_divider else R.color.fb_divider)
+
+        // 页面与顶栏
+        binding.root.setBackgroundColor(pageBg)
+        binding.topBar.setBackgroundColor(barBg)
+        binding.tvPaperName.setTextColor(titleColor)
+        binding.tvTimer.setTextColor(bodyColor)
+
+        // 顶栏图标：关闭 / 下载 / 交卷 / 答题卡 / 更多 / 倒计时
+        listOf(
+            binding.btnClose, binding.btnDownload, binding.btnCard, binding.btnMore,
+            binding.icTimer, binding.icSubmit
+        ).forEach { it.setColorFilter(iconColor) }
+        binding.tvSubmitLabel.setTextColor(metaColor)
+
+        // 更多面板
+        binding.morePanel.setBackgroundResource(
+            if (night) R.drawable.bg_fb_panel_night else R.drawable.bg_fb_panel
+        )
+        val trackRes =
+            if (night) R.drawable.bg_fb_segment_track_night else R.drawable.bg_fb_segment_track
+        binding.rowDayNight.setBackgroundResource(trackRes)
+        binding.rowBrowseMode.setBackgroundResource(trackRes)
+        binding.tvAutoNextLabel.setTextColor(titleColor)
+        binding.tvInkModeLabel.setTextColor(titleColor)
+        binding.switchInkMode.setNightMode(night)
+        binding.tvSplitLabel.setTextColor(titleColor)
+        binding.splitDivider.setBackgroundColor(dividerColor)
+        binding.icSplitArrow.setColorFilter(metaColor)
+        binding.tvImportAnswerLabel.setTextColor(titleColor)
+        binding.answerDivider.setBackgroundColor(dividerColor)
+        binding.icAnswerArrow.setColorFilter(metaColor)
+        binding.switchAutoNext.setNightMode(night)
+
+        // 遮盖层工具条
+        binding.inkBar.setBackgroundResource(
+            if (night) R.drawable.bg_fb_action_night else R.drawable.bg_fb_action
+        )
+        binding.btnInkUndo.setTextColor(titleColor)
+        // 遮盖档位 / 标记 / 完成三个按钮的配色由控制器按状态算（标记态是橙色，不能一刀切换白）
+        inkToolbar.applyNightMode(night)
+        binding.inkOverlay.night = night
+        // btnInkClear 保持红字，深底上同样醒目，不另设夜间色
+
+        // 系统栏跟着顶栏走，否则深色顶栏上会压一条白状态栏
+        applySystemBars(night, barBg)
+
+        // 面板里分段控件的选中态依赖 nightMode，必须先刷新
+        refreshMorePanelState()
+
+        // 题目卡（两套容器共用 binder 的配色）
+        adapter.night = night
+        pagerAdapter.night = night
+        refreshCards()
     }
+
+    /** 状态栏 / 导航栏：夜间用深底 + 浅色图标，日间反之 */
+    private fun applySystemBars(night: Boolean, barColor: Int) {
+        window.statusBarColor = barColor
+        window.navigationBarColor = barColor
+        val controller = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
+        controller.isAppearanceLightStatusBars = !night
+        controller.isAppearanceLightNavigationBars = !night
+    }
+
+    private fun color(res: Int): Int = ContextCompat.getColor(this, res)
 
     // ---------------- 偏好持久化 ----------------
 
@@ -508,6 +847,7 @@ class ExamActivity : AppCompatActivity() {
             putExtra(AnswerCardActivity.EXTRA_FAVORITE, favoritePos.toIntArray())
             putExtra(AnswerCardActivity.EXTRA_GROUPS, groupLabels())
             putExtra(AnswerCardActivity.EXTRA_CURRENT, currentPos)
+            putExtra(AnswerCardActivity.EXTRA_NIGHT, nightMode)
         }
         startActivityForResult(intent, REQ_CARD)
     }
@@ -531,15 +871,7 @@ class ExamActivity : AppCompatActivity() {
                 return
             }
             val jump = data.getIntExtra(AnswerCardActivity.EXTRA_JUMP, -1)
-            if (jump in questions.indices) {
-                currentPos = jump
-                if (multiBrowse) {
-                    binding.questionList.scrollToPosition(jump)
-                } else {
-                    currentPagerIndex = jump
-                    binding.pager.setCurrentItem(jump, false)
-                }
-            }
+            if (jump in questions.indices) jumpTo(jump)
         }
     }
 
@@ -558,6 +890,11 @@ class ExamActivity : AppCompatActivity() {
 
     private fun confirmSubmit() {
         val unanswered = questions.count { (answers[it.id] ?: "").isBlank() }
+        val missing = questions.count { !Judge.hasStandard(it) }
+        if (missing > 0) {
+            promptMissingAnswers(unanswered, missing)
+            return
+        }
         val msg = if (unanswered > 0) {
             "你还有 $unanswered 道题目未作答，确定交卷吗？"
         } else {
@@ -566,12 +903,37 @@ class ExamActivity : AppCompatActivity() {
         FbDialog.confirm(this, msg, onOk = { submit(auto = false) })
     }
 
+    /**
+     * 交卷时发现整卷没答案：先问清楚是「现在补答案」还是「先交卷、之后再补」。
+     * 两条路都通——补答案后成绩报告会按已有作答直接重判，不用重做一遍。
+     */
+    private fun promptMissingAnswers(unanswered: Int, missing: Int) {
+        val msg = buildString {
+            if (unanswered > 0) append("你还有 $unanswered 道题目未作答。\n\n")
+            append("本卷有 $missing 题缺少标准答案。")
+            append("现在导入答案可以立刻判分；也可以先交卷，之后在成绩报告里补答案，按你的作答重新判分。")
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.pending_answer)
+            .setMessage(msg)
+            .setPositiveButton(R.string.action_import_answer) { _, _ ->
+                submitAfterImport = true
+                launchAnswerPicker()
+            }
+            .setNeutralButton("直接交卷") { _, _ -> submit(auto = false) }
+            .setNegativeButton(R.string.action_cancel, null)
+            .show()
+    }
+
     private fun submit(auto: Boolean) {
         if (submitted) return
         submitted = true
         timer?.cancel()
         revealAnswers = true
+        adapter.revealAnswers = true
         adapter.notifyDataSetChanged()
+        pagerAdapter.revealAnswers = true
+        pagerAdapter.notifyDataSetChanged()
 
         val policy = db.getPolicy()
         val results = questions.map { Judge.judge(it, answers[it.id] ?: "", policy) }

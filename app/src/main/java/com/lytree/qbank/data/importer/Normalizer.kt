@@ -7,6 +7,8 @@ import com.lytree.qbank.data.model.QuestionType
 /** 规范字段名 */
 object Field {
     const val TYPE = "type"
+    /** 题号 / 序号。答题卡式的「答案文件」通常只有题号 + 答案两列 */
+    const val NO = "no"
     const val STEM = "stem"
     const val MATERIAL = "material"
     const val OPTIONS = "options"
@@ -31,6 +33,10 @@ object FieldAliases {
     private val ALIASES: Map<String, Set<String>> = mapOf(
         Field.TYPE to setOf(
             "题型", "类型", "题目类型", "type", "questiontype", "qtype", "category"
+        ),
+        Field.NO to setOf(
+            "题号", "题序", "序号", "顺序", "编号", "题目编号", "第几题",
+            "no", "number", "num", "index", "idx", "seq", "questionno", "qno"
         ),
         Field.STEM to setOf(
             "题干", "题目", "试题", "问题", "题目内容", "stem", "question", "title",
@@ -196,8 +202,15 @@ object Normalizer {
 
         var effectiveType = type ?: QuestionType.SINGLE
         if (options.isEmpty() && effectiveType.hasOptions) {
-            // 没识别到选项列，但有多答案特征 → 升级为多选
             val ans = raw.get(Field.ANSWER)
+            if (ans.isEmpty()) {
+                // 既没有选项也没有答案，题目根本无法作答
+                issues.add(
+                    ImportIssue(raw.rowNo, ImportIssue.Level.ERROR, "未识别到选项列，无法作答，已跳过")
+                )
+                return null
+            }
+            // 没识别到选项列，但有多答案特征 → 升级为多选
             if (ans.split(',', '，', '、', ' ').count { it.trim().isNotEmpty() } > 1) {
                 effectiveType = QuestionType.MULTI
                 issues.add(
@@ -235,16 +248,18 @@ object Normalizer {
             }
         }
 
-        // 答案
+        // 答案。允许缺省——「先导入试卷、做完再补答案」是真实使用场景，
+        // 这类题以空答案入库，交卷后显示为「待补答案」而不是判错。
         val answerRaw = raw.get(Field.ANSWER)
         if (answerRaw.isEmpty()) {
-            issues.add(ImportIssue(raw.rowNo, ImportIssue.Level.ERROR, "缺少答案，已跳过"))
-            return null
+            issues.add(
+                ImportIssue(raw.rowNo, ImportIssue.Level.WARN, "缺少答案，已按「待补答案」导入")
+            )
         }
-        val answer = normalizeAnswer(answerRaw, effectiveType, options)
+        val answer = if (answerRaw.isEmpty()) "" else normalizeAnswer(answerRaw, effectiveType, options)
 
         // 客观题答案必须在选项范围内
-        if (effectiveType.objective && effectiveType.hasOptions && options.isNotEmpty()) {
+        if (answer.isNotEmpty() && effectiveType.objective && effectiveType.hasOptions && options.isNotEmpty()) {
             val keys = answer.split(',', ' ', '，', '、', ';', '；')
                 .map { it.trim().uppercase() }
                 .filter { it.isNotEmpty() }

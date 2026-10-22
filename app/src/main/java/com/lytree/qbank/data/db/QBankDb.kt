@@ -11,6 +11,7 @@ import com.lytree.qbank.data.model.Option
 import com.lytree.qbank.data.model.Paper
 import com.lytree.qbank.data.model.Question
 import com.lytree.qbank.data.model.QuestionType
+import com.lytree.qbank.engine.Judge
 import com.lytree.qbank.engine.Policy
 
 /**
@@ -150,43 +151,42 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 2)
         questionCount = c.getInt(5)
     )
 
+    /** 删题库时连带删掉它生成的试卷，避免留下「空壳卷」 */
     fun deleteBank(id: Long) {
-        writableDatabase.delete("questions", "bank_id = ?", arrayOf(id.toString()))
-        writableDatabase.delete("banks", "id = ?", arrayOf(id.toString()))
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            db.execSQL(
+                "DELETE FROM paper_questions WHERE paper_id IN (SELECT id FROM papers WHERE bank_id = ?)",
+                arrayOf<Any>(id)
+            )
+            db.delete("papers", "bank_id = ?", arrayOf(id.toString()))
+            db.delete("questions", "bank_id = ?", arrayOf(id.toString()))
+            db.delete("banks", "id = ?", arrayOf(id.toString()))
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
     }
 
     // ---------------- Question ----------------
 
-    fun insertQuestions(bankId: Long, list: List<Question>): Int {
-        val db = writableDatabase
-        db.beginTransaction()
-        try {
-            var n = 0
-            for (q in list) {
-                val cv = ContentValues().apply {
-                    put("bank_id", bankId)
-                    put("type", q.type.code)
-                    put("stem", q.stem)
-                    put("material", q.material)
-                    put("options", q.optionsJson())
-                    put("answer", q.answer)
-                    put("analysis", q.analysis)
-                    put("knowledge", q.knowledge)
-                    put("difficulty", q.difficulty)
-                    put("region", q.region)
-                    put("subject", q.subject)
-                    put("source", q.source)
-                    put("year", q.year)
-                    put("score", q.score)
-                    put("keywords", q.keywords)
-                }
-                if (db.insert("questions", null, cv) != -1L) n++
-            }
-            db.setTransactionSuccessful()
-            return n
-        } finally {
-            db.endTransaction()
-        }
+    private fun questionValues(bankId: Long, q: Question): ContentValues = ContentValues().apply {
+        put("bank_id", bankId)
+        put("type", q.type.code)
+        put("stem", q.stem)
+        put("material", q.material)
+        put("options", q.optionsJson())
+        put("answer", q.answer)
+        put("analysis", q.analysis)
+        put("knowledge", q.knowledge)
+        put("difficulty", q.difficulty)
+        put("region", q.region)
+        put("subject", q.subject)
+        put("source", q.source)
+        put("year", q.year)
+        put("score", q.score)
+        put("keywords", q.keywords)
     }
 
     fun listQuestions(bankId: Long, limit: Int = 5000): List<Question> {
@@ -228,64 +228,69 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 2)
         keywords = c.getString(c.getColumnIndexOrThrow("keywords")) ?: ""
     )
 
-    /** 抽题：按题型/知识点/难度/地区过滤 */
-    fun pickQuestions(
-        bankId: Long,
-        types: Set<QuestionType>,
-        knowledge: String?,
-        difficulty: Int?,
-        region: String?,
-        limit: Int
-    ): List<Question> {
-        val where = StringBuilder("bank_id = ?")
-        val args = ArrayList<String>().apply { add(bankId.toString()) }
-        if (types.isNotEmpty()) {
-            where.append(" AND type IN (")
-            types.forEachIndexed { i, t -> if (i > 0) where.append(","); where.append("?"); args.add(t.code) }
-            where.append(")")
-        }
-        if (!knowledge.isNullOrBlank()) { where.append(" AND knowledge LIKE ?"); args.add("%$knowledge%") }
-        if (difficulty != null && difficulty > 0) { where.append(" AND difficulty = ?"); args.add(difficulty.toString()) }
-        if (!region.isNullOrBlank()) { where.append(" AND region LIKE ?"); args.add("%$region%") }
-        where.append(" ORDER BY RANDOM() LIMIT ?")
-        args.add(limit.toString())
-        val out = ArrayList<Question>()
-        readableDatabase.rawQuery("SELECT * FROM questions WHERE $where", args.toTypedArray())
-            .use { c -> while (c.moveToNext()) out.add(readQuestion(c)) }
-        return out
-    }
-
-    /** 知识点清单 */
-    fun listKnowledge(bankId: Long): List<String> {
-        val out = ArrayList<String>()
-        readableDatabase.rawQuery(
-            "SELECT DISTINCT knowledge FROM questions WHERE bank_id = ? AND knowledge <> '' ORDER BY knowledge",
-            arrayOf(bankId.toString())
-        ).use { c -> while (c.moveToNext()) out.add(c.getString(0) ?: "") }
-        return out
-    }
-
     // ---------------- Paper ----------------
 
-    fun insertPaper(name: String, bankId: Long, durationMin: Int, mode: String, questions: List<Question>): Long {
+    /**
+     * 导入即建卷：一个文件 → 一个题库 + 一份试卷，题目按文件里的顺序整卷入卷。
+     *
+     * 放在同一个事务里，避免出现「题库建好了、试卷却是空的」这类半成品数据。
+     */
+    fun importAsPaper(
+        bankName: String,
+        description: String,
+        subject: String,
+        paperName: String,
+        durationMin: Int,
+        questions: List<Question>
+    ): ImportResult {
         val db = writableDatabase
         db.beginTransaction()
         try {
-            val cv = ContentValues().apply {
-                put("name", name)
-                put("bank_id", bankId)
+            val bankId = db.insert("banks", null, ContentValues().apply {
+                put("name", bankName)
+                put("description", description)
+                put("subject", subject)
                 put("created_at", System.currentTimeMillis())
-                put("duration_min", durationMin)
-                put("mode", mode)
+            })
+            val ids = ArrayList<Long>(questions.size)
+            for (q in questions) {
+                val qid = db.insert("questions", null, questionValues(bankId, q))
+                if (qid != -1L) ids.add(qid)
             }
-            val pid = db.insert("papers", null, cv)
+            val paperId = db.insert("papers", null, paperValues(paperName, bankId, durationMin, MODE_IMPORT))
+            ids.forEachIndexed { i, qid ->
+                db.insert("paper_questions", null, ContentValues().apply {
+                    put("paper_id", paperId)
+                    put("question_id", qid)
+                    put("position", i)
+                })
+            }
+            db.setTransactionSuccessful()
+            return ImportResult(bankId, paperId, ids.size, paperName)
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    /** 用题库里现有的全部题目生成一份试卷（试卷被删后重新开练用） */
+    fun createPaperFromBank(
+        bankId: Long,
+        paperName: String,
+        durationMin: Int = 0,
+        mode: String = MODE_IMPORT
+    ): Long {
+        val questions = listQuestions(bankId)
+        if (questions.isEmpty()) return 0L
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val pid = db.insert("papers", null, paperValues(paperName, bankId, durationMin, mode))
             questions.forEachIndexed { i, q ->
-                val cv2 = ContentValues().apply {
+                db.insert("paper_questions", null, ContentValues().apply {
                     put("paper_id", pid)
                     put("question_id", q.id)
                     put("position", i)
-                }
-                db.insert("paper_questions", null, cv2)
+                })
             }
             db.setTransactionSuccessful()
             return pid
@@ -294,11 +299,23 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 2)
         }
     }
 
+    private fun paperValues(name: String, bankId: Long, durationMin: Int, mode: String): ContentValues =
+        ContentValues().apply {
+            put("name", name)
+            put("bank_id", bankId)
+            put("created_at", System.currentTimeMillis())
+            put("duration_min", durationMin)
+            put("mode", mode)
+        }
+
     fun listPapers(): List<Paper> {
         val out = ArrayList<Paper>()
         readableDatabase.rawQuery(
             """SELECT p.id, p.name, p.bank_id, p.created_at, p.duration_min, p.mode,
-                      (SELECT COUNT(*) FROM paper_questions pq WHERE pq.paper_id = p.id)
+                      (SELECT COUNT(*) FROM paper_questions pq WHERE pq.paper_id = p.id),
+                      (SELECT COUNT(*) FROM paper_questions pq2
+                         JOIN questions q2 ON q2.id = pq2.question_id
+                         WHERE pq2.paper_id = p.id AND TRIM(IFNULL(q2.answer, '')) = '')
                FROM papers p ORDER BY p.created_at DESC""", null
         ).use { c ->
             while (c.moveToNext()) {
@@ -307,6 +324,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 2)
                         id = c.getLong(0), name = c.getString(1) ?: "", bankId = c.getLong(2),
                         createdAt = c.getLong(3), durationMin = c.getInt(4), mode = c.getString(5) ?: "",
                         questionCount = c.getInt(6),
+                        missingAnswers = c.getInt(7),
                         questions = emptyList()
                     )
                 )
@@ -327,9 +345,106 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 2)
         return p.copy(questions = qs)
     }
 
+    /** 题库对应的试卷：一次导入只会产生一份卷，取最新的一份 */
+    fun getPaperByBank(bankId: Long): Paper? {
+        val id = readableDatabase.rawQuery(
+            "SELECT id FROM papers WHERE bank_id = ? ORDER BY id DESC LIMIT 1",
+            arrayOf(bankId.toString())
+        ).use { c -> if (c.moveToFirst()) c.getLong(0) else null } ?: return null
+        return getPaper(id)
+    }
+
+    /** 同名试卷（导入重名时用来提示覆盖） */
+    fun findPaperByName(name: String): Paper? =
+        listPapers().firstOrNull { it.name == name }
+
+    /** 同名题库（兼容升级前只建库没建卷的旧数据） */
+    fun findBankByName(name: String): Bank? =
+        listBanks().firstOrNull { it.name == name }
+
     fun deletePaper(id: Long) {
         writableDatabase.delete("paper_questions", "paper_id = ?", arrayOf(id.toString()))
         writableDatabase.delete("papers", "id = ?", arrayOf(id.toString()))
+    }
+
+    /**
+     * 批量补充标准答案。
+     *
+     * 用于「试卷先导入、答案后补」：只写非空答案；解析为空时保留题目原有解析，
+     * 避免一份纯「题号 + 答案」的表把已有解析冲掉。
+     */
+    fun updateAnswers(updates: List<AnswerUpdate>): Int {
+        if (updates.isEmpty()) return 0
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            var n = 0
+            for (u in updates) {
+                if (u.answer.isBlank()) continue
+                val cv = ContentValues().apply { put("answer", u.answer) }
+                if (u.analysis.isNotBlank()) cv.put("analysis", u.analysis)
+                n += db.update("questions", cv, "id = ?", arrayOf(u.questionId.toString()))
+            }
+            db.setTransactionSuccessful()
+            return n
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    /** 某份试卷里还缺标准答案的题数 */
+    fun countMissingAnswers(paperId: Long): Int {
+        readableDatabase.rawQuery(
+            """SELECT COUNT(*) FROM paper_questions pq
+               JOIN questions q ON q.id = pq.question_id
+               WHERE pq.paper_id = ? AND TRIM(IFNULL(q.answer, '')) = ''""",
+            arrayOf(paperId.toString())
+        ).use { c -> return if (c.moveToFirst()) c.getInt(0) else 0 }
+    }
+
+    /**
+     * 用题库当前的标准答案重判一条练习记录。
+     *
+     * 补完答案后调用：保留用户原来的作答，只重算得分与对错，
+     * 所以「先做完、后补答案」的卷子能直接出对比结果，不需要重做一遍。
+     */
+    fun rejudgeRecord(recordId: Long): ExamRecord? {
+        val record = getRecord(recordId) ?: return null
+        val policy = getPolicy()
+        val results = record.results.map { Judge.judge(it.question, it.userAnswer, policy) }
+        val summary = Judge.summarize(results)
+
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            for (r in results) {
+                db.update(
+                    "record_answers",
+                    ContentValues().apply {
+                        put("earned", r.earned)
+                        put("correct", if (r.correct) 1 else 0)
+                    },
+                    "record_id = ? AND question_id = ?",
+                    arrayOf(recordId.toString(), r.question.id.toString())
+                )
+            }
+            db.update(
+                "records",
+                ContentValues().apply {
+                    put("answered_count", summary.answered)
+                    put("correct_count", summary.correct)
+                    put("partial_count", summary.partial)
+                    put("score", summary.score)
+                    put("full_score", summary.fullScore)
+                },
+                "id = ?",
+                arrayOf(recordId.toString())
+            )
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        return getRecord(recordId)
     }
 
     // ---------------- Record ----------------
@@ -404,14 +519,19 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 2)
         ).use { c ->
             while (c.moveToNext()) {
                 val q = readQuestion(c)
+                val earned = c.getDouble(c.getColumnIndexOrThrow("earned"))
+                val full = q.score
                 results.add(
                     com.lytree.qbank.data.model.AnswerResult(
                         question = q,
                         userAnswer = c.getString(c.getColumnIndexOrThrow("user_answer")) ?: "",
-                        earned = c.getDouble(c.getColumnIndexOrThrow("earned")),
-                        full = q.score,
+                        earned = earned,
+                        full = full,
                         correct = c.getInt(c.getColumnIndexOrThrow("correct")) == 1,
-                        partial = false
+                        // 部分得分没有单独存表，按「有得分但没全对」还原
+                        partial = earned > 0.0 && earned < full,
+                        // 题目还没有标准答案 → 待补答案，不参与统计
+                        pending = !Judge.hasStandard(q)
                     )
                 )
             }
@@ -498,6 +618,9 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 2)
     }
 
     companion object {
+        /** 试卷来源：由导入文件生成 */
+        const val MODE_IMPORT = "导入"
+
         @Volatile
         private var instance: QBankDb? = null
 
@@ -507,6 +630,21 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 2)
             }
     }
 }
+
+/** 导入结果：一个文件生成的一份题库 + 一份试卷 */
+data class ImportResult(
+    val bankId: Long,
+    val paperId: Long,
+    val questionCount: Int,
+    val paperName: String
+)
+
+/** 待写入的标准答案（[analysis] 为空时保留题目原有解析） */
+data class AnswerUpdate(
+    val questionId: Long,
+    val answer: String,
+    val analysis: String = ""
+)
 
 /** Option 便捷扩展 */
 fun List<Option>.keys(): List<String> = map { it.key }

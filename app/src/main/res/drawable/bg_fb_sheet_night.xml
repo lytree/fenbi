@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 答题卡底部弹层（夜间）：顶部 12dp 圆角 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/fb_night_card" />
+    <corners android:topLeftRadius="@dimen/fb_sheet_radius" android:topRightRadius="@dimen/fb_sheet_radius" />
+</shape>

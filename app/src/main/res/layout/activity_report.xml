@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- 成绩报告：统一标题栏 + 成绩卡 + 逐题解析 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/fb_page_bg"
@@ -25,6 +26,20 @@
             android:paddingTop="16dp"
             android:paddingEnd="@dimen/fb_page_pad"
             android:paddingBottom="28dp">
+
+            <!-- 缺少标准答案时的提示条：补完答案会按已有作答重判 -->
+            <TextView
+                android:id="@+id/tvPendingHint"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                android:background="@drawable/bg_fb_note"
+                android:lineSpacingExtra="3dp"
+                android:padding="12dp"
+                android:textColor="@color/fb_text_tertiary"
+                android:textSize="13sp"
+                android:visibility="gone"
+                tools:visibility="visible" />
 
             <LinearLayout
                 style="@style/FbCard"

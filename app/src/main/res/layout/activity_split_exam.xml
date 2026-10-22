@@ -39,15 +39,54 @@
         app:layout_constraintEnd_toStartOf="@id/splitDivider"
         app:layout_constraintWidth_percent="0.5">
 
-        <TextView
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="@drawable/bg_fb_material_tag"
-            android:paddingHorizontal="6dp"
-            android:paddingVertical="2dp"
-            android:text="@string/tag_material"
-            android:textColor="@color/fb_blue_ink"
-            android:textSize="11sp" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_fb_material_tag"
+                android:paddingHorizontal="6dp"
+                android:paddingVertical="2dp"
+                android:text="@string/tag_material"
+                android:textColor="@color/fb_blue_ink"
+                android:textSize="11sp" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+
+            <!-- 左栏很窄，图 / 表看不全时可以弹出来看 -->
+            <LinearLayout
+                android:id="@+id/btnMaterialExpand"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingVertical="2dp">
+
+                <ImageView
+                    android:layout_width="12dp"
+                    android:layout_height="12dp"
+                    android:contentDescription="@null"
+                    android:src="@drawable/ic_fb_material_expand"
+                    android:tint="@color/fb_text_meta" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="3dp"
+                    android:includeFontPadding="false"
+                    android:text="@string/material_pop_out"
+                    android:textColor="@color/fb_text_meta"
+                    android:textSize="11sp" />
+            </LinearLayout>
+        </LinearLayout>
 
         <androidx.core.widget.NestedScrollView
             android:id="@+id/materialScroll"
@@ -107,12 +146,11 @@
             android:padding="16dp" />
     </androidx.core.widget.NestedScrollView>
 
-    <!-- 手写标注层（覆盖全屏，两栏都能标） -->
+    <!-- 遮盖层（可写，覆盖全屏，两栏都能标）：常驻可见，退出写画后笔迹仍留在原处 -->
     <com.lytree.qbank.ui.InkOverlay
         android:id="@+id/inkOverlay"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:visibility="gone"
         app:layout_constraintTop_toBottomOf="@id/topDivider"
         app:layout_constraintBottom_toTopOf="@id/bottomBar"
         app:layout_constraintStart_toStartOf="parent"
@@ -171,7 +209,7 @@
             android:textSize="14sp" />
     </LinearLayout>
 
-    <!-- 悬浮：手写工具条（撤销 / 清空 / 手指绘制 / 完成） -->
+    <!-- 悬浮：遮盖层工具条（撤销 / 清空 / 遮盖档位 / 标记 / 完成） -->
     <LinearLayout
         android:id="@+id/inkBar"
         android:layout_width="wrap_content"
@@ -179,6 +217,7 @@
         android:layout_marginEnd="16dp"
         android:layout_marginBottom="70dp"
         android:background="@drawable/bg_fb_action"
+        android:elevation="6dp"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingHorizontal="6dp"
@@ -188,43 +227,31 @@
 
         <TextView
             android:id="@+id/btnInkUndo"
-            android:layout_width="wrap_content"
-            android:layout_height="32dp"
-            android:gravity="center"
-            android:paddingHorizontal="12dp"
+            style="@style/FbInkAction"
             android:text="@string/action_undo"
-            android:textColor="@color/text_primary"
-            android:textSize="13sp" />
+            android:textColor="@color/fb_text_primary" />
 
         <TextView
             android:id="@+id/btnInkClear"
-            android:layout_width="wrap_content"
-            android:layout_height="32dp"
-            android:gravity="center"
-            android:paddingHorizontal="12dp"
+            style="@style/FbInkAction"
             android:text="@string/action_clear_ink"
-            android:textColor="@color/wrong"
-            android:textSize="13sp" />
+            android:textColor="@color/fb_red" />
 
         <TextView
-            android:id="@+id/btnInkFinger"
-            android:layout_width="wrap_content"
-            android:layout_height="32dp"
-            android:gravity="center"
-            android:paddingHorizontal="12dp"
-            android:text="@string/action_finger_draw"
-            android:textColor="@color/text_primary"
-            android:textSize="13sp" />
+            android:id="@+id/btnInkShade"
+            style="@style/FbInkAction"
+            tools:text="遮盖·浅" />
+
+        <TextView
+            android:id="@+id/btnInkMark"
+            style="@style/FbInkAction"
+            tools:text="标记" />
 
         <TextView
             android:id="@+id/btnInkDone"
-            android:layout_width="wrap_content"
-            android:layout_height="32dp"
-            android:gravity="center"
-            android:paddingHorizontal="12dp"
+            style="@style/FbInkAction"
             android:text="@string/action_done"
-            android:textColor="@color/fb_blue_ink"
-            android:textSize="13sp" />
+            android:textColor="@color/fb_primary" />
     </LinearLayout>
 
     <View

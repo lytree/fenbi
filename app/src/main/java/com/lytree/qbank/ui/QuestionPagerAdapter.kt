@@ -1,123 +1,90 @@
 package com.lytree.qbank.ui
 
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import com.lytree.qbank.R
 import com.lytree.qbank.data.model.Question
-import com.lytree.qbank.data.model.QuestionType
-import com.lytree.qbank.databinding.ItemQuestionPageBinding
-import com.lytree.qbank.engine.Judge
+import com.lytree.qbank.databinding.ItemQuestionPagerPageBinding
 import com.lytree.qbank.engine.Policy
 
 /**
- * 题目分页适配器。配合 [androidx.viewpager2.widget.ViewPager2] 实现「单题浏览」模式的左右滑动切题。
+ * 单题浏览适配器。配合 [androidx.viewpager2.widget.ViewPager2] 实现「一屏一题、左右滑动切题」。
  *
- * 与 [QuestionListAdapter] 共享同一套题目块布局（item_question_page.xml），
- * 区别只在于承载容器：ViewPager2（一屏一题）vs RecyclerView（连续滚动）。
+ * 与 [QuestionListAdapter] 共用同一套卡片版式（`item_question_page.xml`）与同一份渲染逻辑
+ * （[QuestionCardBinder]），差别只有承载容器：
+ * - 这里每页外面套一层 [androidx.core.widget.NestedScrollView]，长题干 / 材料题可在页内纵向滚动，
+ *   横向手势留给 ViewPager2；
+ * - 题号仍是卡片内的「N.」，与多题浏览一致。
  */
 class QuestionPagerAdapter(
     private val questions: List<Question>,
     private val answers: MutableMap<Long, String>,
-    private val marked: Set<Long>,
-    private var revealAnswers: Boolean = false,
+    private val marked: MutableSet<Long>,
+    private val favorites: MutableSet<Long>,
     private val policyProvider: () -> Policy,
-    private val onAnswerChanged: (Question) -> Unit,
-    private val onNoteClicked: (Question) -> Unit
+    var fontScale: Float = 1f,
+    var revealAnswers: Boolean = false,
+    /** 夜间模式：透传给 [QuestionCardBinder] */
+    var night: Boolean = false,
+    onMarkToggle: (Question) -> Unit,
+    onFavoriteToggle: (Question) -> Unit,
+    onNoteClicked: (Question) -> Unit,
+    /** 点卡片上的「笔」→ 进手写标注；不传时退回旧行为（打开笔记） */
+    onInkClicked: (Question) -> Unit = onNoteClicked,
+    onAnswerChanged: (Question) -> Unit,
+    /** 材料卡右上角「弹出材料」 */
+    onMaterialExpand: ((Question) -> Unit)? = null
 ) : RecyclerView.Adapter<QuestionPagerAdapter.VH>() {
 
-    class VH(val binding: ItemQuestionPageBinding) : RecyclerView.ViewHolder(binding.root)
+    private val cb = QuestionCardBinder.Callbacks(
+        onMarkToggle = onMarkToggle,
+        onFavoriteToggle = onFavoriteToggle,
+        onInkClicked = onInkClicked,
+        onNoteClicked = onNoteClicked,
+        onAnswerChanged = onAnswerChanged,
+        onMaterialExpand = onMaterialExpand
+    )
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
-        VH(ItemQuestionPageBinding.inflate(LayoutInflater.from(parent.context), parent, false))
+    class VH(val page: ItemQuestionPagerPageBinding) : RecyclerView.ViewHolder(page.root)
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
+        val holder = VH(
+            ItemQuestionPagerPageBinding.inflate(LayoutInflater.from(parent.context), parent, false)
+        )
+        applyContentWidth(holder.page.card.root)
+        return holder
+    }
+
+    /** 宽屏上把卡片收窄到 520dp 居中，与多题浏览的列宽一致 */
+    private fun applyContentWidth(card: View) {
+        val res = card.resources
+        val lp = card.layoutParams as? ViewGroup.MarginLayoutParams ?: return
+        val side = maxOf(
+            res.getDimension(R.dimen.fb_page_padding_h),
+            (res.displayMetrics.widthPixels - res.getDimension(R.dimen.fb_content_max_width)) / 2f
+        )
+        lp.marginStart = side.toInt()
+        lp.marginEnd = side.toInt()
+        card.layoutParams = lp
+    }
 
     override fun getItemCount() = questions.size
 
     override fun onBindViewHolder(holder: VH, position: Int) {
-        val q = questions[position]
-        val b = holder.binding
-
-        b.tvIndex.text = "${position + 1}."
-        b.tvType.text = q.type.label
-
-        val isMarked = q.id in marked
-        b.btnMark.setImageResource(
-            if (isMarked) R.drawable.ic_fb_bookmark_filled else R.drawable.ic_fb_bookmark
+        QuestionCardBinder.bind(
+            b = holder.page.card,
+            position = position,
+            q = questions[position],
+            answers = answers,
+            marked = marked,
+            favorites = favorites,
+            revealAnswers = revealAnswers,
+            policy = policyProvider(),
+            fontScale = fontScale,
+            cb = cb,
+            night = night
         )
-        b.btnMark.setColorFilter(
-            androidx.core.content.ContextCompat.getColor(
-                b.root.context, if (isMarked) R.color.fb_primary else R.color.fb_icon
-            )
-        )
-        b.btnScratch.setOnClickListener { onNoteClicked(q) }
-
-        if (q.material.isNotBlank()) {
-            b.materialBox.visibility = android.view.View.VISIBLE
-            MaterialRenderer.render(b.root.context, b.materialContent, q.material)
-        } else {
-            b.materialBox.visibility = android.view.View.GONE
-        }
-
-        b.tvStem.text = q.stem
-
-        b.optionsBox.removeAllViews()
-        buildOptions(q, holder)
-
-        if (revealAnswers) {
-            b.tvAnalysis.visibility = android.view.View.VISIBLE
-            val userAns = answers[q.id] ?: ""
-            val r = Judge.judge(q, userAns, policyProvider())
-            b.tvAnalysis.text = buildString {
-                append("正确答案：${q.displayAnswer()}\n")
-                append("你的答案：${userAns.ifBlank { "未作答" }}\n")
-                append(
-                    "结果：${when {
-                        r.correct -> "正确"
-                        r.partial -> "部分得分 ${fmtScore(r.earned)}/${fmtScore(r.full)}"
-                        else -> "错误"
-                    }}\n"
-                )
-                if (q.analysis.isNotBlank()) append("解析：${q.analysis}")
-            }
-        } else {
-            b.tvAnalysis.visibility = android.view.View.GONE
-        }
-    }
-
-    private fun buildOptions(q: Question, holder: VH) {
-        val multi = q.type == QuestionType.MULTI || q.type == QuestionType.UNCERTAIN
-        val inflater = LayoutInflater.from(holder.itemView.context)
-        val selected = (answers[q.id] ?: "").split(',', '，', ' ')
-            .map { it.trim().uppercase() }
-            .filter { it.isNotEmpty() }
-            .toMutableSet()
-
-        q.options.forEach { opt ->
-            val item = com.lytree.qbank.databinding.ItemOptionBinding
-                .inflate(inflater, holder.binding.optionsBox, false)
-            item.tvKey.text = opt.key
-            item.tvText.text = opt.text
-            val isSel = selected.contains(opt.key.uppercase())
-            QuestionListAdapter.applyCircleState(item, isSel)
-            item.root.setOnClickListener {
-                if (multi) {
-                    if (selected.contains(opt.key.uppercase())) selected.remove(opt.key.uppercase())
-                    else selected.add(opt.key.uppercase())
-                } else {
-                    selected.clear()
-                    selected.add(opt.key.uppercase())
-                }
-                answers[q.id] = selected.sorted().joinToString(",")
-                onAnswerChanged(q)
-                notifyItemChanged(holder.bindingAdapterPosition)
-            }
-            holder.binding.optionsBox.addView(item.root)
-        }
-    }
-
-    companion object {
-        fun fmtScore(v: Double): String =
-            if (v == v.toLong().toDouble()) v.toLong().toString()
-            else String.format(java.util.Locale.CHINA, "%.1f", v)
     }
 }

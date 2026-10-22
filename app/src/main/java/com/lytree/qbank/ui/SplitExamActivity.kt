@@ -86,22 +86,38 @@ class SplitExamActivity : AppCompatActivity() {
         binding.btnInk.setOnClickListener { toggleInk() }
         binding.btnInkUndo.setOnClickListener { binding.inkOverlay.undo() }
         binding.btnInkClear.setOnClickListener { binding.inkOverlay.clear() }
+        // 左栏只有半屏宽，图 / 表挤在一起时单独弹出来看
+        binding.btnMaterialExpand.setOnClickListener {
+            val material = groupMaterial()
+            if (material.isNotBlank()) MaterialDialog.show(this, material)
+        }
 
         inkToolbar = InkToolbarController(
             inkOverlay = binding.inkOverlay,
             inkBar = binding.inkBar,
-            btnInkFinger = binding.btnInkFinger,
+            btnInkShade = binding.btnInkShade,
+            btnInkMark = binding.btnInkMark,
             btnInkDone = binding.btnInkDone,
             styleInkButton = { on ->
                 binding.btnInk.setBackgroundResource(
                     if (on) R.drawable.bg_fb_mark_on else R.drawable.bg_fb_action
                 )
-            }
+            },
+            onToggleMark = { toggleMarkCurrent() }
         )
         inkToolbar.onModeChanged = { on ->
             inkMode = on
             if (on) binding.inkOverlay.bindQuestion(questions.getOrNull(currentIndex)?.id ?: 0L)
         }
+
+        // 写画模式的滚动通道：手势落在左半屏滚材料、右半屏滚题目（分屏的意义就是两边对着看）
+        binding.inkOverlay.scrollTargetResolver = { x, _ ->
+            if (x <= binding.leftPane.right) binding.materialScroll else binding.rightPane
+        }
+        // 左边缘也放一条手柄，写画时材料还能翻
+        binding.inkOverlay.leftRailEnabled = true
+        // 右下角悬浮着工具条，轨道底部让开 60dp
+        binding.inkOverlay.scrollBarBottomInset = (60 * resources.displayMetrics.density).toInt()
 
         renderMaterial()
         renderQuestions()
@@ -111,7 +127,7 @@ class SplitExamActivity : AppCompatActivity() {
     // ---------------- 左栏：材料 ----------------
 
     private fun renderMaterial() {
-        val material = questions.firstOrNull { it.material.isNotBlank() }?.material ?: ""
+        val material = groupMaterial()
         if (material.isBlank()) {
             binding.materialContent.removeAllViews()
             val tip = TextView(this)
@@ -123,6 +139,10 @@ class SplitExamActivity : AppCompatActivity() {
         }
         MaterialRenderer.render(this, binding.materialContent, material)
     }
+
+    /** 本组共用的一份材料（同一材料的题分到一组） */
+    private fun groupMaterial(): String =
+        questions.firstOrNull { it.material.isNotBlank() }?.material.orEmpty()
 
     // ---------------- 右栏：题目 ----------------
 
@@ -184,12 +204,28 @@ class SplitExamActivity : AppCompatActivity() {
 
     private fun updateHeader() {
         tvIndex.text = getString(R.string.question_index, currentIndex + 1, questions.size)
+        syncInkQuestion()
     }
 
     // ---------------- 手写 ----------------
 
     private fun toggleInk() {
         inkToolbar.toggle()
+    }
+
+    /** 遮盖层跟着「当前题」走：翻题后笔迹与标记状态都要换 */
+    private fun syncInkQuestion() {
+        if (!::inkToolbar.isInitialized) return
+        val q = questions.getOrNull(currentIndex)
+        binding.inkOverlay.bindQuestion(q?.id ?: 0L)
+        inkToolbar.setMarked(q != null && q.id in marked)
+    }
+
+    /** 工具条上的「标记」：和答题卡里的已标记是同一份数据 */
+    private fun toggleMarkCurrent() {
+        val q = questions.getOrNull(currentIndex) ?: return
+        if (!marked.add(q.id)) marked.remove(q.id)
+        inkToolbar.setMarked(q.id in marked)
     }
 
     // ---------------- 答题卡 ----------------

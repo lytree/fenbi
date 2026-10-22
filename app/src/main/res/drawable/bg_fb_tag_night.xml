@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 题型标签（夜间）：压暗蓝底 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/fb_night_tag_bg" />
+    <corners android:radius="@dimen/fb_type_tag_radius" />
+</shape>

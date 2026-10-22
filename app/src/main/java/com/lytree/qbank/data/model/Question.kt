@@ -137,6 +137,8 @@ data class Paper(
     val mode: String = "",
     /** 列表查询时只带题量，不加载整卷题目 */
     val questionCount: Int = 0,
+    /** 还缺标准答案的题数（试卷先导入、答案后补） */
+    val missingAnswers: Int = 0,
     val questions: List<Question> = emptyList()
 )
 
@@ -147,11 +149,14 @@ data class AnswerResult(
     val earned: Double,
     val full: Double,
     val correct: Boolean,
-    val partial: Boolean
+    val partial: Boolean,
+    /** 该题还没有标准答案（导入时缺答案、尚未补充），暂不参与判分 */
+    val pending: Boolean = false
 ) {
-    /** 状态：right 全对 / partial 部分得分 / wrong 错误 / blank 未答 */
+    /** 状态：right 全对 / partial 部分得分 / wrong 错误 / blank 未答 / pending 待补答案 */
     val status: String
         get() = when {
+            pending -> "pending"
             userAnswer.isBlank() -> "blank"
             correct -> "right"
             partial -> "partial"
@@ -176,4 +181,7 @@ data class ExamRecord(
     val fullScore: Double = 0.0,
     val correctRate: Double = 0.0,
     val results: List<AnswerResult> = emptyList()
-)
+) {
+    /** 待补答案的题数（这些题不参与判分） */
+    val pendingCount: Int get() = results.count { it.pending }
+}

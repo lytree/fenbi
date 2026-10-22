@@ -32,10 +32,23 @@ data class Policy(
  */
 object Judge {
 
+    /**
+     * 是否具备判分依据。
+     * 客观题看标准答案；主观题允许只给「得分点」而不给整段参考答案。
+     */
+    fun hasStandard(q: Question): Boolean =
+        q.answer.isNotBlank() ||
+                (q.type == QuestionType.SUBJECTIVE && q.keywords.isNotBlank())
+
+
     /** 对主观题而言，标准答案即参考答案 */
     fun judge(q: Question, userAnswer: String, policy: Policy = Policy.DEFAULT): AnswerResult {
         val full = q.score
         val ua = userAnswer.trim()
+        // 还没有标准答案（试卷先导入、答案后补）→ 不判分，标记为待补
+        if (!hasStandard(q)) {
+            return AnswerResult(q, ua, 0.0, full, false, false, pending = true)
+        }
         val correctKeys = q.answerKeys()
         val userKeys = ua.split(',', ' ', '，', '、', ';', '；', '|')
             .map { it.trim().uppercase() }
@@ -159,31 +172,37 @@ object Judge {
         val partial: Int,
         val wrong: Int,
         val blank: Int,
+        /** 缺少标准答案、未参与判分的题数 */
+        val pending: Int,
         val score: Double,
         val fullScore: Double
     ) {
         /** 正确率：只统计已作答题，答对 / 已作答 */
         val correctRate: Double
             get() = if (answered == 0) 0.0 else correct.toDouble() / answered
-        /** 得分率：总得分 / 总分 */
+        /** 得分率：总得分 / 总分（待补答案的题不计入总分） */
         val scoreRate: Double
             get() = if (fullScore <= 0) 0.0 else score / fullScore
     }
 
     fun summarize(results: List<AnswerResult>): Summary {
-        val answered = results.count { it.userAnswer.isNotBlank() }
-        val correct = results.count { it.correct }
-        val partial = results.count { it.partial && !it.correct }
-        val blank = results.count { it.userAnswer.isBlank() }
-        val score = results.sumOf { it.earned }
-        val full = results.sumOf { it.full }
+        val pending = results.count { it.pending }
+        // 待补答案的题既不进分子也不进分母，否则「满分」会被还没拿到的答案撑大
+        val scored = results.filter { !it.pending }
+        val answered = scored.count { it.userAnswer.isNotBlank() }
+        val correct = scored.count { it.correct }
+        val partial = scored.count { it.partial && !it.correct }
+        val blank = scored.count { it.userAnswer.isBlank() }
+        val score = scored.sumOf { it.earned }
+        val full = scored.sumOf { it.full }
         return Summary(
             total = results.size,
             answered = answered,
             correct = correct,
             partial = partial,
-            wrong = results.size - answered - partial,
+            wrong = scored.size - answered - partial,
             blank = blank,
+            pending = pending,
             score = score,
             fullScore = full
         )

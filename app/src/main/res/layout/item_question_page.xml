@@ -54,12 +54,29 @@
             android:textSize="@dimen/fb_type_tag_text_size"
             tools:text="单选题" />
 
+        <!-- 待补答案：导入时这道题就没有标准答案 -->
+        <TextView
+            android:id="@+id/tvPending"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:background="@drawable/bg_fb_tag"
+            android:paddingStart="@dimen/fb_type_tag_padding_h"
+            android:paddingTop="@dimen/fb_type_tag_padding_v"
+            android:paddingEnd="@dimen/fb_type_tag_padding_h"
+            android:paddingBottom="@dimen/fb_type_tag_padding_v"
+            android:text="@string/pending_answer"
+            android:textColor="@color/partial"
+            android:textSize="@dimen/fb_type_tag_text_size"
+            android:visibility="gone"
+            tools:visibility="visible" />
+
         <View
             android:layout_width="0dp"
             android:layout_height="1dp"
             android:layout_weight="1" />
 
-        <!-- 标记 / 草稿笔记 / 收藏 -->
+        <!-- 标记 / 手写标注（长按写笔记）/ 收藏 -->
         <ImageView
             android:id="@+id/btnMark"
             android:layout_width="@dimen/fb_bar_item_width"
@@ -75,7 +92,7 @@
             android:layout_height="@dimen/fb_bar_item_width"
             android:layout_marginStart="@dimen/fb_bar_item_gap"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/action_note_edit"
+            android:contentDescription="@string/action_ink_edit"
             android:padding="4dp"
             android:src="@drawable/ic_fb_edit" />
 
@@ -117,17 +134,61 @@
         android:visibility="gone"
         tools:visibility="visible">
 
-        <TextView
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="@drawable/bg_fb_material_tag"
-            android:paddingStart="6dp"
-            android:paddingTop="2dp"
-            android:paddingEnd="6dp"
-            android:paddingBottom="2dp"
-            android:text="@string/tag_material"
-            android:textColor="@color/fb_type_tag_text"
-            android:textSize="11sp" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/tvMaterialTag"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_fb_material_tag"
+                android:paddingStart="6dp"
+                android:paddingTop="2dp"
+                android:paddingEnd="6dp"
+                android:paddingBottom="2dp"
+                android:text="@string/tag_material"
+                android:textColor="@color/fb_type_tag_text"
+                android:textSize="11sp" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+
+            <!-- 弹出材料：材料单独占大半屏、独立滚动，题目位置不动 -->
+            <LinearLayout
+                android:id="@+id/btnMaterialExpand"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="6dp"
+                android:paddingTop="3dp"
+                android:paddingEnd="2dp"
+                android:paddingBottom="3dp">
+
+                <ImageView
+                    android:id="@+id/icMaterialExpand"
+                    android:layout_width="13dp"
+                    android:layout_height="13dp"
+                    android:contentDescription="@null"
+                    android:src="@drawable/ic_fb_material_expand" />
+
+                <TextView
+                    android:id="@+id/tvMaterialExpand"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="3dp"
+                    android:includeFontPadding="false"
+                    android:text="@string/material_pop_out"
+                    android:textColor="@color/fb_text_meta"
+                    android:textSize="11sp" />
+            </LinearLayout>
+        </LinearLayout>
 
         <LinearLayout
             android:id="@+id/materialContent"

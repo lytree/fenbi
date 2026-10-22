@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 手写标注悬浮工具条（夜间） -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/fb_night_panel_bg" />
+    <corners android:radius="18dp" />
+</shape>

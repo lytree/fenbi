@@ -51,7 +51,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
                         android:lineSpacingExtra="4dp"
-                        android:text="支持 JSON / CSV / Excel(xlsx) / TXT，自动识别编码与表头别名，导入前可逐题勾选。"
+                        android:text="支持 JSON / CSV / Excel(xlsx) / TXT / 题库包(zip)，自动识别编码与表头别名。一个文件会生成一份试卷，导入前可逐题勾选。"
                         android:textSize="13sp" />
 
                     <com.google.android.material.button.MaterialButton
@@ -67,33 +67,6 @@
                         android:layout_width="match_parent"
                         android:layout_marginTop="4dp"
                         android:text="载入示例题库（体验用）" />
-                </LinearLayout>
-
-                <LinearLayout
-                    style="@style/FbCard"
-                    android:layout_marginTop="@dimen/fb_card_gap_v">
-
-                    <TextView
-                        style="@style/FbGroupTitle"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="题库名称" />
-
-                    <com.google.android.material.textfield.TextInputLayout
-                        android:id="@+id/inputLayoutName"
-                        style="@style/FbInput"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:hint="留空则用文件名">
-
-                        <com.google.android.material.textfield.TextInputEditText
-                            android:id="@+id/inputName"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:inputType="text"
-                            android:textSize="14sp" />
-                    </com.google.android.material.textfield.TextInputLayout>
                 </LinearLayout>
             </LinearLayout>
         </androidx.core.widget.NestedScrollView>
@@ -132,6 +105,50 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
                         android:lineSpacingExtra="4dp" />
+                </LinearLayout>
+
+                <!-- 解析完成后再定卷名 / 限时，确认前随时可改 -->
+                <LinearLayout
+                    style="@style/FbCard"
+                    android:layout_marginTop="@dimen/fb_card_gap_v">
+
+                    <TextView
+                        style="@style/FbGroupTitle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="生成试卷" />
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/inputLayoutName"
+                        style="@style/FbInput"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:hint="试卷名称（默认用文件名）">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/inputName"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="text"
+                            android:textSize="14sp" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/inputLayoutDuration"
+                        style="@style/FbInput"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:hint="限时（分钟），0 或留空为不限时">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/inputDuration"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="number"
+                            android:textSize="14sp" />
+                    </com.google.android.material.textfield.TextInputLayout>
                 </LinearLayout>
 
                 <LinearLayout
@@ -211,7 +228,7 @@
             android:id="@+id/btnImport"
             style="@style/FbPrimaryButton"
             android:layout_width="match_parent"
-            android:text="@string/import_confirm"
+            android:text="@string/import_confirm_paper"
             android:visibility="gone" />
     </FrameLayout>
 </LinearLayout>

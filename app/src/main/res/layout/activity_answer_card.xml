@@ -26,11 +26,13 @@
 
         <!-- 标题行 -->
         <RelativeLayout
+            android:id="@+id/header"
             android:layout_width="match_parent"
             android:layout_height="52dp"
             android:background="@color/fb_card_bg">
 
             <TextView
+                android:id="@+id/tvCardTitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_centerInParent="true"

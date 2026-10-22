@@ -12,8 +12,8 @@
     <string name="page_records">练习记录</string>
     <string name="page_settings">设置</string>
 
-    <string name="action_import">导入题库</string>
-    <string name="action_compose">组卷</string>
+    <string name="action_import">导入</string>
+    <string name="action_start">开始答题</string>
     <string name="action_exam">开始考试</string>
     <string name="action_submit">交卷</string>
     <string name="action_answer_card">答题卡</string>
@@ -21,6 +21,7 @@
     <string name="action_next">下一题</string>
     <string name="action_favorite">收藏</string>
     <string name="action_mark">标记</string>
+    <string name="action_marked">已标记</string>
     <string name="action_confirm">确定</string>
     <string name="action_cancel">取消</string>
     <string name="action_delete">删除</string>
@@ -38,27 +39,42 @@
     <string name="action_clear_ink">清空</string>
     <string name="action_done">完成</string>
     <string name="action_note_edit">编辑笔记</string>
-    <string name="action_finger_draw">允许手指绘制</string>
-    <string name="action_finger_draw_on">手指绘制已开启</string>
-    <string name="action_finger_draw_off">手指绘制已关闭</string>
+    <string name="action_ink_edit">手写标注（长按写笔记）</string>
+    <string name="ink_enter_hint">手指或触控笔直接圈画，点「完成」退出，笔迹会留在题上</string>
+    <string name="more_ink_mode">手写标注·遮盖</string>
     <string name="note_saved">笔记已保存</string>
     <string name="tag_material">材料</string>
+    <string name="material_pop_out">弹出材料</string>
+    <string name="material_chart_invalid">（图表数据格式有误，请检查 :::chart 代码块）</string>
+    <string name="material_image_loading">图片加载中…</string>
+    <string name="material_image_failed">图片无法加载：%1$s</string>
     <string name="note_hint">写下你的思路或易错点…</string>
     <string name="note_title">本题笔记</string>
     <string name="more_split_on">开启左右分屏</string>
     <string name="more_split_off">关闭左右分屏</string>
     <string name="more_split_unavailable">左右分屏（本卷无材料）</string>
+    <string name="more_import_answer">导入答案</string>
+    <string name="more_import_answer_missing">导入答案（%1$d 题待补）</string>
+    <string name="more_import_answer_ready">导入答案（答案已齐）</string>
+    <string name="action_import_answer">导入答案</string>
+    <string name="pending_answer">待补答案</string>
+    <string name="pending_answer_empty">标准答案：未导入</string>
+    <string name="pending_answer_hint">标准答案尚未导入，可在「更多 → 导入答案」补充后再对比</string>
+    <string name="pending_answer_report_hint">本卷有 %1$d 题缺少标准答案，已从统计中排除。导入答案后会立即按你的作答重新判分。</string>
+    <string name="pending_answer_full">满分 %1$s 分 · %2$d 题待补答案</string>
     <string name="more_submit">交卷</string>
     <string name="split_material_title">材料</string>
 
-    <string name="empty_banks">还没有题库，点右下角「导入题库」开始</string>
-    <string name="empty_papers">还没有试卷，选题库组卷</string>
+    <string name="empty_banks">还没有题库，导入一份 JSON / CSV / Excel / TXT / 题库包(zip) 就能开始刷题</string>
+    <string name="empty_papers">还没有试卷，导入一份 JSON / CSV / Excel / TXT 就会生成一份试卷</string>
     <string name="empty_records">还没有考试记录</string>
 
+    <string name="title_import">导入试卷</string>
     <string name="import_pick">选择题库文件</string>
-    <string name="import_supported">支持 JSON / CSV / Excel(xlsx) / TXT</string>
+    <string name="import_supported">支持 JSON / CSV / Excel(xlsx) / TXT / 题库包(zip)</string>
     <string name="import_preview">解析预览</string>
     <string name="import_confirm">确认导入</string>
+    <string name="import_confirm_paper">导入并生成试卷</string>
     <string name="import_done">导入成功</string>
     <string name="import_failed">导入失败</string>
 

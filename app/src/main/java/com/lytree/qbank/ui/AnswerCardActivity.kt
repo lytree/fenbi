@@ -31,6 +31,8 @@ class AnswerCardActivity : AppCompatActivity() {
         const val EXTRA_CURRENT = "current"
         const val EXTRA_JUMP = "jump"
         const val EXTRA_SUBMIT = "submit"
+        /** 夜间模式：答题页切了夜间再开答题卡，弹层不能还是白的 */
+        const val EXTRA_NIGHT = "night"
     }
 
     private lateinit var binding: ActivityAnswerCardBinding
@@ -47,6 +49,9 @@ class AnswerCardActivity : AppCompatActivity() {
         val favorite = intent.getIntArrayExtra(EXTRA_FAVORITE)?.toSet() ?: emptySet()
         val groups = intent.getStringArrayListExtra(EXTRA_GROUPS) ?: arrayListOf()
         val current = intent.getIntExtra(EXTRA_CURRENT, -1)
+        val night = intent.getBooleanExtra(EXTRA_NIGHT, false)
+        applyNightMode(night)
+        adapter.night = night
 
         binding.btnClose.setOnClickListener { finish() }
         // 点遮罩关闭
@@ -87,6 +92,25 @@ class AnswerCardActivity : AppCompatActivity() {
         }
         androidx.core.view.ViewCompat.requestApplyInsets(binding.root)
     }
+
+    /** 夜间配色：弹层底、标题行、标题与关闭图标跟着答题页一起换 */
+    private fun applyNightMode(night: Boolean) {
+        if (!night) return
+        binding.sheet.setBackgroundResource(R.drawable.bg_fb_sheet_night)
+        binding.header.setBackgroundColor(
+            androidx.core.content.ContextCompat.getColor(this, R.color.fb_night_card)
+        )
+        binding.tvCardTitle.setTextColor(
+            androidx.core.content.ContextCompat.getColor(this, R.color.fb_night_text)
+        )
+        binding.btnClose.setColorFilter(
+            androidx.core.content.ContextCompat.getColor(this, R.color.fb_night_icon)
+        )
+        // 状态栏压在深色遮罩上：底色同遮罩、图标转白
+        window.statusBarColor = androidx.core.content.ContextCompat.getColor(this, R.color.fb_sheet_mask)
+        androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
+            .isAppearanceLightStatusBars = false
+    }
 }
 
 /** 答题卡适配器。按分组标题把题号切成若干「标题 + 网格」的段。 */
@@ -105,6 +129,8 @@ class CardAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
     private var rows: List<Row> = emptyList()
     private var current = -1
     var onClick: ((Int) -> Unit)? = null
+    /** 夜间模式：未答题号底色与分组标题配色 */
+    var night: Boolean = false
 
     fun isGroup(position: Int) = rows.getOrNull(position) is Row.Group
 
@@ -157,26 +183,39 @@ class CardAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         when (val row = rows[position]) {
-            is Row.Group -> (holder as GroupVH).label.text = row.label
+            is Row.Group -> {
+                val label = (holder as GroupVH).label
+                label.text = row.label
+                label.setTextColor(
+                    androidx.core.content.ContextCompat.getColor(
+                        label.context,
+                        if (night) R.color.fb_night_text_meta else R.color.fb_text_group
+                    )
+                )
+            }
             is Row.Num -> {
                 val b = (holder as NumVH).binding
                 val ctx = b.root.context
                 val isCurrent = row.position == current
                 b.tvNum.text = (row.position + 1).toString()
 
-                // 底色：当前题 / 已答 → 蓝实心；其余 → 浅灰蓝实心
+                // 底色：当前题 / 已答 → 蓝实心；其余 → 浅灰蓝实心（夜间换深一档）
                 b.tvNum.setBackgroundResource(
                     when {
                         isCurrent -> R.drawable.bg_num_current
                         row.answered -> R.drawable.bg_num_answered
+                        night -> R.drawable.bg_num_blank_night
                         else -> R.drawable.bg_num_blank
                     }
                 )
                 b.tvNum.setTextColor(
                     androidx.core.content.ContextCompat.getColor(
                         ctx,
-                        if (isCurrent || row.answered) android.R.color.white
-                        else R.color.fb_card_num_blank_text
+                        when {
+                            isCurrent || row.answered -> android.R.color.white
+                            night -> R.color.fb_night_text_body
+                            else -> R.color.fb_card_num_blank_text
+                        }
                     )
                 )
                 b.vMark.visibility = if (row.marked) View.VISIBLE else View.GONE

@@ -37,8 +37,6 @@
             </intent-filter>
         </activity>
         <activity android:name=".ui.BankDetailActivity" android:exported="false" />
-        <activity android:name=".ui.ComposeActivity" android:exported="false"
-            android:windowSoftInputMode="adjustResize" />
         <activity android:name=".ui.ExamActivity" android:exported="false"
             android:screenOrientation="portrait" />
         <activity android:name=".ui.SplitExamActivity" android:exported="false" />

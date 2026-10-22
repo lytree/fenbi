@@ -22,6 +22,7 @@ import com.lytree.qbank.databinding.ActivityImportBinding
 import com.lytree.qbank.databinding.ItemImportIssueBinding
 import com.lytree.qbank.databinding.ItemImportQuestionBinding
 import java.io.ByteArrayOutputStream
+import java.io.File
 
 /**
  * 题库导入：选文件 → 解析 → 校验预览 → 勾选 → 入库。
@@ -37,6 +38,9 @@ class ImportActivity : AppCompatActivity() {
     private var fileName: String = ""
     private var format: ImportFormat = ImportFormat.JSON
     private var bytes: ByteArray = ByteArray(0)
+
+    /** 题库包（zip）的解压根目录：图片落到应用私有目录，清缓存也不影响已有题目 */
+    private lateinit var pkgDir: File
     private var parsed: List<Question> = emptyList()
     private var issues: List<ImportIssue> = emptyList()
 
@@ -49,8 +53,9 @@ class ImportActivity : AppCompatActivity() {
         binding = ActivityImportBinding.inflate(layoutInflater)
         setContentView(binding.root)
         db = QBankDb.get(this)
+        pkgDir = File(filesDir, "qbank_pkg")
 
-        binding.titleBar.setTitle(getString(R.string.action_import))
+        binding.titleBar.setTitle(getString(R.string.title_import))
         binding.bottomBar.applyNavBarBottomPadding()
         binding.btnPick.setOnClickListener { pickFile() }
         binding.btnSample.setOnClickListener { loadSample() }
@@ -96,6 +101,8 @@ class ImportActivity : AppCompatActivity() {
                     "text/comma-separated-values",
                     "text/plain",
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    "application/zip",
+                    "application/x-zip-compressed",
                     "application/octet-stream"
                 )
             )
@@ -104,8 +111,23 @@ class ImportActivity : AppCompatActivity() {
         }
     }
 
+    /** 「载入示例」：内置样例，普通题库 / 带图材料 / zip 题库包 */
     private fun loadSample() {
-        val name = "行测基础示例.json"
+        val samples = arrayOf(
+            "行测基础示例.json" to "行测基础示例（11 题 · 覆盖全部选择题型）",
+            "资料分析示例.json" to "资料分析示例（含折线图材料）",
+            "资料分析题库包.zip" to "资料分析题库包（zip 标准结构 · 图片随包）"
+        )
+        AlertDialog.Builder(this)
+            .setTitle("载入示例题库")
+            .setItems(samples.map { it.second }.toTypedArray()) { _, which ->
+                loadSample(samples[which].first)
+            }
+            .setNegativeButton(R.string.action_cancel, null)
+            .show()
+    }
+
+    private fun loadSample(name: String) {
         try {
             bytes = assets.open("samples/$name").use { it.readBytes() }
         } catch (e: Exception) {
@@ -114,8 +136,10 @@ class ImportActivity : AppCompatActivity() {
         }
         fileName = name
         format = Importer.detect(fileName, bytes)
-        applyParsed(Importer.build(format, bytes))
-        binding.inputName.setText("行测基础示例")
+        applyParsed(Importer.build(format, bytes, pkgDir = pkgDir))
+        if (format != ImportFormat.ZIP) {
+            binding.inputName.setText(name.substringBeforeLast('.'))
+        }
     }
 
     private fun applyParsed(outcome: com.lytree.qbank.data.importer.ImportOutcome) {
@@ -132,15 +156,20 @@ class ImportActivity : AppCompatActivity() {
         binding.bottomBar.visibility = View.VISIBLE
         binding.bottomDivider.visibility = View.VISIBLE
         binding.tvFile.text = fileName
+        val missing = parsed.count { it.answer.isBlank() }
         binding.tvStat.text = buildString {
             append("格式：${outcome.format}")
             append("　总行数：${outcome.total}")
             append("　可导入：${parsed.size}")
+            if (missing > 0) append("　缺答案：$missing")
             append("　警告：${outcome.warnCount}")
             append("　错误：${outcome.errorCount}")
         }
+        binding.tvFile.text = fileName
         if (binding.inputName.text.isNullOrBlank()) {
-            binding.inputName.setText(fileName.substringBeforeLast('.'))
+            binding.inputName.setText(
+                outcome.suggestedName ?: fileName.substringBeforeLast('.')
+            )
         }
         qAdapter.submit(parsed)
         issueAdapter.submit(issues)
@@ -158,22 +187,60 @@ class ImportActivity : AppCompatActivity() {
 
             fileName = displayName(uri)
             format = Importer.detect(fileName, bytes)
-            applyParsed(Importer.build(format, bytes))
+            applyParsed(Importer.build(format, bytes, pkgDir = pkgDir))
         } catch (e: Exception) {
             toast("解析失败：${e.message}")
         }
     }
 
+    /**
+     * 导入即建卷：勾选的题目全部进同一份试卷，顺序沿用文件里的顺序，不再随机抽题组卷。
+     */
     private fun doImport() {
         val selected = qAdapter.selectedItems()
         if (selected.isEmpty()) {
             toast("请至少勾选一道题")
             return
         }
-        val name = binding.inputName.text?.toString()?.trim().orEmpty().ifBlank { "我的题库" }
-        val bankId = db.insertBank(name, "导入自 $fileName", "")
-        val n = db.insertQuestions(bankId, selected)
-        toast("导入成功：$n 道题 → $name")
+        val name = binding.inputName.text?.toString()?.trim().orEmpty()
+            .ifBlank { fileName.substringBeforeLast('.').trim() }
+            .ifBlank { "我的试卷" }
+        val durationMin = binding.inputDuration.text?.toString()?.trim()
+            ?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+
+        val exists = db.findPaperByName(name) != null || db.findBankByName(name) != null
+        if (exists) {
+            FbDialog.confirm(
+                this,
+                "已存在同名试卷或题库「$name」，继续导入会覆盖原有的题目。",
+                okText = "覆盖导入",
+                onOk = { commitImport(name, selected, durationMin, replace = true) }
+            )
+        } else {
+            commitImport(name, selected, durationMin, replace = false)
+        }
+    }
+
+    private fun commitImport(
+        name: String,
+        questions: List<Question>,
+        durationMin: Int,
+        replace: Boolean
+    ) {
+        // 覆盖导入：把同名的旧卷子/旧题库全部清掉，保证「一个文件 = 一份试卷」
+        if (replace) {
+            db.listPapers().filter { it.name == name }.forEach { db.deletePaper(it.id) }
+            db.listBanks().filter { it.name == name }.forEach { db.deleteBank(it.id) }
+        }
+        val result = db.importAsPaper(
+            bankName = name,
+            description = "导入自 $fileName",
+            subject = "",
+            paperName = name,
+            durationMin = durationMin,
+            questions = questions
+        )
+        toast("已生成试卷「${result.paperName}」，共 ${result.questionCount} 题")
         setResult(Activity.RESULT_OK)
         finish()
     }
@@ -229,7 +296,11 @@ class PreviewAdapter : androidx.recyclerview.widget.RecyclerView.Adapter<Preview
         holder.binding.tvStem.text = q.stem
         val opts = q.options.joinToString("\n") { "${it.key}. ${it.text}" }
         holder.binding.tvOptions.text = if (opts.isBlank()) "" else opts
-        holder.binding.tvAnswer.text = "答案：${q.displayAnswer()}"
+        holder.binding.tvAnswer.text = if (q.answer.isBlank()) {
+            "答案：待补答案（可做完后导入答案）"
+        } else {
+            "答案：${q.displayAnswer()}"
+        }
     }
 }
 

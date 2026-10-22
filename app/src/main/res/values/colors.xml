@@ -122,8 +122,35 @@
     <!-- 浅蓝次级按钮底（与题型标签同色系） -->
     <color name="fb_ghost_bg">#F1F3FF</color>
 
-    <!-- ===== 夜间模式 ===== -->
+    <!-- ===== 夜间模式 =====
+         触发方式：答题页「更多 → 夜间」，由 ExamActivity 逐层 setBackgroundColor / setTextColor 应用，
+         不走系统 DayNight（否则 Spinner 等系统控件在深色系统下会白底白字）。 -->
     <color name="fb_night_bg">#17181C</color>
     <color name="fb_night_card">#24262C</color>
+    <color name="fb_night_bar">#1B1C21</color>
     <color name="fb_night_text">#D8D9DD</color>
+    <!-- 题干 / 选项正文：比标题略柔，长文不刺眼 -->
+    <color name="fb_night_text_body">#C9CCD3</color>
+    <color name="fb_night_text_meta">#8E939D</color>
+    <color name="fb_night_icon">#C8CBD2</color>
+    <color name="fb_night_divider">#2E3138</color>
+    <!-- 题型标签：主蓝压暗后仍保持可读 -->
+    <color name="fb_night_tag_bg">#2A2E3A</color>
+    <color name="fb_night_tag_text">#7EA3FF</color>
+    <!-- 材料 / 笔记 / 解析等次级面板 -->
+    <color name="fb_night_material_bg">#1E2025</color>
+    <color name="fb_night_note_bg">#1F2126</color>
+    <!-- 选项圆形徽标未选态 -->
+    <color name="fb_night_circle_stroke">#4A4E58</color>
+    <color name="fb_night_circle_text">#9AA0AC</color>
+    <!-- 更多面板 / 分段控件 / 手写工具条 -->
+    <color name="fb_night_panel_bg">#2A2C33</color>
+    <color name="fb_night_segment_bg">#22242A</color>
+    <color name="fb_night_segment_sel_bg">#3E4149</color>
+    <color name="fb_night_segment_text">#8E939D</color>
+    <color name="fb_night_segment_text_sel">#E6E7EA</color>
+    <!-- 材料表格 -->
+    <color name="fb_night_table_bg">#202227</color>
+    <color name="fb_night_table_header_bg">#2A2D34</color>
+    <color name="fb_night_table_line">#3A3D45</color>
 </resources>

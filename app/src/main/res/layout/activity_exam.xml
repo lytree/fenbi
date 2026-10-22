@@ -51,6 +51,7 @@
             app:layout_constraintTop_toTopOf="parent">
 
             <ImageView
+                android:id="@+id/icTimer"
                 android:layout_width="17dp"
                 android:layout_height="17dp"
                 android:contentDescription="@string/action_timer"
@@ -118,11 +119,13 @@
                 android:orientation="vertical">
 
                 <ImageView
+                    android:id="@+id/icSubmit"
                     android:layout_width="19dp"
                     android:layout_height="19dp"
                     android:src="@drawable/ic_fb_submit" />
 
                 <TextView
+                    android:id="@+id/tvSubmitLabel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:includeFontPadding="false"
@@ -179,18 +182,18 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/topBar" />
 
-    <!-- ===== 手写标注层 ===== -->
+    <!-- ===== 遮盖层（可写） =====
+         常驻可见：退出写画模式后笔迹仍留在题目上；写画模式打开时才铺遮盖纸并拦截触摸 -->
     <com.lytree.qbank.ui.InkOverlay
         android:id="@+id/inkOverlay"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/topBar" />
 
-    <!-- ===== 悬浮：标注工具条 ===== -->
+    <!-- ===== 悬浮：遮盖层工具条（撤销 / 清空 / 遮盖档位 / 标记 / 完成） ===== -->
     <LinearLayout
         android:id="@+id/inkBar"
         android:layout_width="wrap_content"
@@ -198,6 +201,7 @@
         android:layout_marginEnd="16dp"
         android:layout_marginBottom="24dp"
         android:background="@drawable/bg_fb_action"
+        android:elevation="6dp"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingStart="6dp"
@@ -208,47 +212,30 @@
 
         <TextView
             android:id="@+id/btnInkUndo"
-            android:layout_width="wrap_content"
-            android:layout_height="32dp"
-            android:gravity="center"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp"
-            android:text="@string/action_undo"
-            android:textColor="@color/fb_text_primary"
-            android:textSize="13sp" />
+            style="@style/FbInkAction"
+            android:text="@string/action_undo" />
 
         <TextView
             android:id="@+id/btnInkClear"
-            android:layout_width="wrap_content"
-            android:layout_height="32dp"
-            android:gravity="center"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp"
+            style="@style/FbInkAction"
             android:text="@string/action_clear_ink"
-            android:textColor="@color/fb_red"
-            android:textSize="13sp" />
+            android:textColor="@color/fb_red" />
 
         <TextView
-            android:id="@+id/btnInkFinger"
-            android:layout_width="wrap_content"
-            android:layout_height="32dp"
-            android:gravity="center"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp"
-            android:text="@string/action_finger_draw"
-            android:textColor="@color/fb_text_primary"
-            android:textSize="13sp" />
+            android:id="@+id/btnInkShade"
+            style="@style/FbInkAction"
+            tools:text="遮盖·浅" />
+
+        <TextView
+            android:id="@+id/btnInkMark"
+            style="@style/FbInkAction"
+            tools:text="标记" />
 
         <TextView
             android:id="@+id/btnInkDone"
-            android:layout_width="wrap_content"
-            android:layout_height="32dp"
-            android:gravity="center"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp"
+            style="@style/FbInkAction"
             android:text="@string/action_done"
-            android:textColor="@color/fb_primary"
-            android:textSize="13sp" />
+            android:textColor="@color/fb_primary" />
     </LinearLayout>
 
     <!-- ===== 更多面板（字号 / 日夜 / 浏览模式 / 自动下一题） ===== -->
@@ -348,6 +335,7 @@
             android:orientation="horizontal">
 
             <TextView
+                android:id="@+id/tvAutoNextLabel"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
@@ -357,6 +345,29 @@
 
             <com.lytree.qbank.ui.FbSwitchView
                 android:id="@+id/switchAutoNext"
+                android:layout_width="38dp"
+                android:layout_height="22dp" />
+        </LinearLayout>
+
+        <!-- 手写标注（遮盖层）：进入后在题目上写字 / 圈画，题目会被一层半透明纸盖住 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/tvInkModeLabel"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/more_ink_mode"
+                android:textColor="@color/fb_text_primary"
+                android:textSize="12sp" />
+
+            <com.lytree.qbank.ui.FbSwitchView
+                android:id="@+id/switchInkMode"
                 android:layout_width="38dp"
                 android:layout_height="22dp" />
         </LinearLayout>
@@ -379,6 +390,7 @@
             android:visibility="gone">
 
             <TextView
+                android:id="@+id/tvSplitLabel"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
@@ -387,6 +399,39 @@
                 android:textSize="12sp" />
 
             <ImageView
+                android:id="@+id/icSplitArrow"
+                android:layout_width="14dp"
+                android:layout_height="14dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_fb_chevron" />
+        </LinearLayout>
+
+        <!-- 导入答案：试卷常常没带答案，做完再补一份答案表来对比 -->
+        <View
+            android:id="@+id/answerDivider"
+            android:layout_width="match_parent"
+            android:layout_height="0.5dp"
+            android:layout_marginTop="10dp"
+            android:background="@color/fb_divider" />
+
+        <LinearLayout
+            android:id="@+id/rowImportAnswer"
+            android:layout_width="match_parent"
+            android:layout_height="34dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/tvImportAnswerLabel"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/more_import_answer"
+                android:textColor="@color/fb_text_primary"
+                android:textSize="12sp" />
+
+            <ImageView
+                android:id="@+id/icAnswerArrow"
                 android:layout_width="14dp"
                 android:layout_height="14dp"
                 android:contentDescription="@null"

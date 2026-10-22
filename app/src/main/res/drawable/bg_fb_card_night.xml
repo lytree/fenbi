@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 题目卡（夜间）：#24262C 底，圆角与日间一致 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/fb_night_card" />
+    <corners android:radius="@dimen/fb_card_radius" />
+</shape>
