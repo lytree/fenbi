@@ -45,11 +45,21 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      - name: 安装 Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: 安装 SDK platform 35
-        run: sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
+      # ubuntu-latest 自带 Android SDK（ANDROID_HOME 已设置、licenses 已接受），只补齐 platform 35
+      - name: 补齐 Android SDK platform 35
+        run: |
+          SDKMANAGER="$(command -v sdkmanager || true)"
+          if [ -z "$SDKMANAGER" ] && [ -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
+            SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          fi
+          if [ -n "$SDKMANAGER" ]; then
+            "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0" \
+              || echo "::warning::sdkmanager 安装未成功，交给 Gradle 自动下载"
+          else
+            echo "::warning::未找到 sdkmanager，交给 Gradle 自动下载缺失的 SDK 组件"
+          fi
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
 
       - name: 去掉本机 JDK 路径
         run: |
