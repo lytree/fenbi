@@ -9,6 +9,7 @@
 *.webp binary
 *.xlsx binary
 *.xls binary
+*.zip binary
 *.jar binary
 *.apk binary
 *.aab binary
