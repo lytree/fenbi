@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 答题卡「当前题」：蓝实心 + 外圈淡蓝环 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="oval">
+            <solid android:color="@color/fb_primary_ring" />
+        </shape>
+    </item>
+    <item
+        android:bottom="3dp"
+        android:left="3dp"
+        android:right="3dp"
+        android:top="3dp">
+        <shape android:shape="oval">
+            <solid android:color="@color/fb_card_num_answered" />
+        </shape>
+    </item>
+</layer-list>

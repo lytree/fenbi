@@ -44,6 +44,7 @@ jadx-out/
 *-jadx/
 *.smali
 jadx-launcher*.jar
+/gen-jadx-launcher.js
 
 # ---- 日志与临时文件 ----
 *.log

@@ -1,157 +1,271 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- 组卷：统一标题栏 + 三段配置卡 + 底部通栏主按钮 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/bg">
+    android:background="@color/fb_page_bg"
+    android:orientation="vertical">
 
-    <com.google.android.material.appbar.MaterialToolbar
-        android:id="@+id/toolbar"
-        android:layout_width="0dp"
-        android:layout_height="?attr/actionBarSize"
-        android:background="@color/primary"
-        android:title="@string/action_compose"
-        android:titleTextColor="#FFFFFF"
-        app:navigationIcon="@drawable/ic_back"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+    <com.lytree.qbank.ui.FbTitleBar
+        android:id="@+id/titleBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
 
-    <androidx.core.widget.NestedScrollView
-        android:layout_width="0dp"
+    <ScrollView
+        android:layout_width="match_parent"
         android:layout_height="0dp"
-        app:layout_constraintTop_toBottomOf="@id/toolbar"
-        app:layout_constraintBottom_toTopOf="@id/btnGenerate"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
+        android:layout_weight="1"
+        android:scrollbars="none">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="12dp">
+            android:paddingStart="@dimen/fb_page_pad"
+            android:paddingTop="16dp"
+            android:paddingEnd="@dimen/fb_page_pad"
+            android:paddingBottom="20dp">
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:background="@color/card"
-                android:padding="14dp">
+            <!-- 题库 -->
+            <LinearLayout style="@style/FbCard">
 
-                <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:text="题库" style="@style/TextTitle" android:textSize="14sp" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="题库"
+                    android:textColor="@color/fb_text_title"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
 
                 <Spinner
                     android:id="@+id/spinnerBank"
                     android:layout_width="match_parent"
-                    android:layout_height="48dp" />
+                    android:layout_height="44dp"
+                    android:layout_marginTop="10dp"
+                    android:background="@drawable/bg_fb_field"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp" />
 
                 <TextView
                     android:id="@+id/tvBankInfo"
+                    style="@style/FbItemSub"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    style="@style/TextMeta" />
+                    android:layout_marginTop="8dp" />
             </LinearLayout>
 
+            <!-- 试卷设置 -->
             <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:layout_marginTop="10dp"
-                android:background="@color/card"
-                android:padding="14dp">
+                style="@style/FbCard"
+                android:layout_marginTop="@dimen/fb_card_gap_v">
 
-                <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:text="试卷设置" style="@style/TextTitle" android:textSize="14sp" />
-
-                <com.google.android.material.textfield.TextInputLayout
-                    android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp" android:hint="试卷名称">
-                    <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/inputName" android:layout_width="match_parent"
-                        android:layout_height="wrap_content" android:inputType="text" />
-                </com.google.android.material.textfield.TextInputLayout>
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="试卷设置"
+                    android:textColor="@color/fb_text_title"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
 
                 <com.google.android.material.textfield.TextInputLayout
-                    android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp" android:hint="题量">
+                    style="@style/FbInput"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:hint="试卷名称">
+
                     <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/inputCount" android:layout_width="match_parent"
-                        android:layout_height="wrap_content" android:inputType="number" />
+                        android:id="@+id/inputName"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="text"
+                        android:textSize="14sp" />
                 </com.google.android.material.textfield.TextInputLayout>
 
-                <com.google.android.material.textfield.TextInputLayout
-                    android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp" android:hint="限时（分钟，0 = 不限时）">
-                    <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/inputDuration" android:layout_width="match_parent"
-                        android:layout_height="wrap_content" android:inputType="number" />
-                </com.google.android.material.textfield.TextInputLayout>
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="horizontal">
 
-                <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp" android:text="题型" style="@style/TextTitle" android:textSize="13sp" />
+                    <com.google.android.material.textfield.TextInputLayout
+                        style="@style/FbInput"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginEnd="6dp"
+                        android:layout_weight="1"
+                        android:hint="题量">
 
-                <com.google.android.material.checkbox.MaterialCheckBox
-                    android:id="@+id/cbSingle" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:checked="true" android:text="单选题" />
-                <com.google.android.material.checkbox.MaterialCheckBox
-                    android:id="@+id/cbMulti" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:checked="true" android:text="多选题" />
-                <com.google.android.material.checkbox.MaterialCheckBox
-                    android:id="@+id/cbUncertain" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="不定项" />
-                <com.google.android.material.checkbox.MaterialCheckBox
-                    android:id="@+id/cbJudge" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:checked="true" android:text="判断题" />
-                <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp" android:text="当前版本仅支持选择题（单选 / 多选 / 不定项 / 判断）"
-                    android:textColor="@color/text_secondary" android:textSize="11sp" />
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/inputCount"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="number"
+                            android:textSize="14sp" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        style="@style/FbInput"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="6dp"
+                        android:layout_weight="1"
+                        android:hint="限时（分钟）">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/inputDuration"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="number"
+                            android:textSize="14sp" />
+                    </com.google.android.material.textfield.TextInputLayout>
+                </LinearLayout>
+
+                <TextView
+                    style="@style/FbGroupTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="18dp"
+                    android:text="题型" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.checkbox.MaterialCheckBox
+                        android:id="@+id/cbSingle"
+                        style="@style/FbCheckBox"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:checked="true"
+                        android:text="单选题" />
+
+                    <com.google.android.material.checkbox.MaterialCheckBox
+                        android:id="@+id/cbMulti"
+                        style="@style/FbCheckBox"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:checked="true"
+                        android:text="多选题" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.checkbox.MaterialCheckBox
+                        android:id="@+id/cbUncertain"
+                        style="@style/FbCheckBox"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="不定项" />
+
+                    <com.google.android.material.checkbox.MaterialCheckBox
+                        android:id="@+id/cbJudge"
+                        style="@style/FbCheckBox"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:checked="true"
+                        android:text="判断题" />
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="当前版本仅支持选择题（单选 / 多选 / 不定项 / 判断）"
+                    android:textColor="@color/fb_text_hint"
+                    android:textSize="11sp" />
             </LinearLayout>
 
+            <!-- 筛选 -->
             <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:layout_marginTop="10dp"
-                android:background="@color/card"
-                android:padding="14dp">
+                style="@style/FbCard"
+                android:layout_marginTop="@dimen/fb_card_gap_v">
 
-                <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:text="筛选" style="@style/TextTitle" android:textSize="14sp" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="筛选"
+                    android:textColor="@color/fb_text_title"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
 
-                <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp" android:text="难度" style="@style/TextMeta" />
+                <TextView
+                    style="@style/FbGroupTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:text="难度" />
 
                 <Spinner
                     android:id="@+id/spinnerDifficulty"
-                    android:layout_width="match_parent" android:layout_height="wrap_content" />
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/bg_fb_field"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp" />
 
                 <com.google.android.material.textfield.TextInputLayout
-                    android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp" android:hint="知识点（可选，留空=全部）">
+                    style="@style/FbInput"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:hint="知识点（留空 = 全部）">
+
                     <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/inputKnowledge" android:layout_width="match_parent"
-                        android:layout_height="wrap_content" android:inputType="text" />
+                        android:id="@+id/inputKnowledge"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="text"
+                        android:textSize="14sp" />
                 </com.google.android.material.textfield.TextInputLayout>
 
                 <com.google.android.material.textfield.TextInputLayout
-                    android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp" android:hint="地区（可选，留空=全部）">
+                    style="@style/FbInput"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:hint="地区（留空 = 全部）">
+
                     <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/inputRegion" android:layout_width="match_parent"
-                        android:layout_height="wrap_content" android:inputType="text" />
+                        android:id="@+id/inputRegion"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="text"
+                        android:textSize="14sp" />
                 </com.google.android.material.textfield.TextInputLayout>
             </LinearLayout>
         </LinearLayout>
-    </androidx.core.widget.NestedScrollView>
+    </ScrollView>
 
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/btnGenerate"
-        android:layout_width="0dp"
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="0.5dp"
+        android:background="@color/fb_divider" />
+
+    <FrameLayout
+        android:id="@+id/bottomBar"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_margin="12dp"
-        android:text="生成试卷并开始"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
-</androidx.constraintlayout.widget.ConstraintLayout>
+        android:background="@color/fb_bar_bg"
+        android:paddingStart="@dimen/fb_page_pad"
+        android:paddingTop="10dp"
+        android:paddingEnd="@dimen/fb_page_pad"
+        android:paddingBottom="10dp">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnGenerate"
+            style="@style/FbPrimaryButton"
+            android:layout_width="match_parent"
+            android:text="生成试卷并开始" />
+    </FrameLayout>
+</LinearLayout>

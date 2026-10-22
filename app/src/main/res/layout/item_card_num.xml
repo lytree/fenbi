@@ -1,19 +1,42 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 答题卡圆形题号（对齐粉笔：直径 40dp 圆形） -->
+<!--
+  答题卡圆形题号：40dp 圆（原始 dimens: answer_card_item_width 40dp）
+  角标对齐真机 answer_card_item_unsure（右上·标记）/ answer_card_item_collect（下方·收藏）
+-->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:padding="5dp">
+    android:padding="4dp">
 
     <TextView
         android:id="@+id/tvNum"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
+        android:layout_width="@dimen/fb_card_num_size"
+        android:layout_height="@dimen/fb_card_num_size"
         android:layout_gravity="center"
         android:background="@drawable/bg_num_blank"
         android:gravity="center"
+        android:includeFontPadding="false"
         android:textColor="@color/fb_card_num_blank_text"
-        android:textSize="14sp"
+        android:textSize="@dimen/fb_card_num_text_size"
         tools:text="1" />
+
+    <View
+        android:id="@+id/vMark"
+        android:layout_width="8dp"
+        android:layout_height="8dp"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="2dp"
+        android:layout_marginEnd="2dp"
+        android:background="@drawable/bg_fb_dot_marked"
+        android:visibility="gone" />
+
+    <View
+        android:id="@+id/vFav"
+        android:layout_width="8dp"
+        android:layout_height="8dp"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="2dp"
+        android:background="@drawable/bg_fb_dot_favorite"
+        android:visibility="gone" />
 </FrameLayout>

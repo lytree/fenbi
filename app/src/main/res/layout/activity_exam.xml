@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  粉笔风格答题页。对齐 com.fenbi.android.servant 的 ObjectiveExerciseActivity（竖屏多题浏览）：
-  · 顶栏：X / 闹钟+倒计时 / 居中标题（试卷名+题数）/ 右侧「下载 交卷 答题卡 更多」
-  · 内容：连续滚动多题，每题 = 题目行（题号+题型+三图标）+ 题干 + 选项
-  · 无底部操作条（粉笔把上一题/下一题交给滑动与答题卡）
+  答题页布局（1080x1920 @280dpi 基准）：
+  · 顶栏 44dp：X(28dp) / 闹钟+倒计时 / 居中标题「试卷名（题数）」/ 下载·交卷(图标+文字)·答题卡·更多
+  · 右侧动作项 28dp，节距 43dp（原始 dimens: question_bar_item_width 28dp）
+  · 内容：连续滚动多题，每题一张 8dp 圆角白卡，卡片间距 16dp
+  · 无底部操作条（参考应用把上一题/下一题交给滚动与答题卡）
 -->
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -16,32 +17,33 @@
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/topBar"
         android:layout_width="0dp"
-        android:layout_height="56dp"
+        android:layout_height="@dimen/fb_title_bar_h"
         android:background="@color/fb_bar_bg"
-        app:layout_constraintTop_toTopOf="parent"
+        android:paddingStart="@dimen/fb_bar_padding_left"
+        android:paddingEnd="@dimen/fb_bar_padding_left"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
+        app:layout_constraintTop_toTopOf="parent">
 
-        <!-- 返回/关闭 -->
+        <!-- 关闭 -->
         <ImageView
             android:id="@+id/btnClose"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:layout_marginStart="8dp"
+            android:layout_width="@dimen/fb_bar_item_width"
+            android:layout_height="@dimen/fb_bar_item_width"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/action_close"
-            android:padding="9dp"
+            android:padding="3dp"
             android:src="@drawable/ic_fb_close"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent" />
 
-        <!-- 计时：闹钟图标 + 倒计时（粉笔无胶囊底色） -->
+        <!-- 倒计时 -->
         <LinearLayout
             android:id="@+id/timerPill"
             android:layout_width="wrap_content"
-            android:layout_height="34dp"
-            android:layout_marginStart="2dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
             android:gravity="center_vertical"
             android:orientation="horizontal"
             app:layout_constraintBottom_toBottomOf="parent"
@@ -49,8 +51,8 @@
             app:layout_constraintTop_toTopOf="parent">
 
             <ImageView
-                android:layout_width="19dp"
-                android:layout_height="19dp"
+                android:layout_width="17dp"
+                android:layout_height="17dp"
                 android:contentDescription="@string/action_timer"
                 android:src="@drawable/ic_fb_clock" />
 
@@ -58,24 +60,25 @@
                 android:id="@+id/tvTimer"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="4dp"
-                android:textColor="@color/fb_text_body"
-                android:textSize="15sp"
-                tools:text="08:25" />
+                android:layout_marginStart="5dp"
+                android:includeFontPadding="false"
+                android:textColor="@color/fb_text_secondary"
+                android:textSize="16sp"
+                tools:text="42:39" />
         </LinearLayout>
 
-        <!-- 居中标题：试卷名（题数） -->
+        <!-- 居中标题 -->
         <TextView
             android:id="@+id/tvPaperName"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginStart="12dp"
             android:layout_marginEnd="12dp"
-            android:ellipsize="end"
+            android:ellipsize="middle"
             android:gravity="center"
             android:maxLines="1"
             android:textColor="@color/fb_text_title"
-            android:textSize="16sp"
+            android:textSize="17sp"
             android:textStyle="bold"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toStartOf="@id/topActions"
@@ -95,43 +98,61 @@
             app:layout_constraintTop_toTopOf="parent">
 
             <ImageView
+                android:id="@+id/btnDownload"
+                android:layout_width="@dimen/fb_bar_item_width"
+                android:layout_height="@dimen/fb_bar_item_width"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/action_download"
+                android:padding="3dp"
+                android:src="@drawable/ic_fb_download" />
+
+            <!-- 交卷：图标 + 文字两行（对齐真机 top bar 的「✓ 交卷」） -->
+            <LinearLayout
                 android:id="@+id/btnSubmitTop"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
+                android:layout_width="34dp"
+                android:layout_height="match_parent"
+                android:layout_marginStart="@dimen/fb_bar_item_gap"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/action_submit"
-                android:padding="9dp"
-                android:src="@drawable/ic_fb_submit" />
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <ImageView
+                    android:layout_width="19dp"
+                    android:layout_height="19dp"
+                    android:src="@drawable/ic_fb_submit" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:includeFontPadding="false"
+                    android:layout_marginTop="2dp"
+                    android:text="@string/action_submit"
+                    android:textColor="@color/fb_text_secondary"
+                    android:textSize="10sp" />
+            </LinearLayout>
 
             <ImageView
                 android:id="@+id/btnCard"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
+                android:layout_width="@dimen/fb_bar_item_width"
+                android:layout_height="@dimen/fb_bar_item_width"
+                android:layout_marginStart="@dimen/fb_bar_item_gap"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/action_answer_card"
-                android:padding="9dp"
+                android:padding="3dp"
                 android:src="@drawable/ic_fb_card" />
 
             <ImageView
                 android:id="@+id/btnMore"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:layout_marginEnd="4dp"
+                android:layout_width="@dimen/fb_bar_item_width"
+                android:layout_height="@dimen/fb_bar_item_width"
+                android:layout_marginStart="@dimen/fb_bar_item_gap"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/action_more"
-                android:padding="9dp"
+                android:padding="3dp"
                 android:src="@drawable/ic_fb_more" />
         </LinearLayout>
     </androidx.constraintlayout.widget.ConstraintLayout>
-
-    <View
-        android:id="@+id/topDivider"
-        android:layout_width="0dp"
-        android:layout_height="0.5dp"
-        android:background="@color/fb_divider"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/topBar" />
 
     <!-- ===== 题目列表（多题连续滚动） ===== -->
     <androidx.recyclerview.widget.RecyclerView
@@ -139,12 +160,13 @@
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:clipToPadding="false"
-        android:paddingBottom="16dp"
+        android:paddingTop="@dimen/fb_card_gap"
+        android:paddingBottom="24dp"
         android:scrollbars="none"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/topDivider" />
+        app:layout_constraintTop_toBottomOf="@id/topBar" />
 
     <!-- ===== 单题浏览：左右滑动切题 ===== -->
     <androidx.viewpager2.widget.ViewPager2
@@ -155,7 +177,7 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/topDivider" />
+        app:layout_constraintTop_toBottomOf="@id/topBar" />
 
     <!-- ===== 手写标注层 ===== -->
     <com.lytree.qbank.ui.InkOverlay
@@ -166,7 +188,7 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/topDivider" />
+        app:layout_constraintTop_toBottomOf="@id/topBar" />
 
     <!-- ===== 悬浮：标注工具条 ===== -->
     <LinearLayout
@@ -178,7 +200,8 @@
         android:background="@drawable/bg_fb_action"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingHorizontal="6dp"
+        android:paddingStart="6dp"
+        android:paddingEnd="6dp"
         android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
@@ -188,7 +211,8 @@
             android:layout_width="wrap_content"
             android:layout_height="32dp"
             android:gravity="center"
-            android:paddingHorizontal="12dp"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
             android:text="@string/action_undo"
             android:textColor="@color/fb_text_primary"
             android:textSize="13sp" />
@@ -198,9 +222,10 @@
             android:layout_width="wrap_content"
             android:layout_height="32dp"
             android:gravity="center"
-            android:paddingHorizontal="12dp"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
             android:text="@string/action_clear_ink"
-            android:textColor="@color/wrong"
+            android:textColor="@color/fb_red"
             android:textSize="13sp" />
 
         <TextView
@@ -208,7 +233,8 @@
             android:layout_width="wrap_content"
             android:layout_height="32dp"
             android:gravity="center"
-            android:paddingHorizontal="12dp"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
             android:text="@string/action_finger_draw"
             android:textColor="@color/fb_text_primary"
             android:textSize="13sp" />
@@ -218,22 +244,27 @@
             android:layout_width="wrap_content"
             android:layout_height="32dp"
             android:gravity="center"
-            android:paddingHorizontal="12dp"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
             android:text="@string/action_done"
             android:textColor="@color/fb_primary"
             android:textSize="13sp" />
     </LinearLayout>
 
-    <!-- ===== 更多面板（字号 / 日夜 / 浏览模式） ===== -->
+    <!-- ===== 更多面板（字号 / 日夜 / 浏览模式 / 自动下一题） ===== -->
     <LinearLayout
         android:id="@+id/morePanel"
-        android:layout_width="wrap_content"
+        android:layout_width="170dp"
         android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:layout_marginEnd="8dp"
+        android:layout_marginTop="2dp"
+        android:layout_marginEnd="6dp"
         android:background="@drawable/bg_fb_panel"
+        android:elevation="10dp"
         android:orientation="vertical"
-        android:padding="10dp"
+        android:paddingStart="14dp"
+        android:paddingTop="10dp"
+        android:paddingEnd="14dp"
+        android:paddingBottom="12dp"
         android:visibility="gone"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toBottomOf="@id/topBar"
@@ -242,72 +273,124 @@
         <!-- 字号：小 / 中 / 大 -->
         <LinearLayout
             android:id="@+id/rowFontSize"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_width="match_parent"
+            android:layout_height="36dp"
+            android:gravity="center_vertical"
             android:orientation="horizontal">
 
             <TextView
                 android:id="@+id/btnFontSmall"
-                style="@style/FbSegment"
-                android:text="Aa" />
+                style="@style/FbFontAa"
+                android:text="Aa"
+                android:textSize="14sp" />
 
             <TextView
                 android:id="@+id/btnFontMedium"
-                style="@style/FbSegmentSelected"
-                android:text="Aa" />
+                style="@style/FbFontAa"
+                android:text="Aa"
+                android:textSize="17sp" />
 
             <TextView
                 android:id="@+id/btnFontLarge"
-                style="@style/FbSegment"
-                android:text="Aa" />
+                style="@style/FbFontAa"
+                android:text="Aa"
+                android:textSize="20sp" />
         </LinearLayout>
-
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="0.5dp"
-            android:layout_marginVertical="8dp"
-            android:background="@color/fb_divider" />
 
         <!-- 日间 / 夜间 -->
         <LinearLayout
             android:id="@+id/rowDayNight"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
+            android:layout_width="match_parent"
+            android:layout_height="30dp"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_fb_segment_track"
+            android:orientation="horizontal"
+            android:padding="3dp">
 
             <TextView
                 android:id="@+id/btnDay"
-                style="@style/FbSegmentSelected"
+                style="@style/FbSegmentPill"
                 android:text="@string/mode_day" />
 
             <TextView
                 android:id="@+id/btnNight"
-                style="@style/FbSegment"
+                style="@style/FbSegmentPill"
                 android:text="@string/mode_night" />
         </LinearLayout>
-
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="0.5dp"
-            android:layout_marginVertical="8dp"
-            android:background="@color/fb_divider" />
 
         <!-- 多题浏览 / 单题浏览 -->
         <LinearLayout
             android:id="@+id/rowBrowseMode"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
+            android:layout_width="match_parent"
+            android:layout_height="30dp"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_fb_segment_track"
+            android:orientation="horizontal"
+            android:padding="3dp">
 
             <TextView
                 android:id="@+id/btnMultiBrowse"
-                style="@style/FbSegmentSelected"
+                style="@style/FbSegmentPill"
                 android:text="@string/mode_multi_browse" />
 
             <TextView
                 android:id="@+id/btnSingleBrowse"
-                style="@style/FbSegment"
+                style="@style/FbSegmentPill"
                 android:text="@string/mode_single_browse" />
+        </LinearLayout>
+
+        <!-- 自动展示下一题 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/mode_auto_next"
+                android:textColor="@color/fb_text_primary"
+                android:textSize="12sp" />
+
+            <com.lytree.qbank.ui.FbSwitchView
+                android:id="@+id/switchAutoNext"
+                android:layout_width="38dp"
+                android:layout_height="22dp" />
+        </LinearLayout>
+
+        <!-- 左右分屏入口：仅当本卷含材料题时出现 -->
+        <View
+            android:id="@+id/splitDivider"
+            android:layout_width="match_parent"
+            android:layout_height="0.5dp"
+            android:layout_marginTop="10dp"
+            android:background="@color/fb_divider"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/rowSplit"
+            android:layout_width="match_parent"
+            android:layout_height="34dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/more_split_on"
+                android:textColor="@color/fb_text_primary"
+                android:textSize="12sp" />
+
+            <ImageView
+                android:layout_width="14dp"
+                android:layout_height="14dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_fb_chevron" />
         </LinearLayout>
     </LinearLayout>
 </androidx.constraintlayout.widget.ConstraintLayout>

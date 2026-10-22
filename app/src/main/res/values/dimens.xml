@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  尺寸令牌。带 fb_ 前缀的是题面基础尺寸（顶栏 / 题卡 / 选项 / 答题卡），
+  注释里标注了对应的语义名；其余是按 1080x1920 @280dpi 截图量出的版面尺寸。
+-->
+<resources>
+    <!-- ===== 顶栏（原始：title_bar_h / question_bar_item_width / question_bar_padding_left） ===== -->
+    <dimen name="fb_title_bar_h">44dp</dimen>
+    <dimen name="fb_bar_item_width">28dp</dimen>
+    <dimen name="fb_bar_padding_left">13dp</dimen>
+    <dimen name="fb_bar_item_gap">15dp</dimen>
+
+    <!-- ===== 题目卡（实测：圆角 14px@1.75=8dp，卡间距 26px=16dp） ===== -->
+    <dimen name="fb_card_radius">8dp</dimen>
+    <dimen name="fb_card_gap">16dp</dimen>
+    <dimen name="fb_page_padding_h">12dp</dimen>
+    <!-- 宽屏时内容列的最大宽度（实测 904px@1.75 ≈ 517dp） -->
+    <dimen name="fb_content_max_width">520dp</dimen>
+
+    <!-- ===== 题目内容（原始：question_content_padding_left / question_default_text_size） ===== -->
+    <dimen name="fb_content_padding_h">20dp</dimen>
+    <dimen name="fb_question_text_size">17sp</dimen>
+    <dimen name="fb_question_line_space">6dp</dimen>
+    <dimen name="fb_option_text_size">16sp</dimen>
+    <dimen name="fb_option_line_space">5dp</dimen>
+    <dimen name="fb_type_tag_text_size">11sp</dimen>
+    <dimen name="fb_type_tag_padding_h">6dp</dimen>
+    <dimen name="fb_type_tag_padding_v">2dp</dimen>
+    <dimen name="fb_type_tag_radius">3dp</dimen>
+
+    <!-- ===== 选项圆形徽标（原始：single_option_btn_width 40dp） ===== -->
+    <dimen name="fb_option_circle">40dp</dimen>
+    <dimen name="fb_option_circle_text_size">14sp</dimen>
+    <dimen name="fb_option_row_padding_v">10dp</dimen>
+    <dimen name="fb_option_row_padding_start">14dp</dimen>
+    <dimen name="fb_option_text_gap">8dp</dimen>
+
+    <!-- ===== 答题卡（原始：answer_card_item_width 40dp） ===== -->
+    <dimen name="fb_card_num_size">40dp</dimen>
+    <dimen name="fb_card_num_text_size">14sp</dimen>
+    <dimen name="fb_sheet_radius">12dp</dimen>
+    <dimen name="fb_sheet_height_percent">0.55</dimen>
+
+    <!-- ===== 弹窗 ===== -->
+    <dimen name="fb_dialog_radius">12dp</dimen>
+    <dimen name="fb_dialog_btn_h">42dp</dimen>
+
+    <!-- ============================================================
+         全站统一版式令牌（非答题页共用）
+         规则：页面左右 16dp、卡间距 12dp、卡内 16dp、圆角 8dp、
+              主按钮 46dp 高 / 23dp 胶囊圆角
+         ============================================================ -->
+    <dimen name="fb_page_pad">16dp</dimen>
+    <dimen name="fb_card_pad">16dp</dimen>
+    <dimen name="fb_card_gap_v">12dp</dimen>
+    <dimen name="fb_radius_field">8dp</dimen>
+
+    <dimen name="fb_btn_h">46dp</dimen>
+    <dimen name="fb_btn_radius">23dp</dimen>
+    <dimen name="fb_btn_text_size">15sp</dimen>
+    <dimen name="fb_bar_pad_end">13dp</dimen>
+
+    <!-- 字号层级（对齐主流刷题 App 的文案层级） -->
+    <dimen name="fb_text_page_title">20sp</dimen>
+    <dimen name="fb_text_bar_title">17sp</dimen>
+    <dimen name="fb_text_item_title">15sp</dimen>
+    <dimen name="fb_text_item_sub">12sp</dimen>
+    <dimen name="fb_text_group">13sp</dimen>
+    <dimen name="fb_text_body_size">14sp</dimen>
+
+    <!-- 底部导航 -->
+    <dimen name="fb_nav_h">54dp</dimen>
+    <dimen name="fb_nav_icon">22dp</dimen>
+    <dimen name="fb_nav_text">10sp</dimen>
+
+    <!-- 列表项 -->
+    <dimen name="fb_list_row_h">52dp</dimen>
+</resources>

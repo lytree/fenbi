@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 列表右侧 chevron：细线、浅灰，不抢标题 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:strokeColor="#C3C7CE" android:strokeWidth="1.6" android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M9.6,5.2 L16.4,12 L9.6,18.8" />
+</vector>

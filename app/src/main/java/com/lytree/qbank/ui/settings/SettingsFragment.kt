@@ -5,12 +5,15 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
+import com.lytree.qbank.R
 import com.lytree.qbank.data.db.QBankDb
 import com.lytree.qbank.databinding.FragmentSettingsBinding
+import com.lytree.qbank.ui.FbSwitchView
 import com.lytree.qbank.ui.Refreshable
 
 /**
  * 判题规则设置。不同机构口径不同，这里让用户自己定。
+ * 开关用与「更多」面板同一个自绘组件 [FbSwitchView]，保证全站视觉一致。
  */
 class SettingsFragment : Fragment(), Refreshable {
 
@@ -25,12 +28,15 @@ class SettingsFragment : Fragment(), Refreshable {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         db = QBankDb.get(requireContext())
+        binding.titleBar.usePageTitleStyle()
+        binding.titleBar.setTitle(getString(R.string.page_settings))
+
         val p = db.getPolicy()
-        binding.swMulti.isChecked = p.multiPartial
-        binding.swUncertain.isChecked = p.uncertainPartial
-        binding.swFill.isChecked = p.fillPartial
-        binding.swSubjective.isChecked = p.subjectivePartial
-        binding.swJudgeLenient.isChecked = p.judgeLenient
+        binding.swMulti.setChecked(p.multiPartial)
+        binding.swUncertain.setChecked(p.uncertainPartial)
+        binding.swFill.setChecked(p.fillPartial)
+        binding.swSubjective.setChecked(p.subjectivePartial)
+        binding.swJudgeLenient.setChecked(p.judgeLenient)
 
         val save = {
             db.setPolicy(
@@ -47,7 +53,7 @@ class SettingsFragment : Fragment(), Refreshable {
         listOf(
             binding.swMulti, binding.swUncertain, binding.swFill,
             binding.swSubjective, binding.swJudgeLenient
-        ).forEach { it.setOnCheckedChangeListener { _, _ -> save() } }
+        ).forEach { it.onCheckedChange = { _ -> save() } }
     }
 
     override fun refresh() = Unit

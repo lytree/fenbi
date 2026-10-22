@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 底部导航：未选 #8A9095 / 选中主蓝 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_checked="true" android:color="@color/fb_nav_selected" />
+    <item android:color="@color/fb_nav_normal" />
+</selector>

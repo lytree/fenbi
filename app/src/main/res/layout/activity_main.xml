@@ -1,26 +1,48 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  首页外壳：内容区 + 参考风格底部导航
+  · 导航白底、顶部 0.5dp 分割线、图标 22dp / 文字 10sp
+  · 未选 #8A9095、选中主蓝 #3C7CFC，无 M2 的水波纹高亮块
+  · 状态栏由各 Fragment 的 FbTitleBar 处理，导航栏由代码加 padding
+-->
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/bg">
+    android:background="@color/fb_page_bg">
 
     <FrameLayout
         android:id="@+id/container"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintBottom_toTopOf="@id/bottomNav"
+        app:layout_constraintBottom_toTopOf="@id/navDivider"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <View
+        android:id="@+id/navDivider"
+        android:layout_width="0dp"
+        android:layout_height="0.5dp"
+        android:background="@color/fb_divider"
+        app:layout_constraintBottom_toTopOf="@id/bottomNav"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
 
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/bottomNav"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:background="@color/card"
-        app:menu="@menu/bottom_nav"
+        android:background="@color/fb_bar_bg"
+        android:elevation="0dp"
+        app:itemIconSize="@dimen/fb_nav_icon"
+        app:itemIconTint="@color/nav_item_tint"
+        app:itemRippleColor="@android:color/transparent"
+        app:itemTextAppearance="@style/FbNavLabel"
+        app:itemTextColor="@color/nav_item_tint"
+        app:labelVisibilityMode="labeled"
         app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:menu="@menu/bottom_nav" />
 </androidx.constraintlayout.widget.ConstraintLayout>

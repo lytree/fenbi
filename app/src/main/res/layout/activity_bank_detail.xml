@@ -1,68 +1,61 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
+<!-- 题库详情：统一标题栏 + 题目卡列表 + 底部通栏主按钮 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/bg">
+    android:background="@color/fb_page_bg"
+    android:orientation="vertical">
 
-    <com.google.android.material.appbar.MaterialToolbar
-        android:id="@+id/toolbar"
-        android:layout_width="0dp"
-        android:layout_height="?attr/actionBarSize"
-        android:background="@color/primary"
-        android:titleTextColor="#FFFFFF"
-        app:navigationIcon="@drawable/ic_back"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+    <com.lytree.qbank.ui.FbTitleBar
+        android:id="@+id/titleBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/list"
-        android:layout_width="0dp"
+    <FrameLayout
+        android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:clipToPadding="false"
-        android:paddingBottom="12dp"
-        app:layout_constraintTop_toBottomOf="@id/toolbar"
-        app:layout_constraintBottom_toTopOf="@id/bottomDivider"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        android:layout_weight="1">
 
-    <TextView
-        android:id="@+id/empty"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="该题库暂无题目"
-        style="@style/TextMeta"
-        android:visibility="gone"
-        app:layout_constraintTop_toBottomOf="@id/toolbar"
-        app:layout_constraintBottom_toTopOf="@id/bottomDivider"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/list"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:paddingTop="4dp"
+            android:paddingBottom="16dp"
+            android:scrollbars="none" />
+
+        <TextView
+            android:id="@+id/empty"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:text="该题库暂无题目"
+            android:textColor="@color/fb_text_meta"
+            android:textSize="14sp"
+            android:visibility="gone" />
+    </FrameLayout>
 
     <View
         android:id="@+id/bottomDivider"
-        android:layout_width="0dp"
+        android:layout_width="match_parent"
         android:layout_height="0.5dp"
-        android:background="@color/divider"
-        app:layout_constraintBottom_toTopOf="@id/bottomBar"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        android:background="@color/fb_divider" />
 
     <FrameLayout
         android:id="@+id/bottomBar"
-        android:layout_width="0dp"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/card"
-        android:paddingHorizontal="12dp"
-        android:paddingVertical="10dp"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
+        android:background="@color/fb_bar_bg"
+        android:paddingStart="@dimen/fb_page_pad"
+        android:paddingTop="10dp"
+        android:paddingEnd="@dimen/fb_page_pad"
+        android:paddingBottom="10dp">
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnCompose"
+            style="@style/FbPrimaryButton"
             android:layout_width="match_parent"
-            android:layout_height="48dp"
             android:text="组卷并开始" />
     </FrameLayout>
-</androidx.constraintlayout.widget.ConstraintLayout>
+</LinearLayout>

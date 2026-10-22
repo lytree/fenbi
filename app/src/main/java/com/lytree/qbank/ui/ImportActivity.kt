@@ -12,6 +12,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.lytree.qbank.R
 import com.lytree.qbank.data.db.QBankDb
 import com.lytree.qbank.data.importer.ImportFormat
 import com.lytree.qbank.data.importer.ImportIssue
@@ -49,7 +50,8 @@ class ImportActivity : AppCompatActivity() {
         setContentView(binding.root)
         db = QBankDb.get(this)
 
-        binding.toolbar.setNavigationOnClickListener { finish() }
+        binding.titleBar.setTitle(getString(R.string.action_import))
+        binding.bottomBar.applyNavBarBottomPadding()
         binding.btnPick.setOnClickListener { pickFile() }
         binding.btnSample.setOnClickListener { loadSample() }
         binding.btnAll.setOnClickListener { qAdapter.toggleAll() }
@@ -127,6 +129,8 @@ class ImportActivity : AppCompatActivity() {
         binding.pickPanel.visibility = View.GONE
         binding.resultPanel.visibility = View.VISIBLE
         binding.btnImport.visibility = View.VISIBLE
+        binding.bottomBar.visibility = View.VISIBLE
+        binding.bottomDivider.visibility = View.VISIBLE
         binding.tvFile.text = fileName
         binding.tvStat.text = buildString {
             append("格式：${outcome.format}")
@@ -223,7 +227,7 @@ class PreviewAdapter : androidx.recyclerview.widget.RecyclerView.Adapter<Preview
         }
         holder.binding.tvType.text = q.type.label
         holder.binding.tvStem.text = q.stem
-        val opts = q.options.joinToString("  ") { "${it.key}. ${it.text}" }
+        val opts = q.options.joinToString("\n") { "${it.key}. ${it.text}" }
         holder.binding.tvOptions.text = if (opts.isBlank()) "" else opts
         holder.binding.tvAnswer.text = "答案：${q.displayAnswer()}"
     }

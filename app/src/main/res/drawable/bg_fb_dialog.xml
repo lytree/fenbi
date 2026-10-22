@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 参考应用确认弹窗：12dp 圆角白卡 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/fb_dialog_bg" />
+    <corners android:radius="@dimen/fb_dialog_radius" />
+</shape>

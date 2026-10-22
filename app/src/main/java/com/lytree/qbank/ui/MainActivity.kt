@@ -3,6 +3,8 @@ package com.lytree.qbank.ui
 import android.content.Intent
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.Fragment
 import com.lytree.qbank.R
 import com.lytree.qbank.databinding.ActivityMainBinding
@@ -19,6 +21,9 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // Android 15 强制 edge-to-edge：底部导航需要自己让出系统导航栏高度
+        binding.bottomNav.applyNavBarBottomPadding()
 
         binding.bottomNav.setOnItemSelectedListener { item ->
             val fragment: Fragment = when (item.itemId) {

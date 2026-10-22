@@ -27,7 +27,8 @@ class ComposeActivity : AppCompatActivity() {
         setContentView(binding.root)
         db = QBankDb.get(this)
 
-        binding.toolbar.setNavigationOnClickListener { finish() }
+        binding.titleBar.setTitle(getString(com.lytree.qbank.R.string.action_compose))
+        binding.bottomBar.applyNavBarBottomPadding()
         binding.inputCount.setText("20")
         binding.inputDuration.setText("0")
 

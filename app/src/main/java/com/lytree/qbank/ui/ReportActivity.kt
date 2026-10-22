@@ -30,7 +30,7 @@ class ReportActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityReportBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        binding.toolbar.setNavigationOnClickListener { finish() }
+        binding.titleBar.setTitle("成绩报告")
 
         val id = intent.getLongExtra(EXTRA_RECORD_ID, 0L)
         val record = QBankDb.get(this).getRecord(id)
@@ -41,13 +41,26 @@ class ReportActivity : AppCompatActivity() {
         binding.tvScore.text = String.format(Locale.CHINA, "%.1f", record.score)
         binding.tvFull.text = "满分 ${trim(record.fullScore)} 分"
         val rate = if (record.answeredCount > 0) record.correctCount * 100 / record.answeredCount else 0
-        binding.tvCorrectRate.text = "正确率\n$rate%"
-        binding.tvRight.text = "答对\n${record.correctCount}"
-        binding.tvWrong.text = "答错\n${record.totalCount - record.answeredCount - record.partialCount}"
-        binding.tvTime.text = "用时\n${RecordAdapter.fmtDuration(record.durationSec)}"
+        binding.tvCorrectRate.text = metric("正确率", "$rate%")
+        binding.tvRight.text = metric("答对", "${record.correctCount}")
+        binding.tvWrong.text = metric("答错", "${record.totalCount - record.answeredCount - record.partialCount}")
+        binding.tvTime.text = metric("用时", RecordAdapter.fmtDuration(record.durationSec))
 
         binding.list.layoutManager = LinearLayoutManager(this)
         binding.list.adapter = ReportAdapter(record.results)
+    }
+
+    /** 指标：小号灰标签 + 大号加粗数值（同一 TextView 内两级字号） */
+    private fun metric(label: String, value: String): android.text.SpannableString {
+        val raw = "$label\n$value"
+        return android.text.SpannableString(raw).apply {
+            val meta = ContextCompat.getColor(this@ReportActivity, R.color.fb_text_meta)
+            val title = ContextCompat.getColor(this@ReportActivity, R.color.fb_text_title)
+            setSpan(android.text.style.ForegroundColorSpan(meta), 0, label.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            setSpan(android.text.style.RelativeSizeSpan(1.55f), label.length + 1, raw.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            setSpan(android.text.style.StyleSpan(android.graphics.Typeface.BOLD), label.length + 1, raw.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            setSpan(android.text.style.ForegroundColorSpan(title), label.length + 1, raw.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
     }
 
     private fun trim(v: Double) =

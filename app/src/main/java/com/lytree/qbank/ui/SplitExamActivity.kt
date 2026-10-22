@@ -21,7 +21,7 @@ import java.util.Locale
 /**
  * 资料分析分屏页。
  *
- * 对应粉笔的「资料分析左右分屏」：左侧是材料（表格渲染成真表格），右侧是这一组材料
+ * 对应参考应用的「资料分析左右分屏」：左侧是材料（表格渲染成真表格），右侧是这一组材料
  * 对应的若干道题。资料分析的特点是「一道材料带 3~5 问」，逐题翻页时材料会反复出现，
  * 分屏能让材料始终停在左边，做题时可以直接对着数据看。
  *
@@ -49,6 +49,7 @@ class SplitExamActivity : AppCompatActivity() {
     private var inkMode = false
     private var currentIndex = 0
     private lateinit var inkToolbar: InkToolbarController
+    private lateinit var tvIndex: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -74,9 +75,12 @@ class SplitExamActivity : AppCompatActivity() {
         }
 
         startedAt = System.currentTimeMillis()
-        binding.tvPaperName.text = intent.getStringExtra(EXTRA_PAPER_NAME) ?: paper.name
+        binding.titleBar.showDivider(false)
+        binding.titleBar.setTitle(intent.getStringExtra(EXTRA_PAPER_NAME) ?: paper.name)
+        binding.titleBar.onBack = { confirmExit() }
+        tvIndex = binding.titleBar.addTextAction("") { }
+        binding.bottomBar.applyNavBarBottomPadding()
 
-        binding.btnClose.setOnClickListener { confirmExit() }
         binding.btnCard.setOnClickListener { openAnswerCard() }
         binding.btnSubmit.setOnClickListener { confirmSubmit() }
         binding.btnInk.setOnClickListener { toggleInk() }
@@ -179,7 +183,7 @@ class SplitExamActivity : AppCompatActivity() {
     }
 
     private fun updateHeader() {
-        binding.tvIndex.text = getString(R.string.question_index, currentIndex + 1, questions.size)
+        tvIndex.text = getString(R.string.question_index, currentIndex + 1, questions.size)
     }
 
     // ---------------- 手写 ----------------

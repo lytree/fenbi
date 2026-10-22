@@ -1,5 +1,6 @@
 package com.lytree.qbank.ui.record
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -9,6 +10,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.lytree.qbank.data.db.QBankDb
 import com.lytree.qbank.databinding.FragmentListBinding
 import com.lytree.qbank.ui.Refreshable
+import com.lytree.qbank.ui.ReportActivity
 
 class RecordListFragment : Fragment(), Refreshable {
 
@@ -24,16 +26,24 @@ class RecordListFragment : Fragment(), Refreshable {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         db = QBankDb.get(requireContext())
+        binding.titleBar.usePageTitleStyle()
+        binding.titleBar.setTitle(getString(com.lytree.qbank.R.string.page_records))
+
         binding.list.layoutManager = LinearLayoutManager(requireContext())
         binding.list.adapter = adapter
-        binding.fab.visibility = View.GONE
+        adapter.onClick = { record ->
+            startActivity(Intent(requireContext(), ReportActivity::class.java).apply {
+                putExtra(ReportActivity.EXTRA_RECORD_ID, record.id)
+            })
+        }
+        binding.emptyAction.visibility = View.GONE
     }
 
     override fun refresh() {
         val list = db.listRecords()
         adapter.submit(list)
-        binding.empty.visibility = if (list.isEmpty()) View.VISIBLE else View.GONE
-        binding.empty.setText(if (list.isEmpty()) "还没有考试记录" else "")
+        binding.emptyBox.visibility = if (list.isEmpty()) View.VISIBLE else View.GONE
+        binding.empty.setText(if (list.isEmpty()) "交卷后这里会留下每场练习的成绩与用时" else "")
     }
 
     override fun onResume() {

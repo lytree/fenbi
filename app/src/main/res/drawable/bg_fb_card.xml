@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 题目卡：白底 8dp 圆角（实测圆角 14px@1.75dpi ≈ 8dp） -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/fb_card_bg" />
+    <corners android:radius="@dimen/fb_card_radius" />
+</shape>

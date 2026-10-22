@@ -27,7 +27,8 @@ class PaperAdapter : RecyclerView.Adapter<PaperAdapter.VH>() {
         val p = items[position]
         holder.binding.title.text = p.name
         holder.binding.subtitle.text = buildString {
-            append("${p.questions.size} 题")
+            val count = if (p.questionCount > 0) p.questionCount else p.questions.size
+            append("$count 题")
             if (p.durationMin > 0) append(" · 限时 ${p.durationMin} 分钟")
             if (p.mode.isNotBlank()) append(" · ${p.mode}")
         }

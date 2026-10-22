@@ -1,65 +1,65 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
+<!-- 成绩报告：统一标题栏 + 成绩卡 + 逐题解析 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/bg">
+    android:background="@color/fb_page_bg"
+    android:orientation="vertical">
 
-    <com.google.android.material.appbar.MaterialToolbar
-        android:id="@+id/toolbar"
-        android:layout_width="0dp"
-        android:layout_height="?attr/actionBarSize"
-        android:background="@color/primary"
-        android:title="成绩报告"
-        android:titleTextColor="#FFFFFF"
-        app:navigationIcon="@drawable/ic_back"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+    <com.lytree.qbank.ui.FbTitleBar
+        android:id="@+id/titleBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
 
     <androidx.core.widget.NestedScrollView
-        android:layout_width="0dp"
+        android:layout_width="match_parent"
         android:layout_height="0dp"
-        app:layout_constraintTop_toBottomOf="@id/toolbar"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
+        android:layout_weight="1"
+        android:scrollbars="none">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="12dp">
+            android:paddingStart="@dimen/fb_page_pad"
+            android:paddingTop="16dp"
+            android:paddingEnd="@dimen/fb_page_pad"
+            android:paddingBottom="28dp">
 
             <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:background="@color/card"
-                android:padding="18dp"
-                android:gravity="center_horizontal">
+                style="@style/FbCard"
+                android:gravity="center_horizontal"
+                android:paddingTop="24dp"
+                android:paddingBottom="6dp">
 
                 <TextView
                     android:id="@+id/tvScore"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:textSize="34sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/primary" />
+                    android:includeFontPadding="false"
+                    android:textColor="@color/fb_primary"
+                    android:textSize="40sp"
+                    android:textStyle="bold" />
 
                 <TextView
                     android:id="@+id/tvFull"
+                    style="@style/FbItemSub"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
-                    style="@style/TextMeta" />
+                    android:layout_marginTop="6dp" />
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="0.5dp"
+                    android:layout_marginTop="18dp"
+                    android:background="@color/fb_divider" />
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
                     android:orientation="horizontal"
-                    android:weightSum="4">
+                    android:paddingTop="14dp"
+                    android:paddingBottom="14dp">
 
                     <TextView
                         android:id="@+id/tvCorrectRate"
@@ -67,7 +67,9 @@
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:gravity="center"
-                        style="@style/TextMeta" />
+                        android:lineSpacingExtra="6dp"
+                        android:textColor="@color/fb_text_primary"
+                        android:textSize="12sp" />
 
                     <TextView
                         android:id="@+id/tvRight"
@@ -75,7 +77,9 @@
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:gravity="center"
-                        style="@style/TextMeta" />
+                        android:lineSpacingExtra="6dp"
+                        android:textColor="@color/fb_text_primary"
+                        android:textSize="12sp" />
 
                     <TextView
                         android:id="@+id/tvWrong"
@@ -83,7 +87,9 @@
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:gravity="center"
-                        style="@style/TextMeta" />
+                        android:lineSpacingExtra="6dp"
+                        android:textColor="@color/fb_text_primary"
+                        android:textSize="12sp" />
 
                     <TextView
                         android:id="@+id/tvTime"
@@ -91,16 +97,19 @@
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:gravity="center"
-                        style="@style/TextMeta" />
+                        android:lineSpacingExtra="6dp"
+                        android:textColor="@color/fb_text_primary"
+                        android:textSize="12sp" />
                 </LinearLayout>
             </LinearLayout>
 
             <TextView
+                style="@style/FbGroupTitle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="14dp"
-                android:text="逐题解析"
-                style="@style/TextTitle" />
+                android:layout_marginStart="4dp"
+                android:layout_marginTop="24dp"
+                android:text="逐题解析" />
 
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/list"
@@ -109,4 +118,4 @@
                 android:nestedScrollingEnabled="false" />
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
-</androidx.constraintlayout.widget.ConstraintLayout>
+</LinearLayout>

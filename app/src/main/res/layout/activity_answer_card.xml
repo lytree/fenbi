@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  粉笔风格答题卡（底部弹层）。对齐真机抓取：
-  · 顶部「答题卡」标题 + 右上关闭
-  · 按模块分组的圆形题号网格（已答=蓝实心，未答=浅灰描边，标记=橙，收藏=粉）
-  · 底部通栏「交卷」按钮（实测 #3C7BFC）
+  参考应用风格答题卡（底部弹层）。对齐真机抓取（1080x1920 @280dpi）：
+  · 白色弹层，顶部 12dp 圆角，约占屏高 55%
+  · 顶部「答题卡」居中标题 + 右上关闭，无图例、无分割线
+  · 按模块分组的圆形题号网格（40dp），已答=蓝实心，未答=#F6F7FB 实心，当前题=蓝实心+淡蓝环
+  · 底部通栏「交卷」胶囊按钮
 -->
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -20,7 +21,7 @@
         android:orientation="vertical"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHeight_percent="0.62"
+        app:layout_constraintHeight_percent="@dimen/fb_sheet_height_percent"
         app:layout_constraintStart_toStartOf="parent">
 
         <!-- 标题行 -->
@@ -51,23 +52,6 @@
                 android:src="@drawable/ic_fb_close" />
         </RelativeLayout>
 
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="0.5dp"
-            android:background="@color/fb_divider" />
-
-        <!-- 图例 -->
-        <TextView
-            android:id="@+id/tvLegend"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@color/fb_card_bg"
-            android:paddingHorizontal="16dp"
-            android:paddingBottom="10dp"
-            android:textColor="@color/fb_text_meta"
-            android:textSize="12sp"
-            tools:text="共 135 题　已答 2 题　未答 133 题　已标记 0 题" />
-
         <!-- 题号网格 -->
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/list"
@@ -75,7 +59,10 @@
             android:layout_height="0dp"
             android:layout_weight="1"
             android:clipToPadding="false"
-            android:paddingBottom="8dp"
+            android:paddingStart="10dp"
+            android:paddingTop="2dp"
+            android:paddingEnd="10dp"
+            android:paddingBottom="6dp"
             android:scrollbars="none" />
 
         <!-- 交卷 -->
@@ -83,14 +70,14 @@
             android:id="@+id/btnSubmit"
             android:layout_width="match_parent"
             android:layout_height="46dp"
-            android:layout_marginHorizontal="16dp"
+            android:layout_marginStart="16dp"
             android:layout_marginTop="6dp"
+            android:layout_marginEnd="16dp"
             android:layout_marginBottom="18dp"
             android:background="@drawable/bg_fb_submit_wide"
             android:gravity="center"
             android:text="@string/action_submit"
             android:textColor="#FFFFFF"
-            android:textSize="16sp"
-            android:textStyle="bold" />
+            android:textSize="16sp" />
     </LinearLayout>
 </androidx.constraintlayout.widget.ConstraintLayout>

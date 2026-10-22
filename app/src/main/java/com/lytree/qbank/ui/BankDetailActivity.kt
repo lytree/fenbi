@@ -33,8 +33,9 @@ class BankDetailActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         bankId = intent.getLongExtra(EXTRA_BANK_ID, 0L)
-        binding.toolbar.title = intent.getStringExtra(EXTRA_BANK_NAME) ?: "题库"
-        binding.toolbar.setNavigationOnClickListener { finish() }
+        val bankName = intent.getStringExtra(EXTRA_BANK_NAME) ?: "题库"
+        binding.titleBar.setTitle(bankName)
+        binding.bottomBar.applyNavBarBottomPadding()
 
         binding.list.layoutManager = LinearLayoutManager(this)
         binding.list.adapter = adapter
@@ -45,7 +46,7 @@ class BankDetailActivity : AppCompatActivity() {
                 Toast.makeText(this, "题库为空", Toast.LENGTH_SHORT).show(); return@setOnClickListener
             }
             val pid = QBankDb.get(this).insertPaper(
-                binding.toolbar.title.toString() + " 全量练习", bankId, 0, "全量练习", questions
+                "$bankName 全量练习", bankId, 0, "全量练习", questions
             )
             startActivity(
                 Intent(this, ExamActivity::class.java).apply {

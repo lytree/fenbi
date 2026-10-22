@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 粉笔风格选项：26dp 圆形徽标（实测未选描边 #E8EBF2 / 字色 #8A90A6）+ 无框文本 -->
+<!--
+  选项行。对齐参考应用题目的选项排版（1080x1920 @280dpi 实测）：
+  · 圆形徽标 40dp（原始 dimens: single_option_btn_width 40dp），距卡片左边 14dp
+  · 字母 15sp，未选 #868EA8（原始 colors: option_text），描边 #CBD1DC@30%
+  · 选项正文 16sp，#3C464F（原始 colors: option_content → fb_black），距徽标 8dp
+-->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
@@ -7,26 +12,29 @@
     android:background="?attr/selectableItemBackground"
     android:gravity="top"
     android:orientation="horizontal"
-    android:paddingVertical="11dp">
+    android:paddingStart="@dimen/fb_option_row_padding_start"
+    android:paddingTop="@dimen/fb_option_row_padding_v"
+    android:paddingEnd="@dimen/fb_content_padding_h"
+    android:paddingBottom="@dimen/fb_option_row_padding_v">
 
     <TextView
         android:id="@+id/tvKey"
-        android:layout_width="26dp"
-        android:layout_height="26dp"
+        android:layout_width="@dimen/fb_option_circle"
+        android:layout_height="@dimen/fb_option_circle"
         android:background="@drawable/bg_fb_circle"
         android:gravity="center"
         android:textColor="@color/fb_circle_text"
-        android:textSize="14sp"
+        android:textSize="@dimen/fb_option_circle_text_size"
         tools:text="A" />
 
     <TextView
         android:id="@+id/tvText"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginStart="10dp"
+        android:layout_marginStart="@dimen/fb_option_text_gap"
         android:layout_weight="1"
-        android:lineSpacingExtra="5dp"
-        android:textColor="@color/fb_text_body"
-        android:textSize="16sp"
+        android:lineSpacingExtra="@dimen/fb_option_line_space"
+        android:textColor="@color/fb_option_text"
+        android:textSize="@dimen/fb_option_text_size"
         tools:text="大力推进健康学校建设，坚持健康第一的教育理念，提升学生健康素养" />
 </LinearLayout>

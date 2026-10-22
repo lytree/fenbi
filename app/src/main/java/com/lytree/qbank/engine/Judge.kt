@@ -9,7 +9,7 @@ import com.lytree.qbank.data.model.QuestionType
  * 用户可在设置里切换，题库本身不绑定规则。
  */
 data class Policy(
-    /** 多选题：少选是否给部分分（粉笔口径为"多选、少选、错选均不得分"） */
+    /** 多选题：少选是否给部分分（参考应用口径为"多选、少选、错选均不得分"） */
     val multiPartial: Boolean = false,
     /** 不定项：少选是否给部分分（国考常见口径为"少选每个正确项得 0.5 分"） */
     val uncertainPartial: Boolean = true,

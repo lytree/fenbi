@@ -19,10 +19,10 @@ import com.lytree.qbank.engine.Judge
 import java.util.Locale
 
 /**
- * 答题页。对齐粉笔真机 `com.fenbi.android.exercise.objective.exercise.ObjectiveExerciseActivity`（竖屏）：
+ * 答题页（竖屏）。
  *
  * - **顶栏**：X 关闭 / 闹钟+倒计时 / 居中标题「试卷名（题数）」/ 交卷 / 答题卡 / 更多
- * - **内容**：连续滚动的多题浏览（粉笔默认模式），每题 = 题目行（题号+题型+标记/笔记/收藏）+ 题干 + 选项
+ * - **内容**：连续滚动的多题浏览（默认模式），每题 = 题目行（题号+题型+标记/笔记/收藏）+ 题干 + 选项
  * - **更多面板**：字号（小/中/大）、日间/夜间、多题浏览/单题浏览
  * - **答题卡**：底部弹层，圆形题号 + 按科目分组 + 通栏交卷
  *
@@ -42,6 +42,7 @@ class ExamActivity : AppCompatActivity() {
         private const val KEY_FONT_SCALE = "font_scale"
         private const val KEY_NIGHT = "night_mode"
         private const val KEY_MULTI_BROWSE = "multi_browse"
+        private const val KEY_AUTO_NEXT = "auto_next"
 
         /** 字号档位：小 / 中 / 大 */
         private val FONT_SCALES = floatArrayOf(0.9f, 1.0f, 1.15f)
@@ -55,6 +56,7 @@ class ExamActivity : AppCompatActivity() {
     private val marked = HashSet<Long>()
     private val favorites = HashSet<Long>()
     private var timer: CountDownTimer? = null
+    private var paperId = 0L
     private var durationMin = 0
     private var startedAt = 0L
     private var submitted = false
@@ -63,10 +65,14 @@ class ExamActivity : AppCompatActivity() {
 
     /** 字号缩放系数 */
     private var fontScale = 1f
-    /** 是否多题浏览（粉笔默认多题） */
+    /** 是否多题浏览（参考应用默认多题） */
     private var multiBrowse = true
     /** 夜间模式 */
     private var nightMode = false
+    /** 单选题作答后自动滚到下一题 */
+    private var autoNext = true
+    /** 当前最靠上的题目位置（答题卡高亮「当前题」用） */
+    private var currentPos = 0
 
     private lateinit var inkToolbar: InkToolbarController
     private lateinit var adapter: QuestionListAdapter
@@ -79,7 +85,7 @@ class ExamActivity : AppCompatActivity() {
 
         loadPrefs()
 
-        val paperId = intent.getLongExtra(EXTRA_PAPER_ID, 0L)
+        paperId = intent.getLongExtra(EXTRA_PAPER_ID, 0L)
         val paper = db.getPaper(paperId)
         if (paper == null || paper.questions.isEmpty()) {
             android.widget.Toast.makeText(this, "试卷不存在或为空", android.widget.Toast.LENGTH_SHORT).show()
@@ -94,6 +100,7 @@ class ExamActivity : AppCompatActivity() {
         setupTopBar()
         setupMorePanel()
         setupInk()
+        applyWindowInsets()
 
         updateHeader()
         startTimer()
@@ -113,23 +120,85 @@ class ExamActivity : AppCompatActivity() {
             onMarkToggle = { q -> toggleMark(q) },
             onFavoriteToggle = { q -> toggleFavorite(q) },
             onNoteClicked = { q -> showNoteDialog(q) },
-            onAnswerChanged = { }
+            onAnswerChanged = { q -> onAnswered(q) }
         )
         binding.questionList.layoutManager = LinearLayoutManager(this)
         binding.questionList.adapter = adapter
         binding.questionList.itemAnimator = null
+        binding.questionList.addOnScrollListener(object : androidx.recyclerview.widget.RecyclerView.OnScrollListener() {
+            override fun onScrolled(rv: androidx.recyclerview.widget.RecyclerView, dx: Int, dy: Int) {
+                (rv.layoutManager as? LinearLayoutManager)?.findFirstVisibleItemPosition()
+                    ?.let { if (it >= 0) currentPos = it }
+            }
+        })
+    }
+
+    /** 作答后的联动：单选题「自动展示下一题」时滚到下一题 */
+    private fun onAnswered(q: Question) {
+        currentPos = questions.indexOfFirst { it.id == q.id }.coerceAtLeast(0)
+        if (!autoNext) return
+        if (q.type != com.lytree.qbank.data.model.QuestionType.SINGLE) return
+        val next = currentPos + 1
+        if (next < questions.size) {
+            binding.questionList.postDelayed({
+                binding.questionList.smoothScrollToPosition(next)
+            }, 220)
+        }
     }
 
     private fun setupTopBar() {
         binding.btnClose.setOnClickListener { confirmExit() }
         binding.btnCard.setOnClickListener { openAnswerCard() }
         binding.btnSubmitTop.setOnClickListener { confirmSubmit() }
+        binding.btnDownload.setOnClickListener { exportPaper() }
         binding.btnMore.setOnClickListener { toggleMorePanel() }
     }
 
     /**
+     * 顶栏「下载」：把当前试卷导出成 JSON 到应用外部目录（Download/qbank/）。
+     * 对应参考应用顶栏的下载图标，让题目可以离线带走 / 再导入。
+     */
+    private fun exportPaper() {
+        try {
+            val paper = db.getPaper(intent.getLongExtra(EXTRA_PAPER_ID, 0L)) ?: return
+            val json = buildString {
+                append("[\n")
+                paper.questions.forEachIndexed { i, q ->
+                    if (i > 0) append(",\n")
+                    append("  {")
+                    append("\"type\":\"").append(q.type.name).append("\",")
+                    append("\"stem\":").append(org.json.JSONObject.quote(q.stem)).append(",")
+                    append("\"options\":[")
+                    q.options.forEachIndexed { j, o ->
+                        if (j > 0) append(",")
+                        append("{\"key\":").append(org.json.JSONObject.quote(o.key))
+                        append(",\"text\":").append(org.json.JSONObject.quote(o.text)).append("}")
+                    }
+                    append("],")
+                    append("\"answer\":").append(org.json.JSONObject.quote(q.displayAnswer())).append(",")
+                    append("\"analysis\":").append(org.json.JSONObject.quote(q.analysis))
+                    append("}")
+                }
+                append("\n]\n")
+            }
+            val dir = java.io.File(
+                getExternalFilesDir(null) ?: filesDir, "paper"
+            ).apply { mkdirs() }
+            val name = (intent.getStringExtra(EXTRA_PAPER_NAME) ?: "试卷")
+                .replace(Regex("[\\\\/:*?\"<>|]"), "_")
+            val f = java.io.File(dir, "$name.json")
+            f.writeText(json, Charsets.UTF_8)
+            android.widget.Toast.makeText(
+                this, "已导出：${f.absolutePath}", android.widget.Toast.LENGTH_LONG
+            ).show()
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(this, "导出失败：${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
      * 更多面板：字号 / 日夜 / 浏览模式。
-     * 交互对齐粉笔——点哪个就切哪个，选中态即时高亮。
+     * 交互对齐参考应用——点哪个就切哪个，选中态即时高亮。
      */
     private fun setupMorePanel() {
         binding.btnFontSmall.setOnClickListener { setFontScale(0) }
@@ -139,7 +208,37 @@ class ExamActivity : AppCompatActivity() {
         binding.btnNight.setOnClickListener { setNightMode(true) }
         binding.btnMultiBrowse.setOnClickListener { setBrowseMode(true) }
         binding.btnSingleBrowse.setOnClickListener { setBrowseMode(false) }
+
+        // 开关：参考应用风格的小号胶囊开关（自绘，避免 Material Switch 被拉大）
+        binding.switchAutoNext.setChecked(autoNext, animate = false)
+        binding.switchAutoNext.onCheckedChange = { checked ->
+            autoNext = checked
+            savePrefs()
+        }
         refreshMorePanelState()
+        setupSplitEntry()
+    }
+
+    /**
+     * 左右分屏入口：参考应用资料分析题的「左材料 / 右题目」双栏。
+     * 只有本卷含材料题时才显示；按当前题所属材料分组进入。
+     */
+    private fun setupSplitEntry() {
+        val hasMaterial = questions.any { it.material.isNotBlank() }
+        binding.rowSplit.visibility = if (hasMaterial) View.VISIBLE else View.GONE
+        binding.splitDivider.visibility = if (hasMaterial) View.VISIBLE else View.GONE
+        if (!hasMaterial) return
+
+        binding.rowSplit.setOnClickListener {
+            val material = questions.getOrNull(currentPos)?.material?.takeIf { it.isNotBlank() }
+                ?: questions.firstOrNull { it.material.isNotBlank() }?.material.orEmpty()
+            binding.morePanel.visibility = View.GONE
+            startActivity(Intent(this, SplitExamActivity::class.java).apply {
+                putExtra(SplitExamActivity.EXTRA_PAPER_ID, paperId)
+                putExtra(SplitExamActivity.EXTRA_PAPER_NAME, defaultPaperName())
+                if (material.isNotBlank()) putExtra(SplitExamActivity.EXTRA_GROUP_KEY, material)
+            })
+        }
     }
 
     private fun toggleMorePanel() {
@@ -159,7 +258,7 @@ class ExamActivity : AppCompatActivity() {
         nightMode = on
         savePrefs()
         refreshMorePanelState()
-        // 夜间模式：整页反色配色（粉笔是纯色切换，这里用背景/文字色翻转实现）
+        // 夜间模式：整页反色配色（参考应用是纯色切换，这里用背景/文字色翻转实现）
         applyNightMode()
     }
 
@@ -168,9 +267,32 @@ class ExamActivity : AppCompatActivity() {
         multiBrowse = multi
         savePrefs()
         refreshMorePanelState()
-        // 粉笔的多题浏览=连续滚动，单题浏览=一屏一题。当前实现统一为连续滚动，
+        // 参考应用的多题浏览=连续滚动，单题浏览=一屏一题。当前实现统一为连续滚动，
         // 单题模式通过「每次只显示一题」的方式收敛——用滚动定位 + 隐藏其余题实现。
         applyBrowseMode()
+    }
+
+    /**
+     * Android 15 起强制 edge-to-edge，顶栏会被状态栏压住。
+     * 这里把状态栏高度加进顶栏高度内边距，保持「白色顶栏 + 倒计时居中」的原样。
+     */
+    private fun applyWindowInsets() {
+        val density = resources.displayMetrics.density
+        val baseH = (44 * density).toInt()
+        val padL = binding.topBar.paddingLeft
+        val padR = binding.topBar.paddingRight
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(binding.topBar) { v, insets ->
+            val top = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.statusBars()).top
+            val lp = v.layoutParams
+            val want = baseH + top
+            if (lp.height != want) {
+                lp.height = want
+                v.layoutParams = lp
+            }
+            v.setPadding(padL, top, padR, 0)
+            insets
+        }
+        androidx.core.view.ViewCompat.requestApplyInsets(binding.root)
     }
 
     private fun setupInk() {
@@ -271,9 +393,9 @@ class ExamActivity : AppCompatActivity() {
 
     private fun refreshMorePanelState() {
         val idx = FONT_SCALES.indexOfFirst { it == fontScale }.let { if (it < 0) 1 else it }
-        styleSegment(binding.btnFontSmall, idx == 0)
-        styleSegment(binding.btnFontMedium, idx == 1)
-        styleSegment(binding.btnFontLarge, idx == 2)
+        styleAa(binding.btnFontSmall, idx == 0)
+        styleAa(binding.btnFontMedium, idx == 1)
+        styleAa(binding.btnFontLarge, idx == 2)
 
         styleSegment(binding.btnDay, !nightMode)
         styleSegment(binding.btnNight, nightMode)
@@ -282,21 +404,27 @@ class ExamActivity : AppCompatActivity() {
         styleSegment(binding.btnSingleBrowse, !multiBrowse)
     }
 
-    /** segmented 项的选中态样式（粉笔：选中项白底蓝字，未选中灰底灰字） */
+    /** 字号档位：参考应用是三个不同字号的「Aa」，选中加深、未选浅灰 */
+    private fun styleAa(view: TextView, selected: Boolean) {
+        view.setTextColor(
+            ContextCompat.getColor(
+                this, if (selected) R.color.fb_text_title else R.color.fb_text_meta
+            )
+        )
+        view.setTypeface(null, if (selected) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
+    }
+
+    /** segmented 项（分段胶囊）：选中项白底深字，未选中透明底灰字 */
     private fun styleSegment(view: TextView, selected: Boolean) {
-        view.setBackgroundResource(if (selected) R.drawable.bg_fb_segment_selected else R.drawable.bg_fb_segment)
+        view.setBackgroundResource(
+            if (selected) R.drawable.bg_fb_segment_pill else R.drawable.bg_fb_segment_pill_off
+        )
         view.setTextColor(
             ContextCompat.getColor(
                 this,
                 if (selected) R.color.fb_segment_text_sel else R.color.fb_segment_text
             )
         )
-        // 字号档位用 Aa 的大小差异表达
-        view.textSize = when (view.id) {
-            R.id.btnFontSmall -> 12f
-            R.id.btnFontLarge -> 18f
-            else -> 15f
-        }
     }
 
     // ---------------- 浏览模式 ----------------
@@ -354,6 +482,7 @@ class ExamActivity : AppCompatActivity() {
         fontScale = FONT_SCALES.getOrElse(p.getInt(KEY_FONT_SCALE, 1)) { 1f }
         nightMode = p.getBoolean(KEY_NIGHT, false)
         multiBrowse = p.getBoolean(KEY_MULTI_BROWSE, true)
+        autoNext = p.getBoolean(KEY_AUTO_NEXT, true)
     }
 
     private fun savePrefs() {
@@ -361,6 +490,7 @@ class ExamActivity : AppCompatActivity() {
             putInt(KEY_FONT_SCALE, FONT_SCALES.indexOfFirst { it == fontScale }.let { if (it < 0) 1 else it })
             putBoolean(KEY_NIGHT, nightMode)
             putBoolean(KEY_MULTI_BROWSE, multiBrowse)
+            putBoolean(KEY_AUTO_NEXT, autoNext)
         }.apply()
     }
 
@@ -377,11 +507,12 @@ class ExamActivity : AppCompatActivity() {
             putExtra(AnswerCardActivity.EXTRA_MARKED, markedPos.toIntArray())
             putExtra(AnswerCardActivity.EXTRA_FAVORITE, favoritePos.toIntArray())
             putExtra(AnswerCardActivity.EXTRA_GROUPS, groupLabels())
+            putExtra(AnswerCardActivity.EXTRA_CURRENT, currentPos)
         }
         startActivityForResult(intent, REQ_CARD)
     }
 
-    /** 按科目分组，得到每题所属的分组标题（与粉笔「政治理论/常识判断…」一致） */
+    /** 按科目分组，得到每题所属的分组标题（与参考应用「政治理论/常识判断…」一致） */
     private fun groupLabels(): ArrayList<String> {
         val out = ArrayList<String>()
         for (q in questions) {
@@ -394,8 +525,14 @@ class ExamActivity : AppCompatActivity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == REQ_CARD && resultCode == RESULT_OK && data != null) {
+            // 答题卡底部的「交卷」
+            if (data.getBooleanExtra(AnswerCardActivity.EXTRA_SUBMIT, false)) {
+                confirmSubmit()
+                return
+            }
             val jump = data.getIntExtra(AnswerCardActivity.EXTRA_JUMP, -1)
             if (jump in questions.indices) {
+                currentPos = jump
                 if (multiBrowse) {
                     binding.questionList.scrollToPosition(jump)
                 } else {
@@ -416,11 +553,7 @@ class ExamActivity : AppCompatActivity() {
         } else {
             "确定退出吗？"
         }
-        AlertDialog.Builder(this)
-            .setMessage(msg)
-            .setPositiveButton("退出") { _, _ -> finish() }
-            .setNegativeButton("继续答题", null)
-            .show()
+        FbDialog.confirm(this, msg, okText = "退出", cancelText = "继续答题", onOk = { finish() })
     }
 
     private fun confirmSubmit() {
@@ -430,11 +563,7 @@ class ExamActivity : AppCompatActivity() {
         } else {
             "确定交卷并查看结果吗？"
         }
-        AlertDialog.Builder(this)
-            .setMessage(msg)
-            .setPositiveButton(getString(R.string.action_confirm)) { _, _ -> submit(auto = false) }
-            .setNegativeButton(getString(R.string.action_cancel), null)
-            .show()
+        FbDialog.confirm(this, msg, onOk = { submit(auto = false) })
     }
 
     private fun submit(auto: Boolean) {

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 复选框：选中主蓝，未选浅灰 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_checked="true" android:color="@color/fb_primary" />
+    <item android:color="@color/fb_placeholder" />
+</selector>

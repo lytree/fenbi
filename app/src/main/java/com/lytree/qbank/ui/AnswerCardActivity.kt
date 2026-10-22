@@ -1,5 +1,6 @@
 package com.lytree.qbank.ui
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -12,11 +13,12 @@ import com.lytree.qbank.databinding.ActivityAnswerCardBinding
 import com.lytree.qbank.databinding.ItemCardNumBinding
 
 /**
- * 答题卡（底部弹层）。对齐粉笔真机抓取：
- * · 顶部「答题卡」标题 + 右上关闭
- * · 按科目分组，圆形题号网格
- * · 格子状态：已答=蓝实心 / 未答=浅灰描边 / 标记=橙描边 / 收藏=粉描边
- * · 底部通栏「交卷」按钮
+ * 答题卡（底部弹层）。对齐参考应用真机抓取（1080x1920 @280dpi）：
+ * · 顶部「答题卡」居中标题 + 右上关闭，无图例
+ * · 按模块分组，圆形题号网格（40dp）
+ * · 格子状态：已答=蓝实心 / 未答=#F6F7FB 实心 / 当前题=蓝实心+淡蓝环；
+ *   标记=右上橙点，收藏=下方粉点（对齐真机 answer_card_item_unsure / _collect 角标）
+ * · 底部通栏「交卷」按钮（回传给答题页执行交卷）
  */
 class AnswerCardActivity : AppCompatActivity() {
 
@@ -26,7 +28,9 @@ class AnswerCardActivity : AppCompatActivity() {
         const val EXTRA_MARKED = "marked"
         const val EXTRA_FAVORITE = "favorite"
         const val EXTRA_GROUPS = "groups"
+        const val EXTRA_CURRENT = "current"
         const val EXTRA_JUMP = "jump"
+        const val EXTRA_SUBMIT = "submit"
     }
 
     private lateinit var binding: ActivityAnswerCardBinding
@@ -42,23 +46,46 @@ class AnswerCardActivity : AppCompatActivity() {
         val marked = intent.getIntArrayExtra(EXTRA_MARKED)?.toSet() ?: emptySet()
         val favorite = intent.getIntArrayExtra(EXTRA_FAVORITE)?.toSet() ?: emptySet()
         val groups = intent.getStringArrayListExtra(EXTRA_GROUPS) ?: arrayListOf()
+        val current = intent.getIntExtra(EXTRA_CURRENT, -1)
 
         binding.btnClose.setOnClickListener { finish() }
         // 点遮罩关闭
         binding.root.setOnClickListener { finish() }
         binding.sheet.setOnClickListener { /* 吞掉，避免误触关闭 */ }
 
-        binding.list.layoutManager = GridLayoutManager(this, 5)
+        // 真机每行 10 个；窄屏按可用宽度自适应，保证格子不小于 44dp
+        val dm = resources.displayMetrics
+        val usableDp = (dm.widthPixels - 40 * dm.density) / dm.density
+        val columns = (usableDp / 48).toInt().coerceIn(5, 10)
+
+        val lm = GridLayoutManager(this, columns)
+        lm.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
+            override fun getSpanSize(position: Int): Int =
+                if (adapter.isGroup(position)) columns else 1
+        }
+        binding.list.layoutManager = lm
         binding.list.adapter = adapter
+
         adapter.onClick = { pos ->
-            setResult(RESULT_OK, android.content.Intent().putExtra(EXTRA_JUMP, pos))
+            setResult(RESULT_OK, Intent().putExtra(EXTRA_JUMP, pos))
             finish()
         }
-        adapter.submit(count, answered, marked, favorite, groups)
+        adapter.submit(count, answered, marked, favorite, groups, current)
 
-        val un = count - answered.size
-        binding.tvLegend.text =
-            getString(R.string.card_legend, count, answered.size, un, marked.size)
+        binding.btnSubmit.setOnClickListener {
+            setResult(RESULT_OK, Intent().putExtra(EXTRA_SUBMIT, true))
+            finish()
+        }
+
+        // edge-to-edge：给弹层底部留出导航栏高度，避免「交卷」被手势条压住
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(binding.sheet) { v, insets ->
+            val bottom = insets.getInsets(
+                androidx.core.view.WindowInsetsCompat.Type.navigationBars()
+            ).bottom
+            v.setPadding(v.paddingLeft, v.paddingTop, v.paddingRight, bottom)
+            insets
+        }
+        androidx.core.view.ViewCompat.requestApplyInsets(binding.root)
     }
 }
 
@@ -76,14 +103,18 @@ class CardAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
     }
 
     private var rows: List<Row> = emptyList()
+    private var current = -1
     var onClick: ((Int) -> Unit)? = null
+
+    fun isGroup(position: Int) = rows.getOrNull(position) is Row.Group
 
     fun submit(
         count: Int,
         answered: Set<Int>,
         marked: Set<Int>,
         favorite: Set<Int>,
-        groups: List<String>
+        groups: List<String>,
+        current: Int
     ) {
         val out = ArrayList<Row>()
         var lastGroup: String? = null
@@ -103,6 +134,7 @@ class CardAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
             )
         }
         rows = out
+        this.current = current
         notifyDataSetChanged()
     }
 
@@ -129,22 +161,26 @@ class CardAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
             is Row.Num -> {
                 val b = (holder as NumVH).binding
                 val ctx = b.root.context
+                val isCurrent = row.position == current
                 b.tvNum.text = (row.position + 1).toString()
 
-                // 状态优先级：已答 > 标记 > 收藏 > 未答
-                val bg = when {
-                    row.answered -> R.drawable.bg_num_answered
-                    row.marked -> R.drawable.bg_num_marked
-                    row.favorite -> R.drawable.bg_num_favorite
-                    else -> R.drawable.bg_num_blank
-                }
-                b.tvNum.setBackgroundResource(bg)
+                // 底色：当前题 / 已答 → 蓝实心；其余 → 浅灰蓝实心
+                b.tvNum.setBackgroundResource(
+                    when {
+                        isCurrent -> R.drawable.bg_num_current
+                        row.answered -> R.drawable.bg_num_answered
+                        else -> R.drawable.bg_num_blank
+                    }
+                )
                 b.tvNum.setTextColor(
                     androidx.core.content.ContextCompat.getColor(
                         ctx,
-                        if (row.answered) android.R.color.white else R.color.fb_card_num_blank_text
+                        if (isCurrent || row.answered) android.R.color.white
+                        else R.color.fb_card_num_blank_text
                     )
                 )
+                b.vMark.visibility = if (row.marked) View.VISIBLE else View.GONE
+                b.vFav.visibility = if (row.favorite) View.VISIBLE else View.GONE
                 b.root.setOnClickListener { onClick?.invoke(row.position) }
             }
         }

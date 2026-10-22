@@ -6,6 +6,12 @@
     <string name="tab_records">记录</string>
     <string name="tab_settings">设置</string>
 
+    <!-- 页面大标题 -->
+    <string name="page_banks">我的题库</string>
+    <string name="page_papers">我的试卷</string>
+    <string name="page_records">练习记录</string>
+    <string name="page_settings">设置</string>
+
     <string name="action_import">导入题库</string>
     <string name="action_compose">组卷</string>
     <string name="action_exam">开始考试</string>
@@ -20,6 +26,7 @@
     <string name="action_delete">删除</string>
     <string name="action_rename">重命名</string>
     <string name="action_close">关闭</string>
+    <string name="action_back">返回</string>
     <string name="action_timer">计时</string>
     <string name="action_note">笔记</string>
     <string name="action_more">更多</string>
@@ -60,11 +67,13 @@
     <string name="time_used">用时 %1$s</string>
     <string name="correct_rate">正确率 %1$d%%</string>
 
-    <!-- 粉笔「更多」面板 -->
+    <!-- 「更多」面板 -->
     <string name="mode_day">日间</string>
     <string name="mode_night">夜间</string>
     <string name="mode_multi_browse">多题浏览</string>
     <string name="mode_single_browse">单题浏览</string>
+    <string name="mode_auto_next">自动展示下一题</string>
+    <string name="action_download">下载</string>
     <string name="font_small">小</string>
     <string name="font_medium">中</string>
     <string name="font_large">大</string>

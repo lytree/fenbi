@@ -4,7 +4,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * 题型。对齐粉笔刷题 App 的题型体系：
+ * 题型。对齐主流刷题 App 的题型体系：
  * 单选 / 多选 / 不定项 / 判断 / 填空 / 主观（申论、材料分析）。
  *
  * 注：当前版本答题页只完整支持**选择题**（单选 / 多选 / 不定项 / 判断）。
@@ -135,6 +135,8 @@ data class Paper(
     val totalScore: Double = 0.0,
     val durationMin: Int = 0,
     val mode: String = "",
+    /** 列表查询时只带题量，不加载整卷题目 */
+    val questionCount: Int = 0,
     val questions: List<Question> = emptyList()
 )
 

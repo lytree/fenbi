@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 分段控件选中项：白色胶囊 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/fb_segment_sel_bg" />
+    <corners android:radius="13dp" />
+</shape>

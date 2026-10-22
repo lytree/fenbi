@@ -1,36 +1,54 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 题库卡：8dp 圆角白卡，右侧 chevron，题量做浅蓝标签 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:background="@color/card"
-    android:layout_marginHorizontal="12dp"
-    android:layout_marginTop="10dp"
-    android:padding="14dp">
+    android:layout_marginStart="@dimen/fb_page_pad"
+    android:layout_marginEnd="@dimen/fb_page_pad"
+    android:layout_marginTop="@dimen/fb_card_gap_v"
+    android:background="@drawable/bg_fb_card"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:padding="@dimen/fb_card_pad">
 
-    <TextView
-        android:id="@+id/title"
-        android:layout_width="match_parent"
+    <LinearLayout
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:textStyle="bold"
-        android:textSize="15sp"
-        android:textColor="@color/text_primary"
-        android:maxLines="2"
-        android:ellipsize="end" />
+        android:layout_weight="1"
+        android:orientation="vertical">
 
-    <TextView
-        android:id="@+id/subtitle"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
-        android:textSize="12sp"
-        android:textColor="@color/text_secondary" />
+        <TextView
+            android:id="@+id/title"
+            style="@style/FbItemTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
 
-    <TextView
-        android:id="@+id/meta"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:textSize="12sp"
-        android:textColor="@color/text_secondary" />
+        <TextView
+            android:id="@+id/subtitle"
+            style="@style/FbItemSub"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp" />
+
+        <TextView
+            android:id="@+id/meta"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_fb_tag"
+            android:includeFontPadding="false"
+            android:paddingStart="8dp"
+            android:paddingTop="3dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="3dp"
+            android:textColor="@color/fb_type_tag_text"
+            android:textSize="11sp" />
+    </LinearLayout>
+
+    <ImageView
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:layout_marginStart="8dp"
+        android:contentDescription="@null"
+        android:src="@drawable/ic_fb_chevron" />
 </LinearLayout>

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  全站统一标题栏（参考应用真机口径）：
+  · 白底，内容高 44dp，状态栏高度由代码并入 padding
+  · 左细线返回图标 28dp，节距 13dp
+  · 标题 17sp 加粗居中；Tab 页可切左对齐 20sp 大标题
+  · 右侧动作区由代码 addTextAction / addIconAction 动态填充
+  · 底部 0.5dp 分割线，与页面底色 #F9FAFC 分界
+-->
+<merge xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <ImageView
+        android:id="@+id/btnBack"
+        android:layout_width="@dimen/fb_bar_item_width"
+        android:layout_height="@dimen/fb_bar_item_width"
+        android:layout_gravity="start|center_vertical"
+        android:layout_marginStart="@dimen/fb_bar_padding_left"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/action_back"
+        android:padding="2dp"
+        android:src="@drawable/ic_fb_back" />
+
+    <TextView
+        android:id="@+id/tvTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_vertical"
+        android:ellipsize="end"
+        android:gravity="center"
+        android:includeFontPadding="false"
+        android:maxLines="1"
+        android:paddingStart="56dp"
+        android:paddingEnd="56dp"
+        android:textColor="@color/fb_text_title"
+        android:textSize="@dimen/fb_text_bar_title"
+        android:textStyle="bold" />
+
+    <LinearLayout
+        android:id="@+id/barActions"
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:layout_gravity="end"
+        android:layout_marginEnd="@dimen/fb_bar_pad_end"
+        android:gravity="end|center_vertical"
+        android:orientation="horizontal" />
+
+    <View
+        android:id="@+id/barDivider"
+        android:layout_width="match_parent"
+        android:layout_height="0.5dp"
+        android:layout_gravity="bottom"
+        android:background="@color/fb_divider" />
+</merge>

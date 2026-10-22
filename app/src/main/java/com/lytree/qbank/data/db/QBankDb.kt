@@ -306,6 +306,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 2)
                     Paper(
                         id = c.getLong(0), name = c.getString(1) ?: "", bankId = c.getLong(2),
                         createdAt = c.getLong(3), durationMin = c.getInt(4), mode = c.getString(5) ?: "",
+                        questionCount = c.getInt(6),
                         questions = emptyList()
                     )
                 )
