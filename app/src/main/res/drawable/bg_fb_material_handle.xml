@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 材料/题目分块拖动手柄的 grip 条 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#CBD1DC" />
+    <corners android:radius="2dp" />
+</shape>

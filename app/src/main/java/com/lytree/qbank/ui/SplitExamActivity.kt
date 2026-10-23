@@ -96,6 +96,9 @@ class SplitExamActivity : AppCompatActivity() {
             }
         }
 
+        // 左右占比可调：拖动中间手柄改变左栏宽度（25%～75%），比例记忆到偏好
+        setupSplitResize()
+
         inkToolbar = InkToolbarController(
             inkOverlay = binding.inkOverlay,
             inkBar = binding.inkBar,
@@ -126,6 +129,54 @@ class SplitExamActivity : AppCompatActivity() {
         renderMaterial()
         renderQuestions()
         updateHeader()
+    }
+
+    // ---------------- 左右占比可调 ----------------
+
+    /**
+     * 拖动中间手柄改变左栏宽度：材料长就往左拖大，图表矮就往右收。
+     * 比例存偏好，重进沿用（25%～75%，默认 50%）。
+     */
+    private fun setupSplitResize() {
+        val prefs = getSharedPreferences("exam_prefs", MODE_PRIVATE)
+        val key = "split_left_ratio"
+        val minPct = 0.25f
+        val maxPct = 0.75f
+
+        fun applyRatio(pct: Float) {
+            val lp = binding.leftPane.layoutParams as? androidx.constraintlayout.widget.ConstraintLayout.LayoutParams
+                ?: return
+            lp.matchConstraintPercentWidth = pct
+            binding.leftPane.layoutParams = lp
+        }
+        applyRatio(prefs.getFloat(key, 0.5f).coerceIn(minPct, maxPct))
+
+        var startX = 0f
+        var startPct = 0.5f
+        binding.splitHandle.setOnTouchListener { v, ev ->
+            when (ev.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    startX = ev.rawX
+                    startPct = prefs.getFloat(key, 0.5f).coerceIn(minPct, maxPct)
+                    true
+                }
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    val dw = ev.rawX - startX
+                    val pct = (startPct + dw / binding.root.width)
+                        .coerceIn(minPct, maxPct)
+                    applyRatio(pct)
+                    true
+                }
+                android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                    val lp = binding.leftPane.layoutParams
+                        as androidx.constraintlayout.widget.ConstraintLayout.LayoutParams
+                    prefs.edit().putFloat(key, lp.matchConstraintPercentWidth).apply()
+                    v.performClick()
+                    true
+                }
+                else -> false
+            }
+        }
     }
 
     // ---------------- 左栏：材料 ----------------

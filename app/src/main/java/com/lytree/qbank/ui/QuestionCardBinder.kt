@@ -166,9 +166,21 @@ object QuestionCardBinder {
                 )
             )
             b.btnMaterialExpand.setOnClickListener { cb.onMaterialExpand?.invoke(q) }
+            // 上下分块：材料区独立滚动，高度 = 屏高 × 记忆比例，拖动手柄实时调节
+            applyMaterialSplit(b)
             MaterialRenderer.render(ctx, b.materialContent, q.material, night)
+            // 短材料不必占满记忆高度：渲染完成后收缩到内容实际高度，避免卡片里留大片空白
+            b.materialScroll.post {
+                val contentH = b.materialContent.height
+                val cur = b.materialScroll.layoutParams.height
+                if (contentH > 0 && contentH < cur) {
+                    b.materialScroll.layoutParams.height = contentH
+                    b.materialScroll.requestLayout()
+                }
+            }
         } else {
             b.materialBox.visibility = View.GONE
+            b.materialHandle.visibility = View.GONE
             b.materialContent.removeAllViews()
         }
 
@@ -217,6 +229,64 @@ object QuestionCardBinder {
     /** 短选项两列的判定：选项 ≥ 4 个且文本都很短（参考应用对「判断/常识短选项」的两列排布） */
     private const val TWO_COL_MAX_OPTIONS = 4
     private const val TWO_COL_MAX_TEXT_LEN = 6
+
+    // ---------------- 材料/题目上下分块（独立滑动 + 占比可调） ----------------
+
+    private const val MATERIAL_SPLIT_PREFS = "exam_prefs"
+    private const val KEY_MATERIAL_RATIO = "material_split_ratio"
+    /** 材料区高度占屏高的比例上下限与默认值 */
+    private const val MATERIAL_RATIO_MIN = 0.12f
+    private const val MATERIAL_RATIO_MAX = 0.72f
+    private const val MATERIAL_RATIO_DEFAULT = 0.38f
+
+    private fun readMaterialRatio(ctx: android.content.Context): Float =
+        ctx.getSharedPreferences(MATERIAL_SPLIT_PREFS, android.content.Context.MODE_PRIVATE)
+            .getFloat(KEY_MATERIAL_RATIO, MATERIAL_RATIO_DEFAULT)
+
+    private fun saveMaterialRatio(ctx: android.content.Context, ratio: Float) {
+        ctx.getSharedPreferences(MATERIAL_SPLIT_PREFS, android.content.Context.MODE_PRIVATE)
+            .edit().putFloat(KEY_MATERIAL_RATIO, ratio).apply()
+    }
+
+    /** 按记忆比例设定材料区高度，并给手柄挂上拖动逻辑（多张卡共享同一份比例） */
+    private fun applyMaterialSplit(b: ItemQuestionPageBinding) {
+        val ctx = b.root.context
+        val screenH = ctx.resources.displayMetrics.heightPixels
+        val maxH = (screenH * MATERIAL_RATIO_MAX).toInt()
+        val ratio = readMaterialRatio(ctx)
+        val lp = b.materialScroll.layoutParams
+        lp.height = (screenH * ratio.coerceIn(MATERIAL_RATIO_MIN, MATERIAL_RATIO_MAX)).toInt()
+            .coerceAtMost(maxH)
+        b.materialScroll.layoutParams = lp
+        b.materialHandle.visibility = View.VISIBLE
+
+        var startY = 0f
+        var startH = 0
+        b.materialHandle.setOnTouchListener { v, ev ->
+            when (ev.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    startY = ev.rawY
+                    startH = b.materialScroll.layoutParams.height
+                    true
+                }
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    val h = (startH + (ev.rawY - startY)).toInt()
+                        .coerceIn((screenH * MATERIAL_RATIO_MIN).toInt(), maxH)
+                    if (h != startH) {
+                        b.materialScroll.layoutParams.height = h
+                        b.materialScroll.requestLayout()
+                    }
+                    true
+                }
+                android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                    saveMaterialRatio(ctx, b.materialScroll.layoutParams.height.toFloat() / screenH)
+                    v.performClick()
+                    true
+                }
+                else -> false
+            }
+        }
+    }
 
     private fun buildOptions(
         b: ItemQuestionPageBinding,

@@ -412,7 +412,8 @@ class ExamActivity : AppCompatActivity() {
      * 交互对齐参考应用，**平板 / 手机两套模式**：
      * - 平板（最小屏宽 ≥ 600dp）+ 材料组：**就地左右分屏**——左栏材料（可「收起材料」还原），
      *   右栏这组题目一屏一题、左右滑动切题，照常作答，且**卡片不再重复渲染材料**（左栏已有整栏）；
-     * - 手机（或材料只带一道题）：进「材料」只读页（A- / A+ 调字号），不打断答题状态。
+     * - 手机（或材料只带一道题）：**半屏浮层**——从底部弹出约 65% 屏高，材料独立滚动，
+     *   A- / A+ 调字号，答题状态完全不打断。
      */
     private fun showMaterialPopup(q: Question) {
         if (q.material.isBlank()) return
@@ -422,12 +423,49 @@ class ExamActivity : AppCompatActivity() {
         if (group.size > 1 && isTablet) {
             openSplit(q, group)
         } else {
-            startActivity(Intent(this, MaterialPopupActivity::class.java).apply {
-                putExtra(MaterialPopupActivity.EXTRA_MATERIAL, q.material)
-                putExtra(MaterialPopupActivity.EXTRA_NIGHT, nightMode)
-                putExtra(MaterialPopupActivity.EXTRA_FONT_SCALE, fontScale)
-            })
+            showMaterialSheet(q.material)
         }
+    }
+
+    /** 「弹出材料」手机端：底部半屏浮层（材料独立滚动 + 字号调节），替代原先的整页跳转 */
+    private fun showMaterialSheet(material: String) {
+        val sheet = com.google.android.material.bottomsheet.BottomSheetDialog(this)
+        val v = layoutInflater.inflate(R.layout.sheet_material, null)
+        val box = v.findViewById<android.view.ViewGroup>(R.id.sheetMaterialContent)
+        val scroll = v.findViewById<androidx.core.widget.NestedScrollView>(R.id.sheetScroll)
+        val ratio = v.findViewById<TextView>(R.id.tvSheetRatio)
+
+        // 浮层高度 ≈ 65% 屏高（与「上下分块」的材料区上限一致，保证正文还能瞥到一眼）
+        v.findViewById<View>(R.id.sheetRoot).layoutParams =
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                (resources.displayMetrics.heightPixels * 0.65f).toInt()
+            )
+
+        var scale = fontScale
+        fun render() {
+            MaterialRenderer.render(this, box, material, nightMode, scale, chartScale = 1.3f)
+            ratio.text = getString(R.string.material_sheet_scale, (scale * 100).toInt())
+            scroll.scrollTo(0, 0)
+        }
+        v.findViewById<TextView>(R.id.btnFontMinus).setOnClickListener {
+            scale = (scale - 0.15f).coerceAtLeast(0.85f); render()
+        }
+        v.findViewById<TextView>(R.id.btnFontPlus).setOnClickListener {
+            scale = (scale + 0.15f).coerceAtMost(1.6f); render()
+        }
+        v.findViewById<View>(R.id.btnSheetClose).setOnClickListener { sheet.dismiss() }
+        render()
+
+        // 夜间模式：浮层底色 / 标签跟答题页一起换
+        if (nightMode) {
+            v.findViewById<View>(R.id.sheetRoot)
+                .setBackgroundResource(R.drawable.bg_fb_sheet_night)
+            v.findViewById<TextView>(R.id.tvSheetTag)
+                .setBackgroundResource(R.drawable.bg_fb_material_tag_night)
+        }
+        sheet.setContentView(v)
+        sheet.show()
     }
 
     /** 进入就地分屏：左材料 / 右题目（一屏一题），定位到打开分屏的那道题 */

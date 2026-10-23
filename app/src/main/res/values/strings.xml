@@ -83,6 +83,9 @@
     <string name="report_retry_empty">这次没有错题，保持！</string>
     <string name="progress_saved">进度已保存，下次进入可继续答题</string>
 
+    <!-- 弹出材料半屏浮层 -->
+    <string name="material_sheet_scale">字号 %1$d%%</string>
+
     <string name="empty_banks">还没有题库，导入一份 JSON / CSV / Excel / TXT / 题库包(zip) 就能开始刷题</string>
     <string name="empty_papers">还没有试卷，导入一份 JSON / CSV / Excel / TXT 就会生成一份试卷</string>
     <string name="empty_records">还没有考试记录</string>

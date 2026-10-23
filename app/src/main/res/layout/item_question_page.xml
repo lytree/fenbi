@@ -190,13 +190,38 @@
             </LinearLayout>
         </LinearLayout>
 
-        <LinearLayout
-            android:id="@+id/materialContent"
+        <!-- 材料区独立滚动：高度由下方拖动手柄调节（对齐参考应用「上下分块、占比可调」） -->
+        <androidx.core.widget.NestedScrollView
+            android:id="@+id/materialScroll"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:orientation="vertical" />
+            android:overScrollMode="never"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:id="@+id/materialContent"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+        </androidx.core.widget.NestedScrollView>
     </LinearLayout>
+
+    <!-- ===== 材料/题目分块拖动手柄：上下拖动调整材料区高度 ===== -->
+    <FrameLayout
+        android:id="@+id/materialHandle"
+        android:layout_width="match_parent"
+        android:layout_height="18dp"
+        android:layout_marginTop="2dp"
+        android:visibility="gone"
+        tools:visibility="visible">
+
+        <View
+            android:layout_width="36dp"
+            android:layout_height="4dp"
+            android:layout_gravity="center"
+            android:background="@drawable/bg_fb_material_handle" />
+    </FrameLayout>
 
     <!-- ===== 选项 ===== -->
     <LinearLayout
