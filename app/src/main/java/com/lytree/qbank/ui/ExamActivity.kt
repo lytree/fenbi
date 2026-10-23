@@ -112,9 +112,9 @@ class ExamActivity : AppCompatActivity() {
     private var splitGroup: List<Question> = emptyList()
     /** 材料组第一题在整卷中的位置（0 起），右栏题号按整卷序号显示 */
     private var splitGroupOffset = 0
-    /** 分屏右栏的一屏一题容器与适配器（进入分屏时创建，收起时销毁） */
-    private var splitPager: ViewPager2? = null
-    private var splitPagerAdapter: QuestionPagerAdapter? = null
+    /** 分屏右栏的连续题目列表（进入分屏时创建，收起时销毁） */
+    private var splitList: androidx.recyclerview.widget.RecyclerView? = null
+    private var splitListAdapter: QuestionListAdapter? = null
 
     private lateinit var inkToolbar: InkToolbarController
     /** 多题浏览适配器（连续滚动） */
@@ -478,8 +478,13 @@ class ExamActivity : AppCompatActivity() {
         if (inkMode) inkToolbar.setInkMode(false)
         binding.morePanel.visibility = View.GONE
 
+        // 分屏时左上角是「返回」而不是「关闭」：点它是收起材料，不会退出整套卷（对齐参考应用）
+        binding.btnClose.setImageResource(R.drawable.ic_fb_back)
+        binding.btnClose.contentDescription = getString(R.string.material_collapse)
+        binding.btnClose.setOnClickListener { closeSplit() }
+
         renderSplitMaterial()
-        setupSplitPager(q)
+        setupSplitList(q)
         applySplitVisibility()
         refreshSplitProgress()
     }
@@ -491,19 +496,21 @@ class ExamActivity : AppCompatActivity() {
         binding.splitMaterialScroll.scrollTo(0, 0)
     }
 
-    /** 右栏：给这组题单独挂一个一屏一题的容器，共享作答 / 标记 / 收藏状态 */
-    private fun setupSplitPager(openQuestion: Question) {
-        val pager = ViewPager2(this)
-        pager.offscreenPageLimit = 1
-        splitPagerAdapter = QuestionPagerAdapter(
+    /**
+     * 右栏：这组题用连续列表展示（与参考应用一致——右边是一条卷面，往下就是下一题），
+     * 与主容器共享作答 / 标记 / 收藏状态，题号按整卷序号显示。
+     */
+    private fun setupSplitList(openQuestion: Question) {
+        val list = androidx.recyclerview.widget.RecyclerView(this)
+        val adapter = QuestionListAdapter(
             questions = splitGroup,
             answers = answers,
             marked = marked,
             favorites = favorites,
-            policyProvider = { db.getPolicy() },
-            fontScale = fontScale,
             revealAnswers = revealAnswers,
             revealed = revealed,
+            policyProvider = { db.getPolicy() },
+            fontScale = fontScale,
             night = nightMode,
             onMarkToggle = { toggleMark(it) },
             onFavoriteToggle = { toggleFavorite(it) },
@@ -513,38 +520,43 @@ class ExamActivity : AppCompatActivity() {
             // 已在分屏里对着材料做题，卡片上的「弹出材料」不再需要
             onMaterialExpand = null
         )
-        pager.adapter = splitPagerAdapter
-        // 材料已在左栏整栏展示，右栏题卡不再重复渲染材料
-        splitPagerAdapter?.hideMaterial = true
-        pager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
-            override fun onPageSelected(position: Int) {
-                currentPos = splitGroupOffset + position
-                syncInkQuestion()
-                refreshSplitProgress()
-            }
-        })
+        // 材料在左栏整栏展示，右栏卡片不再重复渲染材料；题号接着整卷往下排
+        adapter.hideAllMaterials = true
+        adapter.indexOffset = splitGroupOffset
+        adapter.compactMargins = true
+        list.layoutManager = LinearLayoutManager(this)
+        list.adapter = adapter
+        list.itemAnimator = null
+        list.setPadding(0, 0, 0, 0)
+        list.clipToPadding = false
+
         binding.splitQuestionPane.removeAllViews()
         binding.splitQuestionPane.addView(
-            pager,
+            list,
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
         )
-        splitPager = pager
-        pager.setCurrentItem(splitGroup.indexOfFirst { it.id == openQuestion.id }.coerceAtLeast(0), false)
+        splitList = list
+        splitListAdapter = adapter
+        val index = splitGroup.indexOfFirst { it.id == openQuestion.id }.coerceAtLeast(0)
+        list.scrollToPosition(index)
     }
 
-    /** 分屏里作答后的联动：与主容器 onAnswered 一致，练习模式即时判分、单选题自动翻下一题 */
+    /** 分屏里作答后的联动：与主容器 onAnswered 一致，练习模式即时判分、单选题自动滚到下一题 */
     private fun onSplitAnswered(q: Question) {
         currentPos = questions.indexOfFirst { it.id == q.id }.takeIf { it >= 0 } ?: currentPos
         if (practiceMode && !submitted && q.id !in revealed) {
             revealed.add(q.id)
-            splitPagerAdapter?.let { ad -> ad.revealed = revealed; ad.notifyDataSetChanged() }
+            splitListAdapter?.revealed = revealed
+            splitListAdapter?.notifyDataSetChanged()
         }
         refreshSplitProgress()
         if (!autoNext) return
         if (q.type != com.lytree.qbank.data.model.QuestionType.SINGLE) return
         val nextInGroup = splitGroup.indexOfFirst { it.id == q.id } + 1
         if (nextInGroup >= splitGroup.size) return
-        splitPager?.postDelayed({ splitPager?.setCurrentItem(nextInGroup, true) }, 220)
+        splitList?.postDelayed({
+            splitList?.smoothScrollToPosition(nextInGroup)
+        }, 220)
     }
 
     /** 左栏头部的小进度：组内第几题 / 共几题 */
@@ -557,8 +569,11 @@ class ExamActivity : AppCompatActivity() {
     /** 收起材料：还原为原浏览模式，把分屏里作答过的题同步到主容器卡片 */
     private fun closeSplit() {
         splitMode = false
-        splitPager = null
-        splitPagerAdapter = null
+        splitList = null
+        splitListAdapter = null
+        binding.btnClose.setImageResource(R.drawable.ic_fb_close)
+        binding.btnClose.contentDescription = getString(R.string.action_close)
+        binding.btnClose.setOnClickListener { confirmExit() }
         applySplitVisibility()
         refreshCards()
     }
@@ -613,8 +628,8 @@ class ExamActivity : AppCompatActivity() {
         pagerAdapter.fontScale = fontScale
         pagerAdapter.notifyDataSetChanged()
         // 分屏右栏与左栏材料跟着一起缩放
-        splitPagerAdapter?.fontScale = fontScale
-        splitPagerAdapter?.notifyDataSetChanged()
+        splitListAdapter?.fontScale = fontScale
+        splitListAdapter?.notifyDataSetChanged()
         if (splitMode) renderSplitMaterial()
     }
 
@@ -700,7 +715,7 @@ class ExamActivity : AppCompatActivity() {
         binding.inkOverlay.scrollTargetResolver = { x, _ ->
             when {
                 splitMode && x <= binding.splitLeftPane.right -> binding.splitMaterialScroll
-                splitMode -> splitPageScroll()
+                splitMode -> splitList
                 multiBrowse -> binding.questionList
                 else -> currentPageScroll()
             }
@@ -720,19 +735,6 @@ class ExamActivity : AppCompatActivity() {
         for (i in 0 until rv.childCount) {
             val page = rv.getChildAt(i) ?: continue
             if (rv.getChildAdapterPosition(page) == binding.pager.currentItem) {
-                return page.findViewById(R.id.pageScroll)
-            }
-        }
-        return null
-    }
-
-    /** 分屏右栏当前题的滚动容器（与 [currentPageScroll] 同一套结构，容器换成分屏的 pager） */
-    private fun splitPageScroll(): View? {
-        val pager = splitPager ?: return null
-        val rv = pager.getChildAt(0) as? androidx.recyclerview.widget.RecyclerView ?: return null
-        for (i in 0 until rv.childCount) {
-            val page = rv.getChildAt(i) ?: continue
-            if (rv.getChildAdapterPosition(page) == pager.currentItem) {
                 return page.findViewById(R.id.pageScroll)
             }
         }
@@ -1117,14 +1119,14 @@ class ExamActivity : AppCompatActivity() {
         applySystemBars(night, barBg)
 
         // 弹出材料就地分屏：左栏材料底 / 材料标签 / 进度 / 收起按钮 / 分隔线
-        binding.splitLeftPane.setBackgroundColor(color(if (night) R.color.fb_night_material_bg else R.color.fb_split_bg))
+        binding.splitLeftPane.setBackgroundColor(color(if (night) R.color.fb_night_material_bg else R.color.fb_bar_bg))
         binding.tvSplitTag.setBackgroundResource(if (night) R.drawable.bg_fb_tag_night else R.drawable.bg_fb_material_tag)
         binding.tvSplitTag.setTextColor(color(if (night) R.color.fb_night_tag_text else R.color.fb_blue_ink))
         binding.tvSplitProgress.setTextColor(metaColor)
         binding.btnSplitCollapse.setTextColor(metaColor)
         binding.splitPaneDivider.setBackgroundColor(color(if (night) R.color.fb_night_table_line else R.color.fb_table_line))
-        splitPagerAdapter?.night = night
-        splitPagerAdapter?.notifyDataSetChanged()
+        splitListAdapter?.night = night
+        splitListAdapter?.notifyDataSetChanged()
         if (splitMode) renderSplitMaterial()
 
         // 面板里分段控件的选中态依赖 nightMode，必须先刷新

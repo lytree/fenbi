@@ -10,6 +10,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:background="?attr/selectableItemBackground"
+    android:baselineAligned="false"
     android:gravity="top"
     android:orientation="horizontal"
     android:paddingStart="@dimen/fb_option_row_padding_start"

@@ -30,6 +30,12 @@ class QuestionListAdapter(
     var fontScale: Float = 1f,
     /** 夜间模式：透传给 [QuestionCardBinder]，切换后靠 notifyDataSetChanged 重绑生效 */
     var night: Boolean = false,
+    /** 分屏右栏：材料在左栏展示，所有卡片都不再重复渲染材料 */
+    var hideAllMaterials: Boolean = false,
+    /** 题号偏移：分屏右栏只装一组题，但题号仍按整卷序号显示 */
+    var indexOffset: Int = 0,
+    /** 分屏右栏很窄：卡片贴边留 16dp，不再按 520dp 居中 */
+    var compactMargins: Boolean = false,
     onMarkToggle: (Question) -> Unit,
     onFavoriteToggle: (Question) -> Unit,
     onNoteClicked: (Question) -> Unit,
@@ -66,7 +72,8 @@ class QuestionListAdapter(
     private fun applyContentWidth(item: View) {
         val res = item.resources
         val lp = item.layoutParams as? ViewGroup.MarginLayoutParams ?: return
-        val side = maxOf(
+        val side = if (compactMargins) res.getDimension(R.dimen.fb_page_padding_h)
+        else maxOf(
             res.getDimension(R.dimen.fb_page_padding_h),
             (res.displayMetrics.widthPixels - res.getDimension(R.dimen.fb_content_max_width)) / 2f
         )
@@ -80,7 +87,7 @@ class QuestionListAdapter(
     override fun onBindViewHolder(holder: VH, position: Int) {
         QuestionCardBinder.bind(
             b = holder.binding,
-            position = position,
+            position = position + indexOffset,
             q = questions[position],
             answers = answers,
             marked = marked,
@@ -90,8 +97,22 @@ class QuestionListAdapter(
             policy = policyProvider(),
             fontScale = fontScale,
             cb = cb,
-            night = night
+            night = night,
+            // 资料分析常是一则材料带多题：材料只在该组第一题渲染一次，
+            // 后面的题接着往下排（对齐参考应用的连续卷面）
+            hideMaterial = hideAllMaterials ||
+                    (position + indexOffset > 0 && sameMaterialAsPrevious(position))
         )
+    }
+
+    /** 与上一题材料完全一致（同一则材料下的连续小题） */
+    private fun sameMaterialAsPrevious(position: Int): Boolean {
+        val cur = questions[position].material.trim()
+        if (cur.isEmpty()) return false
+        if (position > 0) return cur == questions[position - 1].material.trim()
+        // 组首题：整卷上一题（分屏右栏的 indexOffset 之前那道）材料相同就不再重复
+        val prev = indexOffset - 1
+        return prev in questions.indices && cur == questions[prev].material.trim()
     }
 
     companion object {

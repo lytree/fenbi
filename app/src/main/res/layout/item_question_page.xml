@@ -2,6 +2,7 @@
 <!--
   「单题卡」题目块（1080x1920 @280dpi 基准）：
   · 白底 8dp 圆角卡片，卡片间距 16dp，页面底色 #F9FAFC
+  · 材料题：材料块在卡片最上方（通栏，不再套灰底小卡片），下面才是题号行
   · 题目行：题号「N.」(17sp/#1B2126) + 题型标签(11sp/#F1F3FF) + 右侧 标记/草稿/收藏(28dp)
   · 题干 17sp/#1B2126/额外行距 8dp
   · 选项：40dp 圆形徽标 + 16sp/#3C464F 正文
@@ -18,6 +19,85 @@
     android:clipToOutline="true"
     android:orientation="vertical"
     android:paddingBottom="20dp">
+
+    <!-- ===== 材料（资料分析 / 材料题）=====
+         对齐参考应用：材料整块在卡片顶部通栏展示，随卡片一起滚动；
+         不再做固定高度内滚 + 拖动手柄，长材料用右上角「弹出材料」看全屏 -->
+    <LinearLayout
+        android:id="@+id/materialBox"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="@dimen/fb_content_padding_h"
+        android:paddingTop="18dp"
+        android:paddingEnd="@dimen/fb_content_padding_h"
+        android:visibility="gone"
+        tools:visibility="visible">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/tvMaterialTag"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_fb_material_tag"
+                android:includeFontPadding="false"
+                android:paddingStart="8dp"
+                android:paddingTop="4dp"
+                android:paddingEnd="8dp"
+                android:paddingBottom="4dp"
+                android:text="@string/tag_material"
+                android:textColor="@color/fb_type_tag_text"
+                android:textSize="12sp" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+
+            <!-- 弹出材料：材料单独占大半屏、独立滚动，题目位置不动 -->
+            <LinearLayout
+                android:id="@+id/btnMaterialExpand"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="6dp"
+                android:paddingTop="3dp"
+                android:paddingEnd="2dp"
+                android:paddingBottom="3dp">
+
+                <ImageView
+                    android:id="@+id/icMaterialExpand"
+                    android:layout_width="15dp"
+                    android:layout_height="15dp"
+                    android:contentDescription="@null"
+                    android:src="@drawable/ic_fb_material_expand" />
+
+                <TextView
+                    android:id="@+id/tvMaterialExpand"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:includeFontPadding="false"
+                    android:text="@string/material_pop_out"
+                    android:textColor="@color/fb_text_meta"
+                    android:textSize="13sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/materialContent"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:orientation="vertical" />
+    </LinearLayout>
 
     <!-- ===== 题目行：题号 + 题型 + 三图标 ===== -->
     <LinearLayout
@@ -119,109 +199,6 @@
         android:textColor="@color/fb_text_body"
         android:textSize="@dimen/fb_question_text_size"
         tools:text="习近平总书记强调，必须从全局和战略高度推进党和国家各项事业……下列选项中，与该论述蕴含的哲学原理一致的是（ ）。" />
-
-    <!-- ===== 材料（资料分析题） ===== -->
-    <LinearLayout
-        android:id="@+id/materialBox"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="@dimen/fb_content_padding_h"
-        android:layout_marginTop="12dp"
-        android:layout_marginEnd="@dimen/fb_content_padding_h"
-        android:background="@drawable/bg_fb_material"
-        android:orientation="vertical"
-        android:padding="12dp"
-        android:visibility="gone"
-        tools:visibility="visible">
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <TextView
-                android:id="@+id/tvMaterialTag"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="@drawable/bg_fb_material_tag"
-                android:paddingStart="6dp"
-                android:paddingTop="2dp"
-                android:paddingEnd="6dp"
-                android:paddingBottom="2dp"
-                android:text="@string/tag_material"
-                android:textColor="@color/fb_type_tag_text"
-                android:textSize="11sp" />
-
-            <View
-                android:layout_width="0dp"
-                android:layout_height="1dp"
-                android:layout_weight="1" />
-
-            <!-- 弹出材料：材料单独占大半屏、独立滚动，题目位置不动 -->
-            <LinearLayout
-                android:id="@+id/btnMaterialExpand"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingStart="6dp"
-                android:paddingTop="3dp"
-                android:paddingEnd="2dp"
-                android:paddingBottom="3dp">
-
-                <ImageView
-                    android:id="@+id/icMaterialExpand"
-                    android:layout_width="13dp"
-                    android:layout_height="13dp"
-                    android:contentDescription="@null"
-                    android:src="@drawable/ic_fb_material_expand" />
-
-                <TextView
-                    android:id="@+id/tvMaterialExpand"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="3dp"
-                    android:includeFontPadding="false"
-                    android:text="@string/material_pop_out"
-                    android:textColor="@color/fb_text_meta"
-                    android:textSize="11sp" />
-            </LinearLayout>
-        </LinearLayout>
-
-        <!-- 材料区独立滚动：高度由下方拖动手柄调节（对齐参考应用「上下分块、占比可调」） -->
-        <androidx.core.widget.NestedScrollView
-            android:id="@+id/materialScroll"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:overScrollMode="never"
-            android:scrollbars="none">
-
-            <LinearLayout
-                android:id="@+id/materialContent"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical" />
-        </androidx.core.widget.NestedScrollView>
-    </LinearLayout>
-
-    <!-- ===== 材料/题目分块拖动手柄：上下拖动调整材料区高度 ===== -->
-    <FrameLayout
-        android:id="@+id/materialHandle"
-        android:layout_width="match_parent"
-        android:layout_height="18dp"
-        android:layout_marginTop="2dp"
-        android:visibility="gone"
-        tools:visibility="visible">
-
-        <View
-            android:layout_width="36dp"
-            android:layout_height="4dp"
-            android:layout_gravity="center"
-            android:background="@drawable/bg_fb_material_handle" />
-    </FrameLayout>
 
     <!-- ===== 选项 ===== -->
     <LinearLayout

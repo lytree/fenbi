@@ -200,8 +200,8 @@
             android:id="@+id/splitLeftPane"
             android:layout_width="0dp"
             android:layout_height="match_parent"
-            android:layout_weight="1"
-            android:background="@color/fb_split_bg"
+            android:layout_weight="0.68"
+            android:background="@color/fb_bar_bg"
             android:orientation="vertical"
             android:paddingStart="16dp"
             android:paddingTop="12dp"
@@ -275,7 +275,7 @@
             android:layout_height="match_parent"
             android:background="@color/fb_table_line" />
 
-        <!-- 右栏：这组材料对应的题目，运行时放入一屏一题的 ViewPager2 -->
+        <!-- 右栏：这组材料对应的题目，运行时放入连续滚动的题目列表 -->
         <FrameLayout
             android:id="@+id/splitQuestionPane"
             android:layout_width="0dp"

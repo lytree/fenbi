@@ -331,8 +331,9 @@ object MaterialRenderer {
                 context, if (night) R.color.fb_night_text_body else R.color.text_primary
             )
         )
-        tv.textSize = 14f * scale
-        tv.setLineSpacing(dp(context, 5f).toFloat(), 1f)
+        // 材料正文比题干略小一档（参考应用 17sp / 15sp），行距松一些，长段落更好读
+        tv.textSize = 15f * scale
+        tv.setLineSpacing(dp(context, 6f).toFloat(), 1f)
         tv.setPadding(0, dp(context, 2f), 0, dp(context, 2f))
         return tv
     }
@@ -347,50 +348,45 @@ object MaterialRenderer {
         val colCount = rows.maxOf { it.size }
         if (colCount == 0) return View(context)
 
-        // 资料分析的表格列多，窄屏里塞不下：
-        // 外面套一层横向滚动，表格按内容宽度撑开，滚动查看其余列
-        val scroll = android.widget.HorizontalScrollView(context).apply {
-            isHorizontalScrollBarEnabled = true
-            overScrollMode = android.view.View.OVER_SCROLL_IF_CONTENT_SCROLLS
+        // 资料分析的表格必须一屏放得下（参考应用从不横向裁切）：按各列内容宽度分配列宽，
+        // 内容长的列多分、短的列少分，单元格里的文字自己换行。
+        val weights = FloatArray(colCount) { c ->
+            var longest = 0f
+            for (row in rows) {
+                var w = 0f
+                for (ch in row.getOrElse(c) { "" }.trim()) {
+                    w += if (ch.code > 0x2E80) 2f else 1f
+                }
+                if (w > longest) longest = w
+            }
+            longest.coerceIn(3f, 20f)
+        }
+
+        // 列一多，字号跟着收一档，否则再窄的屏也塞不下
+        val fontSp = (
+            when {
+                colCount >= 9 -> 9.5f
+                colCount >= 7 -> 10.5f
+                else -> 12f
+            } * scale
+            )
+
+        val tableLayout = FitTableLayout(context).apply {
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
             )
-        }
-
-        val tableLayout = android.widget.TableLayout(context)
-        tableLayout.layoutParams = LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
-        )
-        tableLayout.isShrinkAllColumns = false
-        // 列宽按内容自适应，不做等分，避免长表头被压成竖排字
-        for (c in 0 until colCount) tableLayout.setColumnShrinkable(c, false)
-
-        // 每列的最小宽度：按该列最长内容的字符数估算
-        val minWidths = IntArray(colCount) { c ->
-            var longest = 0
-            var est = 0
-            for (row in rows) {
-                val cellText = row.getOrElse(c) { "" }.trim()
-                if (cellText.length > longest) longest = cellText.length
-                var w = 0
-                for (ch in cellText) {
-                    w += if (ch.code > 0x2E80) 2 else 1
-                }
-                if (w > est) est = w
-            }
-            // 取「最宽的一行」与「表头长度」的较小值，避免过宽
-            dp(context, 12f) * 2 + est.coerceAtMost(longest * 2 + 4) * dp(context, 6.5f)
+            columnWeights = weights
+            baseFontSp = fontSp
         }
 
         rows.forEachIndexed { rowIndex, row ->
-            val tr = android.widget.TableRow(context)
-
+            val tr = FillTableRow(context)
             for (c in 0 until colCount) {
                 val value = row.getOrElse(c) { "" }
                 val isHeader = rowIndex < table.headerRows
                 val cell = TextView(context)
                 cell.text = value
-                cell.textSize = 12.5f * scale
+                cell.textSize = fontSp
                 cell.setTextColor(
                     ContextCompat.getColor(
                         context,
@@ -402,7 +398,10 @@ object MaterialRenderer {
                     )
                 )
                 cell.gravity = Gravity.CENTER
-                cell.setPadding(dp(context, 8f), dp(context, 7f), dp(context, 8f), dp(context, 7f))
+                cell.minWidth = 0
+                cell.setPadding(
+                    dp(context, 4f), dp(context, 7f), dp(context, 4f), dp(context, 7f)
+                )
                 cell.setBackgroundResource(
                     when {
                         night && isHeader -> R.drawable.bg_fb_table_cell_header_night
@@ -412,27 +411,125 @@ object MaterialRenderer {
                     }
                 )
                 if (isHeader) cell.setTypeface(cell.typeface, android.graphics.Typeface.BOLD)
-                cell.minWidth = minWidths[c]
                 cell.layoutParams = android.widget.TableRow.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                    0, ViewGroup.LayoutParams.WRAP_CONTENT
                 )
                 tr.addView(cell)
             }
-            tableLayout.addView(tr)
+            tableLayout.addView(
+                tr,
+                android.widget.TableLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
         }
-
-        scroll.addView(tableLayout)
 
         val outer = LinearLayout(context)
         outer.orientation = LinearLayout.VERTICAL
-        outer.addView(scroll)
-        // 表格与后续段落的间距
-        val spacer = View(context)
-        spacer.layoutParams = LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, dp(context, 6f)
+        outer.layoutParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
         )
-        outer.addView(spacer)
+        outer.setPadding(0, dp(context, 4f), 0, dp(context, 4f))
+        outer.addView(tableLayout)
         return outer
+    }
+
+    /**
+     * 表格宽度自适应：测量时把可用宽度按列权重分给每一列，
+     * 表格因此永远不超过材料可用宽度，不会再出现右侧被裁掉一列。
+     */
+    private class FitTableLayout(context: Context) : android.widget.TableLayout(context) {
+
+        var columnWeights: FloatArray = FloatArray(0)
+        var baseFontSp: Float = 12f
+        private var appliedScale: Float = -1f
+
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            val avail = MeasureSpec.getSize(widthMeasureSpec) - paddingLeft - paddingRight
+            if (avail > 0 && columnWeights.isNotEmpty()) {
+                // 除以列数得到平均列宽：分屏左栏 / 窄屏塞不下时按比例缩字号（参考应用也是这么做的），
+                // 保证表格永远完整显示在可视宽度里
+                val per = avail.toFloat() / columnWeights.size
+                val factor = when {
+                    per < 46 * resources.displayMetrics.density -> 0.6f
+                    per < 60 * resources.displayMetrics.density -> 0.7f
+                    per < 76 * resources.displayMetrics.density -> 0.83f
+                    else -> 1f
+                }
+                if (factor != appliedScale) {
+                    appliedScale = factor
+                    for (r in 0 until childCount) {
+                        val row = getChildAt(r) as? android.widget.TableRow ?: continue
+                        for (c in 0 until row.childCount) {
+                            val cell = row.getChildAt(c) as? TextView ?: continue
+                            cell.setTextSize(
+                                TypedValue.COMPLEX_UNIT_SP, baseFontSp * factor
+                            )
+                        }
+                    }
+                }
+                // 单元格左右 padding 4dp + 文字至少两个字，给出最小列宽，避免「序号」被拆成竖排
+                val minCell = (40 * resources.displayMetrics.density).toInt()
+                val widths = fitWidths(avail, columnWeights, minCell)
+                for (r in 0 until childCount) {
+                    val row = getChildAt(r) as? android.widget.TableRow ?: continue
+                    val count = minOf(row.childCount, widths.size)
+                    for (c in 0 until count) {
+                        val cell = row.getChildAt(c)
+                        val lp = cell.layoutParams as? android.widget.TableRow.LayoutParams
+                        if (lp != null && lp.width != widths[c]) {
+                            lp.width = widths[c]
+                            cell.forceLayout()
+                        }
+                    }
+                }
+            }
+            super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+        }
+
+        /** 按权重分宽度，不足保底宽度的列先补到保底，差额再从宽列里按比例扣回来 */
+        private fun fitWidths(avail: Int, weights: FloatArray, minCell: Int): IntArray {
+            val n = weights.size
+            if (n == 0) return IntArray(0)
+            val total = weights.sum().coerceAtLeast(0.001f)
+            val out = IntArray(n) { (avail * weights[it] / total).toInt().coerceAtLeast(1) }
+            // 列太密（保底宽度总和都超过可用宽度）就放弃保底，纯按比例分，宁可字小一点也别裁
+            if (n * minCell >= avail) return out
+            var deficit = 0
+            val flexible = ArrayList<Int>(n)
+            for (i in 0 until n) {
+                if (out[i] < minCell) {
+                    deficit += minCell - out[i]
+                    out[i] = minCell
+                } else {
+                    flexible.add(i)
+                }
+            }
+            if (deficit > 0 && flexible.isNotEmpty()) {
+                val flexTotal = flexible.sumOf { out[it] }.toFloat().coerceAtLeast(1f)
+                for (i in flexible) {
+                    out[i] = (out[i] - deficit * out[i] / flexTotal).toInt().coerceAtLeast(minCell)
+                }
+            }
+            // 取整误差补到最后一列，保证整表正好等于可用宽度
+            val diff = avail - out.sum()
+            out[out.lastIndex] = (out[out.lastIndex] + diff).coerceAtLeast(1)
+            return out
+        }
+    }
+
+    /** 一行里矮的单元格只画到自己内容高度会让表格竖线断开，这里统一拉满整行高度 */
+    private class FillTableRow(context: Context) : android.widget.TableRow(context) {
+        override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+            var x = paddingLeft
+            val top = paddingTop
+            val bottom = height - paddingBottom
+            for (i in 0 until childCount) {
+                val c = getChildAt(i)
+                c.layout(x, top, x + c.measuredWidth, bottom)
+                x += c.measuredWidth
+            }
+        }
     }
 
     /**
