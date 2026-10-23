@@ -26,11 +26,11 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: 安装 JDK 17
+      - name: 安装 JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
           cache: gradle
 
       # ubuntu-latest 自带 Android SDK（ANDROID_HOME 已设置、licenses 已接受），只补齐 platform 35

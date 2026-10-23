@@ -129,7 +129,7 @@ python sample/make_package.py   # 生成题库包目录与 zip
 需要 JDK 21、Android SDK platform 35；用仓库自带 wrapper：
 
 ```bash
-export JAVA_HOME=/path/to/jdk-17
+export JAVA_HOME=/path/to/jdk-21
 export ANDROID_HOME=/path/to/android-sdk
 
 ./gradlew assembleDebug        # app/build/outputs/apk/debug/app-debug.apk
