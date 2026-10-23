@@ -86,10 +86,14 @@ class SplitExamActivity : AppCompatActivity() {
         binding.btnInk.setOnClickListener { toggleInk() }
         binding.btnInkUndo.setOnClickListener { binding.inkOverlay.undo() }
         binding.btnInkClear.setOnClickListener { binding.inkOverlay.clear() }
-        // 左栏只有半屏宽，图 / 表挤在一起时单独弹出来看
+        // 左栏只有半屏宽，图 / 表挤在一起时弹到独立页面看（不再用 Dialog 浮层）
         binding.btnMaterialExpand.setOnClickListener {
             val material = groupMaterial()
-            if (material.isNotBlank()) MaterialDialog.show(this, material)
+            if (material.isNotBlank()) {
+                startActivity(Intent(this, MaterialPopupActivity::class.java).apply {
+                    putExtra(MaterialPopupActivity.EXTRA_MATERIAL, material)
+                })
+            }
         }
 
         inkToolbar = InkToolbarController(

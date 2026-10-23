@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -13,6 +14,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.lytree.qbank.R
 import com.lytree.qbank.data.db.QBankDb
 import com.lytree.qbank.data.model.AnswerResult
+import com.lytree.qbank.data.model.ExamRecord
 import com.lytree.qbank.databinding.ActivityReportBinding
 import com.lytree.qbank.databinding.ItemReportQuestionBinding
 import com.lytree.qbank.ui.record.RecordAdapter
@@ -75,8 +77,78 @@ class ReportActivity : AppCompatActivity() {
         binding.tvWrong.text = metric("答错", "$wrong")
         binding.tvTime.text = metric("用时", RecordAdapter.fmtDuration(record.durationSec))
 
+        setupSubjectStats(record)
+        setupRetryWrong(record)
+
         binding.list.layoutManager = LinearLayoutManager(this)
         binding.list.adapter = ReportAdapter(record.results)
+    }
+
+    /**
+     * 分模块正确率（对齐参考应用练习报告）：按题目的「科目 → 知识点」聚合，
+     * 已判分的题才进统计，定位薄弱模块。
+     */
+    private fun setupSubjectStats(record: ExamRecord) {
+        data class Stat(var total: Int = 0, var right: Int = 0)
+
+        val groups = LinkedHashMap<String, Stat>()
+        for (r in record.results) {
+            if (r.pending || r.userAnswer.isBlank()) continue
+            val label = r.question.subject.ifBlank { r.question.knowledge.ifBlank { "未分类" } }
+            val s = groups.getOrPut(label) { Stat() }
+            s.total++
+            if (r.correct) s.right++
+        }
+        if (groups.size <= 1) {
+            // 只有一个模块（或全卷没判分）时单独一行正确率没有信息量，不显示
+            binding.subjectStatsCard.visibility = View.GONE
+            return
+        }
+        binding.subjectStatsCard.visibility = View.VISIBLE
+        val box = binding.subjectStatsBox
+        box.removeAllViews()
+        val padV = (10 * resources.displayMetrics.density).toInt()
+        groups.forEach { (label, s) ->
+            val pct = if (s.total > 0) s.right * 100 / s.total else 0
+            val tv = TextView(this).apply {
+                text = getString(R.string.report_subject_row, label, s.right, s.total, pct)
+                textSize = 14f
+                setTextColor(ContextCompat.getColor(context, R.color.fb_text_secondary))
+                setPadding(4, padV, 4, padV)
+            }
+            box.addView(tv)
+            if (s != groups.values.last()) {
+                box.addView(View(this).apply {
+                    layoutParams = ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, 1
+                    )
+                    setBackgroundColor(ContextCompat.getColor(context, R.color.fb_divider))
+                })
+            }
+        }
+    }
+
+    /** 错题重练：把本次答错 / 部分得分的题按原顺序生成一份新卷，直接开练（对齐参考应用「错题重练」闭环） */
+    private fun setupRetryWrong(record: ExamRecord) {
+        val wrongIds = record.results
+            .filter { !it.pending && it.userAnswer.isNotBlank() && !it.correct }
+            .map { it.question.id }
+        if (wrongIds.isEmpty()) return
+        binding.titleBar.addTextAction(getString(R.string.report_retry_wrong)) {
+            val bankId = db.getPaper(record.paperId)?.bankId ?: 0L
+            val name = "${record.name}·错题重练"
+            val newPaperId = db.createPaperFromQuestions(bankId, name, wrongIds)
+            if (newPaperId == 0L) {
+                android.widget.Toast.makeText(this, "生成错题卷失败", android.widget.Toast.LENGTH_SHORT).show()
+                return@addTextAction
+            }
+            startActivity(
+                android.content.Intent(this, ExamActivity::class.java).apply {
+                    putExtra(ExamActivity.EXTRA_PAPER_ID, newPaperId)
+                    putExtra(ExamActivity.EXTRA_PAPER_NAME, name)
+                }
+            )
+        }
     }
 
     private fun launchAnswerPicker() {

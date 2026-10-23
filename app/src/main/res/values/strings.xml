@@ -45,6 +45,7 @@
     <string name="note_saved">笔记已保存</string>
     <string name="tag_material">材料</string>
     <string name="material_pop_out">弹出材料</string>
+    <string name="material_collapse">收起材料</string>
     <string name="material_chart_invalid">（图表数据格式有误，请检查 :::chart 代码块）</string>
     <string name="material_image_loading">图片加载中…</string>
     <string name="material_image_failed">图片无法加载：%1$s</string>
@@ -64,6 +65,23 @@
     <string name="pending_answer_full">满分 %1$s 分 · %2$d 题待补答案</string>
     <string name="more_submit">交卷</string>
     <string name="split_material_title">材料</string>
+
+    <!-- 练习模式（即时判分） -->
+    <string name="more_practice_mode">练习模式·即时判分</string>
+    <string name="practice_reveal_hint">练习模式：作答后立即显示对错与解析</string>
+
+    <!-- 中途退出续做 -->
+    <string name="resume_title">继续答题？</string>
+    <string name="resume_msg">上次做到第 %1$d 题，已答 %2$d 题，剩余时间会接着倒计时</string>
+    <string name="resume_continue">继续答题</string>
+    <string name="resume_restart">重新开始</string>
+
+    <!-- 成绩报告 -->
+    <string name="report_subject_title">模块正确率</string>
+    <string name="report_subject_row">%1$s　答对 %2$d/%3$d · %4$d%%</string>
+    <string name="report_retry_wrong">错题重练</string>
+    <string name="report_retry_empty">这次没有错题，保持！</string>
+    <string name="progress_saved">进度已保存，下次进入可继续答题</string>
 
     <string name="empty_banks">还没有题库，导入一份 JSON / CSV / Excel / TXT / 题库包(zip) 就能开始刷题</string>
     <string name="empty_papers">还没有试卷，导入一份 JSON / CSV / Excel / TXT 就会生成一份试卷</string>

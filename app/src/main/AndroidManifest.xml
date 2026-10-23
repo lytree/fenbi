@@ -40,6 +40,7 @@
         <activity android:name=".ui.ExamActivity" android:exported="false"
             android:screenOrientation="portrait" />
         <activity android:name=".ui.SplitExamActivity" android:exported="false" />
+        <activity android:name=".ui.MaterialPopupActivity" android:exported="false" />
         <activity android:name=".ui.AnswerCardActivity" android:exported="false" />
         <activity android:name=".ui.ReportActivity" android:exported="false" />
     </application>

@@ -26,8 +26,12 @@ class QuestionPagerAdapter(
     private val policyProvider: () -> Policy,
     var fontScale: Float = 1f,
     var revealAnswers: Boolean = false,
+    /** 练习模式：已触发即时判分的题 id（作答后立即出对错与解析） */
+    var revealed: Set<Long> = emptySet(),
     /** 夜间模式：透传给 [QuestionCardBinder] */
     var night: Boolean = false,
+    /** 分屏右栏：材料已在左栏展示，卡片不再重复渲染材料 */
+    var hideMaterial: Boolean = false,
     onMarkToggle: (Question) -> Unit,
     onFavoriteToggle: (Question) -> Unit,
     onNoteClicked: (Question) -> Unit,
@@ -81,10 +85,12 @@ class QuestionPagerAdapter(
             marked = marked,
             favorites = favorites,
             revealAnswers = revealAnswers,
+            revealed = revealed,
             policy = policyProvider(),
             fontScale = fontScale,
             cb = cb,
-            night = night
+            night = night,
+            hideMaterial = hideMaterial
         )
     }
 }

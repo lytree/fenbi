@@ -24,6 +24,8 @@ class QuestionListAdapter(
     private val marked: MutableSet<Long>,
     private val favorites: MutableSet<Long>,
     var revealAnswers: Boolean = false,
+    /** 练习模式：已触发即时判分的题 id（作答后立即出对错与解析） */
+    var revealed: Set<Long> = emptySet(),
     private val policyProvider: () -> Policy,
     var fontScale: Float = 1f,
     /** 夜间模式：透传给 [QuestionCardBinder]，切换后靠 notifyDataSetChanged 重绑生效 */
@@ -84,6 +86,7 @@ class QuestionListAdapter(
             marked = marked,
             favorites = favorites,
             revealAnswers = revealAnswers,
+            revealed = revealed,
             policy = policyProvider(),
             fontScale = fontScale,
             cb = cb,

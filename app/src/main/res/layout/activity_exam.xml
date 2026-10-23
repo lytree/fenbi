@@ -182,6 +182,107 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/topBar" />
 
+    <!-- ===== 弹出材料：就地左右分屏（左材料 / 右题目），对齐参考应用平板端
+         点「弹出材料」切成两栏，右栏换成一屏一题的 ViewPager2；点「收起材料」还原 ===== -->
+    <LinearLayout
+        android:id="@+id/splitBody"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:orientation="horizontal"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/topBar">
+
+        <!-- 左栏：材料，可收起 -->
+        <LinearLayout
+            android:id="@+id/splitLeftPane"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="@color/fb_split_bg"
+            android:orientation="vertical"
+            android:paddingStart="16dp"
+            android:paddingTop="12dp"
+            android:paddingEnd="12dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/tvSplitTag"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_fb_material_tag"
+                    android:paddingHorizontal="6dp"
+                    android:paddingVertical="2dp"
+                    android:text="@string/tag_material"
+                    android:textColor="@color/fb_blue_ink"
+                    android:textSize="11sp" />
+
+                <TextView
+                    android:id="@+id/tvSplitProgress"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:includeFontPadding="false"
+                    android:textColor="@color/fb_text_meta"
+                    android:textSize="11sp"
+                    tools:text="1/4" />
+
+                <Space
+                    android:layout_width="0dp"
+                    android:layout_height="1dp"
+                    android:layout_weight="1" />
+
+                <TextView
+                    android:id="@+id/btnSplitCollapse"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:includeFontPadding="false"
+                    android:paddingHorizontal="6dp"
+                    android:paddingVertical="4dp"
+                    android:text="@string/material_collapse"
+                    android:textColor="@color/fb_text_meta"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <androidx.core.widget.NestedScrollView
+                android:id="@+id/splitMaterialScroll"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_marginTop="8dp"
+                android:layout_weight="1"
+                android:fillViewport="true"
+                android:scrollbars="none">
+
+                <LinearLayout
+                    android:id="@+id/splitMaterialContent"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+            </androidx.core.widget.NestedScrollView>
+        </LinearLayout>
+
+        <View
+            android:id="@+id/splitPaneDivider"
+            android:layout_width="0.5dp"
+            android:layout_height="match_parent"
+            android:background="@color/fb_table_line" />
+
+        <!-- 右栏：这组材料对应的题目，运行时放入一屏一题的 ViewPager2 -->
+        <FrameLayout
+            android:id="@+id/splitQuestionPane"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1" />
+    </LinearLayout>
+
     <!-- ===== 遮盖层（可写） =====
          常驻可见：退出写画模式后笔迹仍留在题目上；写画模式打开时才铺遮盖纸并拦截触摸 -->
     <com.lytree.qbank.ui.InkOverlay
@@ -368,6 +469,29 @@
 
             <com.lytree.qbank.ui.FbSwitchView
                 android:id="@+id/switchInkMode"
+                android:layout_width="38dp"
+                android:layout_height="22dp" />
+        </LinearLayout>
+
+        <!-- 练习模式：作答后立即判对错并展示解析（参考应用「练习」作答口径） -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/tvPracticeModeLabel"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/more_practice_mode"
+                android:textColor="@color/fb_text_primary"
+                android:textSize="12sp" />
+
+            <com.lytree.qbank.ui.FbSwitchView
+                android:id="@+id/switchPracticeMode"
                 android:layout_width="38dp"
                 android:layout_height="22dp" />
         </LinearLayout>

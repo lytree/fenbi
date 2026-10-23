@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.CountDownTimer
 import android.view.View
+import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
@@ -46,6 +47,7 @@ class ExamActivity : AppCompatActivity() {
         private const val KEY_NIGHT = "night_mode"
         private const val KEY_MULTI_BROWSE = "multi_browse"
         private const val KEY_AUTO_NEXT = "auto_next"
+        private const val KEY_PRACTICE = "practice_mode"
 
         /** 字号档位：小 / 中 / 大 */
         private val FONT_SCALES = floatArrayOf(0.9f, 1.0f, 1.15f)
@@ -62,6 +64,8 @@ class ExamActivity : AppCompatActivity() {
     private val answers = HashMap<Long, String>()
     private val marked = HashSet<Long>()
     private val favorites = HashSet<Long>()
+    /** 练习模式：作答后立即判分出解析的题 id（对齐参考应用「练习」口径） */
+    private val revealed = HashSet<Long>()
     private var timer: CountDownTimer? = null
     private var paperId = 0L
     private var durationMin = 0
@@ -69,6 +73,8 @@ class ExamActivity : AppCompatActivity() {
     private var submitted = false
     private var revealAnswers = false
     private var inkMode = false
+    /** 练习模式开关（更多面板），持久化偏好 */
+    private var practiceMode = false
     /** 「笔」按钮的用法提示只在本次进入页面时弹一次，别每点一下都弹 */
     private var inkHintShown = false
     /** 是从「交卷时提示缺答案」跳去导入的：补完就直接交卷出结果 */
@@ -84,6 +90,31 @@ class ExamActivity : AppCompatActivity() {
     private var autoNext = true
     /** 当前最靠上的题目位置（答题卡高亮「当前题」用） */
     private var currentPos = 0
+
+    // ---------------- 答题进度续做 ----------------
+
+    /** 上次退出时已用掉的秒数（续做时从这里继续倒计时） */
+    private var elapsedBaseSec = 0
+    /** 本次会话开始时刻（计算「本次会话已用时」用） */
+    private var sessionStartWall = 0L
+    /** 倒计时当前剩余秒数（onTick 维护，-1 表示还没起表） */
+    private var lastRemainingSec = -1
+
+    // ---------------- 弹出材料：就地左右分屏 ----------------
+
+    /** 平板判定：最小屏宽 ≥ 600dp（与系统 sw600dp 断点一致）。对齐参考应用——只有平板端「弹出材料」走就地分屏 */
+    private val isTablet: Boolean
+        get() = resources.configuration.smallestScreenWidthDp >= 600
+
+    /** 是否处于「弹出材料」分屏状态（对齐参考应用平板端：就地分屏，可收起还原） */
+    private var splitMode = false
+    /** 当前分屏的材料组（同一份材料的全部题，保持卷内顺序） */
+    private var splitGroup: List<Question> = emptyList()
+    /** 材料组第一题在整卷中的位置（0 起），右栏题号按整卷序号显示 */
+    private var splitGroupOffset = 0
+    /** 分屏右栏的一屏一题容器与适配器（进入分屏时创建，收起时销毁） */
+    private var splitPager: ViewPager2? = null
+    private var splitPagerAdapter: QuestionPagerAdapter? = null
 
     private lateinit var inkToolbar: InkToolbarController
     /** 多题浏览适配器（连续滚动） */
@@ -114,6 +145,11 @@ class ExamActivity : AppCompatActivity() {
         questions.addAll(paper.questions)
         durationMin = paper.durationMin
         startedAt = System.currentTimeMillis()
+        sessionStartWall = startedAt
+
+        // 收藏跨会话保留：从库里读出本卷题目的收藏状态（对齐参考应用「我的收藏」）
+        val qids = questions.map { it.id }.toHashSet()
+        favorites.addAll(db.listFavoriteIds().filter { it in qids })
 
         setupList()
         setupPager()
@@ -122,12 +158,16 @@ class ExamActivity : AppCompatActivity() {
         setupInk()
         applyWindowInsets()
 
+        // 「收起材料」：退出就地分屏，还原浏览模式
+        binding.btnSplitCollapse.setOnClickListener { closeSplit() }
+
         // 启动时就把上次选的浏览模式落到位（旧实现只在点按钮时才应用，偏好读了等于没读）
         applyBrowseMode()
         // 夜间模式同理：偏好读进来后必须真的落到界面上，否则重进 App 面板显示「夜间」、界面却是白底
         applyNightMode()
         updateHeader()
-        startTimer()
+        // 有未交卷进度先问「继续 / 重新开始」，再起倒计时（剩余时间要从上次退出的地方接）
+        maybeResume()
     }
 
     // ---------------- 装配 ----------------
@@ -139,6 +179,7 @@ class ExamActivity : AppCompatActivity() {
             marked = marked,
             favorites = favorites,
             revealAnswers = revealAnswers,
+            revealed = revealed,
             policyProvider = { db.getPolicy() },
             fontScale = fontScale,
             onMarkToggle = { q -> toggleMark(q) },
@@ -146,7 +187,7 @@ class ExamActivity : AppCompatActivity() {
             onNoteClicked = { q -> showNoteDialog(q) },
             onInkClicked = { q -> startInkFor(q) },
             onAnswerChanged = { q -> onAnswered(q) },
-            onMaterialExpand = { q -> MaterialDialog.show(this, q.material, nightMode) }
+            onMaterialExpand = { q -> showMaterialPopup(q) }
         )
         binding.questionList.layoutManager = LinearLayoutManager(this)
         binding.questionList.adapter = adapter
@@ -181,12 +222,13 @@ class ExamActivity : AppCompatActivity() {
             policyProvider = { db.getPolicy() },
             fontScale = fontScale,
             revealAnswers = revealAnswers,
+            revealed = revealed,
             onMarkToggle = { q -> toggleMark(q) },
             onFavoriteToggle = { q -> toggleFavorite(q) },
             onNoteClicked = { q -> showNoteDialog(q) },
             onInkClicked = { q -> startInkFor(q) },
             onAnswerChanged = { q -> onAnswered(q) },
-            onMaterialExpand = { q -> MaterialDialog.show(this, q.material, nightMode) }
+            onMaterialExpand = { q -> showMaterialPopup(q) }
         )
         binding.pager.offscreenPageLimit = 1
         binding.pager.adapter = pagerAdapter
@@ -200,9 +242,14 @@ class ExamActivity : AppCompatActivity() {
         })
     }
 
-    /** 作答后的联动：单选题「自动展示下一题」时翻到 / 滚到下一题 */
+    /** 作答后的联动：练习模式即时判分；单选题「自动展示下一题」时翻到 / 滚到下一题 */
     private fun onAnswered(q: Question) {
         questions.indexOfFirst { it.id == q.id }.takeIf { it >= 0 }?.let { currentPos = it }
+        if (practiceMode && !submitted && q.id !in revealed) {
+            // 练习模式（参考应用「练习」口径）：作答立刻判色 + 内联解析，不等交卷
+            revealed.add(q.id)
+            refreshCard(q)
+        }
         if (!autoNext) return
         if (q.type != com.lytree.qbank.data.model.QuestionType.SINGLE) return
         val next = currentPos + 1
@@ -285,6 +332,14 @@ class ExamActivity : AppCompatActivity() {
             autoNext = checked
             savePrefs()
         }
+        // 练习模式：作答后立即判对错并展开解析（参考应用「练习」作答口径）
+        binding.switchPracticeMode.setChecked(practiceMode, animate = false)
+        binding.switchPracticeMode.onCheckedChange = { on ->
+            practiceMode = on
+            if (!on) revealed.clear()
+            savePrefs()
+            refreshCards()
+        }
         // 手写标注：打开就是「给题目盖一张可写的薄纸」，收起面板直接开写
         binding.switchInkMode.setChecked(inkMode, animate = false)
         binding.switchInkMode.onCheckedChange = { on ->
@@ -352,6 +407,139 @@ class ExamActivity : AppCompatActivity() {
     }
 
     /**
+     * 「弹出材料」。
+     *
+     * 交互对齐参考应用，**平板 / 手机两套模式**：
+     * - 平板（最小屏宽 ≥ 600dp）+ 材料组：**就地左右分屏**——左栏材料（可「收起材料」还原），
+     *   右栏这组题目一屏一题、左右滑动切题，照常作答，且**卡片不再重复渲染材料**（左栏已有整栏）；
+     * - 手机（或材料只带一道题）：进「材料」只读页（A- / A+ 调字号），不打断答题状态。
+     */
+    private fun showMaterialPopup(q: Question) {
+        if (q.material.isBlank()) return
+        val group = questions.filter {
+            it.material.isNotBlank() && it.material.trim() == q.material.trim()
+        }
+        if (group.size > 1 && isTablet) {
+            openSplit(q, group)
+        } else {
+            startActivity(Intent(this, MaterialPopupActivity::class.java).apply {
+                putExtra(MaterialPopupActivity.EXTRA_MATERIAL, q.material)
+                putExtra(MaterialPopupActivity.EXTRA_NIGHT, nightMode)
+                putExtra(MaterialPopupActivity.EXTRA_FONT_SCALE, fontScale)
+            })
+        }
+    }
+
+    /** 进入就地分屏：左材料 / 右题目（一屏一题），定位到打开分屏的那道题 */
+    private fun openSplit(q: Question, group: List<Question>) {
+        splitGroup = group
+        splitGroupOffset = questions.indexOfFirst { it.id == group.first().id }.coerceAtLeast(0)
+        splitMode = true
+
+        // 写画模式与分屏互斥：分屏两栏各有自己的滚动，先把遮盖层收起来
+        if (inkMode) inkToolbar.setInkMode(false)
+        binding.morePanel.visibility = View.GONE
+
+        renderSplitMaterial()
+        setupSplitPager(q)
+        applySplitVisibility()
+        refreshSplitProgress()
+    }
+
+    private fun renderSplitMaterial() {
+        // 半屏空间比题目卡里还窄，图表不额外放大
+        MaterialRenderer.render(this, binding.splitMaterialContent, splitGroup.first().material, nightMode, fontScale)
+        binding.splitMaterialContent.applyNavBarBottomPadding()
+        binding.splitMaterialScroll.scrollTo(0, 0)
+    }
+
+    /** 右栏：给这组题单独挂一个一屏一题的容器，共享作答 / 标记 / 收藏状态 */
+    private fun setupSplitPager(openQuestion: Question) {
+        val pager = ViewPager2(this)
+        pager.offscreenPageLimit = 1
+        splitPagerAdapter = QuestionPagerAdapter(
+            questions = splitGroup,
+            answers = answers,
+            marked = marked,
+            favorites = favorites,
+            policyProvider = { db.getPolicy() },
+            fontScale = fontScale,
+            revealAnswers = revealAnswers,
+            revealed = revealed,
+            night = nightMode,
+            onMarkToggle = { toggleMark(it) },
+            onFavoriteToggle = { toggleFavorite(it) },
+            onNoteClicked = { showNoteDialog(it) },
+            onInkClicked = { startInkFor(it) },
+            onAnswerChanged = { onSplitAnswered(it) },
+            // 已在分屏里对着材料做题，卡片上的「弹出材料」不再需要
+            onMaterialExpand = null
+        )
+        pager.adapter = splitPagerAdapter
+        // 材料已在左栏整栏展示，右栏题卡不再重复渲染材料
+        splitPagerAdapter?.hideMaterial = true
+        pager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
+            override fun onPageSelected(position: Int) {
+                currentPos = splitGroupOffset + position
+                syncInkQuestion()
+                refreshSplitProgress()
+            }
+        })
+        binding.splitQuestionPane.removeAllViews()
+        binding.splitQuestionPane.addView(
+            pager,
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+        )
+        splitPager = pager
+        pager.setCurrentItem(splitGroup.indexOfFirst { it.id == openQuestion.id }.coerceAtLeast(0), false)
+    }
+
+    /** 分屏里作答后的联动：与主容器 onAnswered 一致，练习模式即时判分、单选题自动翻下一题 */
+    private fun onSplitAnswered(q: Question) {
+        currentPos = questions.indexOfFirst { it.id == q.id }.takeIf { it >= 0 } ?: currentPos
+        if (practiceMode && !submitted && q.id !in revealed) {
+            revealed.add(q.id)
+            splitPagerAdapter?.let { ad -> ad.revealed = revealed; ad.notifyDataSetChanged() }
+        }
+        refreshSplitProgress()
+        if (!autoNext) return
+        if (q.type != com.lytree.qbank.data.model.QuestionType.SINGLE) return
+        val nextInGroup = splitGroup.indexOfFirst { it.id == q.id } + 1
+        if (nextInGroup >= splitGroup.size) return
+        splitPager?.postDelayed({ splitPager?.setCurrentItem(nextInGroup, true) }, 220)
+    }
+
+    /** 左栏头部的小进度：组内第几题 / 共几题 */
+    private fun refreshSplitProgress() {
+        val inGroup = (currentPos - splitGroupOffset).coerceIn(0, (splitGroup.size - 1).coerceAtLeast(0))
+        binding.tvSplitProgress.text =
+            getString(R.string.question_index, inGroup + 1, splitGroup.size)
+    }
+
+    /** 收起材料：还原为原浏览模式，把分屏里作答过的题同步到主容器卡片 */
+    private fun closeSplit() {
+        splitMode = false
+        splitPager = null
+        splitPagerAdapter = null
+        applySplitVisibility()
+        refreshCards()
+    }
+
+    private fun applySplitVisibility() {
+        if (splitMode) {
+            binding.splitBody.visibility = View.VISIBLE
+            binding.questionList.visibility = View.GONE
+            binding.pager.visibility = View.GONE
+        } else {
+            binding.splitBody.visibility = View.GONE
+            binding.splitQuestionPane.removeAllViews()
+            // applyBrowseMode 会按 currentPos 恢复多题 / 单题的显隐与定位
+            applyBrowseMode()
+        }
+        binding.inkOverlay.post { binding.inkOverlay.invalidate() }
+    }
+
+    /**
      * 左右分屏入口：参考应用资料分析题的「左材料 / 右题目」双栏。
      * 只有本卷含材料题时才显示；按当前题所属材料分组进入。
      */
@@ -386,6 +574,10 @@ class ExamActivity : AppCompatActivity() {
         adapter.notifyDataSetChanged()
         pagerAdapter.fontScale = fontScale
         pagerAdapter.notifyDataSetChanged()
+        // 分屏右栏与左栏材料跟着一起缩放
+        splitPagerAdapter?.fontScale = fontScale
+        splitPagerAdapter?.notifyDataSetChanged()
+        if (splitMode) renderSplitMaterial()
     }
 
     private fun setNightMode(on: Boolean) {
@@ -465,9 +657,15 @@ class ExamActivity : AppCompatActivity() {
         binding.btnInkUndo.setOnClickListener { binding.inkOverlay.undo() }
         binding.btnInkClear.setOnClickListener { binding.inkOverlay.clear() }
 
-        // 写画模式的滚动通道：多题滚列表，单题滚当前页；屏幕右边缘那一条留给它
-        binding.inkOverlay.scrollTargetResolver = { _, _ ->
-            if (multiBrowse) binding.questionList else currentPageScroll()
+        // 写画模式的滚动通道：分屏时左半屏滚材料、右半屏滚当前题；
+        // 多题滚列表，单题滚当前页；屏幕右边缘那一条留给它
+        binding.inkOverlay.scrollTargetResolver = { x, _ ->
+            when {
+                splitMode && x <= binding.splitLeftPane.right -> binding.splitMaterialScroll
+                splitMode -> splitPageScroll()
+                multiBrowse -> binding.questionList
+                else -> currentPageScroll()
+            }
         }
         // 工具条悬在右下角，轨道底部让开 76dp，别画到它背后
         binding.inkOverlay.scrollBarBottomInset = (76 * resources.displayMetrics.density).toInt()
@@ -484,6 +682,19 @@ class ExamActivity : AppCompatActivity() {
         for (i in 0 until rv.childCount) {
             val page = rv.getChildAt(i) ?: continue
             if (rv.getChildAdapterPosition(page) == binding.pager.currentItem) {
+                return page.findViewById(R.id.pageScroll)
+            }
+        }
+        return null
+    }
+
+    /** 分屏右栏当前题的滚动容器（与 [currentPageScroll] 同一套结构，容器换成分屏的 pager） */
+    private fun splitPageScroll(): View? {
+        val pager = splitPager ?: return null
+        val rv = pager.getChildAt(0) as? androidx.recyclerview.widget.RecyclerView ?: return null
+        for (i in 0 until rv.childCount) {
+            val page = rv.getChildAt(i) ?: continue
+            if (rv.getChildAdapterPosition(page) == pager.currentItem) {
                 return page.findViewById(R.id.pageScroll)
             }
         }
@@ -559,15 +770,25 @@ class ExamActivity : AppCompatActivity() {
 
     // ---------------- 计时 ----------------
 
-    private fun startTimer() {
+    /**
+     * 起倒计时。[elapsedSec] 为续做时上次已用掉的秒数：
+     * 剩余时间 = 总时长 - 已用时，接上次退出的地方继续，而不是重新满时长。
+     */
+    private fun startTimer(elapsedSec: Int = 0) {
+        elapsedBaseSec = elapsedSec
+        sessionStartWall = System.currentTimeMillis()
         if (durationMin <= 0) {
             binding.tvTimer.text = "不限时"
             return
         }
-        val total = durationMin * 60_000L
-        timer = object : CountDownTimer(total, 1000L) {
+        var remaining = durationMin * 60_000L - elapsedSec * 1000L
+        // 进度太久远导致「一进来就没时间」时，至少给一分钟缓冲，避免闪交
+        if (remaining <= 0) remaining = 60_000L
+        lastRemainingSec = (remaining / 1000).toInt()
+        timer = object : CountDownTimer(remaining, 1000L) {
             override fun onTick(millisUntilFinished: Long) {
                 val s = millisUntilFinished / 1000
+                lastRemainingSec = s.toInt()
                 binding.tvTimer.text = String.format(Locale.CHINA, "%02d:%02d", s / 60, s % 60)
                 if (s == 300L) {
                     android.widget.Toast.makeText(
@@ -578,6 +799,7 @@ class ExamActivity : AppCompatActivity() {
             }
 
             override fun onFinish() {
+                lastRemainingSec = 0
                 binding.tvTimer.text = "00:00"
                 android.widget.Toast.makeText(
                     this@ExamActivity, "时间到，自动交卷", android.widget.Toast.LENGTH_LONG
@@ -585,6 +807,64 @@ class ExamActivity : AppCompatActivity() {
                 submit(auto = true)
             }
         }.also { it.start() }
+    }
+
+    /** 本次答题已用掉的秒数（保存进度用，含续做前几次会话的累计） */
+    private fun elapsedSec(): Int {
+        if (durationMin <= 0) {
+            // 不限时卷按自然流逝记录，方便「用时」统计
+            return elapsedBaseSec + ((System.currentTimeMillis() - sessionStartWall) / 1000).toInt()
+        }
+        // 限时卷：倒计时走过的时间（onTick 实时维护 lastRemainingSec，后台暂停时不误计）
+        val consumed = if (lastRemainingSec < 0) 0 else durationMin * 60 - lastRemainingSec
+        return (elapsedBaseSec + consumed.coerceAtLeast(0)).coerceAtMost(durationMin * 60)
+    }
+
+    // ---------------- 续做（中途退出保存进度） ----------------
+
+    /**
+     * 进上一次未交卷的进度：弹「继续 / 重新开始」。
+     * 保存时机在退出确认与 onPause——所以这里能读到的进度一定是最后一次离开时的样子。
+     */
+    private fun maybeResume() {
+        val progress = db.getProgress(paperId)
+        if (progress == null) {
+            startTimer()
+            return
+        }
+        val answeredCount = progress.answers.size
+        val firstUnanswered = questions.indexOfFirst { (progress.answers[it.id] ?: "").isBlank() }
+        val pos = if (firstUnanswered >= 0) firstUnanswered + 1 else questions.size
+        AlertDialog.Builder(this)
+            .setTitle(R.string.resume_title)
+            .setMessage(getString(R.string.resume_msg, pos, answeredCount))
+            .setPositiveButton(R.string.resume_continue) { _, _ -> restoreProgress(progress) }
+            .setNegativeButton(R.string.resume_restart) { _, _ ->
+                db.clearProgress(paperId)
+                startTimer()
+            }
+            .setCancelable(false)
+            .show()
+    }
+
+    private fun restoreProgress(p: com.lytree.qbank.data.db.ExamProgress) {
+        answers.putAll(p.answers)
+        marked.addAll(p.marked)
+        refreshCards()
+        // 定位到第一道未作答的题（都做完了就停在第 1 题，方便复盘）
+        currentPos = questions.indexOfFirst { (answers[it.id] ?: "").isBlank() }
+            .takeIf { it >= 0 } ?: 0
+        applyBrowseMode()
+        syncInkQuestion()
+        startTimer(p.elapsedSec)
+    }
+
+    /** 离开页面就把进度落库（交卷后不需要）。进程被杀也能从最后一次 onPause 恢复 */
+    override fun onPause() {
+        super.onPause()
+        if (!submitted && paperId > 0L) {
+            db.saveProgress(paperId, answers, marked, elapsedSec())
+        }
     }
 
     // ---------------- 标记 / 收藏 / 笔记 ----------------
@@ -596,7 +876,10 @@ class ExamActivity : AppCompatActivity() {
     }
 
     private fun toggleFavorite(q: Question) {
-        if (!favorites.add(q.id)) favorites.remove(q.id)
+        val fav = q.id !in favorites
+        if (fav) favorites.add(q.id) else favorites.remove(q.id)
+        // 收藏跨会话保留：落库（对齐参考应用「我的收藏」）
+        db.setFavorite(q.id, fav)
         refreshCard(q)
     }
 
@@ -771,6 +1054,7 @@ class ExamActivity : AppCompatActivity() {
         binding.rowDayNight.setBackgroundResource(trackRes)
         binding.rowBrowseMode.setBackgroundResource(trackRes)
         binding.tvAutoNextLabel.setTextColor(titleColor)
+        binding.tvPracticeModeLabel.setTextColor(titleColor)
         binding.tvInkModeLabel.setTextColor(titleColor)
         binding.switchInkMode.setNightMode(night)
         binding.tvSplitLabel.setTextColor(titleColor)
@@ -793,6 +1077,17 @@ class ExamActivity : AppCompatActivity() {
 
         // 系统栏跟着顶栏走，否则深色顶栏上会压一条白状态栏
         applySystemBars(night, barBg)
+
+        // 弹出材料就地分屏：左栏材料底 / 材料标签 / 进度 / 收起按钮 / 分隔线
+        binding.splitLeftPane.setBackgroundColor(color(if (night) R.color.fb_night_material_bg else R.color.fb_split_bg))
+        binding.tvSplitTag.setBackgroundResource(if (night) R.drawable.bg_fb_tag_night else R.drawable.bg_fb_material_tag)
+        binding.tvSplitTag.setTextColor(color(if (night) R.color.fb_night_tag_text else R.color.fb_blue_ink))
+        binding.tvSplitProgress.setTextColor(metaColor)
+        binding.btnSplitCollapse.setTextColor(metaColor)
+        binding.splitPaneDivider.setBackgroundColor(color(if (night) R.color.fb_night_table_line else R.color.fb_table_line))
+        splitPagerAdapter?.night = night
+        splitPagerAdapter?.notifyDataSetChanged()
+        if (splitMode) renderSplitMaterial()
 
         // 面板里分段控件的选中态依赖 nightMode，必须先刷新
         refreshMorePanelState()
@@ -822,6 +1117,7 @@ class ExamActivity : AppCompatActivity() {
         nightMode = p.getBoolean(KEY_NIGHT, false)
         multiBrowse = p.getBoolean(KEY_MULTI_BROWSE, true)
         autoNext = p.getBoolean(KEY_AUTO_NEXT, true)
+        practiceMode = p.getBoolean(KEY_PRACTICE, false)
     }
 
     private fun savePrefs() {
@@ -830,6 +1126,7 @@ class ExamActivity : AppCompatActivity() {
             putBoolean(KEY_NIGHT, nightMode)
             putBoolean(KEY_MULTI_BROWSE, multiBrowse)
             putBoolean(KEY_AUTO_NEXT, autoNext)
+            putBoolean(KEY_PRACTICE, practiceMode)
         }.apply()
     }
 
@@ -871,7 +1168,11 @@ class ExamActivity : AppCompatActivity() {
                 return
             }
             val jump = data.getIntExtra(AnswerCardActivity.EXTRA_JUMP, -1)
-            if (jump in questions.indices) jumpTo(jump)
+            if (jump in questions.indices) {
+                // 答题卡跳题针对整卷；分屏只看得到一组材料，先收起再跳
+                if (splitMode) closeSplit()
+                jumpTo(jump)
+            }
         }
     }
 
@@ -880,12 +1181,16 @@ class ExamActivity : AppCompatActivity() {
     private fun confirmExit() {
         if (submitted) { finish(); return }
         val unanswered = questions.count { (answers[it.id] ?: "").isBlank() }
+        // 对齐参考应用：退出即保存进度，下次进入可「继续答题」接着做
         val msg = if (unanswered > 0) {
-            "你还有 $unanswered 道题目未做完，确定退出吗？"
+            "你还有 $unanswered 道题目未做完。退出后进度会保留，下次进入可以继续答题。"
         } else {
-            "确定退出吗？"
+            "退出后进度会保留，下次进入可以继续答题。确定退出吗？"
         }
-        FbDialog.confirm(this, msg, okText = "退出", cancelText = "继续答题", onOk = { finish() })
+        FbDialog.confirm(this, msg, okText = "退出", cancelText = "继续答题", onOk = {
+            db.saveProgress(paperId, answers, marked, elapsedSec())
+            finish()
+        })
     }
 
     private fun confirmSubmit() {
@@ -929,6 +1234,8 @@ class ExamActivity : AppCompatActivity() {
         if (submitted) return
         submitted = true
         timer?.cancel()
+        // 已交卷：清掉未交卷进度，下次进入是全新一轮
+        db.clearProgress(paperId)
         revealAnswers = true
         adapter.revealAnswers = true
         adapter.notifyDataSetChanged()

@@ -17,7 +17,7 @@ import com.lytree.qbank.engine.Policy
 /**
  * 本地题库存储。用原生 SQLiteOpenHelper，不引入 Room，避免注解处理器带来的构建复杂度。
  */
-class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 2) {
+class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 3) {
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -100,6 +100,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 2)
         db.execSQL("CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT DEFAULT '')")
         db.execSQL("CREATE TABLE inks(question_id INTEGER PRIMARY KEY, strokes TEXT DEFAULT '')")
         db.execSQL("CREATE TABLE notes(question_id INTEGER PRIMARY KEY, note TEXT DEFAULT '')")
+        createV3Tables(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -108,6 +109,21 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 2)
             db.execSQL("CREATE TABLE IF NOT EXISTS inks(question_id INTEGER PRIMARY KEY, strokes TEXT DEFAULT '')")
             db.execSQL("CREATE TABLE IF NOT EXISTS notes(question_id INTEGER PRIMARY KEY, note TEXT DEFAULT '')")
         }
+        if (oldVersion < 3) createV3Tables(db)
+    }
+
+    /** v3：收藏表 + 答题进度表（对齐参考应用「收藏跨会话保留 / 中途退出可续做」） */
+    private fun createV3Tables(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS favorites(question_id INTEGER PRIMARY KEY)")
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS exam_progress(
+                paper_id INTEGER PRIMARY KEY,
+                answers TEXT DEFAULT '',
+                marked TEXT DEFAULT '',
+                elapsed_sec INTEGER DEFAULT 0,
+                updated_at INTEGER DEFAULT 0
+            )""".trimIndent()
+        )
     }
 
     // ---------------- Bank ----------------
@@ -289,6 +305,32 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 2)
                 db.insert("paper_questions", null, ContentValues().apply {
                     put("paper_id", pid)
                     put("question_id", q.id)
+                    put("position", i)
+                })
+            }
+            db.setTransactionSuccessful()
+            return pid
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    /** 用给定的题目（按传入顺序）生成一份新试卷——「错题重练」用：从练习记录里挑出答错的题再练一遍 */
+    fun createPaperFromQuestions(
+        bankId: Long,
+        paperName: String,
+        questionIds: List<Long>,
+        durationMin: Int = 0
+    ): Long {
+        if (questionIds.isEmpty()) return 0L
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val pid = db.insert("papers", null, paperValues(paperName, bankId, durationMin, MODE_RETRY))
+            questionIds.forEachIndexed { i, qid ->
+                db.insert("paper_questions", null, ContentValues().apply {
+                    put("paper_id", pid)
+                    put("question_id", qid)
                     put("position", i)
                 })
             }
@@ -617,9 +659,94 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 2)
         )
     }
 
+    // ---------------- Favorite（收藏，跨会话持久） ----------------
+
+    fun isFavorite(questionId: Long): Boolean {
+        readableDatabase.rawQuery(
+            "SELECT 1 FROM favorites WHERE question_id = ?", arrayOf(questionId.toString())
+        ).use { return it.moveToFirst() }
+    }
+
+    fun setFavorite(questionId: Long, fav: Boolean) {
+        if (fav) {
+            writableDatabase.insertWithOnConflict(
+                "favorites", null,
+                ContentValues().apply { put("question_id", questionId) },
+                SQLiteDatabase.CONFLICT_REPLACE
+            )
+        } else {
+            writableDatabase.delete("favorites", "question_id = ?", arrayOf(questionId.toString()))
+        }
+    }
+
+    /** 全部收藏题 id（答题页按本卷题 id 过滤使用） */
+    fun listFavoriteIds(): Set<Long> {
+        val out = HashSet<Long>()
+        readableDatabase.rawQuery("SELECT question_id FROM favorites", null).use { c ->
+            while (c.moveToNext()) out.add(c.getLong(0))
+        }
+        return out
+    }
+
+    // ---------------- ExamProgress（答题进度，中途退出可续做） ----------------
+
+    /** 某份试卷的未交卷进度；无进度或进度为空时返回 null */
+    fun getProgress(paperId: Long): ExamProgress? {
+        readableDatabase.rawQuery(
+            "SELECT answers, marked, elapsed_sec FROM exam_progress WHERE paper_id = ?",
+            arrayOf(paperId.toString())
+        ).use { c ->
+            if (!c.moveToFirst()) return null
+            val answers = parseIdTextMap(c.getString(0) ?: "")
+            val marked = parseIdTextSet(c.getString(1) ?: "")
+            if (answers.isEmpty() && marked.isEmpty()) return null
+            return ExamProgress(paperId, answers, marked, c.getInt(2))
+        }
+    }
+
+    fun saveProgress(paperId: Long, answers: Map<Long, String>, marked: Set<Long>, elapsedSec: Int) {
+        writableDatabase.insertWithOnConflict(
+            "exam_progress", null,
+            ContentValues().apply {
+                put("paper_id", paperId)
+                put("answers", answers.entries.joinToString(";") { "${it.key},${it.value}" })
+                put("marked", marked.joinToString(","))
+                put("elapsed_sec", elapsedSec)
+                put("updated_at", System.currentTimeMillis())
+            },
+            SQLiteDatabase.CONFLICT_REPLACE
+        )
+    }
+
+    fun clearProgress(paperId: Long) {
+        writableDatabase.delete("exam_progress", "paper_id = ?", arrayOf(paperId.toString()))
+    }
+
+    private fun parseIdTextMap(raw: String): HashMap<Long, String> {
+        val out = HashMap<Long, String>()
+        if (raw.isBlank()) return out
+        for (entry in raw.split(';')) {
+            val i = entry.indexOf(',')
+            if (i <= 0) continue
+            val id = entry.substring(0, i).toLongOrNull() ?: continue
+            out[id] = entry.substring(i + 1)
+        }
+        return out
+    }
+
+    private fun parseIdTextSet(raw: String): HashSet<Long> {
+        val out = HashSet<Long>()
+        if (raw.isBlank()) return out
+        raw.split(',').forEach { it.toLongOrNull()?.let(out::add) }
+        return out
+    }
+
     companion object {
         /** 试卷来源：由导入文件生成 */
         const val MODE_IMPORT = "导入"
+
+        /** 试卷来源：错题重练（从练习记录的错题生成） */
+        const val MODE_RETRY = "错题重练"
 
         @Volatile
         private var instance: QBankDb? = null
@@ -644,6 +771,15 @@ data class AnswerUpdate(
     val questionId: Long,
     val answer: String,
     val analysis: String = ""
+)
+
+/** 未交卷的答题进度（中途退出保存，重进可续做） */
+data class ExamProgress(
+    val paperId: Long,
+    val answers: Map<Long, String>,
+    val marked: Set<Long>,
+    /** 已用掉的秒数（续做时从剩余时长继续倒计时） */
+    val elapsedSec: Int
 )
 
 /** Option 便捷扩展 */

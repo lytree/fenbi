@@ -3,6 +3,7 @@ package com.lytree.qbank.ui
 import android.util.TypedValue
 import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewGroup
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import com.lytree.qbank.R
@@ -56,11 +57,19 @@ object QuestionCardBinder {
         fontScale: Float,
         cb: Callbacks,
         /** 夜间模式：只换颜色与背景资源，版式、字号、间距一律不动 */
-        night: Boolean = false
+        night: Boolean = false,
+        /** 分屏右栏：材料已在左栏整栏展示，卡片不再重复渲染材料 */
+        hideMaterial: Boolean = false,
+        /**
+         * 练习模式（参考应用的「练习」作答口径）：本题作答后立即判色出解析，
+         * 不必等整卷交卷。集合里是已触发即时判分的题 id。
+         */
+        revealed: Set<Long> = emptySet()
     ) {
         val ctx = b.root.context
         val res = ctx.resources
         val density = res.displayMetrics.density
+        val revealNow = revealAnswers || q.id in revealed
 
         // ---- 卡片底色 ----
         b.root.setBackgroundResource(
@@ -132,7 +141,7 @@ object QuestionCardBinder {
         b.tvStem.setLineSpacing(6f * density * fontScale, 1f)
 
         // ---- 材料 ----
-        if (q.material.isNotBlank()) {
+        if (q.material.isNotBlank() && !hideMaterial) {
             b.materialBox.visibility = View.VISIBLE
             b.materialBox.setBackgroundResource(
                 if (night) R.drawable.bg_fb_material_night else R.drawable.bg_fb_material
@@ -165,9 +174,9 @@ object QuestionCardBinder {
 
         // ---- 选项 ----
         b.optionsBox.removeAllViews()
-        buildOptions(b, q, answers, fontScale, cb, night)
+        buildOptions(b, q, answers, fontScale, cb, night, revealNow)
 
-        // ---- 解析（交卷后）----
+        // ---- 解析（交卷后 / 练习模式即时判分后）----
         b.tvAnalysis.setBackgroundResource(
             if (night) R.drawable.bg_fb_note_night else R.drawable.bg_fb_note
         )
@@ -176,7 +185,7 @@ object QuestionCardBinder {
                 ctx, if (night) R.color.fb_night_text_body else R.color.fb_text_primary
             )
         )
-        if (revealAnswers) {
+        if (revealNow) {
             val userAns = answers[q.id] ?: ""
             val r = Judge.judge(q, userAns, policy)
             b.tvAnalysis.visibility = View.VISIBLE
@@ -205,13 +214,18 @@ object QuestionCardBinder {
         }
     }
 
+    /** 短选项两列的判定：选项 ≥ 4 个且文本都很短（参考应用对「判断/常识短选项」的两列排布） */
+    private const val TWO_COL_MAX_OPTIONS = 4
+    private const val TWO_COL_MAX_TEXT_LEN = 6
+
     private fun buildOptions(
         b: ItemQuestionPageBinding,
         q: Question,
         answers: MutableMap<Long, String>,
         fontScale: Float,
         cb: Callbacks,
-        night: Boolean
+        night: Boolean,
+        revealNow: Boolean
     ) {
         val ctx = b.root.context
         val inflater = LayoutInflater.from(ctx)
@@ -220,8 +234,12 @@ object QuestionCardBinder {
         val optionTextColor = ContextCompat.getColor(
             ctx, if (night) R.color.fb_night_text_body else R.color.fb_option_text
         )
+        // 即时判分的着色基准：正确项 = 绿，选错的项 = 红
+        val correctKeys = if (revealNow) revealKeys(q) else emptySet()
+        val wrongSelected = if (revealNow) selected.filter { it !in correctKeys }.toSet() else emptySet()
 
-        q.options.forEach { opt ->
+        /** 绑定单个选项行 */
+        fun bindOption(opt: com.lytree.qbank.data.model.Option): ItemOptionBinding {
             val item = ItemOptionBinding.inflate(inflater, b.optionsBox, false)
             item.tvKey.text = opt.key
             item.tvKey.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f * fontScale)
@@ -231,23 +249,59 @@ object QuestionCardBinder {
             item.tvText.setLineSpacing(
                 5f * ctx.resources.displayMetrics.density * fontScale, 1f
             )
-            applyCircleState(item, selected.contains(opt.key.uppercase()), night)
+            val key = opt.key.uppercase()
+            applyCircleState(
+                item,
+                selected.contains(key),
+                night,
+                when {
+                    revealNow && correctKeys.isNotEmpty() && key in correctKeys -> Reveal.RIGHT
+                    revealNow && key in wrongSelected -> Reveal.WRONG
+                    else -> Reveal.NONE
+                }
+            )
 
             // 把 item 绑定挂到子 view 上，作答后就地刷新徽标时不必重新解析下标
             item.root.tag = item
             item.root.setOnClickListener {
-                val key = opt.key.uppercase()
+                val k = opt.key.uppercase()
                 if (multi) {
-                    if (!selected.remove(key)) selected.add(key)
+                    if (!selected.remove(k)) selected.add(k)
                 } else {
                     selected.clear()
-                    selected.add(key)
+                    selected.add(k)
                 }
                 answers[q.id] = selected.sorted().joinToString(",")
                 refreshSelection(b, q, answers, night)
                 cb.onAnswerChanged(q)
             }
-            b.optionsBox.addView(item.root)
+            return item
+        }
+
+        val twoColumn = q.options.size >= TWO_COL_MAX_OPTIONS &&
+                q.options.all { it.text.length <= TWO_COL_MAX_TEXT_LEN }
+        if (twoColumn) {
+            // 短选项两列：两行一组水平排布，各占一半宽度
+            q.options.chunked(2).forEach { rowOpts ->
+                val row = android.widget.LinearLayout(ctx).apply {
+                    orientation = android.widget.LinearLayout.HORIZONTAL
+                }
+                rowOpts.forEach { opt ->
+                    val v = bindOption(opt).root
+                    row.addView(v, android.widget.LinearLayout.LayoutParams(
+                        0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+                    ))
+                }
+                // 单数行补一个占位，让最后一项仍靠左半宽，与整列对齐
+                if (rowOpts.size == 1) {
+                    row.addView(View(ctx), android.widget.LinearLayout.LayoutParams(
+                        0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+                    ))
+                }
+                b.optionsBox.addView(row)
+            }
+        } else {
+            q.options.forEach { opt -> b.optionsBox.addView(bindOption(opt).root) }
         }
     }
 
@@ -260,10 +314,22 @@ object QuestionCardBinder {
     ) {
         val selected = parseKeys(answers[q.id])
         for (i in 0 until b.optionsBox.childCount) {
-            val item = b.optionsBox.getChildAt(i).tag as? ItemOptionBinding ?: continue
-            val key = q.options.getOrNull(i)?.key?.uppercase() ?: continue
-            applyCircleState(item, selected.contains(key), night)
+            val child = b.optionsBox.getChildAt(i)
+            if (child.tag is ItemOptionBinding) {
+                // 单列：child 本身就是选项行
+                applyState(child.tag as ItemOptionBinding, selected, night)
+            } else if (child is ViewGroup) {
+                // 两列：选项行包在水平容器里，逐个刷新（单数行末尾是占位 View，tag 为空会跳过）
+                for (j in 0 until child.childCount) {
+                    val inner = child.getChildAt(j)
+                    (inner.tag as? ItemOptionBinding)?.let { applyState(it, selected, night) }
+                }
+            }
         }
+    }
+
+    private fun applyState(item: ItemOptionBinding, selected: Set<String>, night: Boolean) {
+        applyCircleState(item, selected.contains(item.tvKey.text.toString().uppercase()), night)
     }
 
     /** `"A,C"` / `"a，c"` / `"A C"` 统一解成大写键集合 */
@@ -273,22 +339,61 @@ object QuestionCardBinder {
             .filter { it.isNotEmpty() }
             .toMutableSet()
 
-    /** 圆形徽标两态：未选（灰描边灰字）/ 已选（蓝实心白字） */
-    fun applyCircleState(item: ItemOptionBinding, selected: Boolean, night: Boolean = false) {
+    /** 圆形徽标三态：未选（灰描边灰字）/ 已选（蓝实心白字）/ 判分后对错（绿·红实心白字） */
+    enum class Reveal { NONE, RIGHT, WRONG }
+
+    fun applyCircleState(
+        item: ItemOptionBinding,
+        selected: Boolean,
+        night: Boolean = false,
+        reveal: Reveal = Reveal.NONE
+    ) {
         val ctx = item.root.context
-        if (selected) {
-            item.tvKey.setBackgroundResource(R.drawable.bg_fb_circle_selected)
-            item.tvKey.setTextColor(ContextCompat.getColor(ctx, R.color.fb_circle_on))
-        } else {
-            item.tvKey.setBackgroundResource(
-                if (night) R.drawable.bg_fb_circle_night else R.drawable.bg_fb_circle
-            )
-            item.tvKey.setTextColor(
-                ContextCompat.getColor(
-                    ctx, if (night) R.color.fb_night_circle_text else R.color.fb_circle_text
+        when {
+            reveal == Reveal.RIGHT -> {
+                item.tvKey.setBackgroundResource(R.drawable.bg_fb_circle_right)
+                item.tvKey.setTextColor(ContextCompat.getColor(ctx, android.R.color.white))
+            }
+            reveal == Reveal.WRONG -> {
+                item.tvKey.setBackgroundResource(R.drawable.bg_fb_circle_wrong)
+                item.tvKey.setTextColor(ContextCompat.getColor(ctx, android.R.color.white))
+            }
+            selected -> {
+                item.tvKey.setBackgroundResource(R.drawable.bg_fb_circle_selected)
+                item.tvKey.setTextColor(ContextCompat.getColor(ctx, R.color.fb_circle_on))
+            }
+            else -> {
+                item.tvKey.setBackgroundResource(
+                    if (night) R.drawable.bg_fb_circle_night else R.drawable.bg_fb_circle
                 )
-            )
+                item.tvKey.setTextColor(
+                    ContextCompat.getColor(
+                        ctx, if (night) R.color.fb_night_circle_text else R.color.fb_circle_text
+                    )
+                )
+            }
         }
+    }
+
+    /**
+     * 即时判分用的「正确项集合」：标准答案键与选项 key 的交集优先；
+     * 判断题答案常以「正确/错误/T/F」入库而不与选项 key（A/B）对应，此时按选项文本兜底匹配。
+     */
+    private fun revealKeys(q: Question): Set<String> {
+        if (!Judge.hasStandard(q)) return emptySet()
+        val optionKeys = q.options.map { it.key.uppercase() }.toSet()
+        val direct = q.answerKeys().filter { it in optionKeys }.toSet()
+        if (direct.isNotEmpty()) return direct
+        if (q.type == QuestionType.TRUE_FALSE) {
+            val raw = Judge.normalizeText(q.answer)
+            val isTrue = raw in setOf("t", "true", "y", "yes", "对", "正确", "√")
+            return q.options.filter { o ->
+                val t = Judge.normalizeText(o.text)
+                if (isTrue) t in setOf("正确", "对", "t", "true", "yes", "y", "√")
+                else t in setOf("错误", "错", "f", "false", "no", "n", "×")
+            }.map { it.key.uppercase() }.toSet()
+        }
+        return emptySet()
     }
 
     fun fmtScore(v: Double): String =
