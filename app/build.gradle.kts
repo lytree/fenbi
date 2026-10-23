@@ -1,6 +1,28 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+}
+
+// 版本号默认值；CI 里 tag 构建用 -PversionName=x.y.z -PversionCode=n 覆盖
+val versionNameOverride = providers.gradleProperty("versionName").orNull?.removePrefix("v")
+val versionCodeOverride = providers.gradleProperty("versionCode").orNull?.toIntOrNull()
+
+// release 签名：优先 keystore.properties（本地），其次环境变量（CI 密钥）
+// 两者都没有时 release 退回 debug 签名，保证 CI 产物可直接安装
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("keystore.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+
+fun secretOrNull(envName: String, propName: String): String? =
+    (System.getenv(envName) ?: keystoreProperties.getProperty(propName))?.takeIf { it.isNotBlank() }
+
+val releaseStoreFile = secretOrNull("QBANK_KEYSTORE_FILE", "storeFile")
+val hasReleaseKeystore = releaseStoreFile != null && file(releaseStoreFile).exists()
+if (!hasReleaseKeystore) {
+    logger.lifecycle("未找到 release 签名密钥（keystore.properties 或 QBANK_KEYSTORE_* 环境变量），release 构建将使用 debug 签名")
 }
 
 android {
@@ -11,8 +33,8 @@ android {
         applicationId = "com.lytree.qbank"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = versionCodeOverride ?: 1
+        versionName = versionNameOverride ?: "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -20,10 +42,26 @@ android {
         animationsDisabled = true
     }
 
+    signingConfigs {
+        if (hasReleaseKeystore) {
+            create("release") {
+                storeFile = file(releaseStoreFile!!)
+                storePassword = secretOrNull("QBANK_KEYSTORE_PASSWORD", "storePassword")
+                keyAlias = secretOrNull("QBANK_KEY_ALIAS", "keyAlias")
+                keyPassword = secretOrNull("QBANK_KEY_PASSWORD", "keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = if (hasReleaseKeystore) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
         debug {
             isMinifyEnabled = false
