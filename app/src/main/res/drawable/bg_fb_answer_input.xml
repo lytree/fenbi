@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 补录答案的行内输入框：浅底 + 1dp 描边 + 8dp 圆角，聚焦态由 selector 换成主蓝 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#FFFFFF" />
+            <stroke android:width="1.4dp" android:color="@color/fb_primary" />
+            <corners android:radius="@dimen/fb_radius_field" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#FFFFFF" />
+            <stroke android:width="1dp" android:color="#E6E8EC" />
+            <corners android:radius="@dimen/fb_radius_field" />
+        </shape>
+    </item>
+</selector>

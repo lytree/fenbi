@@ -75,6 +75,52 @@ object AnswerSheetImporter {
         return AnswerSheet(entries, issues, format.label)
     }
 
+    /**
+     * 解析**手动粘贴**的一段答案文本（不落文件、不做格式探测）。
+     *
+     * 只认「答案」本身，不做题库结构判断，所以比 [parse] 宽松：
+     * - `1.A`、`第1题 A`、`(1) A` 逐行；
+     * - 一行多条 `1.A 2.B 3.对`；
+     * - 整段只有答案没有题号（`A B C D` / 一行一个字母）→ 不给题号，交给调用方按题序填。
+     */
+    fun parsePasted(raw: String): List<AnswerEntry> {
+        val text = raw.replace("\r\n", "\n").replace('\r', '\n')
+        val out = ArrayList<AnswerEntry>()
+
+        for (line in text.split('\n')) {
+            val s = line.trim()
+            if (s.isEmpty()) continue
+
+            val m = LINE_RE.matchEntire(s)
+            if (m != null) {
+                val ans = clean(m.groupValues[2])
+                // 「1.A 2.B」这种一行多条：LINE_RE 会把后半截一起吃进来，交给下面的 INLINE_RE 拆
+                val hasMore = MORE_NO_RE.containsMatchIn(ans)
+                if (ans.isNotEmpty() && !hasMore) {
+                    out.add(AnswerEntry(no = m.groupValues[1].toIntOrNull(), answer = ans))
+                    continue
+                }
+            }
+
+            var hits = 0
+            INLINE_RE.findAll(s).forEach { mm ->
+                out.add(AnswerEntry(no = mm.groupValues[1].toIntOrNull(), answer = mm.groupValues[2]))
+                hits++
+            }
+            if (hits > 0) continue
+
+            // 没有题号：按分隔符拆成纯答案序列
+            s.split(' ', '　', '\t', ',', '，', '、', ';', '；', '/')
+                .map { clean(it) }
+                .filter { it.isNotEmpty() && it.length <= 20 }
+                .forEach { out.add(AnswerEntry(answer = it)) }
+        }
+        return out
+    }
+
+    /** 一段文本里还夹着「题号 + 答案」的另一条（说明这一行不止一题） */
+    private val MORE_NO_RE = Regex("""(?:^|[\s　,，;；、])\d{1,4}\s*[.、．:：)）]\s*\S""")
+
     // ---------------- CSV / Excel ----------------
 
     private fun parseTable(rows: List<List<String>>, issues: MutableList<ImportIssue>): List<AnswerEntry> {
@@ -209,7 +255,7 @@ object AnswerSheetImporter {
 
     /** 一行多条：`1.A 2.B 3.C` */
     private val INLINE_RE = Regex(
-        """(?:^|[\s,，;；])(\d{1,4})\s*[.、．:：)）]?\s*([A-Ha-h]{1,6}|对|错|正确|错误|√|×|TRUE|FALSE|T|F)(?=\s|$|[.、．,，;；])"""
+        """(?:^|[\s　,，;；、])(\d{1,4})\s*[.、．:：)）]?\s*([A-Ha-h]{1,6}|对|错|正确|错误|√|×|TRUE|FALSE|T|F)(?=\s|$|[.、．,，;；])"""
     )
 
     private fun parseTxt(bytes: ByteArray, issues: MutableList<ImportIssue>): List<AnswerEntry> {

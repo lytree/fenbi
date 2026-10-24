@@ -17,6 +17,7 @@ import androidx.viewpager2.widget.ViewPager2
 import com.lytree.qbank.R
 import com.lytree.qbank.data.db.QBankDb
 import com.lytree.qbank.data.model.ExamRecord
+import com.lytree.qbank.data.model.PaperStructure
 import com.lytree.qbank.data.model.Question
 import com.lytree.qbank.databinding.ActivityExamBinding
 import com.lytree.qbank.engine.Judge
@@ -61,6 +62,12 @@ class ExamActivity : AppCompatActivity() {
      * 补完答案后就地 clear + addAll，列表位置与作答状态都不用重建。
      */
     private val questions = ArrayList<Question>()
+    /**
+     * 试卷三级结构（大类题型 → 材料 → 题目）。
+     * 单题分页、多题卷面的材料去重与说明卡、答题卡分组、弹出材料/分屏的组定位都从这里取数；
+     * 题目集合变了（补答案后重读整卷）就重建一份，见 [rebuildStructure]。
+     */
+    private lateinit var structure: PaperStructure
     private val answers = HashMap<Long, String>()
     private val marked = HashSet<Long>()
     private val favorites = HashSet<Long>()
@@ -90,6 +97,11 @@ class ExamActivity : AppCompatActivity() {
     private var autoNext = true
     /** 当前最靠上的题目位置（答题卡高亮「当前题」用） */
     private var currentPos = 0
+    /**
+     * 等待翻页落定后要在页内滚到的题号（材料组页一页多题，换页后还要滚到那一题）。
+     * -1 表示没有待处理目标。
+     */
+    private var pendingPageFocus = -1
 
     // ---------------- 答题进度续做 ----------------
 
@@ -127,6 +139,16 @@ class ExamActivity : AppCompatActivity() {
         if (uri != null) importAnswers(uri) else submitAfterImport = false
     }
 
+    /** 补录答案：不用答案文件，直接在补录页逐题填；回来后卷面就有标准答案了 */
+    private val answerEntryLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode != RESULT_OK) return@registerForActivityResult
+        reloadQuestions()
+        refreshCards()
+        refreshAnswerEntry()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // 手机继续锁竖屏（答题页是按竖屏设计的）；平板不能锁——见 ScreenAdapt 里的说明
@@ -145,6 +167,7 @@ class ExamActivity : AppCompatActivity() {
             return
         }
         questions.addAll(paper.questions)
+        structure = PaperStructure(questions)
         durationMin = paper.durationMin
         startedAt = System.currentTimeMillis()
         sessionStartWall = startedAt
@@ -177,6 +200,7 @@ class ExamActivity : AppCompatActivity() {
     private fun setupList() {
         adapter = QuestionListAdapter(
             questions = questions,
+            structure = structure,
             answers = answers,
             marked = marked,
             favorites = favorites,
@@ -196,6 +220,8 @@ class ExamActivity : AppCompatActivity() {
         binding.questionList.itemAnimator = null
         binding.questionList.addOnScrollListener(object : androidx.recyclerview.widget.RecyclerView.OnScrollListener() {
             override fun onScrolled(rv: androidx.recyclerview.widget.RecyclerView, dx: Int, dy: Int) {
+                // 笔迹钉在题目卡上，卡片位置一变就得重画（RecyclerView 不触发视图树的滚动回调）
+                binding.inkOverlay.invalidate()
                 // 只有多题模式在滚动；单题模式的当前位置由 ViewPager2 回调维护，
                 // 否则隐藏的列表会把手写笔迹 / 答题卡高亮带偏。
                 if (!multiBrowse) return
@@ -218,6 +244,7 @@ class ExamActivity : AppCompatActivity() {
     private fun setupPager() {
         pagerAdapter = QuestionPagerAdapter(
             questions = questions,
+            structure = structure,
             answers = answers,
             marked = marked,
             favorites = favorites,
@@ -239,7 +266,17 @@ class ExamActivity : AppCompatActivity() {
                 // 单题模式下由翻页维护「当前题」；多题模式以列表为准，不受影响。
                 // 页码表里夹着「模块说明页」，所以要换回题号——否则说明页会被当成一道题。
                 if (multiBrowse) return
-                currentPos = pagerAdapter.questionOfPage(position)
+                // 材料组页一页多题：页内正在看的那道题不该被翻页回调重置成组首题
+                val range = pagerAdapter.questionsOfPage(position)
+                if (range == null || currentPos !in range) {
+                    currentPos = pagerAdapter.questionOfPage(position)
+                }
+                // 从答题卡 / 「笔」跳过来时，页内还要落到具体那一题（材料组页一页多题）
+                val focus = pendingPageFocus
+                if (focus >= 0 && range != null && focus in range) {
+                    pendingPageFocus = -1
+                    binding.pager.post { locateInPage(focus) }
+                }
                 syncInkQuestion()
             }
         })
@@ -261,6 +298,10 @@ class ExamActivity : AppCompatActivity() {
             binding.questionList.postDelayed({
                 binding.questionList.smoothScrollToPosition(next)
             }, 220)
+        } else if (pagerAdapter.pageOfQuestion(next) == binding.pager.currentItem) {
+            // 同一则材料带多道小题：组内不再翻页，把下一题在本页里滚出来
+            currentPos = next
+            binding.pager.postDelayed({ locateInPage(next, smooth = true) }, 220)
         } else {
             // 翻到下一题（跳过夹在中间的模块说明页——作答流不该被说明页打断）
             binding.pager.postDelayed(
@@ -367,6 +408,16 @@ class ExamActivity : AppCompatActivity() {
             submitAfterImport = false
             launchAnswerPicker()
         }
+        // 没有答案文件也能补：进补录页逐题填，回来卷面立刻可判
+        binding.rowFillAnswer.setOnClickListener {
+            binding.morePanel.visibility = View.GONE
+            submitAfterImport = false
+            answerEntryLauncher.launch(
+                Intent(this, AnswerEntryActivity::class.java).apply {
+                    putExtra(AnswerEntryActivity.EXTRA_PAPER_ID, paperId)
+                }
+            )
+        }
         refreshAnswerEntry()
     }
 
@@ -408,8 +459,19 @@ class ExamActivity : AppCompatActivity() {
         val fresh = db.getPaper(paperId)?.questions ?: return
         questions.clear()
         questions.addAll(fresh)
+        rebuildStructure()
         refreshAnswerEntry()
         updateHeader()
+    }
+
+    /**
+     * 题目集合变了就重建结构：分组（大类 / 材料）与单题页码表都挂在它上面，
+     * 不重建就会继续按旧结构分页、按旧分组渲染材料。
+     */
+    private fun rebuildStructure() {
+        structure = PaperStructure(questions)
+        if (::adapter.isInitialized) adapter.updateStructure(structure)
+        if (::pagerAdapter.isInitialized) pagerAdapter.updateStructure(structure)
     }
 
     /**
@@ -423,9 +485,8 @@ class ExamActivity : AppCompatActivity() {
      */
     private fun showMaterialPopup(q: Question) {
         if (q.material.isBlank()) return
-        val group = questions.filter {
-            it.material.isNotBlank() && it.material.trim() == q.material.trim()
-        }
+        // 以材料为准：这组 = 该题所属的材料组（跨大类的同名材料本来就断成两组）
+        val group = structure.groupOf(q)?.takeIf { it.isMaterialGroup }?.questions ?: listOf(q)
         if (group.size > 1 && isTablet) {
             openSplit(q, group)
         } else {
@@ -705,7 +766,8 @@ class ExamActivity : AppCompatActivity() {
             styleInkButton = { on ->
                 binding.inkBar.alpha = if (on) 1f else 0.95f
             },
-            onToggleMark = { currentQuestion()?.let { toggleMark(it) } }
+            onToggleMark = { currentQuestion()?.let { toggleMark(it) } },
+            btnInkColor = binding.btnInkColor
         )
         inkToolbar.onModeChanged = { on ->
             inkMode = on
@@ -732,19 +794,125 @@ class ExamActivity : AppCompatActivity() {
         // 热区收窄到屏幕最外沿 16dp，正文里写字不会被当成滚动，贴着边拖仍可滚动
         binding.inkOverlay.railVisible = false
         binding.inkOverlay.barTouchWidth = 16f * resources.displayMetrics.density
+        // 笔迹钉在题目卡上：卷面滚到哪，圈画跟到哪；不接锚点就退化成「钉在屏幕上」的临时标记
+        binding.inkOverlay.anchorSource = { inkAnchors() }
+        // 页内纵向滚动（NestedScrollView）不会走 RecyclerView 的 onScrolled，靠视图树的滚动回调统一重绘
+        binding.root.viewTreeObserver.addOnScrollChangedListener {
+            binding.inkOverlay.invalidate()
+        }
         syncInkQuestion()
     }
 
-    /** 单题浏览时当前页的滚动容器（每页外面套了一层 NestedScrollView） */
-    private fun currentPageScroll(): View? {
+    /**
+     * 遮盖层的内容锚点：每张可见题目卡的题目 id + 锚点在本层坐标系里的位置。
+     *
+     * 锚点取「卡片左边 + 题干顶边」：卡片左沿在多题 / 单题 / 分屏三种排版里都一样，
+     * 题干顶边则不受模块说明卡、材料块这些「有的模式有、有的模式没有」的前置内容影响——
+     * 只在卡片顶上打点的话，同一道题换个浏览模式圈画就会整体上下错一截。
+     *
+     * 笔迹存的是相对锚点的坐标，画的时候再加上它，所以滚动时不用手工平移笔迹，
+     * 也不会出现「写着写着圈画留在屏幕上、题目却滚走了」的老问题。
+     */
+    private fun inkAnchors(): List<InkOverlay.Anchor> {
+        val out = ArrayList<InkOverlay.Anchor>(4)
+        val base = IntArray(2)
+        binding.inkOverlay.getLocationOnScreen(base)
+
+        fun add(card: View, id: Long) {
+            if (id == 0L || card.width <= 0 || card.height <= 0) return
+            val cardLoc = IntArray(2)
+            card.getLocationOnScreen(cardLoc)
+            val stem = card.findViewById<View>(R.id.tvStem)
+            val stemY = if (stem != null && stem.height > 0) {
+                val stemLoc = IntArray(2)
+                stem.getLocationOnScreen(stemLoc)
+                stemLoc[1]
+            } else {
+                cardLoc[1]
+            }
+            out.add(
+                InkOverlay.Anchor(
+                    questionId = id,
+                    x = (cardLoc[0] - base[0]).toFloat(),
+                    y = (stemY - base[1]).toFloat()
+                )
+            )
+        }
+
+        when {
+            // 就地分屏：右栏是这一组题，卡片按分屏列表的下标取
+            splitMode -> {
+                val rv = splitList ?: return out
+                for (i in 0 until rv.childCount) {
+                    val child = rv.getChildAt(i)
+                    val pos = rv.getChildAdapterPosition(child)
+                    if (pos < 0) continue
+                    add(child, splitGroup.getOrNull(pos)?.id ?: 0L)
+                }
+            }
+            // 多题浏览：列表里的每张卡 = 一道题
+            multiBrowse -> {
+                val rv = binding.questionList
+                for (i in 0 until rv.childCount) {
+                    val child = rv.getChildAt(i)
+                    val pos = rv.getChildAdapterPosition(child)
+                    if (pos < 0) continue
+                    add(child, questions.getOrNull(pos)?.id ?: 0L)
+                }
+            }
+            // 单题浏览：一页可能装多道小题（材料组页），逐张卡算原点，组内每题的圈画都能对上
+            else -> {
+                val box = currentPageRoot()?.findViewById<ViewGroup>(R.id.cardContainer) ?: return out
+                for (i in 0 until box.childCount) {
+                    val card = box.getChildAt(i)
+                    val idx = (card.tag as? QuestionPagerAdapter.CardHolder)?.index ?: continue
+                    add(card, questions.getOrNull(idx)?.id ?: 0L)
+                }
+            }
+        }
+        return out
+    }
+
+    /** 单题浏览时当前页的根视图（ViewPager2 里真正承载那一页的 View） */
+    private fun currentPageRoot(): View? {
         val rv = binding.pager.getChildAt(0) as? androidx.recyclerview.widget.RecyclerView ?: return null
         for (i in 0 until rv.childCount) {
             val page = rv.getChildAt(i) ?: continue
-            if (rv.getChildAdapterPosition(page) == binding.pager.currentItem) {
-                return page.findViewById(R.id.pageScroll)
-            }
+            if (rv.getChildAdapterPosition(page) == binding.pager.currentItem) return page
         }
         return null
+    }
+
+    /** 单题浏览时当前页的滚动容器（每页外面套了一层 NestedScrollView） */
+    private fun currentPageScroll(): View? = currentPageRoot()?.findViewById(R.id.pageScroll)
+
+    /**
+     * 翻到某题并把它在页内露出来。
+     *
+     * 材料组页（一则材料带多道小题）一页装多题，从答题卡跳过来 / 点某题的「笔」时，
+     * 光换页还不够——还要在页内滚到这道题，否则看到的还是组首题。
+     */
+    private fun showQuestion(questionIndex: Int, smooth: Boolean = false) {
+        val page = pagerAdapter.pageOfQuestion(questionIndex)
+        val samePage = page == binding.pager.currentItem
+        // 换页时把「页内落位」交给翻页回调（那时页码与视图才对得上）；同页直接滚
+        pendingPageFocus = if (samePage) -1 else questionIndex
+        if (!samePage) binding.pager.setCurrentItem(page, smooth)
+        binding.pager.post { locateInPage(questionIndex) }
+    }
+
+    /** 把页内某道题顶到可视区顶部（组页内切题 / 跳题用；单题页上什么也不做） */
+    private fun locateInPage(questionIndex: Int, smooth: Boolean = false) {
+        val root = currentPageRoot() ?: return
+        val box = root.findViewById<ViewGroup>(R.id.cardContainer) ?: return
+        val scroll = root.findViewById<androidx.core.widget.NestedScrollView>(R.id.pageScroll) ?: return
+        for (i in 0 until box.childCount) {
+            val child = box.getChildAt(i)
+            val idx = (child.tag as? QuestionPagerAdapter.CardHolder)?.index ?: continue
+            if (idx != questionIndex) continue
+            if (smooth) scroll.smoothScrollTo(0, child.top) else scroll.scrollTo(0, child.top)
+            return
+        }
     }
 
     /** 当前正在看的那道题 */
@@ -754,15 +922,19 @@ class ExamActivity : AppCompatActivity() {
      * 把遮盖层绑到「当前题」。
      *
      * 遮盖层常驻可见——退出写画模式后笔迹还留在题目上，所以切题 / 翻页 / 滚动时都要换绑，
-     * 否则上一题的圈画会浮在下一题上面。
+     * 否则撤销、清空会落到上一题头上。画面上并不是只画这一题：所有可见题的笔迹都由
+     * [inkAnchors] 逐卡绘制，材料组页里同页其它小题的圈画照样显示。
+     *
+     * 工具条上的「标记」跟随当前题。
      */
     private fun syncInkQuestion() {
         if (!::inkToolbar.isInitialized) return   // onCreate 期间滚动回调可能先到
-        // 单题浏览停在「模块说明页」时，这一页上没有题目——不绑任何笔迹，免得上一题的圈画浮在说明卡上
+        // 单题浏览停在「模块说明页」时，这一页上没有题目——不绑任何笔迹
         val onModuleIntro = !multiBrowse && pagerAdapter.isModuleIntroPage(binding.pager.currentItem)
-        val q = if (onModuleIntro) null else currentQuestion()
-        binding.inkOverlay.bindQuestion(q?.id ?: 0L)
-        inkToolbar.setMarked(q != null && q.id in marked)
+        val inkQ = if (onModuleIntro) null else currentQuestion()
+        binding.inkOverlay.bindQuestion(inkQ?.id ?: 0L)
+        val markQ = if (onModuleIntro) null else currentQuestion()
+        inkToolbar.setMarked(markQ != null && markQ.id in marked)
     }
 
     /**
@@ -780,7 +952,7 @@ class ExamActivity : AppCompatActivity() {
                 (binding.questionList.layoutManager as? LinearLayoutManager)
                     ?.scrollToPositionWithOffset(idx, 0)
             } else {
-                binding.pager.setCurrentItem(pagerAdapter.pageOfQuestion(idx), false)
+                showQuestion(idx)
             }
         }
         syncInkQuestion()
@@ -791,6 +963,9 @@ class ExamActivity : AppCompatActivity() {
                 if (multiBrowse) {
                     (binding.questionList.layoutManager as? LinearLayoutManager)
                         ?.scrollToPositionWithOffset(idx, 0)
+                } else {
+                    // 材料组页里这一题未必是组首题，排版完再在页内对齐一次
+                    locateInPage(idx)
                 }
             }
             syncInkQuestion()
@@ -912,6 +1087,18 @@ class ExamActivity : AppCompatActivity() {
         super.onPause()
         if (!submitted && paperId > 0L) {
             db.saveProgress(paperId, answers, marked, elapsedSec())
+        }
+    }
+
+    /**
+     * 回到答题页时重读笔迹：资料分析分屏页是另一个 Activity，同一道题可能刚在那边标过，
+     * 不清缓存就会看到旧笔迹。每一笔抬手即落库，重读不会丢东西。
+     */
+    override fun onResume() {
+        super.onResume()
+        if (::inkToolbar.isInitialized && ::pagerAdapter.isInitialized) {
+            binding.inkOverlay.reload()
+            syncInkQuestion()
         }
     }
 
@@ -1056,7 +1243,7 @@ class ExamActivity : AppCompatActivity() {
         } else {
             binding.questionList.visibility = View.GONE
             binding.pager.visibility = View.VISIBLE
-            binding.pager.setCurrentItem(pagerAdapter.pageOfQuestion(target), false)
+            showQuestion(target)
         }
         // 容器刚切完还没排版，遮盖层这一帧拿不到「能不能滚动」，等排版完再让它重画一次右侧轨道
         binding.inkOverlay.post { binding.inkOverlay.invalidate() }
@@ -1069,7 +1256,8 @@ class ExamActivity : AppCompatActivity() {
         if (multiBrowse) {
             binding.questionList.scrollToPosition(position)
         } else {
-            binding.pager.setCurrentItem(pagerAdapter.pageOfQuestion(position), false)
+            // 材料组页一页多题：换页之后还要在页内滚到这一题
+            showQuestion(position)
         }
         syncInkQuestion()
     }
@@ -1213,12 +1401,12 @@ class ExamActivity : AppCompatActivity() {
         startActivityForResult(intent, REQ_CARD)
     }
 
-    /** 按科目分组，得到每题所属的分组标题（与参考应用「政治理论/常识判断…」一致） */
+    /** 按大类分组，得到每题所属的分组标题（与卷面「大类题型」同一口径，不另算一套） */
     private fun groupLabels(): ArrayList<String> {
-        val out = ArrayList<String>()
-        for (q in questions) {
-            val label = q.subject.ifBlank { q.knowledge.ifBlank { "未分类" } }
-            out.add(label)
+        val out = ArrayList<String>(questions.size)
+        questions.forEachIndexed { index, q ->
+            // 大类名为空（多数手打题库不填 subject）时退回知识点，都没有就归「未分类」
+            out.add(structure.sectionAt(index)?.name ?: q.knowledge.ifBlank { "未分类" })
         }
         return out
     }
@@ -1274,13 +1462,15 @@ class ExamActivity : AppCompatActivity() {
 
     /**
      * 交卷时发现整卷没答案：先问清楚是「现在补答案」还是「先交卷、之后再补」。
-     * 两条路都通——补答案后成绩报告会按已有作答直接重判，不用重做一遍。
+     * 两条路都通——补答案后成绩报告会按已有作答直接重判，不用重做一遍；
+     * 手上没答案文件也不要紧，交卷后可以在成绩报告里逐题补录。
      */
     private fun promptMissingAnswers(unanswered: Int, missing: Int) {
         val msg = buildString {
             if (unanswered > 0) append("你还有 $unanswered 道题目未作答。\n\n")
             append("本卷有 $missing 题缺少标准答案。")
-            append("现在导入答案可以立刻判分；也可以先交卷，之后在成绩报告里补答案，按你的作答重新判分。")
+            append("现在导入答案文件可以立刻判分；也可以先交卷，")
+            append("之后在成绩报告里点「补答案 → 逐题补录」把答案填进来，按你的作答重新判分。")
         }
         AlertDialog.Builder(this)
             .setTitle(R.string.pending_answer)

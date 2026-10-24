@@ -3,6 +3,7 @@ package com.lytree.qbank.ui
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
+import com.lytree.qbank.data.model.PaperStructure
 import com.lytree.qbank.data.model.Question
 import com.lytree.qbank.databinding.ItemQuestionPageBinding
 import com.lytree.qbank.engine.Policy
@@ -15,9 +16,14 @@ import com.lytree.qbank.engine.Policy
  *
  * 与 [QuestionPagerAdapter] 的差异只在承载容器与定位方式：这里是连续滚动，
  * 题号在题块内部；那边是一屏一题，靠左右滑动切题。
+ *
+ * 「材料要不要重复渲染」「大类说明卡挂在哪一题前」都从 [PaperStructure] 取数：
+ * 材料组只在组首渲染一次，大类说明只在大类首题出现一次。
  */
 class QuestionListAdapter(
     private val questions: List<Question>,
+    /** 试卷三级结构；题目集合变化时用 [updateStructure] 换一份 */
+    private var structure: PaperStructure = PaperStructure(questions),
     private val answers: MutableMap<Long, String>,
     private val marked: MutableSet<Long>,
     private val favorites: MutableSet<Long>,
@@ -55,6 +61,12 @@ class QuestionListAdapter(
 
     class VH(val binding: ItemQuestionPageBinding) : RecyclerView.ViewHolder(binding.root)
 
+    /** 换一份结构（补答案后重读整卷时用）；分组变了要整表重绑 */
+    fun updateStructure(structure: PaperStructure) {
+        this.structure = structure
+        notifyDataSetChanged()
+    }
+
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH =
         // 列宽（手机撑满 / 平板 820dp 居中）由 activity_exam.xml 的约束负责，
         // 这里不再按 displayMetrics 反算左右 margin——多窗口、分屏、旋转时那套算法都不准。
@@ -63,6 +75,7 @@ class QuestionListAdapter(
     override fun getItemCount() = questions.size
 
     override fun onBindViewHolder(holder: VH, position: Int) {
+        val ctx = holder.binding.root.context
         QuestionCardBinder.bind(
             b = holder.binding,
             position = position + indexOffset,
@@ -76,25 +89,18 @@ class QuestionListAdapter(
             fontScale = fontScale,
             cb = cb,
             night = night,
-            // 资料分析常是一则材料带多题：材料只在该组第一题渲染一次，
+            // 资料分析常是一则材料带多题：材料只在材料组的第一题渲染一次，
             // 后面的题接着往下排（对齐参考应用的连续卷面）
-            hideMaterial = hideAllMaterials ||
-                    (position + indexOffset > 0 && sameMaterialAsPrevious(position)),
-            // 模块说明卡：同一模块只在组首题出现一次（对齐参考应用的「资料分析 (20题)」）
-            moduleHeader = if (hideModuleHeaders) null else ModuleHeaders.headerAt(
-                holder.binding.root.context, questions, position
-            )
+            hideMaterial = hideAllMaterials || !structure.isGroupStart(position),
+            // 大类说明卡：同一个大类只在首题出现一次（对齐参考应用的「资料分析 (20题)」）
+            moduleHeader = if (hideModuleHeaders) {
+                null
+            } else {
+                structure.sectionAt(position)
+                    ?.takeIf { structure.isSectionStart(position) }
+                    ?.let { ModuleHeaders.headerOf(ctx, it) }
+            }
         )
-    }
-
-    /** 与上一题材料完全一致（同一则材料下的连续小题） */
-    private fun sameMaterialAsPrevious(position: Int): Boolean {
-        val cur = questions[position].material.trim()
-        if (cur.isEmpty()) return false
-        if (position > 0) return cur == questions[position - 1].material.trim()
-        // 组首题：整卷上一题（分屏右栏的 indexOffset 之前那道）材料相同就不再重复
-        val prev = indexOffset - 1
-        return prev in questions.indices && cur == questions[prev].material.trim()
     }
 
     companion object {

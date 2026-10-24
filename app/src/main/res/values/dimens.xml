@@ -16,11 +16,11 @@
     <dimen name="fb_card_radius">8dp</dimen>
     <dimen name="fb_card_gap">16dp</dimen>
     <dimen name="fb_page_padding_h">12dp</dimen>
-    <!-- 宽屏时内容列的最大宽度（实测 904px@1.75 ≈ 517dp） -->
-    <dimen name="fb_content_max_width">520dp</dimen>
 
-    <!-- ===== 题目内容（原始：question_content_padding_left / question_default_text_size） ===== -->
-    <dimen name="fb_content_padding_h">20dp</dimen>
+    <!-- ===== 题目内容（原始：question_content_padding_left / question_default_text_size） =====
+         左右留白按「约 5% 屏宽」定：手机常见 360~430dp 宽 → 5% 落在 18~22dp，
+         这里取 22dp（400dp 宽 ≈ 5.5%），宽屏另有 values-sw600dp / values-sw720dp 两档放大。 -->
+    <dimen name="fb_content_padding_h">22dp</dimen>
     <dimen name="fb_question_text_size">16sp</dimen>
     <dimen name="fb_question_line_space">7dp</dimen>
     <dimen name="fb_option_text_size">16sp</dimen>
@@ -35,7 +35,7 @@
     <dimen name="fb_option_circle">32dp</dimen>
     <dimen name="fb_option_circle_text_size">16sp</dimen>
     <dimen name="fb_option_row_padding_v">11dp</dimen>
-    <dimen name="fb_option_row_padding_start">14dp</dimen>
+    <dimen name="fb_option_row_padding_start">16dp</dimen>
     <dimen name="fb_option_text_gap">10dp</dimen>
 
     <!-- ===== 答题卡（原始：answer_card_item_width 40dp） ===== -->

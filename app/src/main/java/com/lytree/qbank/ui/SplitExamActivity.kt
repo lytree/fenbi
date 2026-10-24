@@ -3,6 +3,7 @@ package com.lytree.qbank.ui
 import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
@@ -11,6 +12,7 @@ import androidx.core.content.ContextCompat
 import com.lytree.qbank.R
 import com.lytree.qbank.data.db.QBankDb
 import com.lytree.qbank.data.model.ExamRecord
+import com.lytree.qbank.data.model.PaperStructure
 import com.lytree.qbank.data.model.Question
 import com.lytree.qbank.databinding.ActivitySplitExamBinding
 import com.lytree.qbank.databinding.ItemOptionBinding
@@ -69,18 +71,20 @@ class SplitExamActivity : AppCompatActivity() {
             return
         }
 
-        // 按材料分组：同一份材料的题放一起
-        val groupKey = intent.getStringExtra(EXTRA_GROUP_KEY)
-        questions = if (groupKey.isNullOrBlank()) {
-            paper.questions
+        // 按材料分组：直接用试卷结构里的材料组——同一材料跨大类会断成两组，
+        // 按文本 filter 会把它们并成一组、题号也会错，这里取的正是这题所属的那一组
+        val structure = PaperStructure(paper.questions)
+        val groupKey = intent.getStringExtra(EXTRA_GROUP_KEY)?.trim().orEmpty()
+        val group = if (groupKey.isEmpty()) {
+            null
         } else {
-            paper.questions.filter { it.material.trim() == groupKey.trim() }
-                .ifEmpty { paper.questions }
+            structure.groups.firstOrNull {
+                it.isMaterialGroup && it.material.material.trim() == groupKey
+            }
         }
+        questions = group?.questions ?: paper.questions
         // 题号接着整卷往下排（参考应用分屏右栏显示的是 106./107./108.，不是 1./2./3.）
-        indexOffset = if (groupKey.isNullOrBlank()) 0 else paper.questions
-            .indexOfFirst { it.material.trim() == groupKey.trim() }
-            .coerceAtLeast(0)
+        indexOffset = group?.startIndex ?: 0
 
         startedAt = System.currentTimeMillis()
         binding.titleBar.showDivider(false)
@@ -120,7 +124,8 @@ class SplitExamActivity : AppCompatActivity() {
                     if (on) R.drawable.bg_fb_mark_on else R.drawable.bg_fb_action
                 )
             },
-            onToggleMark = { toggleMarkCurrent() }
+            onToggleMark = { toggleMarkCurrent() },
+            btnInkColor = binding.btnInkColor
         )
         inkToolbar.onModeChanged = { on ->
             inkMode = on
@@ -133,12 +138,51 @@ class SplitExamActivity : AppCompatActivity() {
         }
         // 左边缘也放一条手柄，写画时材料还能翻
         binding.inkOverlay.leftRailEnabled = true
-        // 右下角悬浮着工具条，轨道底部让开 60dp
+        // 右栏滚动手柄让开工具条
         binding.inkOverlay.scrollBarBottomInset = (60 * resources.displayMetrics.density).toInt()
+
+        // 笔迹钉在题目卡上（右栏每张卡一道题），滚材料 / 滚题目都不再和圈画错位
+        binding.inkOverlay.anchorSource = { inkAnchors() }
+        binding.root.viewTreeObserver.addOnScrollChangedListener {
+            binding.inkOverlay.invalidate()
+        }
 
         renderMaterial()
         renderQuestions()
         updateHeader()
+    }
+
+    /**
+     * 遮盖层的内容锚点：右栏每张题目卡（[binding.questionList] 的第 i 个子视图 = 第 i 题）。
+     * 锚点取「卡片左边 + 题干顶边」，与答题页同一口径，两种页面之间来回看不会整体错位。
+     */
+    private fun inkAnchors(): List<InkOverlay.Anchor> {
+        val out = ArrayList<InkOverlay.Anchor>(questions.size)
+        val base = IntArray(2)
+        binding.inkOverlay.getLocationOnScreen(base)
+        for (i in 0 until binding.questionList.childCount) {
+            val card = binding.questionList.getChildAt(i)
+            val q = questions.getOrNull(i) ?: continue
+            if (card.width <= 0 || card.height <= 0) continue
+            val cardLoc = IntArray(2)
+            card.getLocationOnScreen(cardLoc)
+            val stem = card.findViewById<View>(R.id.tvStem)
+            val stemY = if (stem != null && stem.height > 0) {
+                val stemLoc = IntArray(2)
+                stem.getLocationOnScreen(stemLoc)
+                stemLoc[1]
+            } else {
+                cardLoc[1]
+            }
+            out.add(
+                InkOverlay.Anchor(
+                    questionId = q.id,
+                    x = (cardLoc[0] - base[0]).toFloat(),
+                    y = (stemY - base[1]).toFloat()
+                )
+            )
+        }
+        return out
     }
 
     // ---------------- 左右占比可调 ----------------
@@ -411,6 +455,8 @@ class SplitExamActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         binding.root.postDelayed(timerTick, 1000)
+        // 答题页那边可能刚改过同一道题的笔迹，回来重读一遍
+        binding.inkOverlay.reload()
     }
 
     override fun onPause() {

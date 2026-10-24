@@ -402,8 +402,11 @@ function parseTable(text) {
 const checks = [];
 const check = (name, ok, detail = '') => checks.push({ name, ok: !!ok, detail });
 
+// 题数以数据源为准，脚本不再写死——加减示例题后校验跟着走
+const N = questions.length;
+
 // 1) JSON 模板自身
-check('题库模板.json 可解析', questions.length === 3, `${questions.length} 题`);
+check('题库模板.json 可解析', N >= 3, `${N} 题`);
 for (const [i, q] of questions.entries()) {
   const keys = Object.keys(q.options || {});
   const ansKeys = String(q.answer || '').split(/[,，、\s]+/).filter(Boolean).map(s => s.toUpperCase()).sort();
@@ -416,7 +419,7 @@ const csvRows = parseTable(fs.readFileSync(csvPath, 'utf8'));
 const headerFields = csvRows[0].map(resolveField);
 check('CSV 表头全部被识别', headerFields.every(f => f !== null), headerFields.join(','));
 check('CSV 只有一份题干列', headerFields.filter(f => f === 'stem').length === 1);
-check('CSV 行数 = 表头 + 3', csvRows.length === 4, `${csvRows.length} 行`);
+check(`CSV 行数 = 表头 + ${N}`, csvRows.length === N + 1, `${csvRows.length} 行`);
 const csvStemIdx = headerFields.indexOf('stem');
 const csvAnsIdx = headerFields.indexOf('answer');
 check('CSV 第 2 行题干与源一致', csvRows[1][csvStemIdx] === questions[0].stem);
@@ -436,7 +439,7 @@ const blocks = [];
   }
 }
 const blocksTrim = blocks.map(b => b.join('\n').trim()).filter(Boolean);
-check('TXT 切出 3 个题块', blocksTrim.length === 3, `${blocksTrim.length} 块`);
+check(`TXT 切出 ${N} 个题块`, blocksTrim.length === N, `${blocksTrim.length} 块`);
 
 const parsedTxt = blocksTrim.map((block) => {
   const q = { stem: '', options: {}, fields: {} };
@@ -495,7 +498,7 @@ function readXlsx(file) {
   return rows;
 }
 const xlsxRows = readXlsx(xlsxPath);
-check('XLSX 行数 = 表头 + 3', xlsxRows.length === 4, `${xlsxRows.length} 行`);
+check(`XLSX 行数 = 表头 + ${N}`, xlsxRows.length === N + 1, `${xlsxRows.length} 行`);
 check('XLSX 表头与 CSV 一致', JSON.stringify(xlsxRows[0]) === JSON.stringify(HEADERS));
 const xlsxFlatSame = xlsxRows.slice(1).every((r, i) => r.slice(1).every((c, j) => c === rows[i][j + 1]));
 check('XLSX 单元格内容与源数据一致', xlsxFlatSame);
@@ -505,9 +508,9 @@ const ansRows = parseTable(fs.readFileSync(path.join(DIR, '答案模板.csv'), '
 const ansFields = ansRows[0].map(resolveField);
 check('答案模板.csv 表头识别（题号/答案/解析）',
   ansFields[0] === 'no' && ansFields[1] === 'answer' && ansFields[2] === 'analysis', ansFields.join(','));
-check('答案模板.csv 3 条答案', ansRows.length === 4 && ansRows.slice(1).every((r, i) => Number(r[0]) === i + 1));
+check(`答案模板.csv ${N} 条答案`, ansRows.length === N + 1 && ansRows.slice(1).every((r, i) => Number(r[0]) === i + 1));
 const ansTxtLines = fs.readFileSync(path.join(DIR, '答案模板.txt'), 'utf8').split('\n').filter(Boolean);
-check('答案模板.txt 每行「题号.答案」', ansTxtLines.length === 3 &&
+check('答案模板.txt 每行「题号.答案」', ansTxtLines.length === N &&
   ansTxtLines.every((l, i) => new RegExp(`^${i + 1}\\.`).test(l)), ansTxtLines.join(' | '));
 
 // 6) 题库包

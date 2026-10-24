@@ -51,7 +51,16 @@
             android:resizeableActivity="true" />
         <activity android:name=".ui.SplitExamActivity" android:exported="false" />
         <activity android:name=".ui.MaterialPopupActivity" android:exported="false" />
-        <activity android:name=".ui.AnswerCardActivity" android:exported="false" />
+        <!-- 答题卡是「弹层」而不是一屏：透明窗口，弹出来时答题页仍在下面可见 -->
+        <activity
+            android:name=".ui.AnswerCardActivity"
+            android:exported="false"
+            android:theme="@style/Theme.QBank.Popup" />
         <activity android:name=".ui.ReportActivity" android:exported="false" />
+        <!-- 补录答案：逐题填标准答案（键盘弹出时列表要能被顶上去） -->
+        <activity
+            android:name=".ui.AnswerEntryActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
     </application>
 </manifest>

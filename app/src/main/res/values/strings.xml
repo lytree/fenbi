@@ -37,6 +37,7 @@
     <string name="action_ink">手写标注</string>
     <string name="action_undo">撤销</string>
     <string name="action_clear_ink">清空</string>
+    <string name="action_ink_color">笔迹颜色</string>
     <string name="action_done">完成</string>
     <string name="action_note_edit">编辑笔记</string>
     <string name="action_ink_edit">手写标注（长按写笔记）</string>
@@ -61,17 +62,20 @@
     <string name="material_image_failed">图片无法加载：%1$s</string>
     <string name="note_hint">写下你的思路或易错点…</string>
     <string name="note_title">本题笔记</string>
+    <!-- 设置页 · 手写标注 -->
+    <string name="settings_pen_color_hint">当前：%1$s笔。笔迹按题保存，退出重进、回头再改都还在。</string>
     <string name="more_split_on">开启左右分屏</string>
     <string name="more_split_off">关闭左右分屏</string>
     <string name="more_split_unavailable">左右分屏（本卷无材料）</string>
     <string name="more_import_answer">导入答案</string>
     <string name="more_import_answer_missing">导入答案（%1$d 题待补）</string>
     <string name="more_import_answer_ready">导入答案（答案已齐）</string>
+    <string name="more_fill_answer">补录答案（手动逐题填）</string>
     <string name="action_import_answer">导入答案</string>
     <string name="pending_answer">待补答案</string>
-    <string name="pending_answer_empty">标准答案：未导入</string>
-    <string name="pending_answer_hint">标准答案尚未导入，可在「更多 → 导入答案」补充后再对比</string>
-    <string name="pending_answer_report_hint">本卷有 %1$d 题缺少标准答案，已从统计中排除。导入答案后会立即按你的作答重新判分。</string>
+    <string name="pending_answer_empty">标准答案：未填写</string>
+    <string name="pending_answer_hint">标准答案尚未填写，可在成绩报告右上角「补录答案」逐题填写后再对比</string>
+    <string name="pending_answer_report_hint">本卷有 %1$d 题缺少标准答案，已从统计中排除。点右上角「补录答案」逐题填写（或「导入答案」选答案文件），会立即按你的作答重新判分。</string>
     <string name="pending_answer_full">满分 %1$s 分 · %2$d 题待补答案</string>
     <string name="more_submit">交卷</string>
     <string name="split_material_title">材料</string>
@@ -93,6 +97,28 @@
     <string name="report_retry_empty">这次没有错题，保持！</string>
     <string name="progress_saved">进度已保存，下次进入可继续答题</string>
 
+    <!-- 补录答案：不用答案文件，做完直接在 App 里逐题填标准答案 -->
+    <string name="action_answer_fix">补答案</string>
+    <string name="answer_fix_manual">逐题补录（不用答案文件）</string>
+    <string name="answer_fix_file">导入答案文件（表格 / TXT）</string>
+    <string name="action_fill_answer">补录答案</string>
+    <string name="fill_answer_title">补录答案</string>
+    <string name="fill_answer_hint">共 %1$d 题 · 已填 %2$d 题\n逐题填标准答案：选择题填字母（多选写 A,C 或 ABC），判断题填「对 / 错」。留空的题保持「待补答案」，不计入判分。</string>
+    <string name="fill_answer_paste">批量粘贴</string>
+    <string name="fill_answer_paste_title">批量粘贴答案</string>
+    <string name="fill_answer_paste_hint">1.A 2.B 3.对　或　一行一题：1.B / 2.A,C\n只贴一串答案（A B C D）也行，按题序填。</string>
+    <string name="fill_answer_paste_apply">填入</string>
+    <string name="fill_answer_paste_result">已按粘贴内容填入 %1$d 题</string>
+    <string name="fill_answer_paste_failed">没能从粘贴内容里识别出答案</string>
+    <string name="fill_answer_save">保存并批改</string>
+    <string name="fill_answer_saved">已补录 %1$d 题答案</string>
+    <string name="fill_answer_saved_graded">已补录 %1$d 题答案，已按你的作答重新批改</string>
+    <string name="fill_answer_unchanged">答案没有变化，无需保存</string>
+    <string name="fill_answer_input_hint">答案，如 A / A,C / 对</string>
+    <string name="fill_answer_mine">你的作答：%1$s</string>
+    <string name="fill_answer_mine_blank">你的作答：未作答</string>
+    <string name="fill_answer_out_of_range">按题号匹配超出本卷范围，已忽略 %1$d 条</string>
+
     <!-- 弹出材料半屏浮层 -->
     <string name="material_sheet_scale">字号 %1$d%%</string>
 
@@ -106,6 +132,10 @@
     <string name="import_preview">解析预览</string>
     <string name="import_confirm">确认导入</string>
     <string name="import_confirm_paper">导入并生成试卷</string>
+    <string name="import_with_answers">同时导入答案</string>
+    <string name="import_with_answers_hint">关掉就只导入题目，做完在成绩报告里补录答案再批改</string>
+    <string name="import_answer_skipped">本次不导入答案（%1$d 题）</string>
+    <string name="import_answer_pending_tip">待补答案（可做完后补录）</string>
     <string name="import_done">导入成功</string>
     <string name="import_failed">导入失败</string>
 

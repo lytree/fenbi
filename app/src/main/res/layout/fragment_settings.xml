@@ -3,6 +3,7 @@
   设置页：大标题 + 分组卡（行内左文右开关，行间 0.5dp 缩进分割线）
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/fb_page_bg"
@@ -215,6 +216,56 @@
                         android:layout_width="38dp"
                         android:layout_height="22dp" />
                 </LinearLayout>
+            </LinearLayout>
+
+            <TextView
+                style="@style/FbGroupTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:layout_marginTop="24dp"
+                android:layout_marginBottom="8dp"
+                android:text="手写标注" />
+
+            <!-- 笔迹颜色：答题页工具条上的那枚色点也读写这份偏好，两处始终一致 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_fb_card"
+                android:orientation="vertical"
+                android:padding="@dimen/fb_card_pad">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="笔迹颜色"
+                    android:textColor="@color/fb_text_primary"
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="点题目右上角的笔进入写画，圈画与写字都用这个颜色"
+                    android:textColor="@color/fb_text_meta"
+                    android:textSize="11sp" />
+
+                <LinearLayout
+                    android:id="@+id/colorRow"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:orientation="horizontal" />
+
+                <TextView
+                    android:id="@+id/tvColorHint"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:lineSpacingExtra="3dp"
+                    android:textColor="@color/fb_text_meta"
+                    android:textSize="11sp"
+                    tools:text="当前：红笔。笔迹按题保存，退出重进、回头再改都还在。" />
             </LinearLayout>
 
             <TextView

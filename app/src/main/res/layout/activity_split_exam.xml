@@ -239,6 +239,16 @@
             android:text="@string/action_clear_ink"
             android:textColor="@color/fb_red" />
 
+        <!-- 笔色：实心圆就是当前笔色，点一下换下一色（默认色在设置页「手写标注」里定） -->
+        <View
+            android:id="@+id/btnInkColor"
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:layout_marginStart="2dp"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/bg_fb_ink_color"
+            android:contentDescription="@string/action_ink_color" />
+
         <TextView
             android:id="@+id/btnInkShade"
             style="@style/FbInkAction"

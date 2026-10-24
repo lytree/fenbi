@@ -157,9 +157,9 @@
     </androidx.constraintlayout.widget.ConstraintLayout>
 
     <!-- ===== 题目列表（白底通铺的连续卷面） =====
-         宽屏自适应：宽度按百分比撑满父容器，但被 fb_content_max_width 卡住上限并水平居中。
-         手机 = 撑满屏宽（520dp 上限不起作用）；平板 = 820dp 居中列，不会再把题卡挤成手机宽度。
-         卷面本身没有外边距，左右留白由题块内部的 fb_content_padding_h 负责。 -->
+         宽度不设上限：0dp + 左右都约束到父容器 = 撑满可用宽度（手机竖屏、平板、横屏都一样）。
+         不再用「最大宽度 + 水平居中」的窄列——宽屏时卷面铺满，题面只用 fb_content_padding_h 预留左右留白。
+         卷面本身没有外边距，正文可读性靠题块内部的行宽与字号令牌维持。 -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/questionList"
         android:layout_width="0dp"
@@ -170,14 +170,10 @@
         android:scrollbars="none"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.5"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/topBar"
-        app:layout_constraintWidth_default="percent"
-        app:layout_constraintWidth_max="@dimen/fb_content_max_width"
-        app:layout_constraintWidth_percent="1" />
+        app:layout_constraintTop_toBottomOf="@id/topBar" />
 
-    <!-- ===== 单题浏览：左右滑动切题（列宽规则同上） ===== -->
+    <!-- ===== 单题浏览：左右滑动切题（宽度规则同上，同样不设上限） ===== -->
     <androidx.viewpager2.widget.ViewPager2
         android:id="@+id/pager"
         android:layout_width="0dp"
@@ -185,15 +181,12 @@
         android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.5"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/topBar"
-        app:layout_constraintWidth_default="percent"
-        app:layout_constraintWidth_max="@dimen/fb_content_max_width"
-        app:layout_constraintWidth_percent="1" />
+        app:layout_constraintTop_toBottomOf="@id/topBar" />
 
     <!-- ===== 弹出材料：就地左右分屏（左材料 / 右题目），对齐参考应用平板端
-         点「弹出材料」切成两栏，右栏换成一屏一题的 ViewPager2；点「收起材料」还原 ===== -->
+         点「弹出材料」切成两栏，右栏换成一屏一题的 ViewPager2；点「收起材料」还原。
+         左右五五分（与 SplitExamActivity 的默认 50% 同口径，用户口径：弹出模式下材料和题目对半） ===== -->
     <LinearLayout
         android:id="@+id/splitBody"
         android:layout_width="0dp"
@@ -205,12 +198,12 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/topBar">
 
-        <!-- 左栏：材料，可收起 -->
+        <!-- 左栏：材料，可收起（weight 1 = 与右栏五五分） -->
         <LinearLayout
             android:id="@+id/splitLeftPane"
             android:layout_width="0dp"
             android:layout_height="match_parent"
-            android:layout_weight="0.68"
+            android:layout_weight="1"
             android:background="@color/fb_bar_bg"
             android:orientation="vertical"
             android:paddingStart="16dp"
@@ -331,6 +324,16 @@
             style="@style/FbInkAction"
             android:text="@string/action_clear_ink"
             android:textColor="@color/fb_red" />
+
+        <!-- 笔色：实心圆就是当前笔色，点一下换下一色（默认色在设置页「手写标注」里定） -->
+        <View
+            android:id="@+id/btnInkColor"
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:layout_marginStart="2dp"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/bg_fb_ink_color"
+            android:contentDescription="@string/action_ink_color" />
 
         <TextView
             android:id="@+id/btnInkShade"
@@ -566,6 +569,29 @@
 
             <ImageView
                 android:id="@+id/icAnswerArrow"
+                android:layout_width="14dp"
+                android:layout_height="14dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_fb_chevron" />
+        </LinearLayout>
+
+        <!-- 补录答案：不用答案文件，在 App 里逐题填标准答案（手上只有纸质答案时最省事） -->
+        <LinearLayout
+            android:id="@+id/rowFillAnswer"
+            android:layout_width="match_parent"
+            android:layout_height="34dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/more_fill_answer"
+                android:textColor="@color/fb_text_primary"
+                android:textSize="12sp" />
+
+            <ImageView
                 android:layout_width="14dp"
                 android:layout_height="14dp"
                 android:contentDescription="@null"

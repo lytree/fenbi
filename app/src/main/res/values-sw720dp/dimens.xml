@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  大平板（最小宽度 ≥ 720dp，10 寸以上）只补「左右留白」这一档：
+  其它令牌留空即自动回落到 values-sw600dp，不用整套复制。
+
+  留白规则同手机/小平板——按「约 5% 屏宽」：720~900dp 宽 → 5% = 36~45dp，取 40dp。
+-->
+<resources>
+
+    <dimen name="fb_content_padding_h">40dp</dimen>
+    <dimen name="fb_option_row_padding_start">26dp</dimen>
+
+</resources>

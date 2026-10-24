@@ -434,6 +434,30 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 3)
         }
     }
 
+    /**
+     * 手动补录答案（逐题填写，不经过答案文件）。
+     *
+     * 与 [updateAnswers] 的差别：**允许写入空串**——用户在补录页把某题答案清空时，
+     * 这道题要退回「待补答案」，而不是留着上一次的答案继续判分。
+     */
+    fun setAnswersManually(updates: List<AnswerUpdate>): Int {
+        if (updates.isEmpty()) return 0
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            var n = 0
+            for (u in updates) {
+                val cv = ContentValues().apply { put("answer", u.answer) }
+                if (u.analysis.isNotBlank()) cv.put("analysis", u.analysis)
+                n += db.update("questions", cv, "id = ?", arrayOf(u.questionId.toString()))
+            }
+            db.setTransactionSuccessful()
+            return n
+        } finally {
+            db.endTransaction()
+        }
+    }
+
     /** 某份试卷里还缺标准答案的题数 */
     fun countMissingAnswers(paperId: Long): Int {
         readableDatabase.rawQuery(

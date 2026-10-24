@@ -6,7 +6,8 @@
   · 材料题：材料块在本块最上方通栏展示（白底、无内嵌灰卡），下面才是题号行
   · 题目行：题号「N.」(17sp/#1B2126) + 题型标签(11sp/#F1F3FF) + 右侧 标记/笔/收藏(28dp)
   · 题干 16sp/#1B2126/额外行距 7dp；选项 32dp 圆形徽标 + 16sp/#3C464F 正文、单列
-  左右留白统一走 fb_content_padding_h（20dp），宽屏时列宽由 activity_exam.xml 的约束卡上限。
+  左右留白统一走 fb_content_padding_h（约 5% 屏宽：手机 22dp / 小平板 32dp / 大平板 40dp）；
+  卷面宽度不设上限，宽屏时直接铺满可用宽度。
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"

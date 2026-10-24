@@ -13,6 +13,15 @@
         <item name="android:windowBackground">@color/bg</item>
     </style>
 
+    <!-- 答题卡弹层（AnswerCardActivity 用）：透明窗口 + 不再额外压暗。
+         这样弹出来时下面的答题页仍然可见（只隔一层半透明遮罩），而不是「换了一屏」。
+         进出场动画由 Activity 自己驱动（弹层上滑 / 下滑），所以这里不加 windowAnimationStyle。 -->
+    <style name="Theme.QBank.Popup" parent="Theme.QBank">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
+
     <!-- 「更多」面板：字号 Aa 三档（宽度均分，选中深色） -->
     <style name="FbFontAa">
         <item name="android:layout_width">0dp</item>

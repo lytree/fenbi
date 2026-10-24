@@ -1,23 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   单题浏览的一页（ViewPager2 的 item）。
-  · 一屏一题：外层 NestedScrollView 让长题目 / 带材料的题可以在本页内纵向滚动，
-    横向手势留给 ViewPager2 翻页；
-  · 卡片本体直接复用 item_question_page.xml，与多题浏览保持同一套版式。
+  · 一屏一题：普通题一页一题；**同一则材料带多道小题时整组放一页**（材料在上、小题依次往下排），
+    组内不再分页，往下滚就能连着做；
+  · 外层 NestedScrollView 让长题目 / 材料组在本页内纵向滚动，横向手势留给 ViewPager2 翻页；
+  · 页内卡片由 QuestionPagerAdapter 动态塞进 cardContainer（卡片本体复用 item_question_page.xml，
+    与多题浏览同一套版式）；
+  · 重绑时卡片是复用的（见 QuestionPagerAdapter.bindQuestionPage），组页里作答一次不会把
+    页内滚动位置顶回顶部。
 -->
 <androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/pageScroll"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="@color/fb_sheet_bg"
     android:clipToPadding="false"
     android:fillViewport="false"
     android:paddingTop="0dp"
     android:paddingBottom="24dp"
     android:scrollbars="none">
 
-    <include
-        android:id="@+id/card"
-        layout="@layout/item_question_page"
+    <LinearLayout
+        android:id="@+id/cardContainer"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content" />
+        android:layout_height="wrap_content"
+        android:orientation="vertical" />
 </androidx.core.widget.NestedScrollView>

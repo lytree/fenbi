@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -37,6 +38,8 @@ class AnswerCardActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityAnswerCardBinding
     private val adapter = CardAdapter()
+    /** 正在播放收起动画：避免连点「关闭 / 遮罩 / 题号」触发两次 finish */
+    private var dismissing = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -44,6 +47,10 @@ class AnswerCardActivity : AppCompatActivity() {
         ScreenAdapt.applyOrientation(this)
         binding = ActivityAnswerCardBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // 弹层是透明窗口（见 Theme.QBank.Popup），系统栏不能各画一条主题白带，
+        // 否则答题页顶部会多出一条白边、看着像「换了屏」
+        applyWindowBars()
 
         val count = intent.getIntExtra(EXTRA_COUNT, 0)
         val answered = intent.getIntArrayExtra(EXTRA_ANSWERED)?.toSet() ?: emptySet()
@@ -55,10 +62,14 @@ class AnswerCardActivity : AppCompatActivity() {
         applyNightMode(night)
         adapter.night = night
 
-        binding.btnClose.setOnClickListener { finish() }
-        // 点遮罩关闭
-        binding.root.setOnClickListener { finish() }
+        binding.btnClose.setOnClickListener { dismiss() }
+        // 点遮罩关闭（弹层本身吞掉点击，避免误触）
+        binding.root.setOnClickListener { dismiss() }
         binding.sheet.setOnClickListener { /* 吞掉，避免误触关闭 */ }
+        // 返回键同样走收起动画
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() = dismiss()
+        })
 
         // 真机每行 10 个；按实际屏宽自适应，保证格子不小于 44dp。
         // 平板（sw600dp）格子本身放大到 52dp，列数上限也放宽——否则一格 52dp、一行只排 10 列，
@@ -78,13 +89,13 @@ class AnswerCardActivity : AppCompatActivity() {
 
         adapter.onClick = { pos ->
             setResult(RESULT_OK, Intent().putExtra(EXTRA_JUMP, pos))
-            finish()
+            dismiss()
         }
         adapter.submit(count, answered, marked, favorite, groups, current)
 
         binding.btnSubmit.setOnClickListener {
             setResult(RESULT_OK, Intent().putExtra(EXTRA_SUBMIT, true))
-            finish()
+            dismiss()
         }
 
         // edge-to-edge：给弹层底部留出导航栏高度，避免「交卷」被手势条压住
@@ -96,6 +107,54 @@ class AnswerCardActivity : AppCompatActivity() {
             insets
         }
         androidx.core.view.ViewCompat.requestApplyInsets(binding.root)
+
+        playEnterAnimation()
+    }
+
+    /**
+     * 透明窗口上的系统栏：底色取遮罩色、图标转白。
+     * 不这么做的话，主题里的白色状态栏会在答题页上方压出一条白带，
+     * 「答题卡只是弹出来」的感觉就没了。
+     */
+    private fun applyWindowBars() {
+        window.statusBarColor = androidx.core.content.ContextCompat.getColor(this, R.color.fb_sheet_mask)
+        // 导航栏交给系统透明处理：弹层自己按 insets 让出底部，别叠一层深色条
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = false
+            isAppearanceLightNavigationBars = false
+        }
+    }
+
+    /** 进场：像底部抽屉一样从屏幕下方滑上来（<200ms，答题页始终在后面可见） */
+    private fun playEnterAnimation() {
+        // 首帧就先把弹层丢到屏幕下方，否则会「先闪一下完整弹层、再滑上来」
+        binding.sheet.translationY = resources.displayMetrics.heightPixels.toFloat()
+        binding.sheet.post {
+            binding.sheet.animate().translationY(0f).setDuration(200L).start()
+        }
+    }
+
+    /**
+     * 收起：弹层滑回屏幕下方 + 遮罩淡出，动画走完再 finish。
+     * 跳题 / 交卷的结果已经 setResult，finish 时照常回传，不影响答题页的后续动作。
+     */
+    private fun dismiss() {
+        if (dismissing) return
+        dismissing = true
+        binding.sheet.animate()
+            .translationY(binding.sheet.height.toFloat().coerceAtLeast(1f))
+            .setDuration(160L)
+            .withEndAction { finish() }
+            .start()
+        binding.root.animate().alpha(0f).setDuration(160L).start()
+    }
+
+    override fun finish() {
+        super.finish()
+        // 弹层自己滑入滑出，别再叠一层 Activity 转场（默认转场会把答题页一起推走）
+        @Suppress("DEPRECATION")
+        overridePendingTransition(0, 0)
     }
 
     /** 夜间配色：弹层底、标题行、标题与关闭图标跟着答题页一起换 */
@@ -111,10 +170,6 @@ class AnswerCardActivity : AppCompatActivity() {
         binding.btnClose.setColorFilter(
             androidx.core.content.ContextCompat.getColor(this, R.color.fb_night_icon)
         )
-        // 状态栏压在深色遮罩上：底色同遮罩、图标转白
-        window.statusBarColor = androidx.core.content.ContextCompat.getColor(this, R.color.fb_sheet_mask)
-        androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
-            .isAppearanceLightStatusBars = false
     }
 }
 

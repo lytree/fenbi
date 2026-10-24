@@ -98,6 +98,29 @@ class AnswerBackfillTest {
     }
 
     @Test
+    fun pasted_answers_parse_by_number_and_order() {
+        // 一行多条：不能把「2.B 3.对」当成第 1 题的答案
+        val inline = AnswerSheetImporter.parsePasted("1.A 2.B 3.对")
+        assertEquals("一行多条应拆成三条", 3, inline.size)
+        assertEquals(1, inline[0].no ?: -1)
+        assertEquals("A", inline[0].answer)
+        assertEquals("对", inline[2].answer)
+
+        // 一行一题 + 中文顿号分隔
+        val lines = AnswerSheetImporter.parsePasted("第1题 B\n2、A,C\n3-对")
+        assertEquals(3, lines.size)
+        assertEquals("B", lines[0].answer)
+        assertEquals("A,C", lines[1].answer)
+        assertEquals("对", lines[2].answer)
+
+        // 只有答案没有题号 → 留给调用方按题序填
+        val plain = AnswerSheetImporter.parsePasted("A B C D")
+        assertEquals(4, plain.size)
+        assertTrue("纯序列不带题号", plain.all { it.no == null })
+        assertEquals("D", plain[3].answer)
+    }
+
+    @Test
     fun backfill_then_rejudge_uses_existing_answers() {
         val questions = Importer.build(ImportFormat.JSON, noAnswerJson.toByteArray()).questions
         val name = "回归测试卷-${System.currentTimeMillis()}"

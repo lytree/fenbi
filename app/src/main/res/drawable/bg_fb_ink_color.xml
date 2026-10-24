@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 手写工具条上的笔色圆点（运行时按当前笔色重画，这里只给个默认红）
+     默认取色板第一档 #F04C4C，描边用 20% 黑，白底工具条上也看得出轮廓 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+    <solid android:color="#F04C4C" />
+    <stroke
+        android:width="1.5dp"
+        android:color="#33000000" />
+</shape>

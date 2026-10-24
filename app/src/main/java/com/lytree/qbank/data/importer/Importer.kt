@@ -112,6 +112,9 @@ object Importer {
         val chosen = if (selectedIndices == null) all
         else all.filterIndexed { i, _ -> i in selectedIndices }
 
+        // 卷面结构体检：只体检真正会入库的题（三级结构由 subject/material 的连续重复派生）
+        issues.addAll(StructureCheck.check(chosen))
+
         return ImportOutcome(
             format = format.label,
             total = parsed.totalRows,
@@ -157,6 +160,8 @@ object Importer {
         }
         val chosen = if (selectedIndices == null) all
         else all.filterIndexed { i, _ -> i in selectedIndices }
+
+        issues.addAll(StructureCheck.check(chosen))
 
         return ImportOutcome(
             format = "题库包 · " + inner.label,

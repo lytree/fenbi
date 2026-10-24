@@ -41,8 +41,19 @@ class ImportActivity : AppCompatActivity() {
 
     /** 题库包（zip）的解压根目录：图片落到应用私有目录，清缓存也不影响已有题目 */
     private lateinit var pkgDir: File
+    /** 文件里解析出来的原始题目（带答案） */
+    private var rawParsed: List<Question> = emptyList()
+    /** 实际要入卷的题目：关掉「同时导入答案」时答案被清空 */
     private var parsed: List<Question> = emptyList()
     private var issues: List<ImportIssue> = emptyList()
+
+    private var outcomeFormat: String = ""
+    private var outcomeTotal: Int = 0
+    private var outcomeWarn: Int = 0
+    private var outcomeError: Int = 0
+
+    /** 是否把答案一起导入（关掉 = 只导题目，做完在成绩报告里补录） */
+    private var importAnswers = true
 
     private val picker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) loadFile(uri)
@@ -67,6 +78,13 @@ class ImportActivity : AppCompatActivity() {
         binding.listIssues.adapter = issueAdapter
 
         binding.btnImport.setOnClickListener { doImport() }
+
+        // 默认把答案一起导入；关掉就只导题目（卷子上不带答案，做完再补录）
+        binding.switchImportAnswers.setChecked(true)
+        binding.switchImportAnswers.onCheckedChange = { on ->
+            importAnswers = on
+            refreshPreview(keepSelection = true)
+        }
 
         handleIncomingIntent(intent)
     }
@@ -143,10 +161,14 @@ class ImportActivity : AppCompatActivity() {
     }
 
     private fun applyParsed(outcome: com.lytree.qbank.data.importer.ImportOutcome) {
-        parsed = outcome.questions
+        rawParsed = outcome.questions
         issues = outcome.issues
+        outcomeFormat = outcome.format
+        outcomeTotal = outcome.total
+        outcomeWarn = outcome.warnCount
+        outcomeError = outcome.errorCount
 
-        if (parsed.isEmpty()) {
+        if (rawParsed.isEmpty()) {
             toast("没有解析出任何题目，请检查文件格式")
         }
 
@@ -156,25 +178,45 @@ class ImportActivity : AppCompatActivity() {
         binding.bottomBar.visibility = View.VISIBLE
         binding.bottomDivider.visibility = View.VISIBLE
         binding.tvFile.text = fileName
-        val missing = parsed.count { it.answer.isBlank() }
-        binding.tvStat.text = buildString {
-            append("格式：${outcome.format}")
-            append("　总行数：${outcome.total}")
-            append("　可导入：${parsed.size}")
-            if (missing > 0) append("　缺答案：$missing")
-            append("　警告：${outcome.warnCount}")
-            append("　错误：${outcome.errorCount}")
-        }
-        binding.tvFile.text = fileName
         if (binding.inputName.text.isNullOrBlank()) {
             binding.inputName.setText(
                 outcome.suggestedName ?: fileName.substringBeforeLast('.')
             )
         }
-        qAdapter.submit(parsed)
+        refreshPreview(keepSelection = false)
+
         issueAdapter.submit(issues)
         binding.tvIssuesTitle.visibility = if (issues.isEmpty()) View.GONE else View.VISIBLE
         binding.listIssues.visibility = if (issues.isEmpty()) View.GONE else View.VISIBLE
+    }
+
+    /**
+     * 按「是否导入答案」重算入卷题目，并同步预览列表与统计行。
+     *
+     * 关掉开关时把答案（主观题连关键词一起）清空——题目的其他字段一律不动，
+     * 所以做完在成绩报告里补录答案后还能正常判分。
+     */
+    private fun refreshPreview(keepSelection: Boolean) {
+        parsed = if (importAnswers) {
+            rawParsed
+        } else {
+            rawParsed.map { it.copy(answer = "", keywords = "") }
+        }
+
+        val missing = parsed.count { it.answer.isBlank() }
+        binding.tvStat.text = buildString {
+            append("格式：$outcomeFormat")
+            append("　总行数：$outcomeTotal")
+            append("　可导入：${parsed.size}")
+            if (importAnswers) {
+                if (missing > 0) append("　缺答案：$missing")
+            } else {
+                append("　").append(getString(R.string.import_answer_skipped, parsed.size))
+            }
+            append("　警告：$outcomeWarn")
+            append("　错误：$outcomeError")
+        }
+        qAdapter.submit(parsed, keepSelection)
     }
 
     private fun loadFile(uri: Uri) {
@@ -264,10 +306,18 @@ class PreviewAdapter : androidx.recyclerview.widget.RecyclerView.Adapter<Preview
     private val items = ArrayList<Question>()
     private val selected = HashSet<Int>()
 
-    fun submit(list: List<Question>) {
+    /**
+     * @param keepSelection 切换「是否导入答案」时保留用户已取消勾选的题，不要一路全选回去
+     */
+    fun submit(list: List<Question>, keepSelection: Boolean = false) {
+        val prev = if (keepSelection) HashSet(selected) else null
         items.clear(); items.addAll(list)
         selected.clear()
-        items.indices.forEach { selected.add(it) }
+        if (prev != null) {
+            items.indices.forEach { if (it in prev) selected.add(it) }
+        } else {
+            items.indices.forEach { selected.add(it) }
+        }
         notifyDataSetChanged()
     }
 
@@ -297,7 +347,7 @@ class PreviewAdapter : androidx.recyclerview.widget.RecyclerView.Adapter<Preview
         val opts = q.options.joinToString("\n") { "${it.key}. ${it.text}" }
         holder.binding.tvOptions.text = if (opts.isBlank()) "" else opts
         holder.binding.tvAnswer.text = if (q.answer.isBlank()) {
-            "答案：待补答案（可做完后导入答案）"
+            "答案：" + holder.itemView.context.getString(com.lytree.qbank.R.string.import_answer_pending_tip)
         } else {
             "答案：${q.displayAnswer()}"
         }
@@ -321,7 +371,9 @@ class IssueAdapter : androidx.recyclerview.widget.RecyclerView.Adapter<IssueAdap
 
     override fun onBindViewHolder(holder: VH, position: Int) {
         val it = items[position]
-        holder.binding.tvText.text = "第 ${it.rowNo} 行 · ${it.message}"
+        // rowNo = 0 是整卷级提示（文件级错误、卷面结构体检），没有具体行号可标
+        holder.binding.tvText.text =
+            if (it.rowNo > 0) "第 ${it.rowNo} 行 · ${it.message}" else it.message
         holder.binding.tvText.setTextColor(
             androidx.core.content.ContextCompat.getColor(
                 holder.itemView.context,

@@ -7,6 +7,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -41,6 +42,13 @@ class ReportActivity : AppCompatActivity() {
         if (uri != null) importAnswers(uri)
     }
 
+    /** 补录答案：逐题手填（不用答案文件），回来后重建页面显示新成绩 */
+    private val fillAnswerLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == RESULT_OK) recreate()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // 手机锁竖屏 / 平板跟随旋转（方向锁是 Activity 级的，答题页锁了这里也要跟着锁）
@@ -56,12 +64,20 @@ class ReportActivity : AppCompatActivity() {
             finish(); return
         }
 
-        binding.titleBar.addTextAction(getString(R.string.action_import_answer)) { launchAnswerPicker() }
+        // 补答案入口：标题栏只留一个「补答案」，点开再选「逐题补录 / 导入答案文件」——
+        // 三个文字动作挤在一行会压住标题，而缺答案的卷子两个入口都得给。
+        binding.titleBar.addTextAction(getString(R.string.action_answer_fix)) {
+            pickAnswerEntry(record)
+        }
 
         val pending = record.pendingCount
         binding.tvPendingHint.visibility = if (pending > 0) View.VISIBLE else View.GONE
         if (pending > 0) {
             binding.tvPendingHint.text = getString(R.string.pending_answer_report_hint, pending)
+            // 提示条本身就是入口：点一下直接去逐题补录
+            binding.tvPendingHint.setOnClickListener { openAnswerEntry(record) }
+        } else {
+            binding.tvPendingHint.setOnClickListener(null)
         }
 
         binding.tvScore.text = String.format(Locale.CHINA, "%.1f", record.score)
@@ -151,6 +167,36 @@ class ReportActivity : AppCompatActivity() {
                 }
             )
         }
+    }
+
+    /**
+     * 补答案的两种方式：
+     * - **逐题补录**：不用准备文件，进补录页把答案填进去（最省事）；
+     * - **导入答案文件**：手上已有 `题号,答案` 的表格 / TXT 时用，按题干 / 题号自动匹配。
+     */
+    private fun pickAnswerEntry(record: ExamRecord) {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.action_answer_fix)
+            .setItems(
+                arrayOf(
+                    getString(R.string.answer_fix_manual),
+                    getString(R.string.answer_fix_file)
+                )
+            ) { _, which ->
+                if (which == 0) openAnswerEntry(record) else launchAnswerPicker()
+            }
+            .setNegativeButton(R.string.action_cancel, null)
+            .show()
+    }
+
+    /** 逐题补录答案页：保存后本页会按记录里的作答重判并重建 */
+    private fun openAnswerEntry(record: ExamRecord) {
+        fillAnswerLauncher.launch(
+            android.content.Intent(this, AnswerEntryActivity::class.java).apply {
+                putExtra(AnswerEntryActivity.EXTRA_PAPER_ID, record.paperId)
+                putExtra(AnswerEntryActivity.EXTRA_RECORD_ID, record.id)
+            }
+        )
     }
 
     private fun launchAnswerPicker() {

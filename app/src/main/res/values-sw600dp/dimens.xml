@@ -2,10 +2,9 @@
 <!--
   平板尺寸令牌（最小宽度 ≥ 600dp 生效，覆盖 values/dimens.xml 里同名的项）。
 
-  手机那套是按 1080x1920 @280dpi 量出来的：内容列最宽 520dp、正文 17sp、选项圆标 40dp。
-  这套数值搬到 8~12 寸平板上会「像手机」——列宽只占半屏、字偏小、触控目标偏小。
-  这里按 +15%~20% 放大，并把内容列放宽到 820dp（接近 iPad 的 1024 竖屏可用宽度，
-  横屏 1280dp 时也还能居中留白，不会一行排到 90 个字读不下去）。
+  手机那套是按 1080x1920 @280dpi 量出来的：正文 17sp、选项圆标 40dp。
+  这套数值搬到 8~12 寸平板上会「像手机」——字偏小、触控目标偏小、留白太窄。
+  这里按 +15%~20% 放大；卷面宽度不设上限（铺满可用宽度），只把题块内的左右留白放宽到 32dp（≈5% 屏宽）。
 -->
 <resources>
 
@@ -16,11 +15,11 @@
     <dimen name="fb_bar_item_gap">20dp</dimen>
     <dimen name="fb_bar_paper_title">15sp</dimen>
 
-    <!-- ===== 题卡列宽 ===== -->
-    <dimen name="fb_content_max_width">820dp</dimen>
+    <!-- ===== 题块留白（宽度不设上限，铺满屏宽） =====
+         左右留白按「约 5% 屏宽」：600~719dp 宽 → 5% = 30~36dp，取 32dp。 -->
     <dimen name="fb_page_padding_h">24dp</dimen>
     <dimen name="fb_card_gap">20dp</dimen>
-    <dimen name="fb_content_padding_h">28dp</dimen>
+    <dimen name="fb_content_padding_h">32dp</dimen>
 
     <!-- ===== 题干 / 选项字号 ===== -->
     <dimen name="fb_question_text_size">19sp</dimen>
@@ -33,7 +32,7 @@
     <dimen name="fb_option_circle">46dp</dimen>
     <dimen name="fb_option_circle_text_size">16sp</dimen>
     <dimen name="fb_option_row_padding_v">13dp</dimen>
-    <dimen name="fb_option_row_padding_start">18dp</dimen>
+    <dimen name="fb_option_row_padding_start">20dp</dimen>
     <dimen name="fb_option_text_gap">12dp</dimen>
 
     <!-- ===== 答题卡 ===== -->

@@ -100,8 +100,9 @@
     <color name="fb_table_line">#D8DCE3</color>
     <color name="fb_split_bg">#FAFBFC</color>
 
-    <!-- ===== 答题卡弹层 ===== -->
-    <color name="fb_sheet_mask">#B3000000</color>
+    <!-- ===== 答题卡弹层 =====
+         遮罩只压暗 40%：弹层是透明窗口，下面的答题页要透出来（#B3 的 70% 会把页面盖掉） -->
+    <color name="fb_sheet_mask">#66000000</color>
     <color name="fb_card_num_answered">#3C7CFC</color>
     <color name="fb_card_num_blank_bg">#F6F7FB</color>
     <color name="fb_card_num_blank_stroke">#F6F7FB</color>

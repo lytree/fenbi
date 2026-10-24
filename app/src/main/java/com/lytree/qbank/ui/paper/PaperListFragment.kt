@@ -14,6 +14,7 @@ import com.lytree.qbank.R
 import com.lytree.qbank.data.db.QBankDb
 import com.lytree.qbank.data.model.Paper
 import com.lytree.qbank.databinding.FragmentListBinding
+import com.lytree.qbank.ui.AnswerEntryActivity
 import com.lytree.qbank.ui.AnswerImportUi
 import com.lytree.qbank.ui.ExamActivity
 import com.lytree.qbank.ui.FbDialog
@@ -72,9 +73,10 @@ class PaperListFragment : Fragment(), Refreshable {
             ?: startActivity(Intent(requireContext(), ImportActivity::class.java))
     }
 
-    /** 长按：补答案 / 删除。导入的试卷常常没答案，补答案是这里的日常操作 */
+    /** 长按：补录答案 / 导入答案 / 删除。导入的试卷常常没答案，补答案是这里的日常操作 */
     private fun showPaperActions(paper: Paper) {
         val actions = arrayOf(
+            getString(R.string.action_fill_answer),
             getString(R.string.action_import_answer),
             getString(R.string.action_delete)
         )
@@ -82,7 +84,10 @@ class PaperListFragment : Fragment(), Refreshable {
             .setTitle(paper.name)
             .setItems(actions) { _, which ->
                 when (which) {
-                    0 -> {
+                    0 -> startActivity(Intent(requireContext(), AnswerEntryActivity::class.java).apply {
+                        putExtra(AnswerEntryActivity.EXTRA_PAPER_ID, paper.id)
+                    })
+                    1 -> {
                         pendingPaper = paper
                         try {
                             answerPicker.launch(AnswerImportUi.MIME)
