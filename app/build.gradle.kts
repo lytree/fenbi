@@ -33,8 +33,8 @@ android {
         applicationId = "com.lytree.qbank"
         minSdk = 24
         targetSdk = 35
-        versionCode = versionCodeOverride ?: 1
-        versionName = versionNameOverride ?: "0.0.1"
+        versionCode = versionCodeOverride ?: 2
+        versionName = versionNameOverride ?: "0.0.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
