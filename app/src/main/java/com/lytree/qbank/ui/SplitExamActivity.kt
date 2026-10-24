@@ -48,11 +48,15 @@ class SplitExamActivity : AppCompatActivity() {
     private var revealAnswers = false
     private var inkMode = false
     private var currentIndex = 0
+    /** 本组题在整卷里的起始序号：右栏题号与顶部进度都按整卷编号 */
+    private var indexOffset = 0
     private lateinit var inkToolbar: InkToolbarController
     private lateinit var tvIndex: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 手机锁竖屏 / 平板跟随旋转（方向锁是 Activity 级的，答题页锁了这里也要跟着锁）
+        ScreenAdapt.applyOrientation(this)
         binding = ActivitySplitExamBinding.inflate(layoutInflater)
         setContentView(binding.root)
         db = QBankDb.get(this)
@@ -73,12 +77,18 @@ class SplitExamActivity : AppCompatActivity() {
             paper.questions.filter { it.material.trim() == groupKey.trim() }
                 .ifEmpty { paper.questions }
         }
+        // 题号接着整卷往下排（参考应用分屏右栏显示的是 106./107./108.，不是 1./2./3.）
+        indexOffset = if (groupKey.isNullOrBlank()) 0 else paper.questions
+            .indexOfFirst { it.material.trim() == groupKey.trim() }
+            .coerceAtLeast(0)
 
         startedAt = System.currentTimeMillis()
         binding.titleBar.showDivider(false)
-        binding.titleBar.setTitle(intent.getStringExtra(EXTRA_PAPER_NAME) ?: paper.name)
+        // 对齐参考应用的分屏页：顶栏只留「返回 + 计时」，不放卷名与右侧动作
+        binding.titleBar.setTitle("")
         binding.titleBar.onBack = { confirmExit() }
         tvIndex = binding.titleBar.addTextAction("") { }
+        binding.titleBar.setTimer("00:00")
         binding.bottomBar.applyNavBarBottomPadding()
 
         binding.btnCard.setOnClickListener { openAnswerCard() }
@@ -207,7 +217,7 @@ class SplitExamActivity : AppCompatActivity() {
 
         questions.forEachIndexed { i, q ->
             val card = ItemSplitQuestionBinding.inflate(inflater, binding.questionList, false)
-            card.tvNum.text = "${i + 1}."
+            card.tvNum.text = "${i + 1 + indexOffset}."
             card.tvType.text = q.type.label
             card.tvStem.text = q.stem
 
@@ -259,7 +269,20 @@ class SplitExamActivity : AppCompatActivity() {
 
     private fun updateHeader() {
         tvIndex.text = getString(R.string.question_index, currentIndex + 1, questions.size)
+        updateTimer()
         syncInkQuestion()
+    }
+
+    /** 顶栏计时：从进入分屏起正计时（参考应用分屏页左上是「🕐 01:08」） */
+    private fun updateTimer() {
+        if (startedAt <= 0L) return
+        val sec = ((System.currentTimeMillis() - startedAt) / 1000).coerceAtLeast(0)
+        val text = if (sec >= 3600) {
+            String.format(Locale.CHINA, "%d:%02d:%02d", sec / 3600, sec % 3600 / 60, sec % 60)
+        } else {
+            String.format(Locale.CHINA, "%02d:%02d", sec / 60, sec % 60)
+        }
+        binding.titleBar.setTimer(text)
     }
 
     // ---------------- 手写 ----------------
@@ -373,5 +396,25 @@ class SplitExamActivity : AppCompatActivity() {
     override fun onBackPressed() {
         if (submitted) { super.onBackPressed(); return }
         confirmExit()
+    }
+
+    // ---------------- 计时 ----------------
+
+    /** 每秒刷新顶栏计时；页面不可见时摘掉回调用免空转 */
+    private val timerTick = object : Runnable {
+        override fun run() {
+            updateTimer()
+            binding.root.postDelayed(this, 1000)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        binding.root.postDelayed(timerTick, 1000)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        binding.root.removeCallbacks(timerTick)
     }
 }

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  单题浏览的「模块说明页」：一个模块开始作答前单独占一页，
+  只放 view_module_header.xml 那张说明卡（与卷面内嵌版同一份样式）+ 一行滑动提示，
+  下一屏才是这个模块的第一题。
+
+  为什么单独一页：单题模式是一屏一题，如果说明卡跟着第一题一起出现，
+  题干 + 选项常被挤出屏幕，一屏一题就不成立了。
+  垂直居中摆放，避免"顶部一张卡 + 大片空白"看起来像没渲染完。
+-->
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/pageScroll"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/fb_sheet_bg"
+    android:clipToPadding="false"
+    android:fillViewport="true"
+    android:scrollbars="none">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="vertical"
+        android:paddingStart="@dimen/fb_content_padding_h"
+        android:paddingTop="24dp"
+        android:paddingEnd="@dimen/fb_content_padding_h"
+        android:paddingBottom="32dp">
+
+        <include
+            android:id="@+id/moduleCard"
+            layout="@layout/view_module_header"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+
+        <TextView
+            android:id="@+id/tvModuleHint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:includeFontPadding="false"
+            android:text="@string/module_page_hint"
+            android:textColor="@color/fb_text_meta"
+            android:textSize="13sp" />
+    </LinearLayout>
+</androidx.core.widget.NestedScrollView>

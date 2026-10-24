@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 模块说明卡·夜间：浅蓝渐变在深底上没有意义，改成一块微亮的深色圆角 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/fb_night_module_bg" />
+    <corners android:radius="10dp" />
+</shape>

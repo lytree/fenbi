@@ -11,6 +11,7 @@ import com.lytree.qbank.data.model.Question
 import com.lytree.qbank.data.model.QuestionType
 import com.lytree.qbank.databinding.ItemOptionBinding
 import com.lytree.qbank.databinding.ItemQuestionPageBinding
+import com.lytree.qbank.databinding.ViewModuleHeaderBinding
 import com.lytree.qbank.engine.Judge
 import com.lytree.qbank.engine.Policy
 import java.util.Locale
@@ -31,6 +32,36 @@ import java.util.Locale
  * 选完选项只就地刷新徽标、不触发整卡重绑——单题模式下重绑会把页内滚动位置顶回去。
  */
 object QuestionCardBinder {
+
+    /**
+     * 模块说明卡。对齐参考应用真机：一个模块（资料分析 / 常识判断…）在卷面上只出现一次，
+     * 落在该模块首题的上方，「标题 = 模块名 (N题)」+ 该模块的官方作答说明。
+     */
+    data class ModuleHeader(val title: String, val desc: String)
+
+    /**
+     * 模块说明卡的统一渲染：卷面内嵌（多题浏览 / 分屏右栏）与单题浏览的「说明页」共用，
+     * 保证两处的卡片样式、夜间配色一致。
+     */
+    fun bindModuleCard(b: ViewModuleHeaderBinding, header: ModuleHeader, night: Boolean) {
+        val ctx = b.root.context
+        b.root.setBackgroundResource(
+            if (night) R.drawable.bg_fb_module_night else R.drawable.bg_fb_module
+        )
+        b.tvModuleTitle.setTextColor(
+            ContextCompat.getColor(
+                ctx, if (night) R.color.fb_night_text else R.color.fb_module_title
+            )
+        )
+        b.tvModuleTitle.text = header.title
+        b.tvModuleDesc.setTextColor(
+            ContextCompat.getColor(
+                ctx, if (night) R.color.fb_night_text_meta else R.color.fb_text_meta
+            )
+        )
+        b.tvModuleDesc.text = header.desc
+        b.tvModuleDesc.visibility = if (header.desc.isBlank()) View.GONE else View.VISIBLE
+    }
 
     /** 卡片上的四个交互回调，由各适配器在构造时注入 */
     class Callbacks(
@@ -64,17 +95,39 @@ object QuestionCardBinder {
          * 练习模式（参考应用的「练习」作答口径）：本题作答后立即判色出解析，
          * 不必等整卷交卷。集合里是已触发即时判分的题 id。
          */
-        revealed: Set<Long> = emptySet()
+        revealed: Set<Long> = emptySet(),
+        /** 模块说明卡：只在该模块第一题传值，其余题传 null（卷面上一模块只出现一次） */
+        moduleHeader: ModuleHeader? = null,
+        /**
+         * 题间分隔线。多题浏览是卷面通铺，靠这条线分题；
+         * 单题浏览一屏一题、下面没有「下一题」，画了反而像被截断。
+         */
+        showDivider: Boolean = true
     ) {
         val ctx = b.root.context
         val res = ctx.resources
         val density = res.displayMetrics.density
         val revealNow = revealAnswers || q.id in revealed
 
-        // ---- 卡片底色 ----
-        b.root.setBackgroundResource(
-            if (night) R.drawable.bg_fb_card_night else R.drawable.bg_fb_card
+        // ---- 卷面底色 ----
+        // 对齐参考应用：整页白底通铺，题目不再是独立圆角卡片，题与题之间只有一条细线。
+        b.root.setBackgroundColor(
+            ContextCompat.getColor(ctx, if (night) R.color.fb_night_sheet_bg else R.color.fb_sheet_bg)
         )
+        b.vDivider.setBackgroundColor(
+            ContextCompat.getColor(
+                ctx, if (night) R.color.fb_night_question_divider else R.color.fb_question_divider
+            )
+        )
+        b.vDivider.visibility = if (showDivider) View.VISIBLE else View.GONE
+
+        // ---- 模块说明卡（卷面内嵌版；单题浏览里它单独占一页，见 QuestionPagerAdapter）----
+        if (moduleHeader == null) {
+            b.moduleHeader.root.visibility = View.GONE
+        } else {
+            b.moduleHeader.root.visibility = View.VISIBLE
+            bindModuleCard(b.moduleHeader, moduleHeader, night)
+        }
 
         // ---- 题目行：题号 + 题型 + 三图标 ----
         b.tvIndex.text = "${position + 1}."
@@ -105,8 +158,9 @@ object QuestionCardBinder {
             ctx, if (night) R.color.fb_night_icon else R.color.fb_icon
         )
         val isMarked = q.id in marked
+        // 标记用「细线星」、收藏用「星」——参考应用里这两颗星形状不同，选中后各自填实
         b.btnMark.setImageResource(
-            if (isMarked) R.drawable.ic_fb_bookmark_filled else R.drawable.ic_fb_bookmark
+            if (isMarked) R.drawable.ic_fb_star_filled else R.drawable.ic_fb_star_outline
         )
         b.btnMark.setColorFilter(
             if (isMarked) ContextCompat.getColor(ctx, R.color.fb_primary) else iconColor
@@ -130,15 +184,15 @@ object QuestionCardBinder {
             true
         }
 
-        // ---- 题干（字号随「更多」面板缩放；基准 17sp / 额外行距 6dp）----
+        // ---- 题干（字号随「更多」面板缩放；基准 16sp / 额外行距 7dp）----
         b.tvStem.text = q.stem
         b.tvStem.setTextColor(
             ContextCompat.getColor(
                 ctx, if (night) R.color.fb_night_text_body else R.color.fb_text_body
             )
         )
-        b.tvStem.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f * fontScale)
-        b.tvStem.setLineSpacing(6f * density * fontScale, 1f)
+        b.tvStem.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f * fontScale)
+        b.tvStem.setLineSpacing(7f * density * fontScale, 1f)
 
         // ---- 材料 ----
         // 对齐参考应用：材料块在卡片顶部通栏展示（白底、无内嵌灰卡），整块随卡片滚动；

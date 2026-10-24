@@ -104,7 +104,7 @@ class ExamActivity : AppCompatActivity() {
 
     /** 平板判定：最小屏宽 ≥ 600dp（与系统 sw600dp 断点一致）。对齐参考应用——只有平板端「弹出材料」走就地分屏 */
     private val isTablet: Boolean
-        get() = resources.configuration.smallestScreenWidthDp >= 600
+        get() = ScreenAdapt.isTablet(resources.configuration)
 
     /** 是否处于「弹出材料」分屏状态（对齐参考应用平板端：就地分屏，可收起还原） */
     private var splitMode = false
@@ -129,6 +129,8 @@ class ExamActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 手机继续锁竖屏（答题页是按竖屏设计的）；平板不能锁——见 ScreenAdapt 里的说明
+        ScreenAdapt.applyOrientation(this)
         binding = ActivityExamBinding.inflate(layoutInflater)
         setContentView(binding.root)
         db = QBankDb.get(this)
@@ -234,9 +236,10 @@ class ExamActivity : AppCompatActivity() {
         binding.pager.adapter = pagerAdapter
         binding.pager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
-                // 单题模式下由翻页维护「当前题」；多题模式以列表为准，不受影响
+                // 单题模式下由翻页维护「当前题」；多题模式以列表为准，不受影响。
+                // 页码表里夹着「模块说明页」，所以要换回题号——否则说明页会被当成一道题。
                 if (multiBrowse) return
-                currentPos = position
+                currentPos = pagerAdapter.questionOfPage(position)
                 syncInkQuestion()
             }
         })
@@ -259,7 +262,10 @@ class ExamActivity : AppCompatActivity() {
                 binding.questionList.smoothScrollToPosition(next)
             }, 220)
         } else {
-            binding.pager.postDelayed({ binding.pager.setCurrentItem(next, true) }, 220)
+            // 翻到下一题（跳过夹在中间的模块说明页——作答流不该被说明页打断）
+            binding.pager.postDelayed(
+                { binding.pager.setCurrentItem(pagerAdapter.pageOfQuestion(next), true) }, 220
+            )
         }
     }
 
@@ -522,8 +528,8 @@ class ExamActivity : AppCompatActivity() {
         )
         // 材料在左栏整栏展示，右栏卡片不再重复渲染材料；题号接着整卷往下排
         adapter.hideAllMaterials = true
+        adapter.hideModuleHeaders = true
         adapter.indexOffset = splitGroupOffset
-        adapter.compactMargins = true
         list.layoutManager = LinearLayoutManager(this)
         list.adapter = adapter
         list.itemAnimator = null
@@ -651,8 +657,8 @@ class ExamActivity : AppCompatActivity() {
     private fun setBrowseMode(multi: Boolean) {
         if (multiBrowse == multi) return
         // 以「当前正在看的容器」为位置真值：多题看列表首个可见题，单题看 ViewPager2 当前页。
-        // 不直接信 currentPos——它可能被隐藏容器的回调改写。
-        currentPos = if (multiBrowse) listFirstVisible() else binding.pager.currentItem
+        // 不直接信 currentPos——它可能被隐藏容器的回调改写。单题这边的页码要先换成题号。
+        currentPos = if (multiBrowse) listFirstVisible() else pagerAdapter.questionOfPage(binding.pager.currentItem)
         multiBrowse = multi
         savePrefs()
         refreshMorePanelState()
@@ -752,7 +758,9 @@ class ExamActivity : AppCompatActivity() {
      */
     private fun syncInkQuestion() {
         if (!::inkToolbar.isInitialized) return   // onCreate 期间滚动回调可能先到
-        val q = currentQuestion()
+        // 单题浏览停在「模块说明页」时，这一页上没有题目——不绑任何笔迹，免得上一题的圈画浮在说明卡上
+        val onModuleIntro = !multiBrowse && pagerAdapter.isModuleIntroPage(binding.pager.currentItem)
+        val q = if (onModuleIntro) null else currentQuestion()
         binding.inkOverlay.bindQuestion(q?.id ?: 0L)
         inkToolbar.setMarked(q != null && q.id in marked)
     }
@@ -772,7 +780,7 @@ class ExamActivity : AppCompatActivity() {
                 (binding.questionList.layoutManager as? LinearLayoutManager)
                     ?.scrollToPositionWithOffset(idx, 0)
             } else {
-                binding.pager.setCurrentItem(idx, false)
+                binding.pager.setCurrentItem(pagerAdapter.pageOfQuestion(idx), false)
             }
         }
         syncInkQuestion()
@@ -907,6 +915,22 @@ class ExamActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * 旋转 / 分屏拖动 / 多窗口改尺寸：清单里声明了 configChanges，Activity 不重建，
+     * 免得重走「继续答题 / 重新开始」；但题卡里的材料图与图表是按当时宽度渲染的，
+     * 宽度变了要重绑一次，否则图片会按旧宽度留白或溢出。
+     */
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // 平板横竖屏都放开；手机万一本机型允许旋转，仍然钉在竖屏
+        ScreenAdapt.applyOrientation(this)
+        if (::adapter.isInitialized) {
+            adapter.notifyDataSetChanged()
+            pagerAdapter.notifyDataSetChanged()
+        }
+        if (splitMode) renderSplitMaterial()
+    }
+
     // ---------------- 标记 / 收藏 / 笔记 ----------------
 
     private fun toggleMark(q: Question) {
@@ -932,7 +956,7 @@ class ExamActivity : AppCompatActivity() {
         val idx = questions.indexOfFirst { it.id == q.id }
         if (idx < 0) return
         adapter.notifyItemChanged(idx)
-        pagerAdapter.notifyItemChanged(idx)
+        pagerAdapter.notifyItemChanged(pagerAdapter.pageOfQuestion(idx))
     }
 
     /** 字号 / 夜间 / 交卷这类全局状态变化，两套容器都要重绘 */
@@ -1032,7 +1056,7 @@ class ExamActivity : AppCompatActivity() {
         } else {
             binding.questionList.visibility = View.GONE
             binding.pager.visibility = View.VISIBLE
-            binding.pager.setCurrentItem(target, false)
+            binding.pager.setCurrentItem(pagerAdapter.pageOfQuestion(target), false)
         }
         // 容器刚切完还没排版，遮盖层这一帧拿不到「能不能滚动」，等排版完再让它重画一次右侧轨道
         binding.inkOverlay.post { binding.inkOverlay.invalidate() }
@@ -1045,7 +1069,7 @@ class ExamActivity : AppCompatActivity() {
         if (multiBrowse) {
             binding.questionList.scrollToPosition(position)
         } else {
-            binding.pager.setCurrentItem(position, false)
+            binding.pager.setCurrentItem(pagerAdapter.pageOfQuestion(position), false)
         }
         syncInkQuestion()
     }
@@ -1064,7 +1088,7 @@ class ExamActivity : AppCompatActivity() {
     private fun applyNightMode() {
         val night = nightMode
 
-        val pageBg = color(if (night) R.color.fb_night_bg else R.color.fb_page_bg)
+        val pageBg = color(if (night) R.color.fb_night_sheet_bg else R.color.fb_sheet_bg)
         val barBg = color(if (night) R.color.fb_night_bar else R.color.fb_bar_bg)
         val titleColor = color(if (night) R.color.fb_night_text else R.color.fb_text_title)
         val bodyColor = color(if (night) R.color.fb_night_text_body else R.color.fb_text_secondary)

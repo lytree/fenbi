@@ -11,7 +11,7 @@
     android:layout_height="match_parent"
     android:clipToPadding="false"
     android:fillViewport="false"
-    android:paddingTop="@dimen/fb_card_gap"
+    android:paddingTop="0dp"
     android:paddingBottom="24dp"
     android:scrollbars="none">
 

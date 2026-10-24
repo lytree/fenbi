@@ -39,6 +39,9 @@ class FbTitleBar @JvmOverloads constructor(
     private val btnBack: ImageView
     private val actions: LinearLayout
     private val divider: View
+    private val timerPill: View
+    private val tvTimer: TextView
+    private val icTimer: ImageView
 
     private val density = resources.displayMetrics.density
     private val baseHeight = (44 * density).toInt()
@@ -54,6 +57,9 @@ class FbTitleBar @JvmOverloads constructor(
         btnBack = findViewById(R.id.btnBack)
         actions = findViewById(R.id.barActions)
         divider = findViewById(R.id.barDivider)
+        timerPill = findViewById(R.id.timerPill)
+        tvTimer = findViewById(R.id.tvTimer)
+        icTimer = findViewById(R.id.icTimer)
 
         btnBack.setOnClickListener {
             onBack?.invoke() ?: (context as? Activity)?.finish()
@@ -76,6 +82,21 @@ class FbTitleBar @JvmOverloads constructor(
 
     fun setTitle(title: CharSequence?) {
         tvTitle.text = title
+    }
+
+    /**
+     * 顶栏计时胶囊（返回键右侧的「🕐 01:08」）。
+     * 传 null 或空串即隐藏——默认就是隐藏的，只有分屏这类专注作答的页面会打开。
+     */
+    fun setTimer(text: CharSequence?, textColor: Int = 0) {
+        val show = !text.isNullOrBlank()
+        timerPill.visibility = if (show) View.VISIBLE else View.GONE
+        if (!show) return
+        tvTimer.text = text
+        if (textColor != 0) {
+            tvTimer.setTextColor(textColor)
+            icTimer.setColorFilter(textColor)
+        }
     }
 
     /** Tab 页：左对齐 20sp 大标题（参考应用首页口径），并默认隐藏返回键 */

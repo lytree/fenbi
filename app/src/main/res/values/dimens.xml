@@ -9,6 +9,8 @@
     <dimen name="fb_bar_item_width">28dp</dimen>
     <dimen name="fb_bar_padding_left">13dp</dimen>
     <dimen name="fb_bar_item_gap">15dp</dimen>
+    <!-- 答题页顶栏的试卷名：参考应用是 13sp 常规字重，塞得下长卷名 -->
+    <dimen name="fb_bar_paper_title">13sp</dimen>
 
     <!-- ===== 题目卡（实测：圆角 14px@1.75=8dp，卡间距 26px=16dp） ===== -->
     <dimen name="fb_card_radius">8dp</dimen>
@@ -19,8 +21,8 @@
 
     <!-- ===== 题目内容（原始：question_content_padding_left / question_default_text_size） ===== -->
     <dimen name="fb_content_padding_h">20dp</dimen>
-    <dimen name="fb_question_text_size">17sp</dimen>
-    <dimen name="fb_question_line_space">6dp</dimen>
+    <dimen name="fb_question_text_size">16sp</dimen>
+    <dimen name="fb_question_line_space">7dp</dimen>
     <dimen name="fb_option_text_size">16sp</dimen>
     <dimen name="fb_option_line_space">5dp</dimen>
     <dimen name="fb_type_tag_text_size">11sp</dimen>
@@ -28,15 +30,17 @@
     <dimen name="fb_type_tag_padding_v">2dp</dimen>
     <dimen name="fb_type_tag_radius">3dp</dimen>
 
-    <!-- ===== 选项圆形徽标（原始：single_option_btn_width 40dp） ===== -->
-    <dimen name="fb_option_circle">40dp</dimen>
-    <dimen name="fb_option_circle_text_size">14sp</dimen>
-    <dimen name="fb_option_row_padding_v">10dp</dimen>
+    <!-- ===== 选项圆形徽标（原始：single_option_btn_width 40dp）
+         对齐真机截图：徽标只比字母大一圈（约 1.4 倍字高），行距更松 ===== -->
+    <dimen name="fb_option_circle">32dp</dimen>
+    <dimen name="fb_option_circle_text_size">16sp</dimen>
+    <dimen name="fb_option_row_padding_v">11dp</dimen>
     <dimen name="fb_option_row_padding_start">14dp</dimen>
-    <dimen name="fb_option_text_gap">8dp</dimen>
+    <dimen name="fb_option_text_gap">10dp</dimen>
 
     <!-- ===== 答题卡（原始：answer_card_item_width 40dp） ===== -->
     <dimen name="fb_card_num_size">40dp</dimen>
+    <dimen name="fb_card_num_pad">4dp</dimen>
     <dimen name="fb_card_num_text_size">14sp</dimen>
     <dimen name="fb_sheet_radius">12dp</dimen>
     <dimen name="fb_sheet_height_percent">0.55</dimen>

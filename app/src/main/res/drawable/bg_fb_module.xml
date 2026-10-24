@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  模块说明卡（对齐参考应用「资料分析 (20题)」那一块）：
+  浅蓝从左上角起渐隐到白，10dp 圆角、无描边；同一模块只在首题上方出现一次。
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient
+        android:angle="270"
+        android:endColor="#FFFFFF"
+        android:startColor="@color/fb_module_bg"
+        android:type="linear" />
+    <corners android:radius="10dp" />
+</shape>

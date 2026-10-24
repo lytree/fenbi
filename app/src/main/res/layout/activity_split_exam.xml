@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 资料分析分屏：左侧材料（可滚动），右侧题目列表 -->
+<!-- 资料分析分屏（对齐参考应用真机）：顶栏只留返回 + 计时，左栏材料白底整栏，右栏题目白底通铺 -->
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/fb_page_bg">
+    android:background="@color/fb_sheet_bg">
 
     <!-- 顶部栏：与其他页面同一套 FbTitleBar，右侧挂题号 -->
     <com.lytree.qbank.ui.FbTitleBar
@@ -30,7 +30,7 @@
         android:id="@+id/leftPane"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:background="@color/fb_split_bg"
+        android:background="@color/fb_sheet_bg"
         android:orientation="vertical"
         android:padding="16dp"
         app:layout_constraintTop_toBottomOf="@id/topDivider"
@@ -143,7 +143,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="16dp" />
+            android:paddingStart="@dimen/fb_content_padding_h"
+            android:paddingTop="8dp"
+            android:paddingEnd="@dimen/fb_content_padding_h" />
     </androidx.core.widget.NestedScrollView>
 
     <!-- 遮盖层（可写，覆盖全屏，两栏都能标）：常驻可见，退出写画后笔迹仍留在原处 -->

@@ -7,7 +7,8 @@
   · 右侧动作区由代码 addTextAction / addIconAction 动态填充
   · 底部 0.5dp 分割线，与页面底色 #F9FAFC 分界
 -->
-<merge xmlns:android="http://schemas.android.com/apk/res/android">
+<merge xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <ImageView
         android:id="@+id/btnBack"
@@ -19,6 +20,36 @@
         android:contentDescription="@string/action_back"
         android:padding="2dp"
         android:src="@drawable/ic_fb_back" />
+
+    <!-- 计时胶囊：分屏页这类「专注作答」的页面才有，默认不显示（不影响其他页面） -->
+    <LinearLayout
+        android:id="@+id/timerPill"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="start|center_vertical"
+        android:layout_marginStart="50dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:visibility="gone"
+        tools:visibility="visible">
+
+        <ImageView
+            android:id="@+id/icTimer"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:contentDescription="@null"
+            android:src="@drawable/ic_fb_clock" />
+
+        <TextView
+            android:id="@+id/tvTimer"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="5dp"
+            android:includeFontPadding="false"
+            android:textColor="@color/fb_text_secondary"
+            android:textSize="16sp"
+            tools:text="01:08" />
+    </LinearLayout>
 
     <TextView
         android:id="@+id/tvTitle"

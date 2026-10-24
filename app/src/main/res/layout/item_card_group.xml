@@ -10,5 +10,5 @@
     android:paddingEnd="6dp"
     android:paddingBottom="4dp"
     android:textColor="@color/fb_text_group"
-    android:textSize="13sp"
+    android:textSize="@dimen/fb_text_group"
     tools:text="政治理论" />

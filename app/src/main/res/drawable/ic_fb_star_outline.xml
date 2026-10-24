@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  细线风格「标记」星（题号行最左侧那颗）。
+  参考应用里标记与收藏都用星：标记这颗线条更细、整体略小，选中后填实，
+  跟右侧收藏星区分开——两颗星形状不同、状态色也不同。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M12,4.6l2.34,5.04 5.49,0.72 -4.05,3.87 0.99,5.49L12,17.13 7.23,19.72l0.99,-5.49 -4.05,-3.87 5.49,-0.72z"
+        android:strokeColor="#3C464F"
+        android:strokeLineJoin="round"
+        android:strokeWidth="1.35" />
+</vector>

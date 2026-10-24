@@ -5,6 +5,7 @@
         android:allowBackup="true"
         android:icon="@drawable/ic_launcher"
         android:label="@string/app_name"
+        android:resizeableActivity="true"
         android:roundIcon="@drawable/ic_launcher"
         android:supportsRtl="true"
         android:theme="@style/Theme.QBank">
@@ -37,8 +38,17 @@
             </intent-filter>
         </activity>
         <activity android:name=".ui.BankDetailActivity" android:exported="false" />
-        <activity android:name=".ui.ExamActivity" android:exported="false"
-            android:screenOrientation="portrait" />
+        <!--
+          答题页不锁竖屏：一旦在清单里写死 portrait，平板（Android 12L+ / 各家 ROM 的兼容模式）
+          会把整个页面塞进一块手机比例的窗口里，两侧留黑边——就是「被收缩成手机」的根因。
+          手机端改在 ExamActivity 里按 isTablet 判断锁竖屏；平板跟随设备旋转、铺满全屏。
+          configChanges：旋转不重建 Activity，否则会重走「继续答题 / 重新开始」弹窗。
+        -->
+        <activity
+            android:name=".ui.ExamActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:resizeableActivity="true" />
         <activity android:name=".ui.SplitExamActivity" android:exported="false" />
         <activity android:name=".ui.MaterialPopupActivity" android:exported="false" />
         <activity android:name=".ui.AnswerCardActivity" android:exported="false" />

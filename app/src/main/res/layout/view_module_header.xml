@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  模块说明卡本体（浅蓝渐变块 + 「模块名 (N题)」标题 + 作答说明）。
+
+  两处共用，尺寸/配色只有这一份：
+  · item_question_page.xml 里内嵌在卷面（多题浏览、分屏右栏），只在模块首题出现；
+  · item_module_page.xml 里单独占一页（单题浏览，模块说明不跟题目抢同一屏）。
+  外边距由使用方给（卷面里是 fb_content_padding_h 的左右留白 + 12dp 上边距）。
+  可见性一律由 QuestionCardBinder 在绑定时设置，不在 XML 里预设。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_fb_module"
+    android:orientation="vertical"
+    android:paddingStart="16dp"
+    android:paddingTop="14dp"
+    android:paddingEnd="16dp"
+    android:paddingBottom="15dp">
+
+    <TextView
+        android:id="@+id/tvModuleTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:includeFontPadding="false"
+        android:textColor="@color/fb_module_title"
+        android:textSize="17sp"
+        android:textStyle="bold"
+        tools:text="资料分析 (20题)" />
+
+    <TextView
+        android:id="@+id/tvModuleDesc"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:lineSpacingExtra="4dp"
+        android:textColor="@color/fb_text_meta"
+        android:textSize="13sp"
+        tools:text="所给出的图、表、文字或综合性资料均有若干个问题要你回答。你应根据资料提供的信息进行分析、比较、计算和判断处理。" />
+</LinearLayout>

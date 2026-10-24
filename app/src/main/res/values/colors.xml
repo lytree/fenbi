@@ -57,6 +57,14 @@
     <color name="fb_card_bg">#FFFFFF</color>
     <color name="fb_divider">#F0F2F5</color>
 
+    <!-- ===== 卷面（对齐参考应用：整页白底通铺，题与题之间一条细线，不做圆角卡片） ===== -->
+    <color name="fb_sheet_bg">#FFFFFF</color>
+    <!-- 题间分隔线：比 fb_divider 再浅一点，白底上不抢眼 -->
+    <color name="fb_question_divider">#EFF1F4</color>
+    <!-- 模块说明卡渐变起点（资料分析 / 常识判断这类模块头） -->
+    <color name="fb_module_bg">#EFF5FF</color>
+    <color name="fb_module_title">#1B2126</color>
+
     <!-- ===== 文字层级（text_0..text_6 六级） ===== -->
     <color name="fb_text_title">#1B2126</color>
     <color name="fb_text_body">#1B2126</color>
@@ -134,6 +142,10 @@
     <color name="fb_night_text_meta">#8E939D</color>
     <color name="fb_night_icon">#C8CBD2</color>
     <color name="fb_night_divider">#2E3138</color>
+    <!-- 卷面：题间分隔线 / 模块说明卡（夜间把浅蓝渐变压成一块深色圆角） -->
+    <color name="fb_night_sheet_bg">#17181C</color>
+    <color name="fb_night_question_divider">#24262B</color>
+    <color name="fb_night_module_bg">#1E2129</color>
     <!-- 题型标签：主蓝压暗后仍保持可读 -->
     <color name="fb_night_tag_bg">#2A2E3A</color>
     <color name="fb_night_tag_text">#7EA3FF</color>

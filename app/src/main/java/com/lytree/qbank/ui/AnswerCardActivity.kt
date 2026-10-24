@@ -40,6 +40,8 @@ class AnswerCardActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 手机锁竖屏 / 平板跟随旋转（方向锁是 Activity 级的，答题页锁了这里也要跟着锁）
+        ScreenAdapt.applyOrientation(this)
         binding = ActivityAnswerCardBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
@@ -58,10 +60,13 @@ class AnswerCardActivity : AppCompatActivity() {
         binding.root.setOnClickListener { finish() }
         binding.sheet.setOnClickListener { /* 吞掉，避免误触关闭 */ }
 
-        // 真机每行 10 个；窄屏按可用宽度自适应，保证格子不小于 44dp
-        val dm = resources.displayMetrics
-        val usableDp = (dm.widthPixels - 40 * dm.density) / dm.density
-        val columns = (usableDp / 48).toInt().coerceIn(5, 10)
+        // 真机每行 10 个；按实际屏宽自适应，保证格子不小于 44dp。
+        // 平板（sw600dp）格子本身放大到 52dp，列数上限也放宽——否则一格 52dp、一行只排 10 列，
+        // 800dp 宽的屏上右边会空出一大块。
+        val cellDp = (resources.getDimension(R.dimen.fb_card_num_size)
+                + resources.getDimension(R.dimen.fb_card_num_pad) * 2) / resources.displayMetrics.density
+        val usableDp = resources.configuration.screenWidthDp - 20 // 列表左右各 10dp padding
+        val columns = (usableDp / cellDp).toInt().coerceIn(5, 14)
 
         val lm = GridLayoutManager(this, columns)
         lm.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {

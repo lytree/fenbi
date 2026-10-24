@@ -46,6 +46,16 @@
     <string name="tag_material">材料</string>
     <string name="material_pop_out">弹出材料</string>
     <string name="material_collapse">收起材料</string>
+
+    <!-- ===== 模块说明卡（卷面里「资料分析 (20题)」那一块） ===== -->
+    <string name="module_title_fmt">%1$s (%2$d题)</string>
+    <string name="module_desc_data_analysis">所给出的图、表、文字或综合性资料均有若干个问题要你回答。你应根据资料提供的信息进行分析、比较、计算和判断处理。</string>
+    <string name="module_desc_quantitative">在这部分试题中，每道试题呈现一段表述数字关系的文字，要求你迅速、准确地计算出答案。</string>
+    <string name="module_desc_verbal">本部分包括表达与理解两方面的内容。请根据题目要求，在四个选项中选出一个最恰当的答案。</string>
+    <string name="module_desc_judgement">本部分包括图形推理、定义判断、类比推理与逻辑判断四种类型的试题，请按题型要求作答。</string>
+    <string name="module_desc_common_sense">要求你依据常识做出判断。请注意，似乎合理的答案可能有多种，你应选择最为合理的一个。</string>
+    <!-- 单题浏览里模块说明单独占一页，卡片下面这行提示告诉用户怎么继续 -->
+    <string name="module_page_hint">左右滑动，开始作答本模块</string>
     <string name="material_chart_invalid">（图表数据格式有误，请检查 :::chart 代码块）</string>
     <string name="material_image_loading">图片加载中…</string>
     <string name="material_image_failed">图片无法加载：%1$s</string>

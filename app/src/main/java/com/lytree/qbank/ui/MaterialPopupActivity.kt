@@ -30,6 +30,8 @@ class MaterialPopupActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 手机锁竖屏 / 平板跟随旋转（方向锁是 Activity 级的，答题页锁了这里也要跟着锁）
+        ScreenAdapt.applyOrientation(this)
         binding = ActivityMaterialPopupBinding.inflate(layoutInflater)
         setContentView(binding.root)
 

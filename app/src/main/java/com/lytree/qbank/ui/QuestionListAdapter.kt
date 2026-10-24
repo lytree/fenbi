@@ -1,10 +1,8 @@
 package com.lytree.qbank.ui
 
 import android.view.LayoutInflater
-import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
-import com.lytree.qbank.R
 import com.lytree.qbank.data.model.Question
 import com.lytree.qbank.databinding.ItemQuestionPageBinding
 import com.lytree.qbank.engine.Policy
@@ -32,10 +30,10 @@ class QuestionListAdapter(
     var night: Boolean = false,
     /** 分屏右栏：材料在左栏展示，所有卡片都不再重复渲染材料 */
     var hideAllMaterials: Boolean = false,
+    /** 分屏右栏：材料模块说明已经在左栏/卷面上出现过，右栏不再重复 */
+    var hideModuleHeaders: Boolean = false,
     /** 题号偏移：分屏右栏只装一组题，但题号仍按整卷序号显示 */
     var indexOffset: Int = 0,
-    /** 分屏右栏很窄：卡片贴边留 16dp，不再按 520dp 居中 */
-    var compactMargins: Boolean = false,
     onMarkToggle: (Question) -> Unit,
     onFavoriteToggle: (Question) -> Unit,
     onNoteClicked: (Question) -> Unit,
@@ -57,30 +55,10 @@ class QuestionListAdapter(
 
     class VH(val binding: ItemQuestionPageBinding) : RecyclerView.ViewHolder(binding.root)
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
-        val holder = VH(
-            ItemQuestionPageBinding.inflate(LayoutInflater.from(parent.context), parent, false)
-        )
-        applyContentWidth(holder.itemView)
-        return holder
-    }
-
-    /**
-     * 题目卡左右外边距。参考应用在宽屏上把内容列收窄到约 520dp 居中（真机 617dp 屏两侧各留 50dp），
-     * 窄屏则保留 [R.dimen.fb_page_padding_h] 的贴边距。
-     */
-    private fun applyContentWidth(item: View) {
-        val res = item.resources
-        val lp = item.layoutParams as? ViewGroup.MarginLayoutParams ?: return
-        val side = if (compactMargins) res.getDimension(R.dimen.fb_page_padding_h)
-        else maxOf(
-            res.getDimension(R.dimen.fb_page_padding_h),
-            (res.displayMetrics.widthPixels - res.getDimension(R.dimen.fb_content_max_width)) / 2f
-        )
-        lp.marginStart = side.toInt()
-        lp.marginEnd = side.toInt()
-        item.layoutParams = lp
-    }
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH =
+        // 列宽（手机撑满 / 平板 820dp 居中）由 activity_exam.xml 的约束负责，
+        // 这里不再按 displayMetrics 反算左右 margin——多窗口、分屏、旋转时那套算法都不准。
+        VH(ItemQuestionPageBinding.inflate(LayoutInflater.from(parent.context), parent, false))
 
     override fun getItemCount() = questions.size
 
@@ -101,7 +79,11 @@ class QuestionListAdapter(
             // 资料分析常是一则材料带多题：材料只在该组第一题渲染一次，
             // 后面的题接着往下排（对齐参考应用的连续卷面）
             hideMaterial = hideAllMaterials ||
-                    (position + indexOffset > 0 && sameMaterialAsPrevious(position))
+                    (position + indexOffset > 0 && sameMaterialAsPrevious(position)),
+            // 模块说明卡：同一模块只在组首题出现一次（对齐参考应用的「资料分析 (20题)」）
+            moduleHeader = if (hideModuleHeaders) null else ModuleHeaders.headerAt(
+                holder.binding.root.context, questions, position
+            )
         )
     }
 
