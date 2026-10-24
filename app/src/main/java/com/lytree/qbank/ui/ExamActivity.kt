@@ -779,13 +779,13 @@ class ExamActivity : AppCompatActivity() {
         binding.btnInkClear.setOnClickListener { binding.inkOverlay.clear() }
 
         // 写画模式的滚动通道：分屏时左半屏滚材料、右半屏滚当前题；
-        // 多题滚列表，单题滚当前页；屏幕右边缘那一条留给它
-        binding.inkOverlay.scrollTargetResolver = { x, _ ->
+        // 多题滚列表，单题滚当前页；材料组页上下分栏，按纵向落点分流（上滚材料 / 下滚题目）
+        binding.inkOverlay.scrollTargetResolver = { x, y ->
             when {
                 splitMode && x <= binding.splitLeftPane.right -> binding.splitMaterialScroll
                 splitMode -> splitList
                 multiBrowse -> binding.questionList
-                else -> currentPageScroll()
+                else -> currentPageScrollForInk(y)
             }
         }
         // 工具条悬在右下角，轨道底部让开 76dp，别画到它背后
@@ -883,8 +883,25 @@ class ExamActivity : AppCompatActivity() {
         return null
     }
 
-    /** 单题浏览时当前页的滚动容器（每页外面套了一层 NestedScrollView） */
+    /** 单题浏览时当前页的滚动容器（普通页：整页 NestedScrollView；材料组页：悬浮题目面板） */
     private fun currentPageScroll(): View? = currentPageRoot()?.findViewById(R.id.pageScroll)
+
+    /**
+     * 写画模式下单题浏览的滚动落点：材料组页上下分栏——手柄以上滚上区材料，
+     * 以下滚悬浮面板里的题目；普通页没有 materialScroll，直接滚整页。
+     * 参数 y 是触摸点在遮盖层坐标系里的纵坐标。
+     */
+    private fun currentPageScrollForInk(y: Float): View? {
+        val root = currentPageRoot() ?: return null
+        val material = root.findViewById<View>(R.id.materialScroll) ?: return currentPageScroll()
+        val question = root.findViewById<View>(R.id.pageScroll) ?: return material
+        val base = IntArray(2)
+        binding.inkOverlay.getLocationOnScreen(base)
+        val qLoc = IntArray(2)
+        question.getLocationOnScreen(qLoc)
+        // 落点在悬浮面板顶边以上 → 材料区；否则 → 题目面板
+        return if (y < qLoc[1] - base[1]) material else question
+    }
 
     /**
      * 翻到某题并把它在页内露出来。

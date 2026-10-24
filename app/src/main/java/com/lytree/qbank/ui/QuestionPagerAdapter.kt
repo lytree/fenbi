@@ -1,12 +1,15 @@
 package com.lytree.qbank.ui
 
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.ViewGroup
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 import com.lytree.qbank.R
 import com.lytree.qbank.data.model.PaperStructure
 import com.lytree.qbank.data.model.Question
+import com.lytree.qbank.databinding.ItemGroupPagerPageBinding
 import com.lytree.qbank.databinding.ItemModulePageBinding
 import com.lytree.qbank.databinding.ItemQuestionPageBinding
 import com.lytree.qbank.databinding.ItemQuestionPagerPageBinding
@@ -20,8 +23,10 @@ import com.lytree.qbank.engine.Policy
  *
  * 1. 每页外面套一层 NestedScrollView，长题干 / 材料组可在页内纵向滚动，横向手势留给 ViewPager2；
  * 2. **单题模式的答题内容以材料为准划分**：一个材料组（[PaperStructure.Group]）= 一页，
- *    材料在页顶只渲染一次，组内小题依次往下排，组内不再分页——资料分析这种「一篇材料带 5 道小题」
- *    的题组，翻页翻不出材料，一屏一题反而要来回切；
+ *    组内不再分页——资料分析这种「一篇材料带 5 道小题」的题组，翻页翻不出材料；
+ *    **多题材料组用上下分栏**（`item_group_pager_page.xml`）：材料固定上区独立滚动，
+ *    小题放底部悬浮面板（圆角 + 投影）独立滚动，中间手柄可上下拖动调占比（20%～80%，偏好记忆）；
+ *    单题组仍走旧版整页滚动版式（`item_question_pager_page.xml`）；
  * 3. **大类说明单独占一页**：说明卡（`view_module_header.xml`）在大类第一题之前单独翻一页，
  *    卡片样式与卷面内嵌版相同；`subject` 为空的大类不插说明页。
  *
@@ -61,6 +66,15 @@ class QuestionPagerAdapter(
     private companion object {
         const val TYPE_QUESTION = 0
         const val TYPE_MODULE = 1
+        /** 多题材料组页：上材料 / 中手柄 / 下悬浮题目（item_group_pager_page.xml） */
+        const val TYPE_GROUP = 2
+
+        /** 材料组上下占比（手柄距页顶）：偏好键与上下限，比例存 exam_prefs */
+        const val PREFS = "exam_prefs"
+        const val KEY_GROUP_RATIO = "group_split_ratio"
+        const val RATIO_MIN = 0.2f
+        const val RATIO_MAX = 0.8f
+        const val RATIO_DEFAULT = 0.45f
     }
 
     /**
@@ -149,24 +163,39 @@ class QuestionPagerAdapter(
 
     class ModuleVH(val page: ItemModulePageBinding) : RecyclerView.ViewHolder(page.root)
 
+    /** 多题材料组页：上材料 / 中手柄 / 下悬浮题目 */
+    class GroupVH(val page: ItemGroupPagerPageBinding) : RecyclerView.ViewHolder(page.root)
+
     override fun getItemCount() = pages.size
 
-    override fun getItemViewType(position: Int): Int =
-        if (pages[position].isModuleIntro) TYPE_MODULE else TYPE_QUESTION
+    override fun getItemViewType(position: Int): Int = when {
+        pages[position].isModuleIntro -> TYPE_MODULE
+        pages[position].isGroup -> TYPE_GROUP
+        else -> TYPE_QUESTION
+    }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
         val inflater = LayoutInflater.from(parent.context)
         // 宽度交给 activity_exam.xml 的约束（铺满可用宽度），这里不参与列宽计算
-        return if (viewType == TYPE_MODULE) {
-            ModuleVH(ItemModulePageBinding.inflate(inflater, parent, false))
-        } else {
-            QuestionVH(ItemQuestionPagerPageBinding.inflate(inflater, parent, false))
+        return when (viewType) {
+            TYPE_MODULE -> ModuleVH(ItemModulePageBinding.inflate(inflater, parent, false))
+            TYPE_GROUP -> {
+                val b = ItemGroupPagerPageBinding.inflate(inflater, parent, false)
+                // 手柄拖拽只挂一次（重绑不重复挂），拖动时改 guideline 占比
+                attachGroupDrag(b)
+                GroupVH(b)
+            }
+            else -> QuestionVH(ItemQuestionPagerPageBinding.inflate(inflater, parent, false))
         }
     }
 
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         val page = pages[position]
-        if (page.isModuleIntro) bindModuleIntro(holder as ModuleVH, page) else bindQuestionPage(holder as QuestionVH, page)
+        when {
+            page.isModuleIntro -> bindModuleIntro(holder as ModuleVH, page)
+            page.isGroup -> bindGroupPage(holder as GroupVH, page)
+            else -> bindQuestionPage(holder as QuestionVH, page)
+        }
     }
 
     /** 大类说明页：一张说明卡 + 一行滑动提示，垂直居中 */
@@ -190,7 +219,7 @@ class QuestionPagerAdapter(
     }
 
     /**
-     * 组页：一页放 1~N 张卡。
+     * 题页：一页一题（普通题 / 单题材料组，材料随卡滚动）。
      *
      * 结构复用：页内题量没变就只重绑已有卡片。否则重绑会 removeAllViews 重建，
      * NestedScrollView 的滚动位置会被顶回顶部——组页里答完一题就跳回组首，根本没法用。
@@ -250,5 +279,116 @@ class QuestionPagerAdapter(
             if ((container.getChildAt(k).tag as? CardHolder)?.index != page.start + k) return false
         }
         return true
+    }
+
+    // ---------------- 多题材料组页：上材料 / 中手柄 / 下悬浮题目 ----------------
+
+    /**
+     * 材料组页（一则材料带多道小题）：材料固定上区独立滚动，本组小题放底部**悬浮面板**
+     * （圆角 + 投影，独立滚动），中间手柄上下拖动调节占比——做题时材料始终在屏，
+     * 不用再「往下滚很久找题、再滚回来对材料」。
+     */
+    private fun bindGroupPage(holder: GroupVH, page: Page) {
+        val b = holder.page
+        val ctx = b.root.context
+
+        // 卷面底色 / 手柄 grip / 悬浮面板（夜间跟换；版式不动）
+        b.root.setBackgroundColor(
+            ContextCompat.getColor(ctx, if (night) R.color.fb_night_sheet_bg else R.color.fb_sheet_bg)
+        )
+        b.groupHandleBar.setBackgroundResource(
+            if (night) R.drawable.bg_fb_drag_bar_night else R.drawable.bg_fb_drag_bar
+        )
+        b.questionPane.setBackgroundResource(
+            if (night) R.drawable.bg_fb_sheet_night else R.drawable.bg_fb_sheet
+        )
+
+        // 上下占比：偏好记忆（拖动结束时写回，见 attachGroupDrag）
+        applyGroupRatio(b, groupRatioPrefs(ctx).getFloat(KEY_GROUP_RATIO, RATIO_DEFAULT))
+
+        // 材料：只在这页的上区渲染一次；材料 / 夜间任一变化、或宽度在「非 0 → 不同的非 0」
+        // （旋转 / 多窗口）时才重排——重排会把上区滚动位置顶回顶部，作答后的重绑不该动它。
+        // 首绑时 width 还是 0，不算宽度变化，否则排版后的第一次重绑就会误重排。
+        val material = questions[page.start].material
+        val identity = "${material.hashCode()}:$night"
+        val w = b.materialContent.width
+        val old = b.materialContent.tag as? String
+        val oldIdentity = old?.substringBeforeLast(':')
+        val oldW = old?.substringAfterLast(':')?.toIntOrNull() ?: -1
+        if (oldIdentity != identity || (w > 0 && oldW > 0 && oldW != w)) {
+            b.materialContent.tag = "$identity:$w"
+            MaterialRenderer.render(ctx, b.materialContent, material, night)
+        }
+
+        // 悬浮面板里的题目卡：复用判定与普通页同款（作答重绑不丢面板内滚动位置）
+        val container = b.cardContainer
+        if (!sameStructure(container, page)) {
+            container.removeAllViews()
+            val inflater = LayoutInflater.from(ctx)
+            for (qi in page.start until page.end) {
+                val card = ItemQuestionPageBinding.inflate(inflater, container, false)
+                card.root.tag = CardHolder(qi, card)
+                container.addView(card.root)
+            }
+        }
+        for (k in 0 until page.questionCount) {
+            val qi = page.start + k
+            val card = (container.getChildAt(k).tag as CardHolder).binding
+            QuestionCardBinder.bind(
+                b = card,
+                position = qi,
+                q = questions[qi],
+                answers = answers,
+                marked = marked,
+                favorites = favorites,
+                revealAnswers = revealAnswers,
+                revealed = revealed,
+                policy = policyProvider(),
+                fontScale = fontScale,
+                cb = cb,
+                night = night,
+                // 材料已在上区整块展示，题目卡不再重复渲染（「弹出材料」入口随之收起）
+                hideMaterial = true,
+                moduleHeader = null,
+                // 面板内题与题的细线；最后一题下面没有下一题，不画
+                showDivider = k < page.questionCount - 1
+            )
+        }
+    }
+
+    private fun groupRatioPrefs(ctx: android.content.Context) =
+        ctx.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
+
+    /** 把上下占比落到 guideline 上（比例 = 手柄中心距页顶；guidePercent 是公开字段，不是属性） */
+    private fun applyGroupRatio(b: ItemGroupPagerPageBinding, pct: Float) {
+        val lp = b.groupGuideline.layoutParams as? ConstraintLayout.LayoutParams ?: return
+        lp.guidePercent = pct.coerceIn(RATIO_MIN, RATIO_MAX)
+        b.groupGuideline.layoutParams = lp
+    }
+
+    /**
+     * 手柄拖拽（onCreateViewHolder 时挂一次）：按手指的屏幕纵坐标直接算占比，
+     * 松手写偏好。拖动消费掉事件，不会被 ViewPager2 当成翻页手势。
+     */
+    private fun attachGroupDrag(b: ItemGroupPagerPageBinding) {
+        val rootLoc = IntArray(2)
+        b.groupHandle.setOnTouchListener { v, ev ->
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> true
+                MotionEvent.ACTION_MOVE -> {
+                    b.root.getLocationOnScreen(rootLoc)
+                    val pct = (ev.rawY - rootLoc[1]) / b.root.height.coerceAtLeast(1)
+                    applyGroupRatio(b, pct)
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    val pct = (b.groupGuideline.layoutParams as ConstraintLayout.LayoutParams).guidePercent
+                    groupRatioPrefs(v.context).edit().putFloat(KEY_GROUP_RATIO, pct).apply()
+                    v.performClick()
+                    true
+                }
+                else -> false
+            }
+        }
     }
 }
