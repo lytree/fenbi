@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  词库页：统一标题栏 + 分类筛选胶囊 + 按拼音首字母分组的词条列表（右侧字母索引条）
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/fb_page_bg"
+    android:orientation="vertical">
+
+    <com.lytree.qbank.ui.FbTitleBar
+        android:id="@+id/titleBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="@dimen/fb_page_pad"
+        android:paddingTop="2dp"
+        android:paddingEnd="@dimen/fb_page_pad"
+        android:paddingBottom="8dp">
+
+        <TextView
+            android:id="@+id/chipAll"
+            style="@style/FbSegmentSelected"
+            android:layout_height="30dp"
+            android:minWidth="56dp"
+            android:text="@string/word_filter_all" />
+
+        <TextView
+            android:id="@+id/chipIdiom"
+            style="@style/FbSegment"
+            android:layout_height="30dp"
+            android:minWidth="56dp"
+            android:text="@string/word_filter_idiom" />
+
+        <TextView
+            android:id="@+id/chipWord"
+            style="@style/FbSegment"
+            android:layout_height="30dp"
+            android:minWidth="56dp"
+            android:text="@string/word_filter_word" />
+
+        <TextView
+            android:id="@+id/tvCount"
+            style="@style/FbGroupTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="end"
+            android:paddingEnd="10dp" />
+    </LinearLayout>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/list"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@color/fb_card_bg"
+            android:clipToPadding="false"
+            android:paddingEnd="18dp"
+            android:paddingBottom="16dp"
+            android:scrollbars="none" />
+
+        <!-- 右侧字母索引：有词的字母才出现，点一下跳到该组 -->
+        <LinearLayout
+            android:id="@+id/indexBar"
+            android:layout_width="18dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end|center_vertical"
+            android:orientation="vertical" />
+
+        <LinearLayout
+            android:id="@+id/emptyBox"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@color/fb_page_bg"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:paddingHorizontal="40dp"
+            android:paddingBottom="60dp"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/empty"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:lineSpacingExtra="5dp"
+                android:text="@string/empty_words"
+                android:textColor="@color/fb_text_meta"
+                android:textSize="14sp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/emptyAction"
+                style="@style/FbPrimaryButton"
+                android:layout_width="wrap_content"
+                android:layout_marginTop="20dp"
+                android:minWidth="132dp"
+                android:paddingHorizontal="28dp"
+                android:text="@string/title_word_import" />
+        </LinearLayout>
+    </FrameLayout>
+</LinearLayout>

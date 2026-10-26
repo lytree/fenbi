@@ -12,6 +12,7 @@ import com.lytree.qbank.ui.bank.BankListFragment
 import com.lytree.qbank.ui.paper.PaperListFragment
 import com.lytree.qbank.ui.record.RecordListFragment
 import com.lytree.qbank.ui.settings.SettingsFragment
+import com.lytree.qbank.ui.word.WordListFragment
 
 class MainActivity : AppCompatActivity() {
 
@@ -27,6 +28,7 @@ class MainActivity : AppCompatActivity() {
 
         binding.bottomNav.setOnItemSelectedListener { item ->
             val fragment: Fragment = when (item.itemId) {
+                R.id.nav_words -> WordListFragment()
                 R.id.nav_papers -> PaperListFragment()
                 R.id.nav_records -> RecordListFragment()
                 R.id.nav_settings -> SettingsFragment()

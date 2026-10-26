@@ -11,13 +11,14 @@ import com.lytree.qbank.data.model.Option
 import com.lytree.qbank.data.model.Paper
 import com.lytree.qbank.data.model.Question
 import com.lytree.qbank.data.model.QuestionType
+import com.lytree.qbank.data.model.Word
 import com.lytree.qbank.engine.Judge
 import com.lytree.qbank.engine.Policy
 
 /**
  * 本地题库存储。用原生 SQLiteOpenHelper，不引入 Room，避免注解处理器带来的构建复杂度。
  */
-class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 3) {
+class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 4) {
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -101,6 +102,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 3)
         db.execSQL("CREATE TABLE inks(question_id INTEGER PRIMARY KEY, strokes TEXT DEFAULT '')")
         db.execSQL("CREATE TABLE notes(question_id INTEGER PRIMARY KEY, note TEXT DEFAULT '')")
         createV3Tables(db)
+        createV4Tables(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -110,6 +112,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 3)
             db.execSQL("CREATE TABLE IF NOT EXISTS notes(question_id INTEGER PRIMARY KEY, note TEXT DEFAULT '')")
         }
         if (oldVersion < 3) createV3Tables(db)
+        if (oldVersion < 4) createV4Tables(db)
     }
 
     /** v3：收藏表 + 答题进度表（对齐参考应用「收藏跨会话保留 / 中途退出可续做」） */
@@ -125,6 +128,111 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 3)
             )""".trimIndent()
         )
     }
+
+    /** v4：词库表（成语 + 实词同表，按拼音首字母索引） */
+    private fun createV4Tables(db: SQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS words(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                text TEXT NOT NULL,
+                pinyin TEXT DEFAULT '',
+                initial TEXT DEFAULT '',
+                category TEXT DEFAULT '',
+                tag TEXT DEFAULT '',
+                meaning TEXT DEFAULT '',
+                example TEXT DEFAULT '',
+                source TEXT DEFAULT '',
+                created_at INTEGER DEFAULT 0
+            )""".trimIndent()
+        )
+        // 词条唯一：重复导入走覆盖，不会越导越多
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS idx_word_text ON words(text)")
+        // 列表查询顺序与索引一致：首字母 → 全拼 → 词条
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_word_sort ON words(initial, pinyin)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_word_category ON words(category)")
+    }
+
+    // ---------------- Word（词库） ----------------
+
+    /**
+     * 批量写入词条。
+     *
+     * 以「词条文本」为唯一键做 upsert：同名词条更新释义/分类/拼音，不会产生重复行。
+     * [replaceAll] 为 true 时先清空（「整库重导」），适合词表整体换版本的场景。
+     */
+    fun upsertWords(words: List<Word>, replaceAll: Boolean = false): Int {
+        if (words.isEmpty() && !replaceAll) return 0
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            if (replaceAll) db.delete("words", null, null)
+            var n = 0
+            for (w in words) {
+                if (w.text.isBlank()) continue
+                val cv = ContentValues().apply {
+                    put("text", w.text)
+                    put("pinyin", w.pinyin)
+                    put("initial", w.initial.ifBlank { "#" })
+                    put("category", w.category)
+                    put("tag", w.tag)
+                    put("meaning", w.meaning)
+                    put("example", w.example)
+                    put("source", w.source)
+                    put("created_at", if (w.createdAt > 0) w.createdAt else System.currentTimeMillis())
+                }
+                n += if (db.insertWithOnConflict("words", null, cv, SQLiteDatabase.CONFLICT_REPLACE) != -1L) 1 else 0
+            }
+            db.setTransactionSuccessful()
+            return n
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    /** 按拼音首字母排序的词条列表；[category] 为空表示不过滤 */
+    fun listWords(category: String? = null, limit: Int = 20000): List<Word> {
+        val out = ArrayList<Word>()
+        val where = if (category.isNullOrBlank()) "" else "WHERE category = ?"
+        val args = if (category.isNullOrBlank()) null else arrayOf(category)
+        readableDatabase.rawQuery(
+            "SELECT * FROM words $where ORDER BY initial, pinyin, text LIMIT $limit", args
+        ).use { c -> while (c.moveToNext()) out.add(readWord(c)) }
+        return out
+    }
+
+    /** 分类计数：key 为分类 code（idiom / word / other），空词库返回空表 */
+    fun countWordsByCategory(): Map<String, Int> {
+        val out = LinkedHashMap<String, Int>()
+        readableDatabase.rawQuery("SELECT category, COUNT(*) FROM words GROUP BY category", null)
+            .use { c -> while (c.moveToNext()) out[c.getString(0) ?: ""] = c.getInt(1) }
+        return out
+    }
+
+    fun countWords(): Int {
+        readableDatabase.rawQuery("SELECT COUNT(*) FROM words", null)
+            .use { c -> return if (c.moveToFirst()) c.getInt(0) else 0 }
+    }
+
+    fun deleteWord(id: Long) {
+        writableDatabase.delete("words", "id = ?", arrayOf(id.toString()))
+    }
+
+    fun clearWords() {
+        writableDatabase.delete("words", null, null)
+    }
+
+    private fun readWord(c: Cursor) = Word(
+        id = c.getLong(c.getColumnIndexOrThrow("id")),
+        text = c.getString(c.getColumnIndexOrThrow("text")) ?: "",
+        pinyin = c.getString(c.getColumnIndexOrThrow("pinyin")) ?: "",
+        initial = c.getString(c.getColumnIndexOrThrow("initial")) ?: "#",
+        category = c.getString(c.getColumnIndexOrThrow("category")) ?: "",
+        tag = c.getString(c.getColumnIndexOrThrow("tag")) ?: "",
+        meaning = c.getString(c.getColumnIndexOrThrow("meaning")) ?: "",
+        example = c.getString(c.getColumnIndexOrThrow("example")) ?: "",
+        source = c.getString(c.getColumnIndexOrThrow("source")) ?: "",
+        createdAt = c.getLong(c.getColumnIndexOrThrow("created_at"))
+    )
 
     // ---------------- Bank ----------------
 

@@ -2,15 +2,37 @@
 <resources>
     <string name="app_name">自定义题库</string>
     <string name="tab_banks">题库</string>
+    <string name="tab_words">词库</string>
     <string name="tab_papers">试卷</string>
     <string name="tab_records">记录</string>
     <string name="tab_settings">设置</string>
 
     <!-- 页面大标题 -->
     <string name="page_banks">我的题库</string>
+    <string name="page_words">我的词库</string>
     <string name="page_papers">我的试卷</string>
     <string name="page_records">练习记录</string>
     <string name="page_settings">设置</string>
+
+    <!-- ===== 词库（成语 + 实词，按拼音首字母排序） ===== -->
+    <string name="empty_words">词库还是空的，导入一份 Word 文档 / Excel / CSV 词表就能开始背——成语、实词都收</string>
+    <string name="title_word_import">导入词表</string>
+    <string name="word_pick_title">选择词表文档</string>
+    <string name="word_pick_hint">支持 Word(.docx) / Excel(.xlsx) / CSV / TXT / JSON。文档里有表格就按表头取列，没有表格就一段一个词条。不再局限于四字成语，实词一并导入。</string>
+    <string name="word_filter_all">全部</string>
+    <string name="word_filter_idiom">成语</string>
+    <string name="word_filter_word">实词</string>
+    <string name="word_import_confirm">导入词库</string>
+    <string name="word_import_replace">覆盖整个词库</string>
+    <string name="word_import_replace_hint">打开后先清空已有词条再导入（整表换版本时用）；关掉则按词条合并更新</string>
+    <string name="word_import_done">已导入 %1$d 条词条（成语 %2$d · 实词 %3$d）</string>
+    <string name="word_stat_fmt">格式：%1$s　数据行：%2$d　可导入：%3$d　成语：%4$d　实词：%5$d</string>
+    <string name="word_guessed_hint">有 %1$d 条分类是推测的（4 字记成语，其余记实词）</string>
+    <string name="word_meaning_empty">（没有释义）</string>
+    <string name="word_example_label">例句：%1$s</string>
+    <string name="word_source_label">出处：%1$s</string>
+    <string name="word_group_other">#</string>
+    <string name="word_total_fmt">共 %1$d 条</string>
 
     <string name="action_import">导入</string>
     <string name="action_start">开始答题</string>
