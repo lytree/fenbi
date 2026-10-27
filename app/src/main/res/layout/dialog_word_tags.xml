@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  标签筛选弹窗：搜索框 + 多选标签列表（标签名 + 条数）+ 清空 / 取消 / 确定。
+  高度由代码按屏幕 72% 撑开，中间列表占剩余空间滚动。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_fb_dialog"
+    android:orientation="vertical"
+    android:paddingStart="18dp"
+    android:paddingTop="20dp"
+    android:paddingEnd="18dp"
+    android:paddingBottom="16dp">
+
+    <TextView
+        android:id="@+id/tvTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/word_tag_title"
+        android:textColor="@color/fb_text_title"
+        android:textSize="17sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/tvSubtitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:lineSpacingExtra="2dp"
+        android:textColor="@color/fb_text_meta"
+        android:textSize="12sp"
+        tools:text="同一分类下可多选，标签之间取并集" />
+
+    <EditText
+        android:id="@+id/etSearch"
+        android:layout_width="match_parent"
+        android:layout_height="36dp"
+        android:layout_marginTop="10dp"
+        android:background="@drawable/bg_fb_input"
+        android:hint="@string/word_tag_search_hint"
+        android:imeOptions="actionSearch"
+        android:inputType="text"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:singleLine="true"
+        android:textColor="@color/fb_text_body"
+        android:textColorHint="@color/fb_text_hint"
+        android:textSize="13sp" />
+
+    <ScrollView
+        android:id="@+id/scroll"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="8dp"
+        android:layout_weight="1"
+        android:overScrollMode="never"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:id="@+id/tagList"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+    </ScrollView>
+
+    <TextView
+        android:id="@+id/tvEmpty"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:paddingVertical="24dp"
+        android:text="@string/word_tag_empty"
+        android:textColor="@color/fb_text_meta"
+        android:textSize="13sp"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/btnClear"
+            android:layout_width="wrap_content"
+            android:layout_height="@dimen/fb_dialog_btn_h"
+            android:gravity="center"
+            android:minWidth="64dp"
+            android:text="@string/word_tag_clear"
+            android:textColor="@color/fb_primary"
+            android:textSize="14sp" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <TextView
+            android:id="@+id/btnCancel"
+            android:layout_width="88dp"
+            android:layout_height="@dimen/fb_dialog_btn_h"
+            android:background="@drawable/bg_fb_btn_ghost"
+            android:gravity="center"
+            android:text="@string/action_cancel"
+            android:textColor="@color/fb_btn_ghost_text"
+            android:textSize="15sp" />
+
+        <TextView
+            android:id="@+id/btnOk"
+            android:layout_width="88dp"
+            android:layout_height="@dimen/fb_dialog_btn_h"
+            android:layout_marginStart="10dp"
+            android:background="@drawable/bg_fb_btn_primary"
+            android:gravity="center"
+            android:text="@string/action_confirm"
+            android:textColor="#FFFFFF"
+            android:textSize="15sp" />
+    </LinearLayout>
+</LinearLayout>

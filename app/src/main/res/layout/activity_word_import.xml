@@ -66,7 +66,7 @@
                         style="@style/FbTextButton"
                         android:layout_width="match_parent"
                         android:layout_marginTop="4dp"
-                        android:text="载入示例词表（体验用）" />
+                        android:text="@string/word_sample_button" />
                 </LinearLayout>
             </LinearLayout>
         </androidx.core.widget.NestedScrollView>

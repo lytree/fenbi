@@ -33,6 +33,26 @@
     <string name="word_source_label">出处：%1$s</string>
     <string name="word_group_other">#</string>
     <string name="word_total_fmt">共 %1$d 条</string>
+    <string name="word_filter_tag">标签</string>
+    <string name="word_filter_tag_count">标签 %1$d</string>
+    <string name="word_tag_title">按标签筛选</string>
+    <string name="word_tag_subtitle">当前范围：%1$s · 共 %2$d 个标签，可多选（取并集）</string>
+    <string name="word_tag_subtitle_picked">当前范围：%1$s · 共 %2$d 个标签 · 已选 %3$d 个</string>
+    <string name="word_tag_search_hint">搜索标签</string>
+    <string name="word_tag_untagged">未标注标签</string>
+    <string name="word_tag_empty">没有可选的标签（这个词表没填「细分」列）</string>
+    <string name="word_tag_clear">清空</string>
+    <string name="word_tag_chip">%1$s ×</string>
+    <string name="word_no_result">没有符合条件的词条</string>
+    <string name="word_clear_filter">清除筛选条件</string>
+    <string name="word_builtin_loading">正在载入内置词库…</string>
+    <string name="word_builtin_done">已载入内置词库 %1$d 条</string>
+    <string name="word_builtin_failed">内置词库载入失败，可在导入页手动选择「内置词库」</string>
+    <string name="word_sample_button">载入词表（内置词库 / 示例）</string>
+    <string name="word_sample_title">载入词表</string>
+    <string name="word_sample_builtin">内置词库（成语 + 实词，装上就有）</string>
+    <string name="word_sample_csv">CSV 词表（成语 + 实词，带分类列）</string>
+    <string name="word_sample_docx">Word 文档（表格词表，含一条没填分类）</string>
 
     <string name="action_import">导入</string>
     <string name="action_start">开始答题</string>

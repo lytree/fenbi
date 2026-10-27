@@ -11,6 +11,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.lytree.qbank.R
+import com.lytree.qbank.data.BuiltinWords
 import com.lytree.qbank.data.db.QBankDb
 import com.lytree.qbank.data.importer.WordFormat
 import com.lytree.qbank.data.importer.WordImporter
@@ -89,26 +90,28 @@ class WordImportActivity : AppCompatActivity() {
     }
 
     private fun loadSample() {
-        val samples = arrayOf(
-            "词库示例.csv" to "CSV 词表（成语 + 实词，带分类列）",
-            "词库示例.docx" to "Word 文档（表格词表，含一条没填分类）"
+        // 前两个是演示不同文件格式的小样例，第三个是 App 自带的正经词库
+        val samples = listOf(
+            getString(R.string.word_sample_builtin) to BuiltinWords.ASSET,
+            getString(R.string.word_sample_csv) to "samples/词库示例.csv",
+            getString(R.string.word_sample_docx) to "samples/词库示例.docx"
         )
         androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("载入示例词表")
-            .setItems(samples.map { it.second }.toTypedArray()) { _, which ->
-                loadSampleFile(samples[which].first)
+            .setTitle(R.string.word_sample_title)
+            .setItems(samples.map { it.first }.toTypedArray()) { _, which ->
+                loadSampleFile(samples[which].second)
             }
             .setNegativeButton(R.string.action_cancel, null)
             .show()
     }
 
-    private fun loadSampleFile(name: String) {
+    private fun loadSampleFile(assetPath: String) {
         try {
-            val bytes = assets.open("samples/$name").use { it.readBytes() }
-            fileName = name
-            applyParsed(WordImporter.build(this, WordFormat.detect(name, bytes), bytes))
+            val bytes = assets.open(assetPath).use { it.readBytes() }
+            fileName = assetPath.substringAfterLast('/')
+            applyParsed(WordImporter.build(this, WordFormat.detect(fileName, bytes), bytes))
         } catch (e: Exception) {
-            toast("示例词表读取失败：${e.message}")
+            toast("词表读取失败：${e.message}")
         }
     }
 

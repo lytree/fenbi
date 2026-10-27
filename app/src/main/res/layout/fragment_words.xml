@@ -45,6 +45,14 @@
             android:text="@string/word_filter_word" />
 
         <TextView
+            android:id="@+id/chipTag"
+            style="@style/FbSegment"
+            android:layout_height="30dp"
+            android:layout_marginStart="4dp"
+            android:minWidth="46dp"
+            android:text="@string/word_filter_tag" />
+
+        <TextView
             android:id="@+id/tvCount"
             style="@style/FbGroupTitle"
             android:layout_width="0dp"
@@ -53,6 +61,24 @@
             android:gravity="end"
             android:paddingEnd="10dp" />
     </LinearLayout>
+
+    <!-- 已选标签：单独一行横滚，点一下去掉单个标签，不必再进弹窗 -->
+    <HorizontalScrollView
+        android:id="@+id/tagBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingStart="@dimen/fb_page_pad"
+        android:paddingEnd="@dimen/fb_page_pad"
+        android:paddingBottom="8dp"
+        android:scrollbars="none"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/tagChips"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal" />
+    </HorizontalScrollView>
 
     <FrameLayout
         android:layout_width="match_parent"
@@ -76,6 +102,37 @@
             android:layout_height="wrap_content"
             android:layout_gravity="end|center_vertical"
             android:orientation="vertical" />
+
+        <!-- 筛选条件叠加后一条都不剩时的提示（词库本身有词，只是筛掉了） -->
+        <LinearLayout
+            android:id="@+id/noResultBox"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@color/fb_card_bg"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:paddingBottom="60dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/word_no_result"
+                android:textColor="@color/fb_text_meta"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/btnClearFilter"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:background="?attr/selectableItemBackground"
+                android:paddingHorizontal="14dp"
+                android:paddingVertical="8dp"
+                android:text="@string/word_clear_filter"
+                android:textColor="@color/fb_primary"
+                android:textSize="13sp" />
+        </LinearLayout>
 
         <LinearLayout
             android:id="@+id/emptyBox"

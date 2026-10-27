@@ -12,13 +12,14 @@ import com.lytree.qbank.data.model.Paper
 import com.lytree.qbank.data.model.Question
 import com.lytree.qbank.data.model.QuestionType
 import com.lytree.qbank.data.model.Word
+import com.lytree.qbank.data.model.WordTagCount
 import com.lytree.qbank.engine.Judge
 import com.lytree.qbank.engine.Policy
 
 /**
  * 本地题库存储。用原生 SQLiteOpenHelper，不引入 Room，避免注解处理器带来的构建复杂度。
  */
-class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 4) {
+class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 6) {
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -113,6 +114,8 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 4)
         }
         if (oldVersion < 3) createV3Tables(db)
         if (oldVersion < 4) createV4Tables(db)
+        // v5 清重复标签，v6 再去掉「第 N 组」前缀，同一套规范化，跑一次就都覆盖
+        if (oldVersion < 6) normalizeWordTags(db)
     }
 
     /** v3：收藏表 + 答题进度表（对齐参考应用「收藏跨会话保留 / 中途退出可续做」） */
@@ -150,6 +153,30 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 4)
         // 列表查询顺序与索引一致：首字母 → 全拼 → 词条
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_word_sort ON words(initial, pinyin)")
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_word_category ON words(category)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_word_tag ON words(tag)")
+    }
+
+    /**
+     * v5：清掉历史词条里重复拼接的细分标签（「A·对比辨析·A」）；
+     * v6：去掉标签里的「第 N 组」前缀，只留真正的细分名。
+     *
+     * 两件事都是重写 tag 列，索性全表扫一遍统一走 [Word.normalizeTag]，
+     * 其它字段与用户题库数据一律不动。
+     */
+    private fun normalizeWordTags(db: SQLiteDatabase) {
+        val fixes = ArrayList<Pair<Long, String>>()
+        db.rawQuery("SELECT id, tag FROM words WHERE tag <> ''", null).use { c ->
+            while (c.moveToNext()) {
+                val id = c.getLong(0)
+                val old = c.getString(1) ?: ""
+                val fixed = Word.normalizeTag(old)
+                if (fixed != old) fixes.add(id to fixed)
+            }
+        }
+        fixes.forEach { (id, tag) ->
+            db.execSQL("UPDATE words SET tag = ? WHERE id = ?", arrayOf<Any>(tag, id))
+        }
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_word_tag ON words(tag)")
     }
 
     // ---------------- Word（词库） ----------------
@@ -174,7 +201,8 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 4)
                     put("pinyin", w.pinyin)
                     put("initial", w.initial.ifBlank { "#" })
                     put("category", w.category)
-                    put("tag", w.tag)
+                    // 标签按 · 拆段去重，避免同一来源重复追加后拼出「A·对比辨析·A」
+                    put("tag", Word.normalizeTag(w.tag))
                     put("meaning", w.meaning)
                     put("example", w.example)
                     put("source", w.source)
@@ -189,15 +217,77 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 4)
         }
     }
 
-    /** 按拼音首字母排序的词条列表；[category] 为空表示不过滤 */
-    fun listWords(category: String? = null, limit: Int = 20000): List<Word> {
+    /**
+     * 按拼音首字母排序的词条列表。
+     *
+     * [category] 为空表示不限分类；[tags] 非空时只保留标签段命中其中之一的词条
+     * （标签之间是「或」，与分类是「且」）。空字符串代表「未标注标签」。
+     * 标签按段匹配：「对比辨析」既能命中只标了这个的词，也能命中「对比辨析·第十组」。
+     */
+    fun listWords(
+        category: String? = null,
+        tags: Set<String> = emptySet(),
+        limit: Int = 20000
+    ): List<Word> {
         val out = ArrayList<Word>()
-        val where = if (category.isNullOrBlank()) "" else "WHERE category = ?"
-        val args = if (category.isNullOrBlank()) null else arrayOf(category)
+        val clauses = ArrayList<String>()
+        val args = ArrayList<String>()
+        if (!category.isNullOrBlank()) {
+            clauses.add("category = ?")
+            args.add(category)
+        }
+        if (tags.isNotEmpty()) {
+            val ors = ArrayList<String>()
+            tags.forEach { raw ->
+                val t = raw.trim()
+                if (t.isEmpty()) {
+                    // 未标注：tag 为空串（历史数据里也可能是只有 · 的脏值，一并算进来）
+                    ors.add("(tag = '' OR tag IS NULL)")
+                } else {
+                    ors.add("tag = ?")
+                    args.add(t)
+                    ors.add("tag LIKE ?")
+                    args.add("$t${Word.TAG_SEP}%")
+                    ors.add("tag LIKE ?")
+                    args.add("%${Word.TAG_SEP}$t")
+                    ors.add("tag LIKE ?")
+                    args.add("%${Word.TAG_SEP}$t${Word.TAG_SEP}%")
+                }
+            }
+            clauses.add("(" + ors.joinToString(" OR ") + ")")
+        }
+        val where = if (clauses.isEmpty()) "" else "WHERE " + clauses.joinToString(" AND ")
         readableDatabase.rawQuery(
-            "SELECT * FROM words $where ORDER BY initial, pinyin, text LIMIT $limit", args
+            "SELECT * FROM words $where ORDER BY initial, pinyin, text LIMIT $limit",
+            if (args.isEmpty()) null else args.toTypedArray()
         ).use { c -> while (c.moveToNext()) out.add(readWord(c)) }
         return out
+    }
+
+    /**
+     * 标签清单（含条数），按条数从多到少；「未标注」永远排最后。
+     *
+     * 标签按 · 拆成段统计——词条同时挂在多个分组下时，每个分组各记一次，
+     * 这样点「对比辨析」能把所有带它的词都筛出来，而不是只命中裸标签的那批。
+     * [category] 非空时只统计该分类下的标签——筛选弹窗跟着当前分类走。
+     */
+    fun listWordTags(category: String? = null): List<WordTagCount> {
+        val where = if (category.isNullOrBlank()) "" else "WHERE category = ?"
+        val args = if (category.isNullOrBlank()) null else arrayOf(category)
+        val counts = HashMap<String, Int>()
+        readableDatabase.rawQuery("SELECT tag FROM words $where", args).use { c ->
+            while (c.moveToNext()) {
+                Word.splitTags(c.getString(0)).forEach { t ->
+                    counts[t] = (counts[t] ?: 0) + 1
+                }
+            }
+        }
+        val out = counts.map { WordTagCount(it.key, it.value) }
+        return out.sortedWith(
+            compareByDescending<WordTagCount> { it.name.isNotEmpty() }
+                .thenByDescending { it.count }
+                .thenBy { it.name }
+        )
     }
 
     /** 分类计数：key 为分类 code（idiom / word / other），空词库返回空表 */

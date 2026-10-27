@@ -34,7 +34,9 @@ object PinyinTable {
                         lines.forEach { line ->
                             if (line.isEmpty() || line[0] == '#') return@forEach
                             val sp = line.indexOf(' ')
-                            if (sp <= 1) return@forEach
+                            // 格式是「字 拼音」：汉字只占 1 个 UTF-16 单元，空格必然在 index 1，
+                            // 所以这里只能判「没有空格」，判 sp <= 1 会把整张表全跳过
+                            if (sp < 1) return@forEach
                             val py = line.substring(sp + 1).trim()
                             if (py.isEmpty()) return@forEach
                             table[line[0]] = pool.getOrPut(py) { py }
