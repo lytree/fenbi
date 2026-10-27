@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 成语（翻开的书 + 书签） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:pathData="M4.6,5.2 H11.4 V18.8 H4.6 Z"
+        android:strokeColor="@color/fb_nav_normal"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="1.7" />
+    <path
+        android:pathData="M12.6,5.2 H19.4 V18.8 H12.6 Z"
+        android:strokeColor="@color/fb_nav_normal"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="1.7" />
+    <path
+        android:pathData="M7,9 H9.4 M7,12.4 H9.4"
+        android:strokeColor="@color/fb_nav_normal"
+        android:strokeLineCap="round"
+        android:strokeWidth="1.7" />
+    <path
+        android:pathData="M15,9 H17.4 M15,12.4 H17.4"
+        android:strokeColor="@color/fb_nav_normal"
+        android:strokeLineCap="round"
+        android:strokeWidth="1.7" />
+</vector>

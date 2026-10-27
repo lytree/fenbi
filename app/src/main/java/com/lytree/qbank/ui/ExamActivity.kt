@@ -6,10 +6,8 @@ import android.os.Bundle
 import android.os.CountDownTimer
 import android.view.View
 import android.view.ViewGroup
-import android.widget.EditText
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -32,7 +30,7 @@ import java.util.Locale
  * - **答题卡**：底部弹层，圆形题号 + 按科目分组 + 通栏交卷
  *
  * 交互要点：
- * - 手写标注（触控笔）叠在题目之上，笔迹按题持久化，切题不丢；
+ * - 手写标注（触控笔）叠在题目之上，笔迹跟随本次作答记录按题目 / 材料分别持久化，切题不丢；
  * - 标记 / 收藏 / 笔记按题保存；
  * - 倒计时到点自动交卷，提前 5 分钟提醒。
  */
@@ -49,6 +47,12 @@ class ExamActivity : AppCompatActivity() {
         private const val KEY_MULTI_BROWSE = "multi_browse"
         private const val KEY_AUTO_NEXT = "auto_next"
         private const val KEY_PRACTICE = "practice_mode"
+
+        /**
+         * 草稿记录的来源标记（存在 records.mode）。
+         * 答题页与分屏页各用一份，标注 / 续做互不串记录。
+         */
+        private const val DRAFT_SOURCE = "exam"
 
         /** 字号档位：小 / 中 / 大 */
         private val FONT_SCALES = floatArrayOf(0.9f, 1.0f, 1.15f)
@@ -75,6 +79,8 @@ class ExamActivity : AppCompatActivity() {
     private val revealed = HashSet<Long>()
     private var timer: CountDownTimer? = null
     private var paperId = 0L
+    /** 本次作答的记录 id（草稿）：标注按它落库，交卷时转正 */
+    private var recordId = 0L
     private var durationMin = 0
     private var startedAt = 0L
     private var submitted = false
@@ -171,6 +177,8 @@ class ExamActivity : AppCompatActivity() {
         durationMin = paper.durationMin
         startedAt = System.currentTimeMillis()
         sessionStartWall = startedAt
+        // 标注要跟随本次作答记录：先进库建（或取回）草稿，交卷时再转正
+        recordId = db.ensureDraftRecord(paperId, DRAFT_SOURCE, startedAt)
 
         // 收藏跨会话保留：从库里读出本卷题目的收藏状态（对齐参考应用「我的收藏」）
         val qids = questions.map { it.id }.toHashSet()
@@ -596,6 +604,12 @@ class ExamActivity : AppCompatActivity() {
         list.itemAnimator = null
         list.setPadding(0, 0, 0, 0)
         list.clipToPadding = false
+        // 笔迹钉在题目卡上：右栏一滚锚点就变了，必须重画（RecyclerView 不触发视图树的滚动回调）
+        list.addOnScrollListener(object : androidx.recyclerview.widget.RecyclerView.OnScrollListener() {
+            override fun onScrolled(rv: androidx.recyclerview.widget.RecyclerView, dx: Int, dy: Int) {
+                binding.inkOverlay.invalidate()
+            }
+        })
 
         binding.splitQuestionPane.removeAllViews()
         binding.splitQuestionPane.addView(
@@ -794,6 +808,8 @@ class ExamActivity : AppCompatActivity() {
         // 热区收窄到屏幕最外沿 16dp，正文里写字不会被当成滚动，贴着边拖仍可滚动
         binding.inkOverlay.railVisible = false
         binding.inkOverlay.barTouchWidth = 16f * resources.displayMetrics.density
+        // 笔迹按「本次作答记录 + 目标（题目/材料）」存取；换一轮练习就是另一套圈画
+        binding.inkOverlay.recordId = recordId
         // 笔迹钉在题目卡上：卷面滚到哪，圈画跟到哪；不接锚点就退化成「钉在屏幕上」的临时标记
         binding.inkOverlay.anchorSource = { inkAnchors() }
         // 页内纵向滚动（NestedScrollView）不会走 RecyclerView 的 onScrolled，靠视图树的滚动回调统一重绘
@@ -804,21 +820,59 @@ class ExamActivity : AppCompatActivity() {
     }
 
     /**
-     * 遮盖层的内容锚点：每张可见题目卡的题目 id + 锚点在本层坐标系里的位置。
+     * 遮盖层的内容锚点：题目与材料各出各的锚点。
      *
-     * 锚点取「卡片左边 + 题干顶边」：卡片左沿在多题 / 单题 / 分屏三种排版里都一样，
+     * 题目锚点取「卡片左边 + 题干顶边」：卡片左沿在多题 / 单题 / 分屏三种排版里都一样，
      * 题干顶边则不受模块说明卡、材料块这些「有的模式有、有的模式没有」的前置内容影响——
      * 只在卡片顶上打点的话，同一道题换个浏览模式圈画就会整体上下错一截。
      *
-     * 笔迹存的是相对锚点的坐标，画的时候再加上它，所以滚动时不用手工平移笔迹，
-     * 也不会出现「写着写着圈画留在屏幕上、题目却滚走了」的老问题。
+     * 材料锚点单独取材料正文（`materialContent`）的位置，target 用材料组首题 id。
+     * 材料和题目分开存、分开锚定，材料块换版式时圈画跟着材料走，不会串到题干上。
      */
     private fun inkAnchors(): List<InkOverlay.Anchor> {
-        val out = ArrayList<InkOverlay.Anchor>(4)
+        val out = ArrayList<InkOverlay.Anchor>(8)
         val base = IntArray(2)
         binding.inkOverlay.getLocationOnScreen(base)
 
-        fun add(card: View, id: Long) {
+        fun rectOf(view: View): FloatArray? {
+            if (view.width <= 0 || view.height <= 0 || view.visibility != View.VISIBLE) return null
+            val loc = IntArray(2)
+            view.getLocationOnScreen(loc)
+            return floatArrayOf(
+                (loc[0] - base[0]).toFloat(),
+                (loc[1] - base[1]).toFloat(),
+                view.width.toFloat(),
+                view.height.toFloat()
+            )
+        }
+
+        /** 材料组首题 id：材料锚点的稳定身份（组内题共用一份材料） */
+        fun materialIdOf(questionIndex: Int): Long =
+            structure.groupAt(questionIndex)?.questions?.first()?.id ?: 0L
+
+        fun addMaterial(view: View, materialId: Long, clip: View? = null) {
+            if (materialId == 0L) return
+            val r = rectOf(view) ?: return
+            val anchor = InkOverlay.Anchor(
+                InkOverlay.TargetKind.MATERIAL, materialId,
+                r[0], r[1], r[2], r[3]
+            )
+            // 材料在独立滚动容器里：内容可能比可视区高，命中区裁到容器，别把下方题目算成材料
+            if (clip != null) {
+                val c = rectOf(clip)
+                if (c != null) {
+                    anchor.hitRegion(
+                        maxOf(r[0], c[0]),
+                        maxOf(r[1], c[1]),
+                        minOf(r[0] + r[2], c[0] + c[2]),
+                        minOf(r[1] + r[3], c[1] + c[3])
+                    )
+                }
+            }
+            out.add(anchor)
+        }
+
+        fun addQuestion(card: View, id: Long) {
             if (id == 0L || card.width <= 0 || card.height <= 0) return
             val cardLoc = IntArray(2)
             card.getLocationOnScreen(cardLoc)
@@ -830,43 +884,75 @@ class ExamActivity : AppCompatActivity() {
             } else {
                 cardLoc[1]
             }
-            out.add(
-                InkOverlay.Anchor(
-                    questionId = id,
-                    x = (cardLoc[0] - base[0]).toFloat(),
-                    y = (stemY - base[1]).toFloat()
-                )
+            val cardLeft = (cardLoc[0] - base[0]).toFloat()
+            val cardTop = (cardLoc[1] - base[1]).toFloat()
+            val anchor = InkOverlay.Anchor(
+                id,
+                cardLeft,
+                (stemY - base[1]).toFloat(),
+                card.width.toFloat(),
+                (cardLoc[1] + card.height - stemY).toFloat().coerceAtLeast(0f)
             )
+            // 原点仍取题干顶边（跨浏览模式不错位），命中区放宽到整张卡：
+            // 题号 / 操作栏上落笔也算这道题；材料块在卡内时取面积更小的材料锚点
+            anchor.hitRegion(
+                cardLeft, cardTop,
+                cardLeft + card.width, cardTop + card.height
+            )
+            out.add(anchor)
+        }
+
+        /** 题目卡内嵌的材料块（多题浏览 / 普通单题页）：同一材料组只在组首题渲染一次 */
+        fun addMaterialInCard(card: View, questionIndex: Int) {
+            val box = card.findViewById<View>(R.id.materialBox) ?: return
+            if (box.visibility != View.VISIBLE) return
+            val content = card.findViewById<View>(R.id.materialContent) ?: return
+            addMaterial(content, materialIdOf(questionIndex), card)
         }
 
         when {
-            // 就地分屏：右栏是这一组题，卡片按分屏列表的下标取
+            // 就地分屏：左栏材料 + 右栏这一组题，两边各锚各的
             splitMode -> {
+                splitGroup.firstOrNull()?.let {
+                    addMaterial(binding.splitMaterialContent, it.id, binding.splitMaterialScroll)
+                }
                 val rv = splitList ?: return out
                 for (i in 0 until rv.childCount) {
                     val child = rv.getChildAt(i)
                     val pos = rv.getChildAdapterPosition(child)
                     if (pos < 0) continue
-                    add(child, splitGroup.getOrNull(pos)?.id ?: 0L)
+                    addQuestion(child, splitGroup.getOrNull(pos)?.id ?: 0L)
                 }
             }
-            // 多题浏览：列表里的每张卡 = 一道题
+            // 多题浏览：列表里的每张卡 = 一道题（材料只在材料组首题卡上）
             multiBrowse -> {
                 val rv = binding.questionList
                 for (i in 0 until rv.childCount) {
                     val child = rv.getChildAt(i)
                     val pos = rv.getChildAdapterPosition(child)
                     if (pos < 0) continue
-                    add(child, questions.getOrNull(pos)?.id ?: 0L)
+                    addQuestion(child, questions.getOrNull(pos)?.id ?: 0L)
+                    addMaterialInCard(child, pos)
                 }
             }
             // 单题浏览：一页可能装多道小题（材料组页），逐张卡算原点，组内每题的圈画都能对上
             else -> {
-                val box = currentPageRoot()?.findViewById<ViewGroup>(R.id.cardContainer) ?: return out
+                val root = currentPageRoot() ?: return out
+                val box = root.findViewById<ViewGroup>(R.id.cardContainer) ?: return out
+                val materialScroll = root.findViewById<View>(R.id.materialScroll)
+                if (materialScroll != null) {
+                    // 材料组页：材料在上区独立滚动，卡片里的材料块是隐藏的
+                    val materialContent = root.findViewById<View>(R.id.materialContent)
+                    val firstIdx = (box.getChildAt(0)?.tag as? QuestionPagerAdapter.CardHolder)?.index ?: -1
+                    if (materialContent != null && firstIdx >= 0) {
+                        addMaterial(materialContent, materialIdOf(firstIdx), materialScroll)
+                    }
+                }
                 for (i in 0 until box.childCount) {
                     val card = box.getChildAt(i)
                     val idx = (card.tag as? QuestionPagerAdapter.CardHolder)?.index ?: continue
-                    add(card, questions.getOrNull(idx)?.id ?: 0L)
+                    addQuestion(card, questions.getOrNull(idx)?.id ?: 0L)
+                    if (materialScroll == null) addMaterialInCard(card, idx)
                 }
             }
         }
@@ -1075,16 +1161,32 @@ class ExamActivity : AppCompatActivity() {
         val answeredCount = progress.answers.size
         val firstUnanswered = questions.indexOfFirst { (progress.answers[it.id] ?: "").isBlank() }
         val pos = if (firstUnanswered >= 0) firstUnanswered + 1 else questions.size
-        AlertDialog.Builder(this)
-            .setTitle(R.string.resume_title)
-            .setMessage(getString(R.string.resume_msg, pos, answeredCount))
-            .setPositiveButton(R.string.resume_continue) { _, _ -> restoreProgress(progress) }
-            .setNegativeButton(R.string.resume_restart) { _, _ ->
+        FbDialog.confirm(
+            context = this,
+            message = getString(R.string.resume_title) + "\n\n" +
+                    getString(R.string.resume_msg, pos, answeredCount),
+            okText = getString(R.string.resume_continue),
+            cancelText = getString(R.string.resume_restart),
+            cancelable = false,
+            onOk = { restoreProgress(progress) },
+            onCancel = {
                 db.clearProgress(paperId)
+                restartDraftRecord()
                 startTimer()
             }
-            .setCancelable(false)
-            .show()
+        )
+    }
+
+    /**
+     * 重新开始：上一轮的进度与标注一起作废，另起一条草稿记录。
+     * 标注是挂在记录上的，只清进度不清记录会把上一轮的圈画带到新一轮。
+     */
+    private fun restartDraftRecord() {
+        db.discardDraftRecords(paperId, DRAFT_SOURCE)
+        startedAt = System.currentTimeMillis()
+        recordId = db.ensureDraftRecord(paperId, DRAFT_SOURCE, startedAt)
+        binding.inkOverlay.recordId = recordId
+        syncInkQuestion()
     }
 
     private fun restoreProgress(p: com.lytree.qbank.data.db.ExamProgress) {
@@ -1170,26 +1272,17 @@ class ExamActivity : AppCompatActivity() {
     }
 
     private fun showNoteDialog(q: Question) {
-        val input = EditText(this).apply {
-            setText(db.getNote(q.id))
-            hint = getString(R.string.note_hint)
-            minLines = 4
-            gravity = android.view.Gravity.TOP or android.view.Gravity.START
-        }
-        val pad = (16 * resources.displayMetrics.density).toInt()
-        val wrap = android.widget.FrameLayout(this).apply {
-            setPadding(pad, pad / 2, pad, 0)
-            addView(input)
-        }
-        AlertDialog.Builder(this)
-            .setTitle(getString(R.string.note_title))
-            .setView(wrap)
-            .setPositiveButton(R.string.action_confirm) { _, _ ->
-                db.setNote(q.id, input.text.toString().trim())
+        FbDialog.input(
+            context = this,
+            title = getString(R.string.note_title),
+            initial = db.getNote(q.id).orEmpty(),
+            hint = getString(R.string.note_hint),
+            multiline = true,
+            onOk = { text ->
+                db.setNote(q.id, text.trim())
                 android.widget.Toast.makeText(this, R.string.note_saved, android.widget.Toast.LENGTH_SHORT).show()
             }
-            .setNegativeButton(R.string.action_cancel, null)
-            .show()
+        )
     }
 
     // ---------------- 更多面板：状态同步 ----------------
@@ -1489,16 +1582,20 @@ class ExamActivity : AppCompatActivity() {
             append("现在导入答案文件可以立刻判分；也可以先交卷，")
             append("之后在成绩报告里点「补答案 → 逐题补录」把答案填进来，按你的作答重新判分。")
         }
-        AlertDialog.Builder(this)
-            .setTitle(R.string.pending_answer)
-            .setMessage(msg)
-            .setPositiveButton(R.string.action_import_answer) { _, _ ->
-                submitAfterImport = true
-                launchAnswerPicker()
+        FbDialog.list(
+            context = this,
+            title = getString(R.string.pending_answer),
+            message = msg,
+            items = arrayOf(getString(R.string.action_import_answer), "直接交卷"),
+            onPick = { which ->
+                if (which == 0) {
+                    submitAfterImport = true
+                    launchAnswerPicker()
+                } else {
+                    submit(auto = false)
+                }
             }
-            .setNeutralButton("直接交卷") { _, _ -> submit(auto = false) }
-            .setNegativeButton(R.string.action_cancel, null)
-            .show()
+        )
     }
 
     private fun submit(auto: Boolean) {
@@ -1532,7 +1629,8 @@ class ExamActivity : AppCompatActivity() {
             score = summary.score,
             fullScore = summary.fullScore
         )
-        val rid = db.insertRecord(record, results)
+        // 草稿转正：记录 id 不变，挂在它上面的标注（record_inks）继续可用
+        val rid = db.finalizeRecord(recordId, record, results)
 
         startActivity(
             Intent(this, ReportActivity::class.java).apply {

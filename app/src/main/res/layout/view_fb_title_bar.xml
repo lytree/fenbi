@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  全站统一标题栏（参考应用真机口径）：
-  · 白底，内容高 44dp，状态栏高度由代码并入 padding
-  · 左细线返回图标 28dp，节距 13dp
+  全站统一标题栏（粉笔真机口径）：
+  · 白底，内容高 44dp（平板 56dp），状态栏高度由代码并入 padding
+  · 左细线返回图标 28dp，左边距 13dp
   · 标题 17sp 加粗居中；Tab 页可切左对齐 20sp 大标题
   · 右侧动作区由代码 addTextAction / addIconAction 动态填充
-  · 底部 0.5dp 分割线，与页面底色 #F9FAFC 分界
+  · 底部 0.5dp 分割线，与页面底色分界
 -->
 <merge xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
@@ -21,7 +21,7 @@
         android:padding="2dp"
         android:src="@drawable/ic_fb_back" />
 
-    <!-- 计时胶囊：分屏页这类「专注作答」的页面才有，默认不显示（不影响其他页面） -->
+    <!-- 计时胶囊：分屏页这类「专注作答」的页面才有，默认不显示 -->
     <LinearLayout
         android:id="@+id/timerPill"
         android:layout_width="wrap_content"
@@ -35,8 +35,8 @@
 
         <ImageView
             android:id="@+id/icTimer"
-            android:layout_width="16dp"
-            android:layout_height="16dp"
+            android:layout_width="@dimen/fb_icon_sm_size"
+            android:layout_height="@dimen/fb_icon_sm_size"
             android:contentDescription="@null"
             android:src="@drawable/ic_fb_clock" />
 
@@ -44,10 +44,10 @@
             android:id="@+id/tvTimer"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="5dp"
+            android:layout_marginStart="@dimen/fb_space_4"
             android:includeFontPadding="false"
             android:textColor="@color/fb_text_secondary"
-            android:textSize="16sp"
+            android:textSize="@dimen/fb_text_card_title"
             tools:text="01:08" />
     </LinearLayout>
 
@@ -77,8 +77,6 @@
 
     <View
         android:id="@+id/barDivider"
-        android:layout_width="match_parent"
-        android:layout_height="0.5dp"
-        android:layout_gravity="bottom"
-        android:background="@color/fb_divider" />
+        style="@style/FbDivider"
+        android:layout_gravity="bottom" />
 </merge>

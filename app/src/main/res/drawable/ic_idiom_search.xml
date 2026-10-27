@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 搜索图标（细线放大镜） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="18dp"
+    android:height="18dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:pathData="M11,4.5 A6.5,6.5 0 1,0 11,17.5 A6.5,6.5 0 1,0 11,4.5 Z"
+        android:strokeColor="@color/fb_nav_normal"
+        android:strokeLineCap="round"
+        android:strokeWidth="2.1" />
+    <path
+        android:pathData="M15.8,15.8 L20,20"
+        android:strokeColor="@color/fb_nav_normal"
+        android:strokeLineCap="round"
+        android:strokeWidth="2.1" />
+</vector>

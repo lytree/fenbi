@@ -1,26 +1,38 @@
 package com.lytree.qbank.ui
 
 import android.app.Activity
+import android.app.Dialog
 import android.content.Intent
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.net.Uri
 import android.os.Bundle
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.lytree.qbank.R
 import com.lytree.qbank.data.db.QBankDb
 import com.lytree.qbank.data.importer.ImportFormat
 import com.lytree.qbank.data.importer.ImportIssue
 import com.lytree.qbank.data.importer.Importer
+import com.lytree.qbank.data.importer.UrlDownloader
 import com.lytree.qbank.data.model.Question
 import com.lytree.qbank.databinding.ActivityImportBinding
+import com.lytree.qbank.databinding.DialogImportUrlBinding
 import com.lytree.qbank.databinding.ItemImportIssueBinding
 import com.lytree.qbank.databinding.ItemImportQuestionBinding
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.File
 
@@ -55,6 +67,9 @@ class ImportActivity : AppCompatActivity() {
     /** 是否把答案一起导入（关掉 = 只导题目，做完在成绩报告里补录） */
     private var importAnswers = true
 
+    /** 链接下载任务：弹窗关掉时一起取消，避免下载完还闯进预览页 */
+    private var downloadJob: Job? = null
+
     private val picker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) loadFile(uri)
     }
@@ -69,6 +84,7 @@ class ImportActivity : AppCompatActivity() {
         binding.titleBar.setTitle(getString(R.string.title_import))
         binding.bottomBar.applyNavBarBottomPadding()
         binding.btnPick.setOnClickListener { pickFile() }
+        binding.btnLink.setOnClickListener { showLinkDialog() }
         binding.btnSample.setOnClickListener { loadSample() }
         binding.btnAll.setOnClickListener { qAdapter.toggleAll() }
 
@@ -129,6 +145,81 @@ class ImportActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * 「从链接导入」：输入下载链接 → 后台下载 → 复用本地文件的格式探测与预览流程。
+     *
+     * 下载期间弹窗内显示进度；关掉弹窗会取消任务，不会下载完再跳预览。
+     */
+    private fun showLinkDialog() {
+        val b = DialogImportUrlBinding.inflate(layoutInflater)
+        val dialog = Dialog(this)
+        dialog.setContentView(b.root)
+        dialog.setCanceledOnTouchOutside(true)
+        dialog.window?.apply {
+            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            val dm = resources.displayMetrics
+            val maxW = (360 * dm.density).toInt()
+            val w = minOf(maxW, dm.widthPixels - (48 * dm.density).toInt())
+            setLayout(w, WindowManager.LayoutParams.WRAP_CONTENT)
+            setGravity(Gravity.CENTER)
+            setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
+        }
+        dialog.setOnDismissListener { downloadJob?.cancel() }
+
+        b.btnCancel.setOnClickListener { dialog.dismiss() }
+        b.btnOk.setOnClickListener {
+            val raw = b.inputUrl.text?.toString()?.trim().orEmpty()
+            if (UrlDownloader.normalize(raw) == null) {
+                b.inputLayoutUrl.error = getString(R.string.import_link_invalid)
+                return@setOnClickListener
+            }
+            b.inputLayoutUrl.error = null
+            startDownload(raw, b, dialog)
+        }
+
+        dialog.show()
+        b.inputUrl.requestFocus()
+    }
+
+    private fun startDownload(url: String, b: DialogImportUrlBinding, dialog: Dialog) {
+        b.btnOk.isEnabled = false
+        b.progress.visibility = View.VISIBLE
+        b.tvStatus.visibility = View.VISIBLE
+        b.tvStatus.setTextColor(androidx.core.content.ContextCompat.getColor(this, R.color.fb_text_meta))
+        b.tvStatus.text = getString(R.string.import_link_downloading)
+
+        downloadJob = lifecycleScope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) { UrlDownloader.download(url) }
+                downloadJob = null
+                dialog.dismiss()
+                applyDownloaded(result)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                b.progress.visibility = View.GONE
+                b.tvStatus.setTextColor(androidx.core.content.ContextCompat.getColor(this@ImportActivity, R.color.wrong))
+                b.tvStatus.text = getString(R.string.import_link_failed, e.message ?: "未知错误")
+                b.btnOk.isEnabled = true
+            }
+        }
+    }
+
+    /** 下载完成的字节按本地文件同样处理：探测格式 → 补扩展名 → 解析预览 */
+    private fun applyDownloaded(result: UrlDownloader.Result) {
+        format = Importer.detect(result.fileName, result.bytes)
+        fileName = ensureExtension(result.fileName, format)
+        bytes = result.bytes
+        applyParsed(Importer.build(format, bytes, pkgDir = pkgDir))
+    }
+
+    /** 链接常以 download?id=1 结尾、拿不到扩展名，按内容探测结果补一个，卷名才好取 */
+    private fun ensureExtension(name: String, format: ImportFormat): String {
+        if (ImportFormat.of(name) != null) return name
+        val base = name.substringBeforeLast('.', name).ifBlank { "导入文件" }
+        return "$base.${format.ext}"
+    }
+
     /** 「载入示例」：内置样例，普通题库 / 带图材料 / zip 题库包 */
     private fun loadSample() {
         val samples = arrayOf(
@@ -136,13 +227,12 @@ class ImportActivity : AppCompatActivity() {
             "资料分析示例.json" to "资料分析示例（含折线图材料）",
             "资料分析题库包.zip" to "资料分析题库包（zip 标准结构 · 图片随包）"
         )
-        AlertDialog.Builder(this)
-            .setTitle("载入示例题库")
-            .setItems(samples.map { it.second }.toTypedArray()) { _, which ->
-                loadSample(samples[which].first)
-            }
-            .setNegativeButton(R.string.action_cancel, null)
-            .show()
+        FbDialog.list(
+            context = this,
+            title = "载入示例题库",
+            items = samples.map { it.second }.toTypedArray(),
+            onPick = { which -> loadSample(samples[which].first) }
+        )
     }
 
     private fun loadSample(name: String) {

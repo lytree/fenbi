@@ -406,16 +406,17 @@ class ChartView @JvmOverloads constructor(
 
     private fun color(res: Int): Int = ContextCompat.getColor(context, res)
 
-    /** 日间 / 夜间两套系列色：夜间整体提亮，深底上不糊 */
+    /** 日间 / 夜间两套系列色：都在 colors.xml 里（fb_chart_*），夜间整体提亮，深底上不糊 */
     private fun palette(): IntArray = if (night) {
         intArrayOf(
-            0xFF7EA3FF.toInt(), 0xFFFFB070.toInt(), 0xFF4ECA8D.toInt(),
-            0xFFA79BFF.toInt(), 0xFFFF8A8A.toInt()
+            color(R.color.fb_chart_night_1), color(R.color.fb_chart_night_2),
+            color(R.color.fb_chart_night_3), color(R.color.fb_chart_night_4),
+            color(R.color.fb_chart_night_5)
         )
     } else {
         intArrayOf(
-            0xFF3C7CFC.toInt(), 0xFFFF8A3D.toInt(), 0xFF21B36B.toInt(),
-            0xFF7A6BF0.toInt(), 0xFFE5484D.toInt()
+            color(R.color.fb_chart_1), color(R.color.fb_chart_2), color(R.color.fb_chart_3),
+            color(R.color.fb_chart_4), color(R.color.fb_chart_5)
         )
     }
 }

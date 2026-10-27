@@ -1,20 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 校验问题行：左侧 3dp 状态条 + 文案 -->
+<!-- 校验问题行：文案（左侧 3dp 状态条由代码按严重级别着色） -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginTop="6dp"
+    android:layout_marginTop="@dimen/fb_space_8"
     android:background="@drawable/bg_fb_card"
     android:orientation="horizontal"
-    android:paddingStart="14dp"
-    android:paddingTop="12dp"
-    android:paddingEnd="14dp"
-    android:paddingBottom="12dp">
+    android:paddingStart="@dimen/fb_space_16"
+    android:paddingTop="@dimen/fb_space_12"
+    android:paddingEnd="@dimen/fb_space_16"
+    android:paddingBottom="@dimen/fb_space_12">
 
     <TextView
         android:id="@+id/tvText"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:lineSpacingExtra="2dp"
-        android:textSize="12sp" />
+        android:textSize="@dimen/fb_text_item_sub" />
 </LinearLayout>

@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  成语汇总：搜索框 + 归类标签（大类 / 子类两级）+ 按首字母分组列表 + 右侧字母索引
+  版式：页面左右 16dp，搜索框 40dp 灰底胶囊，胶囊 chip 30dp
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    style="@style/FbPage">
+
+    <com.lytree.qbank.ui.FbTitleBar
+        android:id="@+id/titleBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
+
+    <!-- 词库 / 成语 两页切换（成语汇总不占底部导航，从词库页进来） -->
+    <include
+        android:id="@+id/librarySwitch"
+        layout="@layout/view_library_switch"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
+
+    <LinearLayout
+        style="@style/FbPageColumn"
+        android:layout_marginTop="@dimen/fb_space_4">
+
+        <EditText
+            android:id="@+id/search"
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:background="@drawable/bg_fb_search"
+            android:drawableStart="@drawable/ic_idiom_search"
+            android:drawablePadding="@dimen/fb_space_8"
+            android:gravity="center_vertical"
+            android:hint="@string/idiom_search_hint"
+            android:imeOptions="actionSearch"
+            android:includeFontPadding="false"
+            android:inputType="text"
+            android:maxLines="1"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:textColor="@color/fb_text_body"
+            android:textColorHint="@color/fb_text_hint"
+            android:textSize="@dimen/fb_text_body_size" />
+
+        <TextView
+            android:id="@+id/count"
+            style="@style/FbCaption"
+            android:layout_width="match_parent"
+            android:layout_marginTop="@dimen/fb_space_8"
+            tools:text="共 1075 条 · 按拼音首字母排序" />
+    </LinearLayout>
+
+    <!-- 归类标签：第一行大类 -->
+    <HorizontalScrollView
+        android:id="@+id/groupScroll"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/fb_space_8"
+        android:clipToPadding="false"
+        android:paddingStart="@dimen/fb_page_pad"
+        android:paddingEnd="@dimen/fb_page_pad"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:id="@+id/groupTags"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal" />
+    </HorizontalScrollView>
+
+    <!-- 归类标签：第二行子类（选中大类后才出现） -->
+    <HorizontalScrollView
+        android:id="@+id/subScroll"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/fb_space_8"
+        android:clipToPadding="false"
+        android:paddingStart="@dimen/fb_page_pad"
+        android:paddingEnd="@dimen/fb_page_pad"
+        android:scrollbars="none"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/subTags"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal" />
+    </HorizontalScrollView>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="@dimen/fb_space_8"
+        android:layout_weight="1">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/list"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:paddingEnd="24dp"
+            android:paddingBottom="@dimen/fb_space_24"
+            android:scrollbars="none" />
+
+        <!-- 右侧字母索引（A-Z 只显示当前结果里存在的字母） -->
+        <LinearLayout
+            android:id="@+id/letterIndex"
+            android:layout_width="22dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end|center_vertical"
+            android:layout_marginEnd="2dp"
+            android:orientation="vertical" />
+
+        <LinearLayout
+            android:id="@+id/emptyBox"
+            style="@style/FbEmptyBox"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/empty"
+                style="@style/FbEmptyText"
+                android:text="@string/idiom_empty" />
+        </LinearLayout>
+    </FrameLayout>
+</LinearLayout>

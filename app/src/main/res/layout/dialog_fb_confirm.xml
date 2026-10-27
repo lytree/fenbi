@@ -1,57 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  参考应用风格确认弹窗（对齐真机交卷确认框，1080x1920 @280dpi 实测）：
-  · 12dp 圆角白卡，正文居中 15sp/#1B2126
-  · 两个等宽胶囊按钮：取消 #DAE4FF+蓝字 / 确定 #3C7CFC+白字，高 42dp
+  确认弹窗（全站统一）：12dp 圆角白卡 + 居中正文 15sp + 两个等宽胶囊按钮
+  取消 = 淡蓝底蓝字 / 确定 = 主蓝白字，按钮高 42dp
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:background="@drawable/bg_fb_dialog"
-    android:orientation="vertical"
-    android:paddingStart="24dp"
-    android:paddingTop="26dp"
-    android:paddingEnd="24dp"
-    android:paddingBottom="20dp">
+    style="@style/FbDialogCard">
 
     <TextView
         android:id="@+id/tvMessage"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center"
-        android:lineSpacingExtra="6dp"
-        android:textColor="@color/fb_dialog_text"
-        android:textSize="15sp"
+        style="@style/FbDialogMessage"
         tools:text="您当前还有题目未完成作答，且本系统不支持二次提交。提交后将无法补充录入剩余题目答案，确定交卷吗？" />
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
+        android:layout_marginTop="@dimen/fb_space_24"
         android:orientation="horizontal">
 
         <TextView
             android:id="@+id/btnCancel"
-            android:layout_width="0dp"
-            android:layout_height="@dimen/fb_dialog_btn_h"
-            android:layout_weight="1"
-            android:background="@drawable/bg_fb_btn_ghost"
-            android:gravity="center"
-            android:text="@string/action_cancel"
-            android:textColor="@color/fb_btn_ghost_text"
-            android:textSize="16sp" />
+            style="@style/FbDialogAction"
+            android:text="@string/action_cancel" />
 
         <TextView
             android:id="@+id/btnOk"
-            android:layout_width="0dp"
-            android:layout_height="@dimen/fb_dialog_btn_h"
-            android:layout_marginStart="12dp"
-            android:layout_weight="1"
-            android:background="@drawable/bg_fb_btn_primary"
-            android:gravity="center"
-            android:text="@string/action_confirm"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp" />
+            style="@style/FbDialogActionPrimary"
+            android:layout_marginStart="@dimen/fb_space_12"
+            android:text="@string/action_confirm" />
     </LinearLayout>
 </LinearLayout>

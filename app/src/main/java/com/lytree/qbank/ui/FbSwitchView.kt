@@ -31,8 +31,8 @@ class FbSwitchView @JvmOverloads constructor(
 
     private val onColor = ContextCompat.getColor(context, R.color.fb_primary)
     /** 轨道「关」态颜色，夜间模式会换深一档 */
-    private var offColor = 0xFFE5E7EB.toInt()
-    private var thumbColor = 0xFFFFFFFF.toInt()
+    private var offColor = ContextCompat.getColor(context, R.color.fb_switch_track_off)
+    private var thumbColor = ContextCompat.getColor(context, R.color.fb_switch_thumb)
 
     private val density = resources.displayMetrics.density
     private val inset = 2f * density
@@ -83,8 +83,14 @@ class FbSwitchView @JvmOverloads constructor(
      * 开态仍用主蓝，夜间可辨。
      */
     fun setNightMode(night: Boolean) {
-        offColor = if (night) 0xFF3A3D45.toInt() else 0xFFE5E7EB.toInt()
-        thumbColor = if (night) 0xFFE6E7EA.toInt() else 0xFFFFFFFF.toInt()
+        offColor = ContextCompat.getColor(
+            context,
+            if (night) R.color.fb_switch_track_off_night else R.color.fb_switch_track_off
+        )
+        thumbColor = ContextCompat.getColor(
+            context,
+            if (night) R.color.fb_switch_thumb_night else R.color.fb_switch_thumb
+        )
         thumbPaint.color = thumbColor
         invalidate()
     }

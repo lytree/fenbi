@@ -1,15 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- 试卷 / 记录卡：左侧标题 + 元信息，右侧强调数字（得分 / 正确率） -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:layout_marginStart="@dimen/fb_page_pad"
-    android:layout_marginEnd="@dimen/fb_page_pad"
-    android:layout_marginTop="@dimen/fb_card_gap_v"
-    android:background="@drawable/bg_fb_card"
+    style="@style/FbListCard"
     android:gravity="center_vertical"
-    android:orientation="horizontal"
-    android:padding="@dimen/fb_card_pad">
+    android:orientation="horizontal">
 
     <LinearLayout
         android:layout_width="0dp"
@@ -28,16 +22,16 @@
             style="@style/FbItemSub"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp" />
+            android:layout_marginTop="@dimen/fb_space_4" />
     </LinearLayout>
 
     <TextView
         android:id="@+id/score"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="12dp"
+        android:layout_marginStart="@dimen/fb_space_12"
         android:includeFontPadding="false"
         android:textColor="@color/fb_primary"
-        android:textSize="19sp"
+        android:textSize="@dimen/fb_text_bar_title"
         android:textStyle="bold" />
 </LinearLayout>

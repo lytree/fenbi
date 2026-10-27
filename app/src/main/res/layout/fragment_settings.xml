@@ -1,13 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   设置页：大标题 + 分组卡（行内左文右开关，行间 0.5dp 缩进分割线）
+  版式统一：分组标题 13sp 灰、卡内 16dp、行高 52dp、说明 12sp 灰
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@color/fb_page_bg"
-    android:orientation="vertical">
+    style="@style/FbPage">
 
     <com.lytree.qbank.ui.FbTitleBar
         android:id="@+id/titleBar"
@@ -21,27 +19,18 @@
         android:scrollbars="none">
 
         <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:paddingStart="@dimen/fb_page_pad"
-            android:paddingEnd="@dimen/fb_page_pad"
-            android:paddingBottom="32dp">
+            style="@style/FbPageColumn"
+            android:paddingBottom="@dimen/fb_space_32">
 
             <TextView
                 style="@style/FbGroupTitle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="4dp"
-                android:layout_marginTop="20dp"
-                android:layout_marginBottom="8dp"
+                android:layout_marginTop="@dimen/fb_space_20"
+                android:layout_marginBottom="@dimen/fb_space_8"
                 android:text="判题规则" />
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:background="@drawable/bg_fb_card"
-                android:orientation="vertical">
+            <LinearLayout style="@style/FbCard">
 
                 <LinearLayout style="@style/FbSwitchRow">
 
@@ -52,32 +41,20 @@
                         android:orientation="vertical">
 
                         <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="多选题少选也给部分分"
-                            android:textColor="@color/fb_text_primary"
-                            android:textSize="14sp" />
+                            style="@style/FbRowTitle"
+                            android:text="多选题少选也给部分分" />
 
                         <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="3dp"
-                            android:text="按选中比例给分，错选仍 0 分"
-                            android:textColor="@color/fb_text_meta"
-                            android:textSize="11sp" />
+                            style="@style/FbRowSub"
+                            android:text="按选中比例给分，错选仍 0 分" />
                     </LinearLayout>
 
                     <com.lytree.qbank.ui.FbSwitchView
                         android:id="@+id/swMulti"
-                        android:layout_width="38dp"
-                        android:layout_height="22dp" />
+                        style="@style/FbSwitch" />
                 </LinearLayout>
 
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="0.5dp"
-                    android:layout_marginStart="@dimen/fb_card_pad"
-                    android:background="@color/fb_divider" />
+                <View style="@style/FbDividerInset" />
 
                 <LinearLayout style="@style/FbSwitchRow">
 
@@ -88,32 +65,20 @@
                         android:orientation="vertical">
 
                         <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="不定项少选给 50% 分"
-                            android:textColor="@color/fb_text_primary"
-                            android:textSize="14sp" />
+                            style="@style/FbRowTitle"
+                            android:text="不定项少选给 50% 分" />
 
                         <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="3dp"
-                            android:text="全对满分，错选 0 分"
-                            android:textColor="@color/fb_text_meta"
-                            android:textSize="11sp" />
+                            style="@style/FbRowSub"
+                            android:text="全对满分，错选 0 分" />
                     </LinearLayout>
 
                     <com.lytree.qbank.ui.FbSwitchView
                         android:id="@+id/swUncertain"
-                        android:layout_width="38dp"
-                        android:layout_height="22dp" />
+                        style="@style/FbSwitch" />
                 </LinearLayout>
 
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="0.5dp"
-                    android:layout_marginStart="@dimen/fb_card_pad"
-                    android:background="@color/fb_divider" />
+                <View style="@style/FbDividerInset" />
 
                 <LinearLayout style="@style/FbSwitchRow">
 
@@ -124,32 +89,20 @@
                         android:orientation="vertical">
 
                         <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="填空题漏填给部分分"
-                            android:textColor="@color/fb_text_primary"
-                            android:textSize="14sp" />
+                            style="@style/FbRowTitle"
+                            android:text="填空题漏填给部分分" />
 
                         <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="3dp"
-                            android:text="逐空比对，忽略空白与标点"
-                            android:textColor="@color/fb_text_meta"
-                            android:textSize="11sp" />
+                            style="@style/FbRowSub"
+                            android:text="逐空比对，忽略空白与标点" />
                     </LinearLayout>
 
                     <com.lytree.qbank.ui.FbSwitchView
                         android:id="@+id/swFill"
-                        android:layout_width="38dp"
-                        android:layout_height="22dp" />
+                        style="@style/FbSwitch" />
                 </LinearLayout>
 
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="0.5dp"
-                    android:layout_marginStart="@dimen/fb_card_pad"
-                    android:background="@color/fb_divider" />
+                <View style="@style/FbDividerInset" />
 
                 <LinearLayout style="@style/FbSwitchRow">
 
@@ -160,32 +113,20 @@
                         android:orientation="vertical">
 
                         <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="主观题按关键词命中给部分分"
-                            android:textColor="@color/fb_text_primary"
-                            android:textSize="14sp" />
+                            style="@style/FbRowTitle"
+                            android:text="主观题按关键词命中给部分分" />
 
                         <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="3dp"
-                            android:text="按「得分点」命中率计分"
-                            android:textColor="@color/fb_text_meta"
-                            android:textSize="11sp" />
+                            style="@style/FbRowSub"
+                            android:text="按「得分点」命中率计分" />
                     </LinearLayout>
 
                     <com.lytree.qbank.ui.FbSwitchView
                         android:id="@+id/swSubjective"
-                        android:layout_width="38dp"
-                        android:layout_height="22dp" />
+                        style="@style/FbSwitch" />
                 </LinearLayout>
 
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="0.5dp"
-                    android:layout_marginStart="@dimen/fb_card_pad"
-                    android:background="@color/fb_divider" />
+                <View style="@style/FbDividerInset" />
 
                 <LinearLayout style="@style/FbSwitchRow">
 
@@ -196,25 +137,17 @@
                         android:orientation="vertical">
 
                         <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="判断题兼容多种写法"
-                            android:textColor="@color/fb_text_primary"
-                            android:textSize="14sp" />
+                            style="@style/FbRowTitle"
+                            android:text="判断题兼容多种写法" />
 
                         <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="3dp"
-                            android:text="对 / 错 / √ / × / T / F / Y / N"
-                            android:textColor="@color/fb_text_meta"
-                            android:textSize="11sp" />
+                            style="@style/FbRowSub"
+                            android:text="对 / 错 / √ / × / T / F / Y / N" />
                     </LinearLayout>
 
                     <com.lytree.qbank.ui.FbSwitchView
                         android:id="@+id/swJudgeLenient"
-                        android:layout_width="38dp"
-                        android:layout_height="22dp" />
+                        style="@style/FbSwitch" />
                 </LinearLayout>
             </LinearLayout>
 
@@ -222,83 +155,57 @@
                 style="@style/FbGroupTitle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="4dp"
-                android:layout_marginTop="24dp"
-                android:layout_marginBottom="8dp"
+                android:layout_marginTop="@dimen/fb_section_gap"
+                android:layout_marginBottom="@dimen/fb_space_8"
                 android:text="手写标注" />
 
             <!-- 笔迹颜色：答题页工具条上的那枚色点也读写这份偏好，两处始终一致 -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:background="@drawable/bg_fb_card"
-                android:orientation="vertical"
-                android:padding="@dimen/fb_card_pad">
+            <LinearLayout style="@style/FbCard">
 
                 <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="笔迹颜色"
-                    android:textColor="@color/fb_text_primary"
-                    android:textSize="14sp" />
+                    style="@style/FbRowTitle"
+                    android:text="笔迹颜色" />
 
                 <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="3dp"
-                    android:text="点题目右上角的笔进入写画，圈画与写字都用这个颜色"
-                    android:textColor="@color/fb_text_meta"
-                    android:textSize="11sp" />
+                    style="@style/FbRowSub"
+                    android:text="点题目右上角的笔进入写画，圈画与写字都用这个颜色" />
 
                 <LinearLayout
                     android:id="@+id/colorRow"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="14dp"
+                    android:layout_marginTop="@dimen/fb_space_12"
                     android:orientation="horizontal" />
 
                 <TextView
                     android:id="@+id/tvColorHint"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:lineSpacingExtra="3dp"
-                    android:textColor="@color/fb_text_meta"
-                    android:textSize="11sp"
-                    tools:text="当前：红笔。笔迹按题保存，退出重进、回头再改都还在。" />
+                    style="@style/FbRowSub"
+                    android:layout_marginTop="@dimen/fb_space_12"
+                    tools:text="当前：红笔。笔迹跟随本次作答记录保存，每题只留最新一份，退出重进还在。" />
             </LinearLayout>
 
             <TextView
                 style="@style/FbGroupTitle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="4dp"
-                android:layout_marginTop="24dp"
-                android:layout_marginBottom="8dp"
+                android:layout_marginTop="@dimen/fb_section_gap"
+                android:layout_marginBottom="@dimen/fb_space_8"
                 android:text="支持的题库格式" />
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:background="@drawable/bg_fb_card"
-                android:orientation="vertical"
-                android:padding="@dimen/fb_card_pad">
+            <LinearLayout style="@style/FbCard">
+
+                <TextView
+                    style="@style/FbRowTitle"
+                    android:text="JSON / CSV / Excel(.xlsx) / TXT" />
 
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="JSON / CSV / Excel(.xlsx) / TXT"
-                    android:textColor="@color/fb_text_primary"
-                    android:textSize="14sp" />
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
+                    android:layout_marginTop="@dimen/fb_space_8"
                     android:lineSpacingExtra="5dp"
                     android:text="表头支持中英文别名，例如「题干 / 题目 / stem」「答案 / 正确答案 / answer」「选项A / option_a」。\n\n多选题答案写成 A,C；填空题多个空用 | 分隔；主观题得分关键词用 ; 分隔。"
                     android:textColor="@color/fb_text_meta"
-                    android:textSize="12sp" />
+                    android:textSize="@dimen/fb_text_item_sub" />
             </LinearLayout>
         </LinearLayout>
     </ScrollView>

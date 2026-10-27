@@ -6,7 +6,6 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -80,9 +79,11 @@ class PaperListFragment : Fragment(), Refreshable {
             getString(R.string.action_import_answer),
             getString(R.string.action_delete)
         )
-        AlertDialog.Builder(requireContext())
-            .setTitle(paper.name)
-            .setItems(actions) { _, which ->
+        FbDialog.list(
+            context = requireContext(),
+            title = paper.name,
+            items = actions,
+            onPick = { which ->
                 when (which) {
                     0 -> startActivity(Intent(requireContext(), AnswerEntryActivity::class.java).apply {
                         putExtra(AnswerEntryActivity.EXTRA_PAPER_ID, paper.id)
@@ -98,7 +99,7 @@ class PaperListFragment : Fragment(), Refreshable {
                     else -> confirmDelete(paper.id, paper.name)
                 }
             }
-            .show()
+        )
     }
 
     private fun confirmDelete(paperId: Long, name: String) {

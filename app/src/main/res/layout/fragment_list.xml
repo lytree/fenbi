@@ -1,13 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  三个 Tab 共用列表页：统一标题栏（左对齐大标题 + 右侧文字动作）+ 卡片列表 + 空态
--->
+<!-- 三个 Tab 共用列表页：统一标题栏（左对齐大标题 + 右侧文字动作）+ 卡片列表 + 空态 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@color/fb_page_bg"
-    android:orientation="vertical">
+    style="@style/FbPage">
 
     <com.lytree.qbank.ui.FbTitleBar
         android:id="@+id/titleBar"
@@ -24,37 +18,23 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:clipToPadding="false"
-            android:paddingTop="4dp"
-            android:paddingBottom="24dp"
+            android:paddingBottom="@dimen/fb_space_24"
             android:scrollbars="none" />
 
         <LinearLayout
             android:id="@+id/emptyBox"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:gravity="center"
-            android:orientation="vertical"
-            android:paddingHorizontal="40dp"
-            android:paddingBottom="60dp"
+            style="@style/FbEmptyBox"
             android:visibility="gone">
 
             <TextView
                 android:id="@+id/empty"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center"
-                android:lineSpacingExtra="5dp"
-                android:text="@string/empty_banks"
-                android:textColor="@color/fb_text_meta"
-                android:textSize="14sp" />
+                style="@style/FbEmptyText"
+                android:text="@string/empty_banks" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/emptyAction"
-                style="@style/FbPrimaryButton"
-                android:layout_width="wrap_content"
-                android:layout_marginTop="20dp"
-                android:minWidth="132dp"
-                android:paddingHorizontal="28dp"
+                style="@style/FbEmptyAction"
+                android:layout_marginTop="@dimen/fb_space_20"
                 android:text="@string/action_import"
                 android:visibility="gone" />
         </LinearLayout>

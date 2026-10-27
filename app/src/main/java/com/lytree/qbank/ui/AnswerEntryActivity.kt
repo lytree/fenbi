@@ -8,10 +8,7 @@ import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.EditText
-import android.widget.FrameLayout
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -101,38 +98,14 @@ class AnswerEntryActivity : AppCompatActivity() {
     // ---------------- 批量粘贴 ----------------
 
     private fun showPasteDialog() {
-        val pad = (16 * resources.displayMetrics.density).toInt()
-        val input = EditText(this).apply {
-            hint = getString(R.string.fill_answer_paste_hint)
-            textSize = 14f
-            gravity = android.view.Gravity.TOP or android.view.Gravity.START
-            minLines = 6
-            maxLines = 10
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or
-                    android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
-            setPadding(pad, pad, pad, pad)
-            background = androidx.core.content.ContextCompat.getDrawable(
-                this@AnswerEntryActivity, R.drawable.bg_fb_field
-            )
-        }
-        val box = FrameLayout(this).apply {
-            setPadding(pad, pad / 2, pad, 0)
-            addView(
-                input,
-                FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                )
-            )
-        }
-        AlertDialog.Builder(this)
-            .setTitle(R.string.fill_answer_paste_title)
-            .setView(box)
-            .setPositiveButton(R.string.fill_answer_paste_apply) { _, _ ->
-                applyPasted(input.text?.toString().orEmpty())
-            }
-            .setNegativeButton(R.string.action_cancel, null)
-            .show()
+        FbDialog.input(
+            context = this,
+            title = getString(R.string.fill_answer_paste_title),
+            hint = getString(R.string.fill_answer_paste_hint),
+            multiline = true,
+            okText = getString(R.string.fill_answer_paste_apply),
+            onOk = { applyPasted(it) }
+        )
     }
 
     /**

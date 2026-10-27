@@ -16,8 +16,7 @@
     android:background="@color/fb_sheet_bg"
     android:clipToPadding="false"
     android:fillViewport="false"
-    android:paddingTop="0dp"
-    android:paddingBottom="24dp"
+    android:paddingBottom="@dimen/fb_space_24"
     android:scrollbars="none">
 
     <LinearLayout

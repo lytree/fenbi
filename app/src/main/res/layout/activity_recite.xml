@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  考点背诵：顶栏 + 未掌握/已掌握标签页 + 填空式背诵卡 + 换一个 / 随机 / 记住了
+  版式与全站一致：白底卡片 + 主蓝强调 + 底部白底操作条（与题库详情 / 补录答案同一套）
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    style="@style/FbPage">
+
+    <com.lytree.qbank.ui.FbTitleBar
+        android:id="@+id/titleBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
+
+    <!-- 未掌握 / 已掌握：等分两栏，选中态下方一条主蓝短横线 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:orientation="horizontal">
+
+        <LinearLayout
+            android:id="@+id/tabUnmastered"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tvUnmastered"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:includeFontPadding="false"
+                android:textColor="@color/fb_text_title"
+                android:textSize="@dimen/fb_text_item_title"
+                android:textStyle="bold"
+                tools:text="未掌握(86)" />
+
+            <View
+                android:id="@+id/indUnmastered"
+                android:layout_width="22dp"
+                android:layout_height="3dp"
+                android:layout_marginTop="@dimen/fb_space_4"
+                android:background="@drawable/bg_recite_tab_indicator" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/tabMastered"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tvMastered"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:includeFontPadding="false"
+                android:textColor="@color/fb_text_meta"
+                android:textSize="@dimen/fb_text_item_title"
+                tools:text="已掌握(0)" />
+
+            <View
+                android:id="@+id/indMastered"
+                android:layout_width="22dp"
+                android:layout_height="3dp"
+                android:layout_marginTop="@dimen/fb_space_4"
+                android:background="@drawable/bg_recite_tab_indicator"
+                android:visibility="invisible" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/filterChip"
+        style="@style/FbTag"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="@dimen/fb_space_4"
+        android:textColor="@color/fb_primary"
+        android:visibility="gone"
+        tools:text="筛选：四中全会·十五五 ×"
+        tools:visibility="visible" />
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:paddingStart="@dimen/fb_page_pad"
+        android:paddingTop="@dimen/fb_space_12"
+        android:paddingEnd="@dimen/fb_page_pad"
+        android:paddingBottom="@dimen/fb_space_8">
+
+        <FrameLayout
+            android:id="@+id/card"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@drawable/bg_fb_card"
+            android:clickable="true"
+            android:focusable="true">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:padding="@dimen/fb_card_pad">
+
+                <TextView
+                    android:id="@+id/cardText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:lineSpacingExtra="7dp"
+                    android:paddingEnd="@dimen/fb_space_24"
+                    android:textColor="@color/fb_text_primary"
+                    android:textSize="@dimen/fb_text_card_title"
+                    tools:text="1.新时代坚持和发展中国特色社会主义——是方向和道路。____问题是关系党的事业兴衰成败第一位的问题。" />
+
+                <Space
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1" />
+
+                <TextView
+                    android:id="@+id/cardHint"
+                    style="@style/FbCaption"
+                    android:layout_width="match_parent"
+                    android:layout_gravity="center_horizontal"
+                    android:gravity="center"
+                    android:text="@string/recite_hint_reveal" />
+            </LinearLayout>
+
+            <ImageView
+                android:id="@+id/btnStar"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
+                android:layout_gravity="top|end"
+                android:layout_marginTop="@dimen/fb_space_12"
+                android:layout_marginEnd="@dimen/fb_space_12"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/recite_favorite"
+                android:padding="4dp"
+                android:src="@drawable/ic_fb_star" />
+        </FrameLayout>
+
+        <TextView
+            android:id="@+id/emptyText"
+            style="@style/FbEmptyText"
+            android:layout_gravity="center"
+            android:paddingBottom="0dp"
+            android:text="@string/recite_empty_unmastered"
+            android:visibility="gone"
+            tools:visibility="visible" />
+    </FrameLayout>
+
+    <View style="@style/FbDivider" />
+
+    <LinearLayout
+        android:id="@+id/bottomBar"
+        style="@style/FbBottomBar"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnNext"
+            style="@style/FbGhostButton"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:text="@string/recite_next" />
+
+        <ImageView
+            android:id="@+id/btnShuffle"
+            android:layout_width="@dimen/fb_btn_h"
+            android:layout_height="@dimen/fb_btn_h"
+            android:layout_marginStart="@dimen/fb_space_8"
+            android:layout_marginEnd="@dimen/fb_space_8"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:contentDescription="@string/recite_shuffle"
+            android:focusable="true"
+            android:padding="11dp"
+            android:src="@drawable/ic_recite_shuffle" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnMaster"
+            style="@style/FbPrimaryButton"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:text="@string/recite_remember" />
+    </LinearLayout>
+</LinearLayout>

@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- 表单控件底（Spinner / 只读行）：浅灰 8dp 圆角 -->
-<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="#F5F7FA" />
-    <corners android:radius="@dimen/fb_radius_field" />
-</shape>

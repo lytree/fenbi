@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 笔记 / 解析等次级面板：浅灰底 6dp 圆角（原始 fb_catskill_white #F5F7FA） -->
+<!-- 笔记 / 解析等次级面板：浅灰底 8dp 圆角 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="#F5F7FA" />
-    <corners android:radius="6dp" />
+    <solid android:color="@color/fb_note_bg" />
+    <corners android:radius="@dimen/fb_radius_card" />
 </shape>

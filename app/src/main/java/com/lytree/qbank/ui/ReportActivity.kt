@@ -7,7 +7,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -130,7 +129,10 @@ class ReportActivity : AppCompatActivity() {
             val pct = if (s.total > 0) s.right * 100 / s.total else 0
             val tv = TextView(this).apply {
                 text = getString(R.string.report_subject_row, label, s.right, s.total, pct)
-                textSize = 14f
+                setTextSize(
+                    android.util.TypedValue.COMPLEX_UNIT_PX,
+                    resources.getDimension(R.dimen.fb_text_body_size)
+                )
                 setTextColor(ContextCompat.getColor(context, R.color.fb_text_secondary))
                 setPadding(4, padV, 4, padV)
             }
@@ -138,7 +140,8 @@ class ReportActivity : AppCompatActivity() {
             if (s != groups.values.last()) {
                 box.addView(View(this).apply {
                     layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT, 1
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        (resources.displayMetrics.density * 0.5f).toInt().coerceAtLeast(1)
                     )
                     setBackgroundColor(ContextCompat.getColor(context, R.color.fb_divider))
                 })
@@ -175,18 +178,17 @@ class ReportActivity : AppCompatActivity() {
      * - **导入答案文件**：手上已有 `题号,答案` 的表格 / TXT 时用，按题干 / 题号自动匹配。
      */
     private fun pickAnswerEntry(record: ExamRecord) {
-        AlertDialog.Builder(this)
-            .setTitle(R.string.action_answer_fix)
-            .setItems(
-                arrayOf(
-                    getString(R.string.answer_fix_manual),
-                    getString(R.string.answer_fix_file)
-                )
-            ) { _, which ->
+        FbDialog.list(
+            context = this,
+            title = getString(R.string.action_answer_fix),
+            items = arrayOf(
+                getString(R.string.answer_fix_manual),
+                getString(R.string.answer_fix_file)
+            ),
+            onPick = { which ->
                 if (which == 0) openAnswerEntry(record) else launchAnswerPicker()
             }
-            .setNegativeButton(R.string.action_cancel, null)
-            .show()
+        )
     }
 
     /** 逐题补录答案页：保存后本页会按记录里的作答重判并重建 */

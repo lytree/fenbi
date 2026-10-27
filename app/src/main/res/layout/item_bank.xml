@@ -1,15 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 题库卡：8dp 圆角白卡，右侧 chevron，题量做浅蓝标签 -->
+<!-- 题库卡：列表卡（白底 8dp 圆角 / 左右 16dp / 卡间距 12dp / 卡内 16dp），右侧 chevron，题量做浅蓝标签 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:layout_marginStart="@dimen/fb_page_pad"
-    android:layout_marginEnd="@dimen/fb_page_pad"
-    android:layout_marginTop="@dimen/fb_card_gap_v"
-    android:background="@drawable/bg_fb_card"
+    style="@style/FbListCard"
     android:gravity="center_vertical"
-    android:orientation="horizontal"
-    android:padding="@dimen/fb_card_pad">
+    android:orientation="horizontal">
 
     <LinearLayout
         android:layout_width="0dp"
@@ -28,27 +22,18 @@
             style="@style/FbItemSub"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp" />
+            android:layout_marginTop="@dimen/fb_space_4" />
 
         <TextView
             android:id="@+id/meta"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:background="@drawable/bg_fb_tag"
-            android:includeFontPadding="false"
-            android:paddingStart="8dp"
-            android:paddingTop="3dp"
-            android:paddingEnd="8dp"
-            android:paddingBottom="3dp"
-            android:textColor="@color/fb_type_tag_text"
-            android:textSize="11sp" />
+            style="@style/FbTag"
+            android:layout_marginTop="@dimen/fb_space_8" />
     </LinearLayout>
 
     <ImageView
-        android:layout_width="20dp"
-        android:layout_height="20dp"
-        android:layout_marginStart="8dp"
+        android:layout_width="@dimen/fb_icon_size"
+        android:layout_height="@dimen/fb_icon_size"
+        android:layout_marginStart="@dimen/fb_space_8"
         android:contentDescription="@null"
         android:src="@drawable/ic_fb_chevron" />
 </LinearLayout>

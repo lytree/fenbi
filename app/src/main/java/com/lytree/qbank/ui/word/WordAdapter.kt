@@ -22,12 +22,12 @@ class WordAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
         private const val TYPE_HEADER = 0
         private const val TYPE_WORD = 1
 
-        /** 筛选胶囊的选中态切换（样式在 themes.xml 里定义，运行时只换背景和字色） */
+        /** 筛选胶囊的选中态切换（样式在 styles.xml 里定义，运行时只换背景和字色） */
         fun applyChipStyle(tv: TextView, selected: Boolean) {
             tv.setBackgroundResource(
-                if (selected) R.drawable.bg_fb_segment_selected else R.drawable.bg_fb_segment
+                if (selected) R.drawable.bg_fb_chip_selected else R.drawable.bg_fb_chip
             )
-            val color = if (selected) R.color.fb_segment_text_sel else R.color.fb_segment_text
+            val color = if (selected) R.color.fb_text_on_primary else R.color.fb_text_secondary
             tv.setTextColor(androidx.core.content.ContextCompat.getColor(tv.context, color))
         }
     }

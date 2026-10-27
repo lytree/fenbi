@@ -6,40 +6,27 @@
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/sheetRoot"
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:background="@drawable/bg_fb_sheet"
-    android:orientation="vertical">
+    style="@style/FbSheet">
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="44dp"
+        android:layout_height="@dimen/fb_bar_h"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingStart="16dp"
-        android:paddingEnd="12dp">
+        android:paddingStart="@dimen/fb_page_pad"
+        android:paddingEnd="@dimen/fb_space_12">
 
         <TextView
             android:id="@+id/tvSheetTag"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:background="@drawable/bg_fb_material_tag"
-            android:paddingStart="6dp"
-            android:paddingTop="2dp"
-            android:paddingEnd="6dp"
-            android:paddingBottom="2dp"
-            android:text="@string/tag_material"
-            android:textColor="@color/fb_type_tag_text"
-            android:textSize="11sp" />
+            style="@style/FbTag"
+            android:text="@string/tag_material" />
 
         <TextView
             android:id="@+id/tvSheetRatio"
+            style="@style/FbCaption"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="10dp"
-            android:layout_weight="1"
-            android:textColor="@color/fb_text_meta"
-            android:textSize="11sp" />
+            android:layout_marginStart="@dimen/fb_space_8"
+            android:layout_weight="1" />
 
         <TextView
             android:id="@+id/btnFontMinus"
@@ -47,10 +34,10 @@
             android:layout_height="match_parent"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:gravity="center"
-            android:paddingHorizontal="8dp"
+            android:paddingHorizontal="@dimen/fb_space_8"
             android:text="A-"
             android:textColor="@color/fb_text_secondary"
-            android:textSize="13sp" />
+            android:textSize="@dimen/fb_text_body_sm" />
 
         <TextView
             android:id="@+id/btnFontPlus"
@@ -58,10 +45,10 @@
             android:layout_height="match_parent"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:gravity="center"
-            android:paddingHorizontal="8dp"
+            android:paddingHorizontal="@dimen/fb_space_8"
             android:text="A+"
             android:textColor="@color/fb_text_secondary"
-            android:textSize="15sp" />
+            android:textSize="@dimen/fb_text_item_title" />
 
         <ImageView
             android:id="@+id/btnSheetClose"
@@ -73,10 +60,7 @@
             android:src="@drawable/ic_fb_close" />
     </LinearLayout>
 
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="0.5dp"
-        android:background="@color/fb_divider" />
+    <View style="@style/FbDivider" />
 
     <androidx.core.widget.NestedScrollView
         android:id="@+id/sheetScroll"
@@ -91,6 +75,6 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="16dp" />
+            android:padding="@dimen/fb_space_16" />
     </androidx.core.widget.NestedScrollView>
 </LinearLayout>

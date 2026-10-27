@@ -1,0 +1,590 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ============================================================================
+  组件样式（全站唯一来源）
+  ============================================================================
+  只放样式，不放主题（主题见 themes.xml）。
+
+  命名：Fb + 语义。能复用的样式都在这里，布局里尽量只写 style + 个别覆写，
+  不要再散落 textSize / textColor / padding / background 的字面量。
+
+  版式规则（粉笔口径）：
+  · 页面左右 16dp、卡间距 12dp、卡内 16dp、区块间距 24dp
+  · 卡片白底 8dp 圆角、无描边、无阴影（靠页面底色分层）
+  · 主按钮 46dp 高 / 23dp 胶囊；次按钮同尺寸浅蓝底
+  · 标签 3dp 小圆角、11sp；胶囊 chip 30dp 高 / 15dp 圆角
+  · 顶栏 44dp 白底 + 0.5dp 底分割线；底栏白底 + 0.5dp 顶分割线 + 上下 10dp
+-->
+<resources>
+
+    <!-- ============================================================
+         1. 容器 / 页面骨架
+         ============================================================ -->
+
+    <!-- 页面根容器：页面底色 + 竖向排列（所有页面统一用它，别再各写 background） -->
+    <style name="FbPage">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:background">@color/fb_page_bg</item>
+    </style>
+
+    <!-- 页面内容列：左右 16dp（滚动内容的内层容器） -->
+    <style name="FbPageColumn">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:paddingStart">@dimen/fb_page_pad</item>
+        <item name="android:paddingEnd">@dimen/fb_page_pad</item>
+    </style>
+
+    <!-- 卡片：白底 8dp 圆角 + 16dp 内边距，内部竖向排列 -->
+    <style name="FbCard">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:background">@drawable/bg_fb_card</item>
+        <item name="android:padding">@dimen/fb_card_pad</item>
+    </style>
+
+    <!-- 列表卡片：在 FbCard 基础上加页面左右留白与卡间距（列表项统一用它） -->
+    <style name="FbListCard" parent="FbCard">
+        <item name="android:layout_marginStart">@dimen/fb_page_pad</item>
+        <item name="android:layout_marginEnd">@dimen/fb_page_pad</item>
+        <item name="android:layout_marginTop">@dimen/fb_card_gap_v</item>
+    </style>
+
+    <!-- 行内可点区域：统一用水波纹（列表项、可点行） -->
+    <style name="FbPressable">
+        <item name="android:background">?attr/selectableItemBackground</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+    </style>
+
+    <!-- ============================================================
+         2. 分割线
+         ============================================================ -->
+
+    <!-- 常规横向分割线 0.5dp（栏底 / 卡内分节） -->
+    <style name="FbDivider">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">0.5dp</item>
+        <item name="android:background">@color/fb_divider</item>
+    </style>
+
+    <!-- 缩进分割线：与卡片内文字左对齐 -->
+    <style name="FbDividerInset" parent="FbDivider">
+        <item name="android:layout_marginStart">@dimen/fb_card_pad</item>
+    </style>
+
+    <!-- ============================================================
+         3. 文字层级
+         ============================================================ -->
+
+    <!-- Tab 页大标题 20sp 加粗（左对齐，与 FbTitleBar.usePageTitleStyle 配套） -->
+    <style name="FbPageTitle">
+        <item name="android:textSize">@dimen/fb_text_page_title</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textColor">@color/fb_text_title</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <!-- 区块标题 15sp 加粗：「题目预览」「逐题解析」这类页面内小节 -->
+    <style name="FbSectionTitle">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textSize">@dimen/fb_text_item_title</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textColor">@color/fb_text_title</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <!-- 卡片标题 16sp 加粗 -->
+    <style name="FbCardTitle">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textSize">@dimen/fb_text_card_title</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textColor">@color/fb_text_title</item>
+    </style>
+
+    <!-- 报告页四宫格统计（正确率 / 答对 / 答错 / 用时）：等分、居中、两行） -->
+    <style name="FbStatCell">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:gravity">center</item>
+        <item name="android:lineSpacingExtra">6dp</item>
+        <item name="android:textColor">@color/fb_text_primary</item>
+        <item name="android:textSize">@dimen/fb_text_item_sub</item>
+    </style>
+
+    <!-- 列表项主标题 15sp 加粗 -->
+    <style name="FbItemTitle">
+        <item name="android:textSize">@dimen/fb_text_item_title</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textColor">@color/fb_text_title</item>
+        <item name="android:maxLines">2</item>
+        <item name="android:ellipsize">end</item>
+    </style>
+
+    <!-- 设置行主文字 15sp 常规（设置项不需要加粗，避免整页都是黑的） -->
+    <style name="FbRowTitle">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textSize">@dimen/fb_text_item_title</item>
+        <item name="android:textColor">@color/fb_text_title</item>
+    </style>
+
+    <!-- 列表项副标题 / 设置行说明 12sp 灰 -->
+    <style name="FbItemSub">
+        <item name="android:textSize">@dimen/fb_text_item_sub</item>
+        <item name="android:textColor">@color/fb_text_meta</item>
+        <item name="android:maxLines">2</item>
+        <item name="android:ellipsize">end</item>
+    </style>
+
+    <style name="FbRowSub" parent="FbItemSub">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">@dimen/fb_space_4</item>
+        <item name="android:maxLines">3</item>
+    </style>
+
+    <!-- 卡片上方的分组标签 13sp 灰（「判题规则」这类） -->
+    <style name="FbGroupTitle">
+        <item name="android:textSize">@dimen/fb_text_group</item>
+        <item name="android:textColor">@color/fb_text_meta</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <!-- 正文 14sp 主色 -->
+    <style name="FbBody">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textSize">@dimen/fb_text_body_size</item>
+        <item name="android:textColor">@color/fb_text_primary</item>
+        <item name="android:lineSpacingExtra">4dp</item>
+    </style>
+
+    <!-- 次级正文 13sp（释义、说明、笔记） -->
+    <style name="FbBodySm">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textSize">@dimen/fb_text_body_sm</item>
+        <item name="android:textColor">@color/fb_text_secondary</item>
+        <item name="android:lineSpacingExtra">4dp</item>
+    </style>
+
+    <!-- 极弱提示 11sp -->
+    <style name="FbCaption">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textSize">@dimen/fb_text_tag</item>
+        <item name="android:textColor">@color/fb_text_meta</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <!-- 底部导航文字（颜色由 itemTextColor 状态选择器控制） -->
+    <style name="FbNavLabel">
+        <item name="android:textSize">@dimen/fb_nav_text</item>
+        <item name="android:letterSpacing">0</item>
+    </style>
+
+    <!-- ============================================================
+         4. 标签 / 胶囊
+         ============================================================ -->
+
+    <!-- 小标签：题型 / 材料 / 计数（11sp、3dp 圆角、浅蓝底蓝字） -->
+    <style name="FbTag">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:background">@drawable/bg_fb_tag</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:paddingStart">@dimen/fb_tag_pad_h</item>
+        <item name="android:paddingTop">@dimen/fb_tag_pad_v</item>
+        <item name="android:paddingEnd">@dimen/fb_tag_pad_h</item>
+        <item name="android:paddingBottom">@dimen/fb_tag_pad_v</item>
+        <item name="android:textColor">@color/fb_type_tag_text</item>
+        <item name="android:textSize">@dimen/fb_text_tag</item>
+    </style>
+
+    <!-- 状态标签：略一档强调（「待补答案」这类橙色提示） -->
+    <style name="FbTagWarning" parent="FbTag">
+        <item name="android:textColor">@color/fb_warning</item>
+    </style>
+
+    <!-- 筛选胶囊（未选中） -->
+    <style name="FbChip">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">@dimen/fb_chip_h</item>
+        <item name="android:background">@drawable/bg_fb_chip</item>
+        <item name="android:gravity">center</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:paddingStart">@dimen/fb_chip_pad_h</item>
+        <item name="android:paddingEnd">@dimen/fb_chip_pad_h</item>
+        <item name="android:textColor">@color/fb_text_secondary</item>
+        <item name="android:textSize">@dimen/fb_text_item_sub</item>
+    </style>
+
+    <!-- 筛选胶囊（选中）：主蓝实心白字 -->
+    <style name="FbChipSelected" parent="FbChip">
+        <item name="android:background">@drawable/bg_fb_chip_selected</item>
+        <item name="android:textColor">@color/fb_text_on_primary</item>
+    </style>
+
+    <!-- ============================================================
+         5. 按钮
+         ============================================================ -->
+
+    <!-- 主按钮：46dp 高 / 23dp 胶囊 / 主蓝白字 -->
+    <style name="FbPrimaryButton" parent="Widget.MaterialComponents.Button">
+        <item name="android:layout_height">@dimen/fb_btn_h</item>
+        <item name="android:textSize">@dimen/fb_btn_text_size</item>
+        <item name="android:textColor">@color/fb_text_on_primary</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:letterSpacing">0</item>
+        <item name="android:minHeight">@dimen/fb_btn_h</item>
+        <item name="android:minWidth">0dp</item>
+        <item name="android:stateListAnimator">@null</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="backgroundTint">@color/fb_primary</item>
+        <item name="cornerRadius">@dimen/fb_btn_radius</item>
+        <item name="elevation">0dp</item>
+        <item name="rippleColor">#33FFFFFF</item>
+        <item name="iconTint">@color/fb_text_on_primary</item>
+        <item name="iconSize">18dp</item>
+        <item name="iconGravity">textStart</item>
+        <item name="iconPadding">6dp</item>
+    </style>
+
+    <!-- 次按钮：同尺寸浅蓝底 + 主蓝字 -->
+    <style name="FbGhostButton" parent="Widget.MaterialComponents.Button">
+        <item name="android:layout_height">@dimen/fb_btn_h</item>
+        <item name="android:textSize">@dimen/fb_btn_text_size</item>
+        <item name="android:textColor">@color/fb_primary</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:letterSpacing">0</item>
+        <item name="android:minHeight">@dimen/fb_btn_h</item>
+        <item name="android:minWidth">0dp</item>
+        <item name="android:stateListAnimator">@null</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="backgroundTint">@color/fb_primary_bg</item>
+        <item name="cornerRadius">@dimen/fb_btn_radius</item>
+        <item name="elevation">0dp</item>
+        <item name="rippleColor">@color/fb_ripple</item>
+        <item name="iconTint">@color/fb_primary</item>
+        <item name="iconSize">18dp</item>
+        <item name="iconGravity">textStart</item>
+        <item name="iconPadding">6dp</item>
+    </style>
+
+    <!-- 纯文字按钮 -->
+    <style name="FbTextButton" parent="Widget.MaterialComponents.Button.TextButton">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textSize">@dimen/fb_text_body_sm</item>
+        <item name="android:textColor">@color/fb_primary</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:letterSpacing">0</item>
+        <item name="android:minWidth">0dp</item>
+        <item name="android:minHeight">36dp</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="rippleColor">@color/fb_ripple</item>
+    </style>
+
+    <!-- 顶栏右侧文字动作 13sp 主蓝 -->
+    <style name="FbTextAction">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:gravity">center</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:paddingStart">@dimen/fb_space_8</item>
+        <item name="android:paddingTop">@dimen/fb_space_4</item>
+        <item name="android:paddingEnd">@dimen/fb_space_8</item>
+        <item name="android:paddingBottom">@dimen/fb_space_4</item>
+        <item name="android:textColor">@color/fb_primary</item>
+        <item name="android:textSize">@dimen/fb_text_body_sm</item>
+    </style>
+
+    <!-- ============================================================
+         6. 弹窗 / 弹层
+         ============================================================ -->
+
+    <!-- 弹窗白卡：12dp 圆角 + 24dp 内边距 -->
+    <style name="FbDialogCard">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:background">@drawable/bg_fb_dialog</item>
+        <item name="android:paddingStart">@dimen/fb_dialog_pad</item>
+        <item name="android:paddingTop">@dimen/fb_dialog_pad</item>
+        <item name="android:paddingEnd">@dimen/fb_dialog_pad</item>
+        <item name="android:paddingBottom">@dimen/fb_space_20</item>
+    </style>
+
+    <!-- 弹窗标题 17sp 加粗 -->
+    <style name="FbDialogTitle">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:textColor">@color/fb_text_title</item>
+        <item name="android:textSize">@dimen/fb_text_bar_title</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <!-- 弹窗正文 15sp 居中（确认框） -->
+    <style name="FbDialogMessage">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:gravity">center</item>
+        <item name="android:lineSpacingExtra">6dp</item>
+        <item name="android:textColor">@color/fb_dialog_text</item>
+        <item name="android:textSize">@dimen/fb_text_item_title</item>
+    </style>
+
+    <!-- 弹窗底部两个等宽胶囊按钮 -->
+    <style name="FbDialogAction">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">@dimen/fb_dialog_btn_h</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:background">@drawable/bg_fb_btn_ghost</item>
+        <item name="android:gravity">center</item>
+        <item name="android:textColor">@color/fb_btn_ghost_text</item>
+        <item name="android:textSize">@dimen/fb_text_card_title</item>
+    </style>
+
+    <style name="FbDialogActionPrimary" parent="FbDialogAction">
+        <item name="android:background">@drawable/bg_fb_btn_primary</item>
+        <item name="android:textColor">@color/fb_text_on_primary</item>
+    </style>
+
+    <!-- 弹层顶部拖拽条 -->
+    <style name="FbSheetHandle">
+        <item name="android:layout_width">36dp</item>
+        <item name="android:layout_height">4dp</item>
+        <item name="android:layout_gravity">center_horizontal</item>
+        <item name="android:layout_marginTop">@dimen/fb_space_8</item>
+        <item name="android:background">@drawable/bg_fb_split_handle</item>
+    </style>
+
+    <!-- 弹层根容器：白底 12dp 上圆角 -->
+    <style name="FbSheet">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:background">@drawable/bg_fb_sheet</item>
+    </style>
+
+    <!-- 操作弹层：标题 13sp 灰居中 -->
+    <style name="FbSheetTitle">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:gravity">center</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:paddingStart">@dimen/fb_page_pad</item>
+        <item name="android:paddingTop">@dimen/fb_space_16</item>
+        <item name="android:paddingEnd">@dimen/fb_page_pad</item>
+        <item name="android:paddingBottom">@dimen/fb_space_12</item>
+        <item name="android:textColor">@color/fb_text_meta</item>
+        <item name="android:textSize">@dimen/fb_text_body_sm</item>
+    </style>
+
+    <!-- 操作弹层：说明文字 -->
+    <style name="FbSheetMessage">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:lineSpacingExtra">4dp</item>
+        <item name="android:paddingStart">@dimen/fb_page_pad</item>
+        <item name="android:paddingEnd">@dimen/fb_page_pad</item>
+        <item name="android:paddingBottom">@dimen/fb_space_12</item>
+        <item name="android:textColor">@color/fb_text_secondary</item>
+        <item name="android:textSize">@dimen/fb_text_body_sm</item>
+    </style>
+
+    <!-- 操作弹层：每一个动作行（52dp、16sp、左对齐） -->
+    <style name="FbSheetRow">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">@dimen/fb_row_h</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:paddingStart">@dimen/fb_page_pad</item>
+        <item name="android:paddingEnd">@dimen/fb_page_pad</item>
+        <item name="android:textColor">@color/fb_text_title</item>
+        <item name="android:textSize">@dimen/fb_text_card_title</item>
+    </style>
+
+    <!-- 操作弹层：底部「取消」独立块 -->
+    <style name="FbSheetCancel">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">@dimen/fb_row_h</item>
+        <item name="android:gravity">center</item>
+        <item name="android:textColor">@color/fb_text_title</item>
+        <item name="android:textSize">@dimen/fb_text_card_title</item>
+    </style>
+
+    <!-- ============================================================
+         7. 空态
+         ============================================================ -->
+
+    <!-- 空态容器：居中、左右 40dp、整体上移避免视觉下沉 -->
+    <style name="FbEmptyBox">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:gravity">center</item>
+        <item name="android:paddingStart">@dimen/fb_empty_pad_h</item>
+        <item name="android:paddingEnd">@dimen/fb_empty_pad_h</item>
+        <item name="android:paddingBottom">@dimen/fb_empty_offset</item>
+    </style>
+
+    <!-- 空态文案 14sp 灰、行距 5dp -->
+    <style name="FbEmptyText">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:gravity">center</item>
+        <item name="android:lineSpacingExtra">5dp</item>
+        <item name="android:textColor">@color/fb_text_meta</item>
+        <item name="android:textSize">@dimen/fb_text_body_size</item>
+    </style>
+
+    <!-- 空态主按钮：窄一点，避免空页面上一个大长条 -->
+    <style name="FbEmptyAction" parent="FbPrimaryButton">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:minWidth">132dp</item>
+        <item name="android:paddingStart">28dp</item>
+        <item name="android:paddingEnd">28dp</item>
+    </style>
+
+    <!-- ============================================================
+         8. 底栏
+         ============================================================ -->
+
+    <!-- 底部操作条：白底 + 上下 10dp + 左右 16dp（上方另接一条 FbDivider） -->
+    <style name="FbBottomBar">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:background">@color/fb_bar_bg</item>
+        <item name="android:paddingStart">@dimen/fb_page_pad</item>
+        <item name="android:paddingTop">@dimen/fb_bottom_bar_pad_v</item>
+        <item name="android:paddingEnd">@dimen/fb_page_pad</item>
+        <item name="android:paddingBottom">@dimen/fb_bottom_bar_pad_v</item>
+    </style>
+
+    <!-- ============================================================
+         9. 表单 / 开关
+         ============================================================ -->
+
+    <!-- 输入框：8dp 圆角描边 -->
+    <style name="FbInput" parent="Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+        <item name="boxCornerRadiusTopStart">@dimen/fb_radius_field</item>
+        <item name="boxCornerRadiusTopEnd">@dimen/fb_radius_field</item>
+        <item name="boxCornerRadiusBottomStart">@dimen/fb_radius_field</item>
+        <item name="boxCornerRadiusBottomEnd">@dimen/fb_radius_field</item>
+        <item name="boxStrokeColor">@color/fb_input_stroke</item>
+        <item name="boxStrokeWidth">1dp</item>
+        <item name="boxStrokeWidthFocused">1.4dp</item>
+        <item name="hintTextColor">@color/fb_text_meta</item>
+        <item name="android:textColorHint">@color/fb_text_hint</item>
+    </style>
+
+    <!-- 输入框内的文字 14sp -->
+    <style name="FbEditText">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">@color/fb_text_title</item>
+        <item name="android:textColorHint">@color/fb_text_hint</item>
+        <item name="android:textSize">@dimen/fb_text_body_size</item>
+    </style>
+
+    <!-- 复选框 -->
+    <style name="FbCheckBox" parent="Widget.MaterialComponents.CompoundButton.CheckBox">
+        <item name="android:textSize">@dimen/fb_text_body_size</item>
+        <item name="android:textColor">@color/fb_text_secondary</item>
+        <item name="buttonTint">@color/fb_check_tint</item>
+        <item name="android:minHeight">0dp</item>
+        <item name="android:minWidth">0dp</item>
+    </style>
+
+    <!-- 设置项开关行 -->
+    <style name="FbSwitchRow">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:background">?attr/selectableItemBackground</item>
+        <item name="android:paddingStart">@dimen/fb_card_pad</item>
+        <item name="android:paddingEnd">@dimen/fb_card_pad</item>
+        <item name="android:paddingTop">14dp</item>
+        <item name="android:paddingBottom">14dp</item>
+    </style>
+
+    <!-- 开关尺寸（38x22） -->
+    <style name="FbSwitch">
+        <item name="android:layout_width">38dp</item>
+        <item name="android:layout_height">22dp</item>
+        <item name="android:layout_marginStart">@dimen/fb_space_12</item>
+    </style>
+
+    <!-- ============================================================
+         10. 答题页专用（分段控件 / 字号档位 / 手写工具条）
+         ============================================================ -->
+
+    <!-- 字号 Aa 三档（宽度均分，选中深色） -->
+    <style name="FbFontAa">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:gravity">center</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:textColor">@color/fb_text_meta</item>
+    </style>
+
+    <!-- 分段胶囊（等分，选中白底深字） -->
+    <style name="FbSegmentPill">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:gravity">center</item>
+        <item name="android:background">@drawable/bg_fb_segment_pill_off</item>
+        <item name="android:textColor">@color/fb_segment_text</item>
+        <item name="android:textSize">@dimen/fb_text_item_sub</item>
+    </style>
+
+    <!-- 遮盖层工具条里的动作文字 -->
+    <style name="FbInkAction">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">32dp</item>
+        <item name="android:gravity">center</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:paddingStart">10dp</item>
+        <item name="android:paddingEnd">10dp</item>
+        <item name="android:textColor">@color/fb_text_primary</item>
+        <item name="android:textSize">@dimen/fb_text_item_sub</item>
+    </style>
+
+    <!-- 题面选项：圆形徽标 + 单列正文（答题页与分屏页共用） -->
+    <style name="FbOptionRow">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:background">?attr/selectableItemBackground</item>
+        <item name="android:baselineAligned">false</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:paddingStart">@dimen/fb_option_row_padding_start</item>
+        <item name="android:paddingTop">@dimen/fb_option_row_padding_v</item>
+        <item name="android:paddingEnd">@dimen/fb_content_padding_h</item>
+        <item name="android:paddingBottom">@dimen/fb_option_row_padding_v</item>
+    </style>
+
+    <!-- 题面里的题干（字号由代码按「更多 → 字号」缩放，这里只定颜色与行距） -->
+    <style name="FbStem">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:lineSpacingExtra">@dimen/fb_question_line_space</item>
+        <item name="android:textColor">@color/fb_text_body</item>
+        <item name="android:textSize">@dimen/fb_question_text_size</item>
+    </style>
+</resources>

@@ -6,7 +6,6 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.lytree.qbank.R
@@ -37,12 +36,19 @@ class SplitExamActivity : AppCompatActivity() {
         /** 只显示这组题（同一份材料）；为空则显示整卷 */
         const val EXTRA_GROUP_KEY = "group_key"
         private const val REQ_CARD = 1001
+
+        /** 草稿记录的来源标记（存在 records.mode），与答题页的草稿分开 */
+        private const val DRAFT_SOURCE = "split"
     }
 
     private lateinit var binding: ActivitySplitExamBinding
     private lateinit var db: QBankDb
 
+    private var paperId = 0L
+    /** 本次分屏练习的记录 id（草稿）：标注按它落库，交卷时转正 */
+    private var recordId = 0L
     private var questions: List<Question> = emptyList()
+    private lateinit var structure: PaperStructure
     private val answers = HashMap<Long, String>()
     private val marked = HashSet<Long>()
     private var startedAt = 0L
@@ -63,7 +69,7 @@ class SplitExamActivity : AppCompatActivity() {
         setContentView(binding.root)
         db = QBankDb.get(this)
 
-        val paperId = intent.getLongExtra(EXTRA_PAPER_ID, 0L)
+        paperId = intent.getLongExtra(EXTRA_PAPER_ID, 0L)
         val paper = db.getPaper(paperId)
         if (paper == null || paper.questions.isEmpty()) {
             android.widget.Toast.makeText(this, "试卷不存在或为空", android.widget.Toast.LENGTH_SHORT).show()
@@ -73,7 +79,7 @@ class SplitExamActivity : AppCompatActivity() {
 
         // 按材料分组：直接用试卷结构里的材料组——同一材料跨大类会断成两组，
         // 按文本 filter 会把它们并成一组、题号也会错，这里取的正是这题所属的那一组
-        val structure = PaperStructure(paper.questions)
+        structure = PaperStructure(paper.questions)
         val groupKey = intent.getStringExtra(EXTRA_GROUP_KEY)?.trim().orEmpty()
         val group = if (groupKey.isEmpty()) {
             null
@@ -87,6 +93,9 @@ class SplitExamActivity : AppCompatActivity() {
         indexOffset = group?.startIndex ?: 0
 
         startedAt = System.currentTimeMillis()
+        // 标注跟随本次分屏作答：先建（或取回）草稿记录，交卷时转正
+        recordId = db.ensureDraftRecord(paperId, DRAFT_SOURCE, startedAt)
+        binding.inkOverlay.recordId = recordId
         binding.titleBar.showDivider(false)
         // 对齐参考应用的分屏页：顶栏只留「返回 + 计时」，不放卷名与右侧动作
         binding.titleBar.setTitle("")
@@ -153,13 +162,53 @@ class SplitExamActivity : AppCompatActivity() {
     }
 
     /**
-     * 遮盖层的内容锚点：右栏每张题目卡（[binding.questionList] 的第 i 个子视图 = 第 i 题）。
-     * 锚点取「卡片左边 + 题干顶边」，与答题页同一口径，两种页面之间来回看不会整体错位。
+     * 遮盖层的内容锚点：右栏每张题目卡 + 左栏材料，各自独立。
+     *
+     * 题目锚点取「卡片左边 + 题干顶边」，与答题页同一口径，两种页面之间来回看不会整体错位；
+     * 材料锚点取材料正文（`materialContent`）的位置，target 用材料组首题 id，
+     * 与题目分开存——在材料上画的圈不会因为题干换行而偏移。
      */
     private fun inkAnchors(): List<InkOverlay.Anchor> {
-        val out = ArrayList<InkOverlay.Anchor>(questions.size)
+        val out = ArrayList<InkOverlay.Anchor>(questions.size + 1)
         val base = IntArray(2)
         binding.inkOverlay.getLocationOnScreen(base)
+
+        fun rectOf(view: View): FloatArray? {
+            if (view.width <= 0 || view.height <= 0 || view.visibility != View.VISIBLE) return null
+            val loc = IntArray(2)
+            view.getLocationOnScreen(loc)
+            return floatArrayOf(
+                (loc[0] - base[0]).toFloat(),
+                (loc[1] - base[1]).toFloat(),
+                view.width.toFloat(),
+                view.height.toFloat()
+            )
+        }
+
+        // 左栏材料：材料在独立滚动容器里，命中区裁到容器可视范围
+        val materialQ = questions.firstOrNull { it.material.isNotBlank() }
+        if (materialQ != null) {
+            val content = rectOf(binding.materialContent)
+            if (content != null) {
+                val materialId = structure.groupOf(materialQ)?.questions?.first()?.id
+                    ?: materialQ.id
+                val anchor = InkOverlay.Anchor(
+                    InkOverlay.TargetKind.MATERIAL, materialId,
+                    content[0], content[1], content[2], content[3]
+                )
+                val viewport = rectOf(binding.materialScroll)
+                if (viewport != null) {
+                    anchor.hitRegion(
+                        maxOf(content[0], viewport[0]),
+                        maxOf(content[1], viewport[1]),
+                        minOf(content[0] + content[2], viewport[0] + viewport[2]),
+                        minOf(content[1] + content[3], viewport[1] + viewport[3])
+                    )
+                }
+                out.add(anchor)
+            }
+        }
+
         for (i in 0 until binding.questionList.childCount) {
             val card = binding.questionList.getChildAt(i)
             val q = questions.getOrNull(i) ?: continue
@@ -174,13 +223,20 @@ class SplitExamActivity : AppCompatActivity() {
             } else {
                 cardLoc[1]
             }
-            out.add(
-                InkOverlay.Anchor(
-                    questionId = q.id,
-                    x = (cardLoc[0] - base[0]).toFloat(),
-                    y = (stemY - base[1]).toFloat()
-                )
+            val cardLeft = (cardLoc[0] - base[0]).toFloat()
+            val cardTop = (cardLoc[1] - base[1]).toFloat()
+            val anchor = InkOverlay.Anchor(
+                q.id,
+                cardLeft,
+                (stemY - base[1]).toFloat(),
+                card.width.toFloat(),
+                (cardLoc[1] + card.height - stemY).toFloat().coerceAtLeast(0f)
             )
+            anchor.hitRegion(
+                cardLeft, cardTop,
+                cardLeft + card.width, cardTop + card.height
+            )
+            out.add(anchor)
         }
         return out
     }
@@ -241,8 +297,11 @@ class SplitExamActivity : AppCompatActivity() {
             binding.materialContent.removeAllViews()
             val tip = TextView(this)
             tip.text = "本组题目无材料"
-            tip.textSize = 13f
-            tip.setTextColor(ContextCompat.getColor(this, R.color.text_secondary))
+            tip.setTextSize(
+                android.util.TypedValue.COMPLEX_UNIT_PX,
+                resources.getDimension(R.dimen.fb_text_body_sm)
+            )
+            tip.setTextColor(ContextCompat.getColor(this, R.color.fb_text_meta))
             binding.materialContent.addView(tip)
             return
         }
@@ -276,8 +335,10 @@ class SplitExamActivity : AppCompatActivity() {
                 val item = ItemOptionBinding.inflate(inflater, card.optionsBox, false)
                 item.tvKey.text = opt.key
                 item.tvText.text = opt.text
+                // 卷面已经给了左右留白（fb_content_padding_h），选项行不再二次缩进，否则会比题干多缩一截
+                item.root.setPadding(0, item.root.paddingTop, 0, item.root.paddingBottom)
                 val isSel = selected.contains(opt.key.uppercase())
-                QuestionListAdapter.applyCircleState(item, isSel)
+                QuestionCardBinder.applyCircleState(item, isSel)
                 item.root.setOnClickListener {
                     if (multi) {
                         if (selected.contains(opt.key.uppercase())) selected.remove(opt.key.uppercase())
@@ -383,11 +444,18 @@ class SplitExamActivity : AppCompatActivity() {
 
     private fun confirmExit() {
         if (submitted) { finish(); return }
-        AlertDialog.Builder(this)
-            .setMessage("你还有题目未做完，确定退出吗？")
-            .setPositiveButton("退出") { _, _ -> finish() }
-            .setNegativeButton("继续答题", null)
-            .show()
+        FbDialog.confirm(
+            context = this,
+            message = "你还有题目未做完，确定退出吗？",
+            okText = "退出",
+            cancelText = "继续答题",
+            onOk = {
+                // 分屏页没有续做入口：放弃这次练习就把草稿（含标注）一起丢掉，
+                // 避免下次进来只看到上一轮圈画、作答却是空的
+                db.discardDraftRecords(paperId, DRAFT_SOURCE)
+                finish()
+            }
+        )
     }
 
     private fun confirmSubmit() {
@@ -397,11 +465,12 @@ class SplitExamActivity : AppCompatActivity() {
         } else {
             "确定交卷并查看结果吗？"
         }
-        AlertDialog.Builder(this)
-            .setMessage(msg)
-            .setPositiveButton(getString(R.string.action_confirm)) { _, _ -> submit() }
-            .setNegativeButton(getString(R.string.action_cancel), null)
-            .show()
+        FbDialog.confirm(
+            context = this,
+            message = msg,
+            okText = getString(R.string.action_confirm),
+            onOk = { submit() }
+        )
     }
 
     private fun submit() {
@@ -428,7 +497,8 @@ class SplitExamActivity : AppCompatActivity() {
             score = summary.score,
             fullScore = summary.fullScore
         )
-        val rid = db.insertRecord(record, results)
+        // 草稿转正：记录 id 不变，挂在它上面的标注（record_inks）继续可用
+        val rid = db.finalizeRecord(recordId, record, results)
         startActivity(
             Intent(this, ReportActivity::class.java).apply {
                 putExtra(ReportActivity.EXTRA_RECORD_ID, rid)

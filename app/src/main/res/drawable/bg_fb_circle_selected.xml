@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 选项徽标选中态：蓝实心 + 一圈淡蓝光晕（原始 fb_blue_shadow = #1F3C7CFC） -->
+<!-- 选项徽标选中态：蓝实心 + 一圈淡蓝光晕 -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
         <shape android:shape="oval">
-            <solid android:color="#1F3C7CFC" />
+            <solid android:color="@color/fb_primary_glow" />
         </shape>
     </item>
     <item

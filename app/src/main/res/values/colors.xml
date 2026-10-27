@@ -1,139 +1,174 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  主题色板。所有色值均经 1080x1920 @280dpi 截图逐像素校验（不是估计值），
-  下方按「令牌名 → 颜色 → 用途」列出，改主题只需改这一处。
+  ============================================================================
+  色板（全站唯一来源）
+  ============================================================================
+  分四组，从上到下是「越具体 → 越通用」的反向顺序，改主题只改这一处：
 
-  原始资源名 → 颜色：
-    fb_blue                    #3C7CFC   主蓝（按钮/选中/已答）
-    fb_black                   #3C464F   正文次级（选项文字/图标）
-    question_content_text_color #1B2126   题干与题号（正文主色）
-    bookstore_text_3           #5F6367
-    bookstore_text_4           #767A7D
-    fb_gray                    #8A9095
-    fb_hint                    #AEB6C2
-    option_text                #868EA8   选项字母
-    option_question_border     #4DCBD1DC 选项圆描边（#CBD1DC @30%）
-    question_answer_card_item_no_bg #F5F7FA 答题卡未答底色
-    fb_divider / question_dir_divider #F0F2F5
+    1. 品牌色       fb_primary / _deep / _soft / _bg
+    2. 中性色       页面底 / 卡面 / 填充 / 分割线 / 描边
+    3. 文字层级     title > body > secondary > tertiary > meta > hint
+    4. 语义状态     success(对) / danger(错) / warning(部分分)
+
+  规则：
+  · 布局里**不允许出现 #RRGGBB**，一律引用本文件的令牌（drawable 同理）。
+  · 旧名（fb_blue / primary / right / wrong …）保留为别名，只为不改动老代码，
+    新代码一律用新名。别名段在文件末尾，且有注释标注「兼容」。
+  · 夜间色集中在 fb_night_*，答题页按需显式换色，不走系统 DayNight。
 -->
 <resources>
-    <!-- ===== 基础 ===== -->
-    <color name="primary">#3C7CFC</color>
-    <color name="primary_dark">#2A5FD6</color>
-    <color name="accent">#FF7A45</color>
 
-    <color name="bg">#F9FAFC</color>
-    <color name="card">#FFFFFF</color>
-    <color name="text_primary">#1B2126</color>
-    <color name="text_secondary">#8A9095</color>
-    <color name="divider">#F0F2F5</color>
-
-    <color name="option_border">#EFF1F5</color>
-    <color name="option_selected_bg">#3C7CFC</color>
-    <color name="option_selected_border">#3C7CFC</color>
-    <color name="right">#21B36B</color>
-    <color name="right_bg">#E8F8F0</color>
-    <color name="wrong">#FF430F</color>
-    <color name="wrong_bg">#FDEDED</color>
-    <color name="partial">#F5A623</color>
-    <color name="partial_bg">#FFF6E6</color>
-    <color name="blank">#C3C7CE</color>
-
-    <!-- ===== 主色 ===== -->
+    <!-- ==================== 1. 品牌色 ==================== -->
+    <!-- 主蓝：按钮 / 选中态 / 已答 / 强调数字 -->
     <color name="fb_primary">#3C7CFC</color>
+    <!-- 按下态 / 深一档的主蓝 -->
     <color name="fb_primary_deep">#2A5FD6</color>
+    <!-- 主蓝淡底：次级按钮、选中标签（比 fb_primary_bg 更浅） -->
     <color name="fb_primary_soft">#EAF1FF</color>
+    <!-- 主蓝标签底：题型标签 / 浅蓝次级按钮 -->
+    <color name="fb_primary_bg">#F1F3FF</color>
+    <!-- 主蓝淡环：答题卡「当前题」外环 -->
     <color name="fb_primary_ring">#E1ECFF</color>
-    <!-- 兼容别名（旧分屏页仍引用） -->
-    <color name="fb_blue">#3C7CFC</color>
-    <color name="fb_blue_deep">#2A5FD6</color>
-    <color name="fb_blue_soft">#EAF1FF</color>
-    <color name="fb_blue_ink">#3C7CFC</color>
-    <color name="fb_green">#4ECA8D</color>
-    <color name="fb_red">#FF430F</color>
+    <!-- 主蓝光晕：选中徽标外圈（12% 主蓝） -->
+    <color name="fb_primary_glow">#1F3C7CFC</color>
+    <!-- 主蓝上的文字 / 图标 -->
+    <color name="fb_white">#FFFFFF</color>
 
-    <!-- ===== 页面 / 卡片 ===== -->
+    <!-- ==================== 2. 中性色 ==================== -->
+    <!-- 页面底色（卡片浮在它上面） -->
     <color name="fb_page_bg">#F9FAFC</color>
+    <!-- 卡片 / 顶栏 / 底栏 / 卷面 -->
     <color name="fb_card_bg">#FFFFFF</color>
-    <color name="fb_divider">#F0F2F5</color>
-
-    <!-- ===== 卷面（对齐参考应用：整页白底通铺，题与题之间一条细线，不做圆角卡片） ===== -->
     <color name="fb_sheet_bg">#FFFFFF</color>
-    <!-- 题间分隔线：比 fb_divider 再浅一点，白底上不抢眼 -->
+
+    <!-- 填充（灰底小控件） -->
+    <!-- 通用浅灰填充：搜索框底 / 未选中胶囊 / 笔记解析底 / 表单只读行 -->
+    <color name="fb_fill">#F5F6F8</color>
+    <!-- 答题卡未答格子 -->
+    <color name="fb_fill_weak">#F5F6F8</color>
+    <!-- 分段控件轨道 -->
+    <color name="fb_fill_track">#F2F3F5</color>
+    <!-- 列表首字母分组头 -->
+    <color name="fb_fill_header">#F4F6F9</color>
+    <!-- 输入框 / 未选选项描边 -->
+    <color name="fb_border">#E6E8EC</color>
+
+    <!-- 分割线 -->
+    <!-- 常规分割线（卡片内 / 栏底）：0.5dp -->
+    <color name="fb_divider">#F0F2F5</color>
+    <!-- 卷面题间细线：比 fb_divider 再浅一点，白底上不抢眼 -->
     <color name="fb_question_divider">#EFF1F4</color>
-    <!-- 模块说明卡渐变起点（资料分析 / 常识判断这类模块头） -->
-    <color name="fb_module_bg">#EFF5FF</color>
-    <color name="fb_module_title">#1B2126</color>
 
-    <!-- ===== 文字层级（text_0..text_6 六级） ===== -->
+    <!-- ==================== 3. 文字层级 ==================== -->
+    <!-- 标题 / 题干 / 正文主色（六级里的最重一级） -->
     <color name="fb_text_title">#1B2126</color>
+    <!-- 与 title 同值，语义上用于长正文（题干、解析） -->
     <color name="fb_text_body">#1B2126</color>
+    <!-- 与 title 同值，供按语义命名的代码使用 -->
     <color name="fb_text_primary">#1B2126</color>
+    <!-- 次级正文：选项正文、释义 -->
     <color name="fb_text_secondary">#3C464F</color>
-    <color name="fb_text_meta">#8A9095</color>
-    <color name="fb_text_group">#8A9095</color>
+    <!-- 三级正文：说明条、提示 -->
     <color name="fb_text_tertiary">#5F6367</color>
+    <!-- 元信息：副标题、计数 -->
+    <color name="fb_text_meta">#8A9095</color>
+    <!-- 分组标题（答题卡分组 / 列表分组头），与 meta 同值 -->
+    <color name="fb_text_group">#8A9095</color>
+    <!-- 占位符 / 极弱提示 -->
     <color name="fb_text_hint">#AEB6C2</color>
+    <!-- 空态图标、chevron 这类装饰性线条 -->
+    <color name="fb_text_placeholder">#C3C7CE</color>
+    <color name="fb_text_on_primary">#FFFFFF</color>
 
-    <!-- ===== 题型标签（实测底 #F1F3FF / 字 #3C7CFC） ===== -->
+    <!-- ==================== 4. 语义状态 ==================== -->
+    <color name="fb_success">#21B36B</color>
+    <color name="fb_success_bg">#E8F8F0</color>
+    <color name="fb_danger">#FF430F</color>
+    <color name="fb_danger_bg">#FDEDED</color>
+    <color name="fb_warning">#F5A623</color>
+    <color name="fb_warning_bg">#FFF6E6</color>
+
+    <!-- ==================== 5. 题面组件 ==================== -->
+    <!-- 题型标签（实测底 #F1F3FF / 字 #3C7CFC） -->
     <color name="fb_type_tag_bg">#F1F3FF</color>
     <color name="fb_type_tag_text">#3C7CFC</color>
-
-    <!-- ===== 选项圆形徽标 ===== -->
+    <!-- 选项圆形徽标 -->
     <color name="fb_circle_stroke">#4DCBD1DC</color>
     <color name="fb_circle_text">#868EA8</color>
     <color name="fb_circle_fill">#3C7CFC</color>
     <color name="fb_circle_on">#FFFFFF</color>
+    <!-- 选项正文（比题干略柔） -->
     <color name="fb_option_text">#3C464F</color>
+    <!-- 模块说明卡（资料分析 / 常识判断这类模块头） -->
+    <color name="fb_module_bg">#EFF5FF</color>
+    <color name="fb_module_title">#1B2126</color>
+    <!-- 材料区 / 表格 / 分屏左栏 -->
+    <color name="fb_material_bg">#FAFBFC</color>
+    <color name="fb_split_bg">#FAFBFC</color>
+    <color name="fb_table_header_bg">#F3F5F8</color>
+    <color name="fb_table_line">#D8DCE3</color>
+    <!-- 解析 / 笔记这类浅底块 -->
+    <color name="fb_note_bg">#F5F6F8</color>
 
-    <!-- ===== 顶部栏 ===== -->
+    <!-- ==================== 6. 顶栏 / 导航 ==================== -->
     <color name="fb_bar_bg">#FFFFFF</color>
     <color name="fb_icon">#3C464F</color>
     <color name="fb_icon_on">#3C7CFC</color>
-    <color name="fb_blue_on">#3C7CFC</color>
     <color name="fb_timer_bg">#F2F5FA</color>
     <color name="fb_timer_text">#4A5568</color>
+    <color name="fb_nav_normal">#8A9095</color>
+    <color name="fb_nav_selected">#3C7CFC</color>
+    <!-- 水波纹 / 行按下底 -->
+    <color name="fb_ripple">#1A3C7CFC</color>
+    <color name="fb_row_press">#F5F7FA</color>
 
-    <!-- ===== 材料区 ===== -->
-    <color name="fb_material_bg">#FAFBFC</color>
-    <color name="fb_table_header_bg">#F3F5F8</color>
-    <color name="fb_table_line">#D8DCE3</color>
-    <color name="fb_split_bg">#FAFBFC</color>
-
-    <!-- ===== 答题卡弹层 =====
-         遮罩只压暗 40%：弹层是透明窗口，下面的答题页要透出来（#B3 的 70% 会把页面盖掉） -->
+    <!-- ==================== 7. 答题卡弹层 ==================== -->
+    <!-- 遮罩只压暗 40%：弹层是透明窗口，下面的答题页要透出来 -->
     <color name="fb_sheet_mask">#66000000</color>
     <color name="fb_card_num_answered">#3C7CFC</color>
-    <color name="fb_card_num_blank_bg">#F6F7FB</color>
-    <color name="fb_card_num_blank_stroke">#F6F7FB</color>
+    <color name="fb_card_num_blank_bg">#F5F6F8</color>
+    <color name="fb_card_num_blank_stroke">#F5F6F8</color>
     <color name="fb_card_num_blank_text">#3C464F</color>
     <color name="fb_card_num_marked">#FF8A3D</color>
     <color name="fb_card_num_favorite">#F2557A</color>
 
-    <!-- ===== 更多面板 ===== -->
+    <!-- ==================== 8. 分段控件 / 开关 ==================== -->
     <color name="fb_segment_bg">#F2F3F5</color>
     <color name="fb_segment_sel_bg">#FFFFFF</color>
     <color name="fb_segment_text">#5F6367</color>
     <color name="fb_segment_text_sel">#1B2126</color>
+    <!-- 自绘开关（FbSwitchView）：轨道关态 / 滑块 -->
+    <color name="fb_switch_track_off">#E5E7EB</color>
+    <color name="fb_switch_track_off_night">#3A3D45</color>
+    <color name="fb_switch_thumb">#FFFFFF</color>
+    <color name="fb_switch_thumb_night">#E6E7EA</color>
+    <!-- 色点未选中的细描边（10% 黑） -->
+    <color name="fb_dot_stroke">#1A000000</color>
 
-    <!-- ===== 弹窗 ===== -->
+    <!-- ==================== 8.1 图表色板 ==================== -->
+    <!-- 材料里的折线 / 柱状图：日间 5 色、夜间 5 色，顺序固定，同一题型配色一致 -->
+    <color name="fb_chart_1">#3C7CFC</color>
+    <color name="fb_chart_2">#FF8A3D</color>
+    <color name="fb_chart_3">#21B36B</color>
+    <color name="fb_chart_4">#7A6BF0</color>
+    <color name="fb_chart_5">#E5484D</color>
+    <color name="fb_chart_night_1">#7EA3FF</color>
+    <color name="fb_chart_night_2">#FFB070</color>
+    <color name="fb_chart_night_3">#4ECA8D</color>
+    <color name="fb_chart_night_4">#A79BFF</color>
+    <color name="fb_chart_night_5">#FF8A8A</color>
+
+    <!-- ==================== 9. 弹窗 ==================== -->
     <color name="fb_dialog_bg">#FFFFFF</color>
     <color name="fb_dialog_text">#1B2126</color>
     <color name="fb_btn_ghost_bg">#DAE4FF</color>
     <color name="fb_btn_ghost_text">#3C7CFC</color>
 
-    <!-- ===== 全站统一补充 ===== -->
-    <color name="fb_nav_normal">#8A9095</color>
-    <color name="fb_nav_selected">#3C7CFC</color>
-    <color name="fb_placeholder">#C3C7CE</color>
-    <color name="fb_ripple">#1A3C7CFC</color>
-    <color name="fb_row_press">#F5F7FA</color>
-    <!-- 浅蓝次级按钮底（与题型标签同色系） -->
-    <color name="fb_ghost_bg">#F1F3FF</color>
-
-    <!-- ===== 夜间模式 =====
-         触发方式：答题页「更多 → 夜间」，由 ExamActivity 逐层 setBackgroundColor / setTextColor 应用，
-         不走系统 DayNight（否则 Spinner 等系统控件在深色系统下会白底白字）。 -->
+    <!-- ==================== 10. 夜间模式 ==================== -->
+    <!--
+      触发方式：答题页「更多 → 夜间」，由 ExamActivity 逐层 setBackgroundColor / setTextColor 应用，
+      不走系统 DayNight（否则 Spinner 等系统控件在深色系统下会白底白字）。
+    -->
     <color name="fb_night_bg">#17181C</color>
     <color name="fb_night_card">#24262C</color>
     <color name="fb_night_bar">#1B1C21</color>
@@ -166,4 +201,35 @@
     <color name="fb_night_table_bg">#202227</color>
     <color name="fb_night_table_header_bg">#2A2D34</color>
     <color name="fb_night_table_line">#3A3D45</color>
+
+    <!-- ==================== 11. 兼容别名（勿在新代码使用） ==================== -->
+    <color name="fb_blue">#3C7CFC</color>
+    <color name="fb_blue_deep">#2A5FD6</color>
+    <color name="fb_blue_soft">#EAF1FF</color>
+    <color name="fb_blue_ink">#3C7CFC</color>
+    <color name="fb_green">#4ECA8D</color>
+    <color name="fb_red">#FF430F</color>
+    <!-- 浅蓝次级按钮底（与题型标签同色系） -->
+    <color name="fb_ghost_bg">#F1F3FF</color>
+    <color name="fb_list_header_bg">#F4F6F9</color>
+    <color name="fb_placeholder">#C3C7CE</color>
+
+    <color name="primary">#3C7CFC</color>
+    <color name="primary_dark">#2A5FD6</color>
+    <color name="accent">#FF7A45</color>
+    <color name="bg">#F9FAFC</color>
+    <color name="card">#FFFFFF</color>
+    <color name="divider">#F0F2F5</color>
+    <color name="text_primary">#1B2126</color>
+    <color name="text_secondary">#8A9095</color>
+    <color name="option_border">#EFF1F5</color>
+    <color name="option_selected_bg">#3C7CFC</color>
+    <color name="option_selected_border">#3C7CFC</color>
+    <color name="right">#21B36B</color>
+    <color name="right_bg">#E8F8F0</color>
+    <color name="wrong">#FF430F</color>
+    <color name="wrong_bg">#FDEDED</color>
+    <color name="partial">#F5A623</color>
+    <color name="partial_bg">#FFF6E6</color>
+    <color name="blank">#C3C7CE</color>
 </resources>

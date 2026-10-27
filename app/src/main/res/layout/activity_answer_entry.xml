@@ -4,10 +4,7 @@
   用于「做完卷子才拿到答案」的场景——不用准备答案文件，直接在这儿逐题填。
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@color/fb_page_bg"
-    android:orientation="vertical">
+    style="@style/FbPage">
 
     <com.lytree.qbank.ui.FbTitleBar
         android:id="@+id/titleBar"
@@ -19,13 +16,13 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginStart="@dimen/fb_page_pad"
-        android:layout_marginTop="12dp"
+        android:layout_marginTop="@dimen/fb_space_12"
         android:layout_marginEnd="@dimen/fb_page_pad"
         android:background="@drawable/bg_fb_note"
         android:lineSpacingExtra="3dp"
-        android:padding="12dp"
+        android:padding="@dimen/fb_space_12"
         android:textColor="@color/fb_text_tertiary"
-        android:textSize="12sp" />
+        android:textSize="@dimen/fb_text_item_sub" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/list"
@@ -34,25 +31,15 @@
         android:layout_weight="1"
         android:clipToPadding="false"
         android:paddingStart="@dimen/fb_page_pad"
-        android:paddingTop="4dp"
         android:paddingEnd="@dimen/fb_page_pad"
-        android:paddingBottom="16dp"
+        android:paddingBottom="@dimen/fb_space_16"
         android:scrollbars="none" />
 
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="0.5dp"
-        android:background="@color/fb_divider" />
+    <View style="@style/FbDivider" />
 
     <FrameLayout
         android:id="@+id/bottomBar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="@color/fb_bar_bg"
-        android:paddingStart="@dimen/fb_page_pad"
-        android:paddingTop="10dp"
-        android:paddingEnd="@dimen/fb_page_pad"
-        android:paddingBottom="10dp">
+        style="@style/FbBottomBar">
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnSave"

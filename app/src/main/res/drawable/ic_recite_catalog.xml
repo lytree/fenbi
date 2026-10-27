@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 顶栏「考点范围」：细线列表图标 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M6,3.5h12a2,2 0 0 1 2,2v13a2,2 0 0 1 -2,2H6a2,2 0 0 1 -2,-2v-13a2,2 0 0 1 2,-2z"
+        android:strokeColor="@color/fb_icon"
+        android:strokeWidth="1.7" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M8,8h2M12,8h4M8,12h2M12,12h4M8,16h2M12,16h4"
+        android:strokeColor="@color/fb_icon"
+        android:strokeLineCap="round"
+        android:strokeWidth="1.7" />
+</vector>

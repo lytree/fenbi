@@ -77,9 +77,9 @@ class SettingsFragment : Fragment(), Refreshable {
 
         PenColors.items.forEach { item ->
             val dot = View(requireContext())
-            val size = dp(32)
+            val size = resources.getDimensionPixelSize(R.dimen.fb_pen_dot)
             val lp = LinearLayout.LayoutParams(size, size)
-            lp.marginEnd = dp(14)
+            lp.marginEnd = resources.getDimensionPixelSize(R.dimen.fb_pen_dot_gap)
             dot.layoutParams = lp
             dot.background = swatch(item.color, item.color == current)
             dot.contentDescription = "${item.label}笔"
@@ -103,7 +103,10 @@ class SettingsFragment : Fragment(), Refreshable {
             setColor(color)
         }
         if (!selected) {
-            fill.setStroke(dp(1), 0x1A000000)
+            fill.setStroke(
+                dp(1),
+                ContextCompat.getColor(requireContext(), R.color.fb_dot_stroke)
+            )
             return fill
         }
         val ring = GradientDrawable().apply {

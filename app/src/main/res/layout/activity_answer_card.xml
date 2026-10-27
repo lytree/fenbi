@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  参考应用风格答题卡（底部弹层）。对齐真机抓取（1080x1920 @280dpi）：
+  答题卡（底部弹层）。对齐粉笔口径：
   · 白色弹层，顶部 12dp 圆角，约占屏高 55%
   · 顶部「答题卡」居中标题 + 右上关闭，无图例、无分割线
-  · 按模块分组的圆形题号网格（40dp），已答=蓝实心，未答=#F6F7FB 实心，当前题=蓝实心+淡蓝环
+  · 按模块分组的圆形题号网格（40dp），已答=蓝实心，未答=浅灰实心，当前题=蓝实心+淡蓝环
   · 底部通栏「交卷」胶囊按钮
 -->
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -15,10 +15,8 @@
 
     <LinearLayout
         android:id="@+id/sheet"
-        android:layout_width="0dp"
+        style="@style/FbSheet"
         android:layout_height="0dp"
-        android:background="@drawable/bg_fb_sheet"
-        android:orientation="vertical"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintHeight_percent="@dimen/fb_sheet_height_percent"
@@ -47,7 +45,7 @@
                 android:layout_height="40dp"
                 android:layout_alignParentEnd="true"
                 android:layout_centerVertical="true"
-                android:layout_marginEnd="8dp"
+                android:layout_marginEnd="@dimen/fb_space_8"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/action_close"
                 android:padding="10dp"
@@ -64,22 +62,22 @@
             android:paddingStart="10dp"
             android:paddingTop="2dp"
             android:paddingEnd="10dp"
-            android:paddingBottom="6dp"
+            android:paddingBottom="@dimen/fb_space_8"
             android:scrollbars="none" />
 
         <!-- 交卷 -->
         <TextView
             android:id="@+id/btnSubmit"
             android:layout_width="match_parent"
-            android:layout_height="46dp"
-            android:layout_marginStart="16dp"
-            android:layout_marginTop="6dp"
-            android:layout_marginEnd="16dp"
-            android:layout_marginBottom="18dp"
+            android:layout_height="@dimen/fb_btn_h"
+            android:layout_marginStart="@dimen/fb_page_pad"
+            android:layout_marginTop="@dimen/fb_space_8"
+            android:layout_marginEnd="@dimen/fb_page_pad"
+            android:layout_marginBottom="@dimen/fb_space_20"
             android:background="@drawable/bg_fb_submit_wide"
             android:gravity="center"
             android:text="@string/action_submit"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp" />
+            android:textColor="@color/fb_text_on_primary"
+            android:textSize="@dimen/fb_btn_text_size" />
     </LinearLayout>
 </androidx.constraintlayout.widget.ConstraintLayout>

@@ -13,6 +13,7 @@ import com.lytree.qbank.ui.BankDetailActivity
 import com.lytree.qbank.ui.ImportActivity
 import com.lytree.qbank.ui.MainActivity
 import com.lytree.qbank.ui.Refreshable
+import com.lytree.qbank.ui.recite.ReciteActivity
 
 class BankListFragment : Fragment(), Refreshable {
 
@@ -30,6 +31,9 @@ class BankListFragment : Fragment(), Refreshable {
         db = QBankDb.get(requireContext())
         binding.titleBar.usePageTitleStyle()
         binding.titleBar.setTitle(getString(com.lytree.qbank.R.string.page_banks))
+        binding.titleBar.addTextAction(getString(com.lytree.qbank.R.string.action_recite)) {
+            startActivity(Intent(requireContext(), ReciteActivity::class.java))
+        }
         binding.titleBar.addTextAction(getString(com.lytree.qbank.R.string.action_import)) { openImport() }
 
         binding.list.layoutManager = LinearLayoutManager(requireContext())

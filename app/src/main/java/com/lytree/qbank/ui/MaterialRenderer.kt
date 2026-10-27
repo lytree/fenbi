@@ -331,8 +331,11 @@ object MaterialRenderer {
                 context, if (night) R.color.fb_night_text_body else R.color.text_primary
             )
         )
-        // 材料正文比题干略小一档（参考应用 17sp / 15sp），行距松一些，长段落更好读
-        tv.textSize = 15f * scale
+        // 材料正文比题干略小一档（题干 16sp / 材料 15sp），行距松一些，长段落更好读
+        tv.setTextSize(
+            android.util.TypedValue.COMPLEX_UNIT_PX,
+            context.resources.getDimension(R.dimen.fb_text_item_title) * scale
+        )
         tv.setLineSpacing(dp(context, 6f).toFloat(), 1f)
         tv.setPadding(0, dp(context, 2f), 0, dp(context, 2f))
         return tv
@@ -550,7 +553,10 @@ object MaterialRenderer {
 
         val hint = TextView(context)
         hint.text = context.getString(R.string.material_image_loading)
-        hint.textSize = 12f
+        hint.setTextSize(
+            android.util.TypedValue.COMPLEX_UNIT_PX,
+            context.resources.getDimension(R.dimen.fb_text_item_sub)
+        )
         hint.setTextColor(metaColor)
         hint.gravity = Gravity.CENTER
         hint.setPadding(0, dp(context, 26f), 0, dp(context, 26f))
@@ -613,7 +619,10 @@ object MaterialRenderer {
         if (spec == null) {
             val tv = TextView(context)
             tv.text = context.getString(R.string.material_chart_invalid)
-            tv.textSize = 12f
+            tv.setTextSize(
+                android.util.TypedValue.COMPLEX_UNIT_PX,
+                context.resources.getDimension(R.dimen.fb_text_item_sub)
+            )
             tv.setTextColor(
                 ContextCompat.getColor(
                     context, if (night) R.color.fb_night_text_meta else R.color.fb_text_meta

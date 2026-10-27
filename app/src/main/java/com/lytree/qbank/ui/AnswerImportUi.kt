@@ -4,7 +4,6 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.lytree.qbank.data.db.AnswerUpdate
 import com.lytree.qbank.data.db.QBankDb
@@ -101,11 +100,11 @@ object AnswerImportUi {
     }
 
     private fun error(activity: AppCompatActivity, message: String) {
-        AlertDialog.Builder(activity)
-            .setTitle("答案导入失败")
-            .setMessage(message)
-            .setPositiveButton(com.lytree.qbank.R.string.action_confirm, null)
-            .show()
+        com.lytree.qbank.ui.FbDialog.alert(
+            context = activity,
+            title = "答案导入失败",
+            message = message
+        )
     }
 
     private fun displayName(context: Context, uri: Uri): String = try {

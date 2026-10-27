@@ -1,14 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  「弹出材料」只读页（不再用浮层，改为独立页面）：
+  「弹出材料」只读页（独立页面）：
   标题栏：FbTitleBar + A- / A+ 字号；正文：材料铺满整页独立滚动。
   材料带多道题时不进这里——答题页就地左右分屏（见 activity_exam.xml 的 splitBody）。
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@color/fb_page_bg"
-    android:orientation="vertical">
+    style="@style/FbPage">
 
     <com.lytree.qbank.ui.FbTitleBar
         android:id="@+id/titleBar"
@@ -17,36 +14,28 @@
 
     <View
         android:id="@+id/topDivider"
-        android:layout_width="match_parent"
-        android:layout_height="0.5dp"
-        android:background="@color/divider" />
+        style="@style/FbDivider" />
 
     <LinearLayout
         android:id="@+id/leftPane"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:background="@color/fb_split_bg"
+        android:background="@color/fb_sheet_bg"
         android:orientation="vertical"
-        android:paddingStart="16dp"
-        android:paddingTop="12dp"
-        android:paddingEnd="16dp">
+        android:paddingStart="@dimen/fb_page_pad"
+        android:paddingTop="@dimen/fb_space_12"
+        android:paddingEnd="@dimen/fb_page_pad">
 
         <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:background="@drawable/bg_fb_material_tag"
-            android:paddingHorizontal="6dp"
-            android:paddingVertical="2dp"
-            android:text="@string/tag_material"
-            android:textColor="@color/fb_blue_ink"
-            android:textSize="11sp" />
+            style="@style/FbTag"
+            android:text="@string/tag_material" />
 
         <androidx.core.widget.NestedScrollView
             android:id="@+id/materialScroll"
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="@dimen/fb_space_8"
             android:layout_weight="1"
             android:fillViewport="true"
             android:scrollbars="none">

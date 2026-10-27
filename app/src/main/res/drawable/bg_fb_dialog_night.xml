@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- 夜间弹窗：与 bg_fb_dialog 同版式，只换底色 -->
-<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="@color/fb_night_card" />
-    <corners android:radius="@dimen/fb_dialog_radius" />
-</shape>

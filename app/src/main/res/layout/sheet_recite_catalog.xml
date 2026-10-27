@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 考点范围选择：拖拽条 + 标题 + 全部 / 只看重点 / 各分类（弹层统一 12dp 上圆角 + 24dp 左右） -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    style="@style/FbSheet">
+
+    <View style="@style/FbSheetHandle" />
+
+    <TextView
+        style="@style/FbCardTitle"
+        android:layout_marginStart="@dimen/fb_space_24"
+        android:layout_marginTop="@dimen/fb_space_16"
+        android:layout_marginEnd="@dimen/fb_space_24"
+        android:text="@string/recite_catalog_title" />
+
+    <TextView
+        android:id="@+id/catalogMeta"
+        style="@style/FbCaption"
+        android:layout_width="match_parent"
+        android:layout_marginStart="@dimen/fb_space_24"
+        android:layout_marginTop="@dimen/fb_space_4"
+        android:layout_marginEnd="@dimen/fb_space_24"
+        tools:text="更新于 2026-10-26 · 共 86 个考点" />
+
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/fb_space_12"
+        android:overScrollMode="never"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:id="@+id/catalogRows"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingBottom="@dimen/fb_space_20" />
+    </androidx.core.widget.NestedScrollView>
+</LinearLayout>

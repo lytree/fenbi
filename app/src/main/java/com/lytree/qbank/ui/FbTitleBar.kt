@@ -3,6 +3,7 @@ package com.lytree.qbank.ui
 import android.app.Activity
 import android.content.Context
 import android.util.AttributeSet
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -44,7 +45,7 @@ class FbTitleBar @JvmOverloads constructor(
     private val icTimer: ImageView
 
     private val density = resources.displayMetrics.density
-    private val baseHeight = (44 * density).toInt()
+    private val baseHeight = resources.getDimensionPixelSize(R.dimen.fb_bar_h)
     private var lastInset = -1
 
     /** 返回键回调；不设置时默认 finish() */
@@ -109,7 +110,10 @@ class FbTitleBar @JvmOverloads constructor(
         tvTitle.layoutParams = lp
         tvTitle.gravity = Gravity.START or Gravity.CENTER_VERTICAL
         tvTitle.setPadding(0, 0, 0, 0)
-        tvTitle.textSize = 20f
+        tvTitle.setTextSize(
+            TypedValue.COMPLEX_UNIT_PX,
+            resources.getDimension(R.dimen.fb_text_page_title)
+        )
         btnBack.visibility = View.GONE
     }
 
@@ -127,11 +131,19 @@ class FbTitleBar @JvmOverloads constructor(
     fun addTextAction(text: CharSequence, onClick: () -> Unit): TextView {
         val tv = TextView(context).apply {
             this.text = text
-            textSize = 13f
+            setTextSize(
+                TypedValue.COMPLEX_UNIT_PX,
+                resources.getDimension(R.dimen.fb_text_body_sm)
+            )
             setTextColor(ContextCompat.getColor(context, R.color.fb_primary))
             includeFontPadding = false
             gravity = Gravity.CENTER
-            setPadding((8 * density).toInt(), (6 * density).toInt(), (8 * density).toInt(), (6 * density).toInt())
+            setPadding(
+                resources.getDimensionPixelSize(R.dimen.fb_space_8),
+                resources.getDimensionPixelSize(R.dimen.fb_space_4),
+                resources.getDimensionPixelSize(R.dimen.fb_space_8),
+                resources.getDimensionPixelSize(R.dimen.fb_space_4)
+            )
             isClickable = true
             setOnClickListener { onClick() }
         }
@@ -142,10 +154,12 @@ class FbTitleBar @JvmOverloads constructor(
     /** 右侧图标动作（28dp 细线图标） */
     fun addIconAction(@DrawableRes icon: Int, desc: CharSequence?, onClick: () -> Unit): ImageView {
         val iv = ImageView(context).apply {
-            layoutParams = LinearLayout.LayoutParams((28 * density).toInt(), (28 * density).toInt())
+            val size = resources.getDimensionPixelSize(R.dimen.fb_bar_item_width)
+            layoutParams = LinearLayout.LayoutParams(size, size)
             setImageResource(icon)
             contentDescription = desc
-            setPadding((3 * density).toInt(), (3 * density).toInt(), (3 * density).toInt(), (3 * density).toInt())
+            val pad = resources.getDimensionPixelSize(R.dimen.fb_space_4)
+            setPadding(pad, pad, pad, pad)
             isClickable = true
             setOnClickListener { onClick() }
         }

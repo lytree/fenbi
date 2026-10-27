@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 通栏交卷按钮：实测 #3C7BFC，圆角胶囊 -->
+<!-- 通栏交卷按钮：主蓝实心胶囊（半径走 fb_btn_radius） -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
     <solid android:color="@color/fb_primary" />
-    <corners android:radius="23dp" />
+    <corners android:radius="@dimen/fb_btn_radius" />
 </shape>

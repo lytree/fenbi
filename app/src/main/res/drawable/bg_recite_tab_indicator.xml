@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 材料区（夜间） -->
+<!-- 标签页选中态下的主蓝短横线 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="@color/fb_night_material_bg" />
-    <corners android:radius="8dp" />
+    <solid android:color="@color/fb_primary" />
+    <corners android:radius="2dp" />
 </shape>

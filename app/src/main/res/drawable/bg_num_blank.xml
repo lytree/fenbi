@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 答题卡未答：纯色浅灰蓝填充，无描边（原始 question_answer_card_item_no_bg #F5F7FA，实测 #F6F7FB） -->
+<!-- 答题卡未答：纯色浅灰填充，无描边 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
     <solid android:color="@color/fb_card_num_blank_bg" />
 </shape>

@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 答题卡分组标题（对齐参考应用：浅灰小标题，13sp） -->
+<!-- 答题卡分组标题（浅灰小标题 13sp） -->
 <TextView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/tvGroup"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:paddingStart="6dp"
-    android:paddingTop="14dp"
-    android:paddingEnd="6dp"
-    android:paddingBottom="4dp"
+    android:paddingStart="@dimen/fb_space_4"
+    android:paddingTop="@dimen/fb_space_12"
+    android:paddingEnd="@dimen/fb_space_4"
+    android:paddingBottom="@dimen/fb_space_4"
     android:textColor="@color/fb_text_group"
     android:textSize="@dimen/fb_text_group"
     tools:text="政治理论" />

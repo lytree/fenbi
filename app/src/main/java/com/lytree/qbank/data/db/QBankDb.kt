@@ -19,7 +19,7 @@ import com.lytree.qbank.engine.Policy
 /**
  * 本地题库存储。用原生 SQLiteOpenHelper，不引入 Room，避免注解处理器带来的构建复杂度。
  */
-class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 6) {
+class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 7) {
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -104,6 +104,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 6)
         db.execSQL("CREATE TABLE notes(question_id INTEGER PRIMARY KEY, note TEXT DEFAULT '')")
         createV3Tables(db)
         createV4Tables(db)
+        createV7Tables(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -116,6 +117,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 6)
         if (oldVersion < 4) createV4Tables(db)
         // v5 清重复标签，v6 再去掉「第 N 组」前缀，同一套规范化，跑一次就都覆盖
         if (oldVersion < 6) normalizeWordTags(db)
+        if (oldVersion < 7) createV7Tables(db)
     }
 
     /** v3：收藏表 + 答题进度表（对齐参考应用「收藏跨会话保留 / 中途退出可续做」） */
@@ -154,6 +156,27 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 6)
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_word_sort ON words(initial, pinyin)")
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_word_category ON words(category)")
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_word_tag ON words(tag)")
+    }
+
+    /**
+     * v7：遮盖层笔迹改为跟随**本次作答记录**保存，且题目与材料分开锚定。
+     *
+     * 旧 `inks` 表是「一题一份、跨所有练习共享」，交卷后换一轮练习还会看到上一轮的圈画；
+     * 材料块的圈画也只能按题干定位，材料排版一变就偏移。新表按
+     * `(record_id, kind, target_id)` 存：kind = question / material，
+     * target_id 是题目 id 或材料组首题 id，同一记录同一目标只保留最新一份笔迹。
+     */
+    private fun createV7Tables(db: SQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS record_inks(
+                record_id INTEGER NOT NULL,
+                kind TEXT NOT NULL,
+                target_id INTEGER NOT NULL,
+                strokes TEXT DEFAULT '',
+                updated_at INTEGER DEFAULT 0,
+                PRIMARY KEY(record_id, kind, target_id)
+            )""".trimIndent()
+        )
     }
 
     /**
@@ -713,34 +736,80 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 6)
 
     // ---------------- Record ----------------
 
-    fun insertRecord(record: ExamRecord, results: List<com.lytree.qbank.data.model.AnswerResult>): Long {
+    /** 直接落一条已交卷的记录（导入 / 测试用；答题页走草稿 → [finalizeRecord]） */
+    fun insertRecord(record: ExamRecord, results: List<com.lytree.qbank.data.model.AnswerResult>): Long =
+        finalizeRecord(0L, record, results)
+
+    /**
+     * 取本卷当前未交卷的草稿记录，没有就新建一条。
+     *
+     * 标注要跟随「本次作答」保存，而正式记录是交卷时才生成的；所以进卷先落一条草稿
+     * （`submitted_at = 0`），交卷时再由 [finalizeRecord] 转正。`source` 存在 `mode` 列，
+     * 用来区分答题页 / 分屏页各自的草稿，避免两个页面共用同一条记录。
+     */
+    fun ensureDraftRecord(paperId: Long, source: String, startedAt: Long): Long {
+        readableDatabase.rawQuery(
+            "SELECT id FROM records WHERE paper_id = ? AND submitted_at = 0 AND mode = ? ORDER BY id DESC LIMIT 1",
+            arrayOf(paperId.toString(), source)
+        ).use { c -> if (c.moveToFirst()) return c.getLong(0) }
+
+        val cv = ContentValues().apply {
+            put("paper_id", paperId)
+            put("name", "答题草稿")
+            put("mode", source)
+            put("started_at", startedAt)
+            put("submitted_at", 0)
+        }
+        return writableDatabase.insert("records", null, cv)
+    }
+
+    /** 丢弃未交卷的草稿（重新开始 / 放弃分屏练习）：记录、作答与笔迹一并清掉 */
+    fun discardDraftRecords(paperId: Long, source: String) {
+        val db = writableDatabase
+        val args = arrayOf(paperId.toString(), source)
+        val where = "record_id IN (SELECT id FROM records WHERE paper_id = ? AND submitted_at = 0 AND mode = ?)"
+        db.beginTransaction()
+        try {
+            db.delete("record_inks", where, args)
+            db.delete("record_answers", where, args)
+            db.delete("records", "paper_id = ? AND submitted_at = 0 AND mode = ?", args)
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    /**
+     * 把草稿转成正式记录：补上交卷时间与成绩，并用本次判分结果替换逐题作答。
+     *
+     * 笔迹（`record_inks`）不删——它本来就挂在这条记录上，交卷后仍能回看。
+     * [recordId] 为 0 或记录已不存在时直接新插一条。
+     */
+    fun finalizeRecord(
+        recordId: Long,
+        record: ExamRecord,
+        results: List<com.lytree.qbank.data.model.AnswerResult>
+    ): Long {
         val db = writableDatabase
         db.beginTransaction()
         try {
-            val cv = ContentValues().apply {
-                put("paper_id", record.paperId)
-                put("name", record.name)
-                put("mode", record.mode)
-                put("started_at", record.startedAt)
-                put("submitted_at", record.submittedAt)
-                put("duration_sec", record.durationSec)
-                put("total_count", record.totalCount)
-                put("answered_count", record.answeredCount)
-                put("correct_count", record.correctCount)
-                put("partial_count", record.partialCount)
-                put("score", record.score)
-                put("full_score", record.fullScore)
+            val values = recordValues(record)
+            val rid = if (recordId > 0L && recordExists(db, recordId)) {
+                db.update("records", values, "id = ?", arrayOf(recordId.toString()))
+                db.delete("record_answers", "record_id = ?", arrayOf(recordId.toString()))
+                recordId
+            } else {
+                db.insert("records", null, values)
             }
-            val rid = db.insert("records", null, cv)
             for (r in results) {
-                val cv2 = ContentValues().apply {
+                val cv = ContentValues().apply {
                     put("record_id", rid)
                     put("question_id", r.question.id)
                     put("user_answer", r.userAnswer)
                     put("earned", r.earned)
                     put("correct", if (r.correct) 1 else 0)
                 }
-                db.insert("record_answers", null, cv2)
+                db.insert("record_answers", null, cv)
             }
             db.setTransactionSuccessful()
             return rid
@@ -749,10 +818,30 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 6)
         }
     }
 
+    private fun recordExists(db: SQLiteDatabase, id: Long): Boolean =
+        db.rawQuery("SELECT 1 FROM records WHERE id = ?", arrayOf(id.toString()))
+            .use { it.moveToFirst() }
+
+    private fun recordValues(record: ExamRecord): ContentValues = ContentValues().apply {
+        put("paper_id", record.paperId)
+        put("name", record.name)
+        put("mode", record.mode)
+        put("started_at", record.startedAt)
+        put("submitted_at", record.submittedAt)
+        put("duration_sec", record.durationSec)
+        put("total_count", record.totalCount)
+        put("answered_count", record.answeredCount)
+        put("correct_count", record.correctCount)
+        put("partial_count", record.partialCount)
+        put("score", record.score)
+        put("full_score", record.fullScore)
+    }
+
+    /** 记录列表只出已交卷的；未交卷草稿只在续做时按试卷读取 */
     fun listRecords(): List<ExamRecord> {
         val out = ArrayList<ExamRecord>()
         readableDatabase.rawQuery(
-            "SELECT id, paper_id, name, mode, started_at, submitted_at, duration_sec, total_count, answered_count, correct_count, partial_count, score, full_score FROM records ORDER BY id DESC",
+            "SELECT id, paper_id, name, mode, started_at, submitted_at, duration_sec, total_count, answered_count, correct_count, partial_count, score, full_score FROM records WHERE submitted_at > 0 ORDER BY id DESC",
             null
         ).use { c ->
             while (c.moveToNext()) {
@@ -845,22 +934,43 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 6)
         writableDatabase.insertWithOnConflict("settings", null, cv, SQLiteDatabase.CONFLICT_REPLACE)
     }
 
-    // ---------------- Ink（手写标注） ----------------
+    // ---------------- Ink（手写标注，跟随作答记录） ----------------
 
-    /** 读取某题的手写笔迹，序列化后的字符串 */
-    fun getInk(questionId: Long): String? {
+    /**
+     * 读取一条记录里某个目标的笔迹。
+     *
+     * [kind] 见 [INK_KIND_QUESTION] / [INK_KIND_MATERIAL]；[targetId] 是题目 id
+     * 或材料组首题 id。旧 `inks` 表不再读取——那份数据没有记录归属，无法安全迁移到某一轮练习。
+     */
+    fun getInk(recordId: Long, kind: String, targetId: Long): String? {
+        if (recordId <= 0L) return null
         readableDatabase.rawQuery(
-            "SELECT strokes FROM inks WHERE question_id = ?", arrayOf(questionId.toString())
+            "SELECT strokes FROM record_inks WHERE record_id = ? AND kind = ? AND target_id = ?",
+            arrayOf(recordId.toString(), kind, targetId.toString())
         ).use { c -> return if (c.moveToFirst()) c.getString(0) else null }
     }
 
-    /** 写入某题的手写笔迹 */
-    fun setInk(questionId: Long, strokes: String) {
+    /** 写入笔迹：同一记录、同一目标只有一份，后写的覆盖前一份（只保留最新批注） */
+    fun setInk(recordId: Long, kind: String, targetId: Long, strokes: String) {
+        if (recordId <= 0L) return
         val cv = ContentValues().apply {
-            put("question_id", questionId); put("strokes", strokes)
+            put("record_id", recordId)
+            put("kind", kind)
+            put("target_id", targetId)
+            put("strokes", strokes)
+            put("updated_at", System.currentTimeMillis())
         }
         writableDatabase.insertWithOnConflict(
-            "inks", null, cv, SQLiteDatabase.CONFLICT_REPLACE
+            "record_inks", null, cv, SQLiteDatabase.CONFLICT_REPLACE
+        )
+    }
+
+    /** 撤销到一笔不剩时删掉这一行，别在库里留空串 */
+    fun deleteInk(recordId: Long, kind: String, targetId: Long) {
+        if (recordId <= 0L) return
+        writableDatabase.delete(
+            "record_inks", "record_id = ? AND kind = ? AND target_id = ?",
+            arrayOf(recordId.toString(), kind, targetId.toString())
         )
     }
 
@@ -969,6 +1079,12 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 6)
 
         /** 试卷来源：错题重练（从练习记录的错题生成） */
         const val MODE_RETRY = "错题重练"
+
+        /** 笔迹目标：题目（target_id = 题目 id） */
+        const val INK_KIND_QUESTION = "question"
+
+        /** 笔迹目标：材料（target_id = 材料组首题 id） */
+        const val INK_KIND_MATERIAL = "material"
 
         @Volatile
         private var instance: QBankDb? = null

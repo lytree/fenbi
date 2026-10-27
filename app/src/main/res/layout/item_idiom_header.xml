@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 首字母分组头：A / B / C …（浅灰底 + 12sp 灰字） -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/letter"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@color/fb_fill_header"
+    android:includeFontPadding="false"
+    android:paddingStart="@dimen/fb_page_pad"
+    android:paddingTop="@dimen/fb_space_8"
+    android:paddingEnd="@dimen/fb_page_pad"
+    android:paddingBottom="@dimen/fb_space_8"
+    android:textColor="@color/fb_text_meta"
+    android:textSize="@dimen/fb_text_item_sub"
+    android:textStyle="bold"
+    tools:text="A" />

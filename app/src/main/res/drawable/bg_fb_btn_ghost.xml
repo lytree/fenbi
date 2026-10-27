@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 弹窗次按钮：淡蓝底胶囊（实测 #DAE4FF + 蓝字） -->
+<!-- 弹窗次按钮：淡蓝底 + 主蓝字胶囊 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
     <solid android:color="@color/fb_btn_ghost_bg" />
-    <corners android:radius="21dp" />
+    <corners android:radius="@dimen/fb_radius_dialog_btn" />
 </shape>

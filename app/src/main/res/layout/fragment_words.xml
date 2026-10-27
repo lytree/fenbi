@@ -13,6 +13,13 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content" />
 
+    <!-- 词库 / 成语 两页切换（成语汇总并入本页，不占底部导航） -->
+    <include
+        android:id="@+id/librarySwitch"
+        layout="@layout/view_library_switch"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -25,28 +32,28 @@
 
         <TextView
             android:id="@+id/chipAll"
-            style="@style/FbSegmentSelected"
+            style="@style/FbChipSelected"
             android:layout_height="30dp"
             android:minWidth="56dp"
             android:text="@string/word_filter_all" />
 
         <TextView
             android:id="@+id/chipIdiom"
-            style="@style/FbSegment"
+            style="@style/FbChip"
             android:layout_height="30dp"
             android:minWidth="56dp"
             android:text="@string/word_filter_idiom" />
 
         <TextView
             android:id="@+id/chipWord"
-            style="@style/FbSegment"
+            style="@style/FbChip"
             android:layout_height="30dp"
             android:minWidth="56dp"
             android:text="@string/word_filter_word" />
 
         <TextView
             android:id="@+id/chipTag"
-            style="@style/FbSegment"
+            style="@style/FbChip"
             android:layout_height="30dp"
             android:layout_marginStart="4dp"
             android:minWidth="46dp"

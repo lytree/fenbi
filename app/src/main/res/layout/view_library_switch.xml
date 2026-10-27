@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  词库页的页面切换：词库 / 成语。
+  底部导航最多 5 个入口，所以成语汇总并进词库页，用这条切换在两页之间来回。
+  选中态用主蓝文字 + 下划线，与下面的筛选胶囊区分开。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="@dimen/fb_page_pad"
+    android:paddingTop="4dp"
+    android:paddingEnd="@dimen/fb_page_pad"
+    android:paddingBottom="4dp">
+
+    <LinearLayout
+        android:id="@+id/switchWords"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:paddingTop="4dp"
+        android:paddingEnd="24dp"
+        android:paddingBottom="2dp">
+
+        <TextView
+            android:id="@+id/switchWordsText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:includeFontPadding="false"
+            android:text="@string/tab_words"
+            android:textColor="@color/fb_primary"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
+        <View
+            android:id="@+id/switchWordsLine"
+            android:layout_width="18dp"
+            android:layout_height="2dp"
+            android:layout_marginTop="4dp"
+            android:background="@color/fb_primary" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/switchIdioms"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:paddingTop="4dp"
+        android:paddingBottom="2dp">
+
+        <TextView
+            android:id="@+id/switchIdiomsText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:includeFontPadding="false"
+            android:text="@string/tab_idioms"
+            android:textColor="@color/fb_text_secondary"
+            android:textSize="15sp" />
+
+        <View
+            android:id="@+id/switchIdiomsLine"
+            android:layout_width="18dp"
+            android:layout_height="2dp"
+            android:layout_marginTop="4dp"
+            android:background="@color/fb_primary"
+            android:visibility="invisible" />
+    </LinearLayout>
+</LinearLayout>

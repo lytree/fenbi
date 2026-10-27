@@ -10,6 +10,7 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
+import com.lytree.qbank.R
 
 /**
  * 材料配图的大图预览。
@@ -43,7 +44,10 @@ object ImagePreviewDialog {
         val close = TextView(activity).apply {
             text = "×"
             setTextColor(Color.WHITE)
-            textSize = 22f
+            setTextSize(
+                android.util.TypedValue.COMPLEX_UNIT_PX,
+                activity.resources.getDimension(R.dimen.fb_text_page_title)
+            )
             gravity = Gravity.CENTER
             layoutParams = FrameLayout.LayoutParams(
                 (40 * density).toInt(), (40 * density).toInt()

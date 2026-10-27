@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 筛选胶囊（选中）：主蓝实心、白字 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/fb_primary" />
+    <corners android:radius="@dimen/fb_radius_chip" />
+</shape>

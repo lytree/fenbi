@@ -1,24 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  选项行。对齐参考应用题目的选项排版（1080x1920 @280dpi 实测）：
-  · 圆形徽标 40dp（原始 dimens: single_option_btn_width 40dp），距卡片左边 14dp
-  · 字母 15sp，未选 #868EA8（原始 colors: option_text），描边 #CBD1DC@30%
-  · 选项正文 16sp，#3C464F（原始 colors: option_content → fb_black），距徽标 8dp
-  · 行内垂直居中（gravity=center_vertical）：徽标与文字块上下居中，选项换行成多行时圈落在文字块中间，
-    不会贴着第一行顶。单行时也修掉了原先「圈中心比文字中心高约 3dp」的偏差
+  选项行（全站唯一的选项版式）：圆形徽标 + 单列正文。
+  · 徽标 32dp（平板 46dp），字母 15sp，未选浅蓝灰描边
+  · 正文 16sp 次级色，行距 5dp；徽标与文字块上下居中（多行时圈落在文字块中间）
+  · 左右留白走 fb_option_row_padding_start / fb_content_padding_h，与题干对齐
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:background="?attr/selectableItemBackground"
-    android:baselineAligned="false"
-    android:gravity="center_vertical"
-    android:orientation="horizontal"
-    android:paddingStart="@dimen/fb_option_row_padding_start"
-    android:paddingTop="@dimen/fb_option_row_padding_v"
-    android:paddingEnd="@dimen/fb_content_padding_h"
-    android:paddingBottom="@dimen/fb_option_row_padding_v">
+    style="@style/FbOptionRow">
 
     <TextView
         android:id="@+id/tvKey"
@@ -26,6 +15,7 @@
         android:layout_height="@dimen/fb_option_circle"
         android:background="@drawable/bg_fb_circle"
         android:gravity="center"
+        android:includeFontPadding="false"
         android:textColor="@color/fb_circle_text"
         android:textSize="@dimen/fb_option_circle_text_size"
         tools:text="A" />

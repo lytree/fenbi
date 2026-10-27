@@ -3,13 +3,13 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginTop="8dp"
+    android:layout_marginTop="@dimen/fb_space_8"
     android:background="@drawable/bg_fb_card"
     android:orientation="horizontal"
-    android:paddingStart="10dp"
-    android:paddingTop="14dp"
-    android:paddingEnd="14dp"
-    android:paddingBottom="14dp">
+    android:paddingStart="@dimen/fb_space_12"
+    android:paddingTop="@dimen/fb_space_12"
+    android:paddingEnd="@dimen/fb_space_12"
+    android:paddingBottom="@dimen/fb_space_12">
 
     <com.google.android.material.checkbox.MaterialCheckBox
         android:id="@+id/cb"
@@ -22,40 +22,28 @@
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginStart="4dp"
+        android:layout_marginStart="@dimen/fb_space_4"
         android:layout_weight="1"
         android:orientation="vertical">
 
         <TextView
             android:id="@+id/tvType"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:background="@drawable/bg_fb_tag"
-            android:includeFontPadding="false"
-            android:paddingStart="@dimen/fb_type_tag_padding_h"
-            android:paddingTop="@dimen/fb_type_tag_padding_v"
-            android:paddingEnd="@dimen/fb_type_tag_padding_h"
-            android:paddingBottom="@dimen/fb_type_tag_padding_v"
-            android:textColor="@color/fb_type_tag_text"
-            android:textSize="@dimen/fb_type_tag_text_size" />
+            style="@style/FbTag" />
 
         <TextView
             android:id="@+id/tvStem"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            style="@style/FbBody"
+            android:layout_marginTop="@dimen/fb_space_8"
             android:ellipsize="end"
             android:lineSpacingExtra="3dp"
-            android:maxLines="4"
-            android:textColor="@color/fb_text_title"
-            android:textSize="14sp" />
+            android:maxLines="4" />
 
         <TextView
             android:id="@+id/tvOptions"
             style="@style/FbItemSub"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
+            android:layout_marginTop="@dimen/fb_space_4"
             android:ellipsize="end"
             android:lineSpacingExtra="2dp"
             android:maxLines="6" />
@@ -64,8 +52,8 @@
             android:id="@+id/tvAnswer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:textColor="@color/right"
-            android:textSize="12sp" />
+            android:layout_marginTop="@dimen/fb_space_4"
+            android:textColor="@color/fb_success"
+            android:textSize="@dimen/fb_text_item_sub" />
     </LinearLayout>
 </LinearLayout>

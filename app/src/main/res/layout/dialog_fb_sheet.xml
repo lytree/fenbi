@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  底部动作弹层（长按菜单 / 多选一）：白底 12dp 上圆角 + 标题 + 动作行 + 独立「取消」块
+  动作行由 FbDialog.list 动态填充（统一 52dp 行高、16sp 左对齐、行间 0.5dp 缩进分割线）
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <LinearLayout
+        style="@style/FbSheet"
+        android:paddingBottom="@dimen/fb_space_8">
+
+        <TextView
+            android:id="@+id/tvTitle"
+            style="@style/FbSheetTitle"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/tvMessage"
+            style="@style/FbSheetMessage"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/rows"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+    </LinearLayout>
+
+    <!-- 与弹层隔开 8dp，露出下面的页面，视觉上分成两块 -->
+    <Space
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/fb_space_8" />
+
+    <TextView
+        android:id="@+id/btnCancel"
+        style="@style/FbSheetCancel"
+        android:background="@drawable/bg_fb_sheet"
+        android:text="@string/action_cancel" />
+</LinearLayout>

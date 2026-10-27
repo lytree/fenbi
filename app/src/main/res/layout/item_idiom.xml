@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 成语条目：白底通铺，词条 + 释义（默认两行，点击展开）+ 归类标签 + 细分割线 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@color/fb_sheet_bg"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="@dimen/fb_page_pad"
+        android:paddingTop="@dimen/fb_space_12"
+        android:paddingEnd="@dimen/fb_page_pad"
+        android:paddingBottom="@dimen/fb_space_12">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/word"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:includeFontPadding="false"
+                android:textColor="@color/fb_text_title"
+                android:textSize="@dimen/fb_text_card_title"
+                android:textStyle="bold"
+                tools:text="安之若素" />
+
+            <ImageView
+                android:id="@+id/expandToggle"
+                android:layout_width="@dimen/fb_icon_sm_size"
+                android:layout_height="@dimen/fb_icon_sm_size"
+                android:layout_marginStart="@dimen/fb_space_8"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_fb_chevron_down" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/definition"
+            style="@style/FbBodySm"
+            android:layout_marginTop="@dimen/fb_space_4"
+            android:ellipsize="end"
+            android:maxLines="2"
+            tools:text="指面对异常情况、困境或不顺遭遇时，依然能心态平静安然，像平常一样对待，不焦躁不抱怨。" />
+
+        <LinearLayout
+            android:id="@+id/tagsContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/fb_space_8"
+            android:orientation="horizontal" />
+    </LinearLayout>
+
+    <View style="@style/FbDivider" />
+</LinearLayout>

@@ -39,6 +39,14 @@ class MainActivity : AppCompatActivity() {
                 .commit()
             true
         }
+        // 成语汇总并入词库页（底部导航最多 5 项），停在成语子页时再点「词库」应回到词库首页
+        binding.bottomNav.setOnItemReselectedListener { item ->
+            if (item.itemId != R.id.nav_words) return@setOnItemReselectedListener
+            if (supportFragmentManager.findFragmentById(R.id.container) is WordListFragment) return@setOnItemReselectedListener
+            supportFragmentManager.beginTransaction()
+                .replace(R.id.container, WordListFragment())
+                .commit()
+        }
         if (savedInstanceState == null) {
             binding.bottomNav.selectedItemId = R.id.nav_banks
         }

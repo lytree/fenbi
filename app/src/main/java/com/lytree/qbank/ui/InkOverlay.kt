@@ -29,10 +29,14 @@ import org.json.JSONObject
  * 3. **手指直接写**——不再需要「允许手指绘制」开关，没笔也能写；多指（掌托）不会打断笔迹。
  * 4. **弃写仍可见**——退出写画模式后笔迹留在原处（[writeMode] = false 只是不再拦截），
  *    标注不会一「完成」就消失。
- * 5. **按题持久化**——笔迹存 [QBankDb]，切题往返、退出重进、隔天再来都还在，可以回头接着标。
- * 6. **内容锚定**——笔迹不是「钉在屏幕上」，而是钉在题目卡上（[anchorSource] 给出每张卡
- *    在本层里的位置）。滚动卷面、切浏览模式、答题页重新排版，笔迹都跟着那道题走；
- *    这正是「临时标记」和「真标注」的区别。
+ * 5. **跟随作答记录持久化**——笔迹存 [QBankDb] 的 `record_inks` 表，按「本次作答记录 + 目标」
+ *    维度存取：换一轮练习是另一套圈画，同一记录里每个目标只保留最新一份批注；
+ *    撤销 / 清空即时落库，切题往返、退出重进都还在。
+ * 6. **内容锚定、材料与题目分开**——笔迹不是「钉在屏幕上」，而是钉在题目卡或材料块上
+ *    （[anchorSource] 给出每块内容在本层里的位置与命中区）。滚动卷面、切浏览模式、
+ *    答题页重新排版，笔迹都跟着那道题 / 那份材料走；材料块上的圈画不再按题干定位而偏移。
+ *    题目用 [TargetKind.QUESTION]（target = 题目 id），材料用 [TargetKind.MATERIAL]
+ *    （target = 材料组首题 id），存储与锚点都分开。
  * 7. **按笔换色**——每一笔自己记颜色（[PenColors]），当前笔色可在工具条上循环切换，
  *    也可在设置页统一指定。
  */
@@ -53,12 +57,65 @@ class InkOverlay @JvmOverloads constructor(
     }
 
     /**
-     * 一张题目卡在本层坐标系里的位置。
+     * 笔迹归属的两类目标：题目 / 材料。
      *
-     * 笔迹存的是「相对这张卡左上角」的内容坐标，画的时候再加上 [x]/[y]：
-     * 卷面一滚，卡的位置变了，笔迹自然跟着走，不需要像旧实现那样手工平移每一笔。
+     * 材料题的圈画如果也按题干锚定，材料块一换版式就会整体偏移，甚至串到题目上；
+     * 所以材料单独一类，存储与锚点都跟题目分开。
      */
-    class Anchor(val questionId: Long, val x: Float, val y: Float)
+    enum class TargetKind(val dbValue: String) {
+        QUESTION("question"),
+        MATERIAL("material")
+    }
+
+    /**
+     * 一份笔迹目标在本层坐标系里的位置。
+     *
+     * 笔迹存的是「相对这块内容左上角」的内容坐标，画的时候再加上 [x]/[y]：
+     * 卷面一滚，内容的位置变了，笔迹自然跟着走，不需要像旧实现那样手工平移每一笔。
+     *
+     * [width]/[height] 是命中区域（[contains]），用来判断这一笔落在题目上还是材料上；
+     * 同一落点命中多个锚点时取面积最小的那个，材料块盖在题目卡里也能写到材料上。
+     */
+    class Anchor(
+        val kind: TargetKind,
+        val targetId: Long,
+        val x: Float,
+        val y: Float,
+        val width: Float,
+        val height: Float
+    ) {
+        /** 题目锚点的便捷写法（材料用完整构造函数 + [TargetKind.MATERIAL]） */
+        constructor(questionId: Long, x: Float, y: Float, width: Float, height: Float) :
+            this(TargetKind.QUESTION, questionId, x, y, width, height)
+
+        /**
+         * 命中区（本层坐标）：默认为内容矩形。
+         *
+         * 材料正文在独立的滚动容器里时，内容可能比可视区高（甚至滚到屏幕外），
+         * 命中区要裁到容器可视范围，否则下方题目的落点会被算成材料。
+         * 绘制仍用 [x]/[y]（内容原点），所以滚动后笔迹照样跟着材料走。
+         */
+        private var hitLeft = x
+        private var hitTop = y
+        private var hitRight = x + width
+        private var hitBottom = y + height
+
+        val area: Float get() =
+            (hitRight - hitLeft).coerceAtLeast(0f) * (hitBottom - hitTop).coerceAtLeast(0f)
+
+        /** 把命中区裁到 [left]/[top]/[right]/[bottom]（通常是滚动容器的可视范围） */
+        fun hitRegion(left: Float, top: Float, right: Float, bottom: Float): Anchor {
+            hitLeft = left
+            hitTop = top
+            hitRight = right
+            hitBottom = bottom
+            return this
+        }
+
+        fun contains(px: Float, py: Float): Boolean =
+            hitRight > hitLeft && hitBottom > hitTop &&
+                px >= hitLeft && px <= hitRight && py >= hitTop && py <= hitBottom
+    }
 
     /** 一笔：若干采样点 + 每点的压感 + 这一笔的颜色（内容坐标） */
     private class Stroke {
@@ -66,16 +123,32 @@ class InkOverlay @JvmOverloads constructor(
         var color: Int = 0                     // 0 = 旧数据，按默认红笔渲染
     }
 
-    /** 一道题的笔迹集合；从库里懒加载，读过的题（哪怕是空）都缓存着，滚动时不重复查库 */
-    private class Doc(val questionId: Long) {
+    /** 一份目标（题目或材料）的笔迹集合；从库里懒加载，读过（哪怕是空）都缓存着，滚动时不重复查库 */
+    private class Doc(val kind: TargetKind, val targetId: Long) {
         val strokes = ArrayList<Stroke>()
     }
 
-    private val docs = HashMap<Long, Doc>()
+    private val docs = HashMap<String, Doc>()
     private var current: Stroke? = null
     private var activePointerId = MotionEvent.INVALID_POINTER_ID
-    /** 撤销 / 清空 / 落库的目标题（当前正在写的那道） */
-    private var activeQuestionId = 0L
+    /** 撤销 / 清空 / 落库的目标（最近一次落笔的题目或材料） */
+    private var activeKind = TargetKind.QUESTION
+    private var activeTargetId = 0L
+
+    /**
+     * 当前作答记录 id：笔迹按「记录 + 目标」存，换一轮练习就是另一套圈画。
+     *
+     * 答题页一进来就会建/取草稿记录并赋给这里；0 表示还没记录（笔迹只在内存里，不落库）。
+     */
+    var recordId: Long = 0L
+        set(value) {
+            if (field == value) return
+            field = value
+            docs.clear()
+            current = null
+            invalidate()
+            onStrokeCountChanged?.invoke(strokeCount)
+        }
     /** 当前这一笔落下时，它所属的题目卡在本层里的位置（内容坐标 → 本层坐标的平移量） */
     private var strokeOriginX = 0f
     private var strokeOriginY = 0f
@@ -132,9 +205,10 @@ class InkOverlay @JvmOverloads constructor(
     var onColorChanged: ((Int) -> Unit)? = null
 
     /**
-     * 内容锚点来源：返回当前屏幕上每一张题目卡（题目 id + 卡片左上角在本层里的坐标）。
+     * 内容锚点来源：返回当前屏幕上每一块可写内容（题目 / 材料）的归属、原点与命中区。
      *
-     * 接了它 = 笔迹跟着题目走；不接（返回 null / 空表）= 退回旧行为，按屏幕坐标画当前题。
+     * 接了它 = 笔迹跟着内容走，且落笔时按命中区自动决定写的是题目还是材料；
+     * 不接（返回 null / 空表）= 退回旧行为，按屏幕坐标画当前目标。
      */
     var anchorSource: (() -> List<Anchor>)? = null
 
@@ -220,10 +294,16 @@ class InkOverlay @JvmOverloads constructor(
         isEnabled = false   // 默认不拦截，笔迹照常显示
     }
 
-    /** 换绑到某一题：只影响撤销 / 清空 / 落库的目标，画面上所有可见题的笔迹照画 */
-    fun bindQuestion(questionId: Long) {
-        if (activeQuestionId == questionId) return
-        activeQuestionId = questionId
+    /** 换绑到某一题：只影响撤销 / 清空 / 落库的默认目标，画面上所有可见目标的笔迹照画 */
+    fun bindQuestion(questionId: Long) = bindTarget(TargetKind.QUESTION, questionId)
+
+    /** 换绑到某份材料（[materialId] 是材料组首题 id） */
+    fun bindMaterial(materialId: Long) = bindTarget(TargetKind.MATERIAL, materialId)
+
+    private fun bindTarget(kind: TargetKind, targetId: Long) {
+        if (activeKind == kind && activeTargetId == targetId) return
+        activeKind = kind
+        activeTargetId = targetId
         current = null
         invalidate()
         onStrokeCountChanged?.invoke(strokeCount)
@@ -232,8 +312,8 @@ class InkOverlay @JvmOverloads constructor(
     /**
      * 丢掉笔迹缓存，下次绘制重新读库。
      *
-     * 同一道题可以在两个页面里标（答题页 ↔ 资料分析分屏页），回来时不重读就会看到旧笔迹。
-     * 已落库的不会丢——每一笔在抬手时就写库了。
+     * 同一份内容可能在本页不可见时被别的页面改过（资料分析独立分屏页、页面重建），
+     * 回来时不重读就会看到旧笔迹。已落库的不会丢——每一笔在抬手 / 撤销时就写库了。
      */
     fun reload() {
         docs.clear()
@@ -254,7 +334,7 @@ class InkOverlay @JvmOverloads constructor(
             }
         } else {
             for (a in anchors) {
-                val doc = docOf(a.questionId)
+                val doc = docOf(a.kind, a.targetId)
                 if (doc.strokes.isEmpty()) continue
                 for (s in doc.strokes) drawStroke(canvas, s, a.x, a.y)
             }
@@ -319,20 +399,51 @@ class InkOverlay @JvmOverloads constructor(
         )
     }
 
-    // ---------------- 题目卡锚点 ----------------
+    // ---------------- 内容锚点 ----------------
 
     /**
-     * 当前这一笔所属题目的卡片位置。取不到就退回 (0,0)——旧页面 / 极端布局下
+     * 当前目标的位置。取不到就退回 (0,0)——旧页面 / 极端布局下
      * 至少还能写，只是不跟着内容滚。
      */
     private fun originOfActive(): FloatArray {
-        val id = activeQuestionId
+        val id = activeTargetId
         if (id != 0L) {
-            anchorSource?.invoke()?.firstOrNull { it.questionId == id }?.let {
-                return floatArrayOf(it.x, it.y)
-            }
+            anchorSource?.invoke()
+                ?.firstOrNull { it.kind == activeKind && it.targetId == id }
+                ?.let { return floatArrayOf(it.x, it.y) }
         }
         return floatArrayOf(0f, 0f)
+    }
+
+    /**
+     * 落点属于哪份内容：命中多个锚点时取面积最小的（材料块在题目卡里，取更精确的材料）；
+     * 没命中任何矩形时取最近的一块，写在题卡边缘也不会丢到屏幕坐标上。
+     */
+    private fun pickAnchor(x: Float, y: Float): Anchor? {
+        val anchors = anchorSource?.invoke().orEmpty().filter { it.targetId != 0L }
+        if (anchors.isEmpty()) return null
+        var best: Anchor? = null
+        for (a in anchors) {
+            if (!a.contains(x, y)) continue
+            if (best == null || a.area < best.area) best = a
+        }
+        if (best != null) return best
+        return anchors.minByOrNull { distanceTo(it, x, y) }
+    }
+
+    /** 点到矩形的最短距离平方（只比大小，不用开方） */
+    private fun distanceTo(a: Anchor, x: Float, y: Float): Float {
+        val dx = when {
+            x < a.x -> a.x - x
+            x > a.x + a.width -> x - (a.x + a.width)
+            else -> 0f
+        }
+        val dy = when {
+            y < a.y -> a.y - y
+            y > a.y + a.height -> y - (a.y + a.height)
+            else -> 0f
+        }
+        return dx * dx + dy * dy
     }
 
     // ---------------- 滚动手柄（右边缘 / 分屏页左边缘）：绘制 ----------------
@@ -534,10 +645,17 @@ class InkOverlay @JvmOverloads constructor(
                 if (isOnBar(event.x, event.y)) return beginBarDrag(event)
                 parent?.requestDisallowInterceptTouchEvent(true)
                 activePointerId = event.getPointerId(0)
-                // 记下这一笔所属卡片的位置，之后所有点都换算成「卡片内容坐标」
-                val o = originOfActive()
-                strokeOriginX = o[0]
-                strokeOriginY = o[1]
+                // 落点决定这一笔归属于题目还是材料：材料区写材料、题目区写题目，
+                // 之后所有点都换算成「那块内容」的相对坐标，滚动 / 换版式都不会串位
+                val hit = pickAnchor(event.x, event.y)
+                val origin = if (hit != null) {
+                    bindTarget(hit.kind, hit.targetId)
+                    floatArrayOf(hit.x, hit.y)
+                } else {
+                    originOfActive()
+                }
+                strokeOriginX = origin[0]
+                strokeOriginY = origin[1]
                 current = Stroke().apply {
                     color = penColor
                     points.add(
@@ -654,22 +772,33 @@ class InkOverlay @JvmOverloads constructor(
     // ---------------- 持久化 ----------------
 
     private fun activeDoc(): Doc? =
-        if (activeQuestionId == 0L) null else docOf(activeQuestionId)
+        if (activeTargetId == 0L) null else docOf(activeKind, activeTargetId)
 
-    /** 每题一份，读过的（包括空）都缓存：滚动时不会反复查库 */
-    private fun docOf(questionId: Long): Doc {
-        if (questionId == 0L) return EMPTY_DOC
-        docs[questionId]?.let { return it }
-        val doc = Doc(questionId)
-        doc.strokes.addAll(loadStrokes(questionId))
-        docs[questionId] = doc
+    /** 每个目标（题目 / 材料）一份，读过的（包括空）都缓存：滚动时不会反复查库 */
+    private fun docOf(kind: TargetKind, targetId: Long): Doc {
+        if (targetId == 0L) return EMPTY_DOC
+        val key = keyOf(kind, targetId)
+        docs[key]?.let { return it }
+        val doc = Doc(kind, targetId)
+        doc.strokes.addAll(loadStrokes(kind, targetId))
+        docs[key] = doc
         return doc
     }
 
+    /**
+     * 当前目标的笔迹落库。撤销到空时直接删行——「每题只保留最新一份」，
+     * 清空后不该留一条空记录，也不保留历史版本。
+     */
     private fun persist() {
-        val id = activeQuestionId
-        if (id == 0L) return
-        QBankDb.get(context).setInk(id, serialize(docOf(id)))
+        val doc = activeDoc() ?: return
+        val rid = recordId
+        if (rid <= 0L) return
+        val db = QBankDb.get(context)
+        if (doc.strokes.isEmpty()) {
+            db.deleteInk(rid, doc.kind.dbValue, doc.targetId)
+        } else {
+            db.setInk(rid, doc.kind.dbValue, doc.targetId, serialize(doc))
+        }
     }
 
     private fun serialize(doc: Doc): String {
@@ -689,8 +818,10 @@ class InkOverlay @JvmOverloads constructor(
         return root.toString()
     }
 
-    private fun loadStrokes(questionId: Long): List<Stroke> {
-        val raw = QBankDb.get(context).getInk(questionId)?.trim().orEmpty()
+    private fun loadStrokes(kind: TargetKind, targetId: Long): List<Stroke> {
+        val rid = recordId
+        if (rid <= 0L) return emptyList()
+        val raw = QBankDb.get(context).getInk(rid, kind.dbValue, targetId)?.trim().orEmpty()
         if (raw.isEmpty()) return emptyList()
         return try {
             if (raw.startsWith("{")) parseV2(raw) else parseV1(raw)
@@ -740,8 +871,10 @@ class InkOverlay @JvmOverloads constructor(
     private companion object {
         const val KEY_SHADE = "shade_level"
 
-        /** 空题（模块说明页等）共用一份空文档，不会被写入 */
-        val EMPTY_DOC = Doc(0L)
+        fun keyOf(kind: TargetKind, targetId: Long): String = "${kind.dbValue}:$targetId"
+
+        /** 空目标（模块说明页等）共用一份空文档，不会被写入 */
+        val EMPTY_DOC = Doc(TargetKind.QUESTION, 0L)
 
         /** 反射缓存：View 上没有公开的滚动进度 API，只能借 protected 的实现 */
         val OFFSET_M: java.lang.reflect.Method? = scrollMethod("computeVerticalScrollOffset")
