@@ -53,10 +53,12 @@ jadx-launcher*.jar
 *~
 tmp/
 .temp/
+/gen_exam_csv.py
 
 # ---- 工具与会话目录 ----
 .codebuddy/
 .workbuddy/
+.agent/
 .DS_Store
 Thumbs.db
 desktop.ini
