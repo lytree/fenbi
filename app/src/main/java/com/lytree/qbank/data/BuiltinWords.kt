@@ -12,8 +12,8 @@ import kotlin.concurrent.thread
  * 内置词库：把《成语与实词汇总（合并版）》预置进 App，装上就有词，不用先找文件导入。
  *
  * 数据是 `assets/builtin/words.csv`（表头：词条/拼音/分类/细分/释义/出处），
- * 由 `tools/build_builtin_words.py` 从源 docx 生成——改词库改源文档再重跑脚本，
- * 不要手改这份 csv。
+ * 由 `tools/BuildBuiltinWords.cs`（.NET file-based app，`dotnet run` 直接跑）从源 docx 生成——
+ * 改词库改源文档再重跑脚本，不要手改这份 csv。
  *
  * 只在**首次**自动灌一次（SharedPreferences 记标记）：
  * 用户后来自己删词、整表覆盖，都不该被偷偷塞回来。想重新灌就进导入页选「内置词库」。

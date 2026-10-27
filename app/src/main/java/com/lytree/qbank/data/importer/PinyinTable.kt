@@ -6,7 +6,7 @@ import android.content.Context
  * 本地汉字拼音表（`assets/pinyin.txt`，约 2.7 万字，单字 → 常用读音）。
  *
  * 为什么内置而不是联网：词库导入是离线场景，词条几千条，逐字请求接口既慢又不可靠；
- * 这张表由 `tools/gen_pinyin.py` 从 [pinyin-data](https://github.com/mozillazg/pinyin-data) 生成，
+ * 这张表由 `tools/GenPinyin.cs` 从 [pinyin-data](https://github.com/mozillazg/pinyin-data) 生成，
  * 只取每个字的**第一个读音**（多音字按最常见读音），去声调、`ü` 记作 `v`。
  *
  * 导入时只需要两件事：整词拼音、首字母。表加载一次常驻内存（首次约 30ms），

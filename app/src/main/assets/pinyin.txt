@@ -1,6 +1,6 @@
 # 汉字拼音表（单字 → 常用读音，无声调，ü 记作 v）
 # 数据源 https://github.com/mozillazg/pinyin-data pinyin.txt v0.15.0
-# 由 tools/gen_pinyin.py 生成，勿手改
+# 由 tools/GenPinyin.cs 生成，勿手改
 
 〇 ling
 㐀 qiu
