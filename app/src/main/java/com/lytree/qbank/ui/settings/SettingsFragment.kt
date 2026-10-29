@@ -8,6 +8,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
+import androidx.activity.addCallback
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import com.lytree.qbank.R
@@ -16,6 +17,7 @@ import com.lytree.qbank.databinding.FragmentSettingsBinding
 import com.lytree.qbank.ui.FbSwitchView
 import com.lytree.qbank.ui.PenColors
 import com.lytree.qbank.ui.Refreshable
+import com.lytree.qbank.ui.record.RecordListFragment
 
 /**
  * 判题规则 + 手写标注设置。不同机构判题口径不同，这里让用户自己定。
@@ -23,6 +25,8 @@ import com.lytree.qbank.ui.Refreshable
  *
  * 「笔迹颜色」跟答题页工具条上的那枚色点共用 [PenColors] 里的同一份偏好：
  * 这里选好之后，答题页写画直接用；在答题页里随手换色，回来这里也是新的。
+ *
+ * 本页是「记录」页的二级页（右上角齿轮进入），不占底部导航。
  */
 class SettingsFragment : Fragment(), Refreshable {
 
@@ -39,6 +43,11 @@ class SettingsFragment : Fragment(), Refreshable {
         db = QBankDb.get(requireContext())
         binding.titleBar.usePageTitleStyle()
         binding.titleBar.setTitle(getString(R.string.page_settings))
+
+        // 二级页：从「记录」页右上角齿轮进来，标题栏与系统返回都回记录列表
+        binding.titleBar.showBack(true)
+        binding.titleBar.onBack = { backToRecords() }
+        requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner) { backToRecords() }
 
         val p = db.getPolicy()
         binding.swMulti.setChecked(p.multiPartial)
@@ -125,6 +134,13 @@ class SettingsFragment : Fragment(), Refreshable {
 
     private fun dp(v: Int): Int =
         (v * resources.displayMetrics.density + 0.5f).toInt()
+
+    /** 回记录页：本页不占底部导航，返回即把内容换回记录列表，底部仍高亮「记录」 */
+    private fun backToRecords() {
+        parentFragmentManager.beginTransaction()
+            .replace(R.id.container, RecordListFragment())
+            .commit()
+    }
 
     override fun refresh() = Unit
 

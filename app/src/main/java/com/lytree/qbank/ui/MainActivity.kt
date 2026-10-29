@@ -11,7 +11,6 @@ import com.lytree.qbank.databinding.ActivityMainBinding
 import com.lytree.qbank.ui.bank.BankListFragment
 import com.lytree.qbank.ui.paper.PaperListFragment
 import com.lytree.qbank.ui.record.RecordListFragment
-import com.lytree.qbank.ui.settings.SettingsFragment
 import com.lytree.qbank.ui.word.WordListFragment
 
 class MainActivity : AppCompatActivity() {
@@ -31,7 +30,6 @@ class MainActivity : AppCompatActivity() {
                 R.id.nav_words -> WordListFragment()
                 R.id.nav_papers -> PaperListFragment()
                 R.id.nav_records -> RecordListFragment()
-                R.id.nav_settings -> SettingsFragment()
                 else -> BankListFragment()
             }
             supportFragmentManager.beginTransaction()
@@ -39,12 +37,16 @@ class MainActivity : AppCompatActivity() {
                 .commit()
             true
         }
-        // 成语汇总并入词库页（底部导航最多 5 项），停在成语子页时再点「词库」应回到词库首页
+        // 成语汇总与设置都是不占底部导航的二级页：停在二级页时再点所属 Tab 应回到它的首页
         binding.bottomNav.setOnItemReselectedListener { item ->
-            if (item.itemId != R.id.nav_words) return@setOnItemReselectedListener
-            if (supportFragmentManager.findFragmentById(R.id.container) is WordListFragment) return@setOnItemReselectedListener
+            val current = supportFragmentManager.findFragmentById(R.id.container)
+            val home = when (item.itemId) {
+                R.id.nav_words -> if (current is WordListFragment) null else WordListFragment()
+                R.id.nav_records -> if (current is RecordListFragment) null else RecordListFragment()
+                else -> null
+            } ?: return@setOnItemReselectedListener
             supportFragmentManager.beginTransaction()
-                .replace(R.id.container, WordListFragment())
+                .replace(R.id.container, home)
                 .commit()
         }
         if (savedInstanceState == null) {

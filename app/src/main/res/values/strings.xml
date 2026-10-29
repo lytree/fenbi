@@ -6,7 +6,6 @@
     <string name="tab_papers">试卷</string>
     <string name="tab_idioms">成语</string>
     <string name="tab_records">记录</string>
-    <string name="tab_settings">设置</string>
 
     <!-- 页面大标题 -->
     <string name="page_banks">我的题库</string>
@@ -84,6 +83,7 @@
     <string name="action_timer">计时</string>
     <string name="action_note">笔记</string>
     <string name="action_more">更多</string>
+    <string name="action_settings">设置</string>
     <string name="action_expand">展开</string>
     <string name="action_collapse">收起</string>
     <string name="action_split">分屏</string>
