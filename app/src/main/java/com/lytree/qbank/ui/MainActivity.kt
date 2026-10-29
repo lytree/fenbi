@@ -49,16 +49,22 @@ class MainActivity : AppCompatActivity() {
                 .replace(R.id.container, home)
                 .commit()
         }
-        if (savedInstanceState == null) {
-            binding.bottomNav.selectedItemId = R.id.nav_banks
+        // 首次启动直接放首页。不能靠 selectedItemId 触发上面的监听器：
+        // BottomNavigationView 载入菜单时第一项（nav_banks）就已经是选中态，
+        // 再 setSelectedItemId 同一个 id 只会走「重选」分支，不会回调 onItemSelected，
+        // 结果容器一直是空的——装完首次打开表现为首页空白，切到词库再切回来才出内容
+        if (savedInstanceState == null && supportFragmentManager.findFragmentById(R.id.container) == null) {
+            supportFragmentManager.beginTransaction()
+                .replace(R.id.container, BankListFragment())
+                .commit()
         }
     }
 
     override fun onResume() {
         super.onResume()
-        // 让当前 fragment 刷新数据
+        // 让当前 fragment 刷新数据（view 还没建好的跳过，避免 refresh 里拿空 binding）
         supportFragmentManager.fragments.forEach { f ->
-            if (f is Refreshable) f.refresh()
+            if (f is Refreshable && f.view != null) f.refresh()
         }
     }
 
