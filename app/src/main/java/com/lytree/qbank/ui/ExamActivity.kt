@@ -1627,7 +1627,10 @@ class ExamActivity : AppCompatActivity() {
             correctCount = summary.correct,
             partialCount = summary.partial,
             score = summary.score,
-            fullScore = summary.fullScore
+            fullScore = summary.fullScore,
+            // 标记随本次作答留档：交卷时 clearProgress 会删掉进度里的 marked，
+            // 这里先把它写进记录，回看报告才知道当时标了哪几题
+            marked = marked.toSet()
         )
         // 草稿转正：记录 id 不变，挂在它上面的标注（record_inks）继续可用
         val rid = db.finalizeRecord(recordId, record, results)

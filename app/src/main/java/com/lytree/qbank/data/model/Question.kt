@@ -179,6 +179,8 @@ data class ExamRecord(
     val partialCount: Int = 0,
     val score: Double = 0.0,
     val fullScore: Double = 0.0,
+    /** 本次作答被标记（细线星）的题目 id；交卷时随记录落库，回看记录可见 */
+    val marked: Set<Long> = emptySet(),
     val correctRate: Double = 0.0,
     val results: List<AnswerResult> = emptyList()
 ) {

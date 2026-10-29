@@ -109,9 +109,10 @@
             </LinearLayout>
 
             <TextView
+                android:id="@+id/tvAnalysisTitle"
                 style="@style/FbSectionTitle"
                 android:layout_marginTop="@dimen/fb_section_gap"
-                android:text="逐题解析" />
+                android:text="@string/report_analysis_title" />
 
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/list"

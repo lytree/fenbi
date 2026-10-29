@@ -495,7 +495,9 @@ class SplitExamActivity : AppCompatActivity() {
             correctCount = summary.correct,
             partialCount = summary.partial,
             score = summary.score,
-            fullScore = summary.fullScore
+            fullScore = summary.fullScore,
+            // 与答题页同口径：标记跟着这条记录走
+            marked = marked.toSet()
         )
         // 草稿转正：记录 id 不变，挂在它上面的标注（record_inks）继续可用
         val rid = db.finalizeRecord(recordId, record, results)

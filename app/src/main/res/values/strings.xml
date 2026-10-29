@@ -148,6 +148,9 @@
     <string name="report_subject_row">%1$s　答对 %2$d/%3$d · %4$d%%</string>
     <string name="report_retry_wrong">错题重练</string>
     <string name="report_retry_empty">这次没有错题，保持！</string>
+    <!-- 逐题解析区标题：本次有标记时带上标记数 -->
+    <string name="report_analysis_title">逐题解析</string>
+    <string name="report_analysis_title_marked">逐题解析（标记 %1$d 题）</string>
     <string name="progress_saved">进度已保存，下次进入可继续答题</string>
 
     <!-- 补录答案：不用答案文件，做完直接在 App 里逐题填标准答案 -->

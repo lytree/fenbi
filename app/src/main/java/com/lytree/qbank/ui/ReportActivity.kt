@@ -98,7 +98,14 @@ class ReportActivity : AppCompatActivity() {
         setupRetryWrong(record)
 
         binding.list.layoutManager = LinearLayoutManager(this)
-        binding.list.adapter = ReportAdapter(record.results)
+        binding.list.adapter = ReportAdapter(record.results, record.marked)
+
+        // 本次标记过的题在逐题解析里带「已标记」标签，标题里先给个总数，免得逐页翻找
+        binding.tvAnalysisTitle.text = if (record.marked.isEmpty()) {
+            getString(R.string.report_analysis_title)
+        } else {
+            getString(R.string.report_analysis_title_marked, record.marked.size)
+        }
     }
 
     /**
@@ -238,7 +245,16 @@ class ReportActivity : AppCompatActivity() {
         if (v == v.toLong().toDouble()) v.toLong().toString() else String.format(Locale.CHINA, "%.1f", v)
 }
 
-class ReportAdapter(private val items: List<AnswerResult>) :
+/**
+ * 逐题解析列表。
+ *
+ * [marked] 是本次作答被标记（细线星）的题 id —— 交卷时随记录落库，
+ * 所以回看旧记录也能看出当时标了哪几题，而不只是当轮答题卡上的点。
+ */
+class ReportAdapter(
+    private val items: List<AnswerResult>,
+    private val marked: Set<Long> = emptySet()
+) :
     RecyclerView.Adapter<ReportAdapter.VH>() {
 
     class VH(val binding: ItemReportQuestionBinding) : RecyclerView.ViewHolder(binding.root)
@@ -253,6 +269,8 @@ class ReportAdapter(private val items: List<AnswerResult>) :
         val ctx = holder.itemView.context
         holder.binding.tvIndex.text = "第 ${position + 1} 题 · ${r.question.type.label}"
         holder.binding.tvStem.text = r.question.stem
+        holder.binding.tvMark.visibility =
+            if (r.question.id in marked) android.view.View.VISIBLE else android.view.View.GONE
 
         val (label, color) = when (r.status) {
             "right" -> "正确" to R.color.right

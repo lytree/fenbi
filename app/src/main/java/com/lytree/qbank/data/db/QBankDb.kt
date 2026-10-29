@@ -19,7 +19,7 @@ import com.lytree.qbank.engine.Policy
 /**
  * 本地题库存储。用原生 SQLiteOpenHelper，不引入 Room，避免注解处理器带来的构建复杂度。
  */
-class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 7) {
+class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 8) {
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -86,7 +86,8 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 7)
                 correct_count INTEGER DEFAULT 0,
                 partial_count INTEGER DEFAULT 0,
                 score REAL DEFAULT 0.0,
-                full_score REAL DEFAULT 0.0
+                full_score REAL DEFAULT 0.0,
+                marked TEXT DEFAULT ''
             )""".trimIndent()
         )
         db.execSQL(
@@ -105,6 +106,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 7)
         createV3Tables(db)
         createV4Tables(db)
         createV7Tables(db)
+        createV8Columns(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -118,6 +120,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 7)
         // v5 清重复标签，v6 再去掉「第 N 组」前缀，同一套规范化，跑一次就都覆盖
         if (oldVersion < 6) normalizeWordTags(db)
         if (oldVersion < 7) createV7Tables(db)
+        if (oldVersion < 8) createV8Columns(db)
     }
 
     /** v3：收藏表 + 答题进度表（对齐参考应用「收藏跨会话保留 / 中途退出可续做」） */
@@ -177,6 +180,28 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 7)
                 PRIMARY KEY(record_id, kind, target_id)
             )""".trimIndent()
         )
+    }
+
+    /**
+     * v8：标记（细线星）跟随**做题记录**留档。
+     *
+     * 以前标记只写 `exam_progress.marked`（未交卷进度），交卷时 `clearProgress` 一并删掉，
+     * 回头翻记录看不出当时标了哪几题。`records.marked` 存逗号串（与进度表同一种编码），
+     * 交卷时一并落库；旧记录补列后是空串，等价于「那次没标记」。
+     */
+    private fun createV8Columns(db: SQLiteDatabase) {
+        if (!hasColumn(db, "records", "marked")) {
+            db.execSQL("ALTER TABLE records ADD COLUMN marked TEXT DEFAULT ''")
+        }
+    }
+
+    /** 补列前先查一次，重复执行不会因为「列已存在」抛异常 */
+    private fun hasColumn(db: SQLiteDatabase, table: String, column: String): Boolean {
+        db.rawQuery("PRAGMA table_info($table)", null).use { c ->
+            val nameIndex = c.getColumnIndexOrThrow("name")
+            while (c.moveToNext()) if (c.getString(nameIndex) == column) return true
+        }
+        return false
     }
 
     /**
@@ -835,13 +860,15 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 7)
         put("partial_count", record.partialCount)
         put("score", record.score)
         put("full_score", record.fullScore)
+        // 标记随记录留档（与 exam_progress.marked 同一种逗号串编码）
+        put("marked", record.marked.joinToString(","))
     }
 
     /** 记录列表只出已交卷的；未交卷草稿只在续做时按试卷读取 */
     fun listRecords(): List<ExamRecord> {
         val out = ArrayList<ExamRecord>()
         readableDatabase.rawQuery(
-            "SELECT id, paper_id, name, mode, started_at, submitted_at, duration_sec, total_count, answered_count, correct_count, partial_count, score, full_score FROM records WHERE submitted_at > 0 ORDER BY id DESC",
+            "SELECT id, paper_id, name, mode, started_at, submitted_at, duration_sec, total_count, answered_count, correct_count, partial_count, score, full_score, marked FROM records WHERE submitted_at > 0 ORDER BY id DESC",
             null
         ).use { c ->
             while (c.moveToNext()) {
@@ -851,7 +878,8 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 7)
                         mode = c.getString(3) ?: "", startedAt = c.getLong(4), submittedAt = c.getLong(5),
                         durationSec = c.getInt(6), totalCount = c.getInt(7), answeredCount = c.getInt(8),
                         correctCount = c.getInt(9), partialCount = c.getInt(10),
-                        score = c.getDouble(11), fullScore = c.getDouble(12)
+                        score = c.getDouble(11), fullScore = c.getDouble(12),
+                        marked = parseIdTextSet(c.getString(13) ?: "")
                     )
                 )
             }

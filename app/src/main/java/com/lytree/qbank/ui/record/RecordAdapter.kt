@@ -34,6 +34,8 @@ class RecordAdapter : RecyclerView.Adapter<RecordAdapter.VH>() {
             append(" · 用时 ${fmtDuration(r.durationSec)}")
             append(" · 答 ${r.answeredCount}/${r.totalCount}")
             append(" · 正确率 $rate%")
+            // 本次作答标记过几题：标记已随记录落库，这里顺手给个总数
+            if (r.marked.isNotEmpty()) append(" · 标记 ${r.marked.size} 题")
         }
         holder.binding.score.text = String.format(Locale.CHINA, "%.1f", r.score)
         holder.binding.root.setOnClickListener { onClick?.invoke(r) }

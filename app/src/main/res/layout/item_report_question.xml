@@ -20,6 +20,14 @@
             android:textStyle="bold" />
 
         <TextView
+            android:id="@+id/tvMark"
+            style="@style/FbTag"
+            android:layout_marginStart="@dimen/fb_space_8"
+            android:text="@string/action_marked"
+            android:textColor="@color/fb_primary"
+            android:visibility="gone" />
+
+        <TextView
             android:id="@+id/tvStatus"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
