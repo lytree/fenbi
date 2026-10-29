@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  分享备份包用的 FileProvider 路径。
+  备份包只落在 cacheDir/backups 下（BackupManager.localDir），别的一概不暴露。
+-->
+<paths>
+    <cache-path name="backups" path="backups/" />
+</paths>

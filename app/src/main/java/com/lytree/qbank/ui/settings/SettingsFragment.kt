@@ -74,6 +74,12 @@ class SettingsFragment : Fragment(), Refreshable {
         ).forEach { it.onCheckedChange = { _ -> save() } }
 
         renderPenColors()
+
+        binding.rowBackup.setOnClickListener {
+            parentFragmentManager.beginTransaction()
+                .replace(R.id.container, com.lytree.qbank.ui.backup.BackupFragment())
+                .commit()
+        }
     }
 
     // ---------------- 笔迹颜色 ----------------

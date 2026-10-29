@@ -58,6 +58,9 @@ class MainActivity : AppCompatActivity() {
                 .replace(R.id.container, BankListFragment())
                 .commit()
         }
+
+        // 闹钟在重装 / 强制停止后会被系统清掉，每次启动重新挂一次（没开自动备份就只是取消）
+        com.lytree.qbank.data.backup.AutoBackupScheduler.sync(this)
     }
 
     override fun onResume() {

@@ -21,6 +21,14 @@ fun secretOrNull(envName: String, propName: String): String? =
 
 val releaseStoreFile = secretOrNull("QBANK_KEYSTORE_FILE", "storeFile")
 val hasReleaseKeystore = releaseStoreFile != null && file(releaseStoreFile).exists()
+
+// 云备份凭证：两家网盘开放平台的应用信息（AppKey / SecretKey）。
+// 与签名同一套取法——keystore.properties 或环境变量，都不进版本库。
+// 留空也能用：App 内「云备份 → 应用凭证」可以手填，换密钥不必重新编译。
+val baiduAppKey = secretOrNull("QBANK_BAIDU_APPKEY", "baiduAppKey") ?: ""
+val baiduSecretKey = secretOrNull("QBANK_BAIDU_SECRETKEY", "baiduSecretKey") ?: ""
+val tianyiAppKey = secretOrNull("QBANK_TIANYI_APPKEY", "tianyiAppKey") ?: ""
+val tianyiAppSecret = secretOrNull("QBANK_TIANYI_APPSECRET", "tianyiAppSecret") ?: ""
 if (!hasReleaseKeystore) {
     logger.lifecycle("未找到 release 签名密钥（keystore.properties 或 QBANK_KEYSTORE_* 环境变量），release 构建将使用 debug 签名")
 }
@@ -36,6 +44,12 @@ android {
         versionCode = versionCodeOverride ?: 6
         versionName = versionNameOverride ?: "0.0.6"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // 云端凭证编进 BuildConfig；空串表示未配置，运行时回落到 App 内手填的值
+        buildConfigField("String", "BAIDU_APP_KEY", "\"$baiduAppKey\"")
+        buildConfigField("String", "BAIDU_SECRET_KEY", "\"$baiduSecretKey\"")
+        buildConfigField("String", "TIANYI_APP_KEY", "\"$tianyiAppKey\"")
+        buildConfigField("String", "TIANYI_APP_SECRET", "\"$tianyiAppSecret\"")
     }
 
     testOptions {
@@ -79,6 +93,7 @@ android {
 
     buildFeatures {
         viewBinding = true
+        buildConfig = true
     }
 
     packaging {
@@ -99,6 +114,11 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.7")
     implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+
+    // 云备份走 WebDAV，需要 PROPFIND / MKCOL 这类非标准方法。
+    // Android 的 HttpURLConnection 方法名是硬编码白名单（只有 GET/POST/HEAD/OPTIONS/PUT/DELETE/TRACE），
+    // 调 PROPFIND 会直接抛 ProtocolException，所以这里破例引一个 OkHttp。
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")

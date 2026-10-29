@@ -508,6 +508,16 @@
         <item name="android:minWidth">0dp</item>
     </style>
 
+    <!-- 可点行右侧的折角箭头 -->
+    <style name="FbRowArrow">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginStart">@dimen/fb_space_8</item>
+        <item name="android:textSize">20sp</item>
+        <item name="android:textColor">@color/fb_text_hint</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
     <!-- 设置项开关行 -->
     <style name="FbSwitchRow">
         <item name="android:layout_width">match_parent</item>

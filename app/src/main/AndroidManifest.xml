@@ -70,5 +70,21 @@
             android:name=".ui.AnswerEntryActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
+
+        <!-- 备份包分享：把 cacheDir/backups 下那份 zip 交给系统选择器，能直接存进网盘 App -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+        <!-- 每日自动备份：AlarmManager 到点拉起，只在配好 WebDAV 且开了开关时才跑 -->
+        <receiver
+            android:name=".data.backup.AutoBackupReceiver"
+            android:exported="false" />
     </application>
 </manifest>

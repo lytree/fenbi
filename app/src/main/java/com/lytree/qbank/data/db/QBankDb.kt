@@ -19,7 +19,7 @@ import com.lytree.qbank.engine.Policy
 /**
  * 本地题库存储。用原生 SQLiteOpenHelper，不引入 Room，避免注解处理器带来的构建复杂度。
  */
-class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 8) {
+class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VERSION) {
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -1102,6 +1102,12 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 8)
     }
 
     companion object {
+        /** 数据库文件名（云备份打交道时用，保持一致） */
+        const val DB_NAME = "qbank.db"
+
+        /** 库版本。云备份包里的 manifest 会记下它，恢复时据此判断能否直接落地 */
+        const val DB_VERSION = 8
+
         /** 试卷来源：由导入文件生成 */
         const val MODE_IMPORT = "导入"
 
@@ -1121,6 +1127,15 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, "qbank.db", null, 8)
             instance ?: synchronized(this) {
                 instance ?: QBankDb(context.applicationContext).also { instance = it }
             }
+
+        /**
+         * 关掉单例。云备份恢复要整库替换文件，必须先放开句柄，
+         * 否则换过去的库会被仍在打开的连接覆盖回去。
+         */
+        fun closeInstance() = synchronized(this) {
+            runCatching { instance?.close() }
+            instance = null
+        }
     }
 }
 

@@ -207,6 +207,41 @@
                     android:textColor="@color/fb_text_meta"
                     android:textSize="@dimen/fb_text_item_sub" />
             </LinearLayout>
+
+            <TextView
+                style="@style/FbGroupTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/fb_section_gap"
+                android:layout_marginBottom="@dimen/fb_space_8"
+                android:text="备份与恢复" />
+
+            <LinearLayout style="@style/FbCard">
+
+                <LinearLayout
+                    android:id="@+id/rowBackup"
+                    style="@style/FbSwitchRow">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            style="@style/FbRowTitle"
+                            android:text="备份与恢复" />
+
+                        <TextView
+                            style="@style/FbRowSub"
+                            android:text="题库、作答、笔迹、配图打成一份包，可存进网盘；换机时整份还原" />
+                    </LinearLayout>
+
+                    <TextView
+                        style="@style/FbRowArrow"
+                        android:text="›" />
+                </LinearLayout>
+            </LinearLayout>
         </LinearLayout>
     </ScrollView>
 </LinearLayout>
