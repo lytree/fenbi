@@ -46,6 +46,42 @@ LESSONS = [
     "时政理论-重要文件3",
 ]
 
+# 分组（弹层里作为二级标题展示）：(分组名, 该组分类简称, 包含前 N 节课)
+# 分类名用简称，来源信息由分组标题承载，避免「超格·新思想新思想第一、二节」这类重复。
+LESSON_GROUPS = [
+    (
+        "超格 · 新思想",
+        [
+            "考情介绍 + 新思想导论",
+            "第一、二节",
+            "第三、四、五节",
+            "第六节",
+            "第七、八节",
+            "第九、十节",
+            "第十一、十二节",
+            "第十三、十四、十五节",
+            "第十六、十七节",
+        ],
+    ),
+    (
+        "超格 · 时政理论",
+        [
+            "谋划“十五五”1",
+            "谋划“十五五”2",
+            "谋划“十五五”3",
+            "系列讲话、指示1",
+            "系列讲话、指示2",
+            "系列讲话、指示3+重要会议",
+            "重要文件1",
+            "重要文件2",
+            "重要文件3",
+        ],
+    ),
+]
+
+# 非超格来源（原有精编考点）归入这个分组
+DEFAULT_GROUP = "精编考点"
+
 
 def split_cards(txt):
     txt = txt.replace("\r\n", "\n").strip()
@@ -81,7 +117,12 @@ def main():
     ap.add_argument("--src", default="tmp/recite_extract/course_content")
     ap.add_argument("--asset", default="app/src/main/assets/recite_politics.json")
     ap.add_argument("--replace", action="store_true", help="清空原有卡片，只用超格内容")
-    ap.add_argument("--prefix", default="超格·", help="新增分类名前缀")
+    ap.add_argument(
+        "--refresh-cg",
+        action="store_true",
+        help="先移除已有的超格分类（id 以 cg 开头）及其卡片再重建，用于分类改名 / 加分组后刷新",
+    )
+    ap.add_argument("--prefix", default="", help="新增分类名前缀（默认空，来源由 group 承载）")
     args = ap.parse_args()
 
     if not os.path.isdir(args.src):
@@ -91,15 +132,30 @@ def main():
         asset = json.load(f)
 
     existing_cats = asset.get("categories", [])
+    if args.refresh_cg:
+        drop = {c["id"] for c in existing_cats if c["id"].startswith("cg")}
+        existing_cats = [c for c in existing_cats if c["id"] not in drop]
+        asset["cards"] = [c for c in asset.get("cards", []) if c.get("cat") not in drop]
+        print(f"[refresh-cg] 移除旧分类 {len(drop)} 个")
+
     existing_cards = [] if args.replace else list(asset.get("cards", []))
     used_ids = {c["id"] for c in asset.get("cards", [])}
+
+    # 老数据缺 group 字段时补默认分组，保证弹层能正常分组
+    for c in existing_cats:
+        c.setdefault("group", DEFAULT_GROUP)
+        c["group"] = c["group"] or DEFAULT_GROUP
+
+    lesson_meta = [(g, n) for g, names in LESSON_GROUPS for n in names]
+    if len(lesson_meta) != len(LESSONS):
+        sys.exit(f"LESSON_GROUPS 与 LESSONS 数量不一致: {len(lesson_meta)} vs {len(LESSONS)}")
 
     new_cats = []
     new_cards = []
     report = []
     total_blank_cards = 0
 
-    for idx, lesson in enumerate(LESSONS, 1):
+    for idx, (lesson, (group, short)) in enumerate(zip(LESSONS, lesson_meta), 1):
         path = os.path.join(args.src, lesson + ".txt")
         if not os.path.exists(path):
             print(f"[warn] 缺少文件: {path}")
@@ -107,7 +163,7 @@ def main():
         cat_id = f"cg{idx:02d}"
         while cat_id in {c["id"] for c in existing_cats}:
             cat_id += "x"
-        new_cats.append({"id": cat_id, "name": args.prefix + lesson})
+        new_cats.append({"id": cat_id, "name": args.prefix + short, "group": group})
 
         cards = split_cards(open(path, encoding="utf-8").read())
         zero = 0
@@ -141,8 +197,8 @@ def main():
     asset["title"] = "2027 政治理论考点背诵（含超格背诵手册）"
     asset["intro"] = (
         "含两部分：① 精编政治理论考点；② 超格《2027政治理论背诵手册礼包》"
-        "「核心知识带背」18 节全套考点，按课程分类，共 "
-        f"{len(asset['cards'])} 张卡片。"
+        "「核心知识带背」18 节全套考点。弹层按「超格 · 新思想」「超格 · 时政理论」"
+        f"「精编考点」分组，共 {len(asset['categories'])} 个分类 / {len(asset['cards'])} 张卡片。"
     )
 
     with open(args.asset, "w", encoding="utf-8") as f:

@@ -5,6 +5,7 @@ import com.lytree.qbank.data.db.QBankDb
 import com.lytree.qbank.data.model.ReciteCard
 import com.lytree.qbank.data.model.ReciteCatalog
 import com.lytree.qbank.data.model.ReciteCategory
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
@@ -33,11 +34,19 @@ object ReciteRepository {
         val categoriesJson = root.getJSONArray("categories")
         val categories = ArrayList<ReciteCategory>(categoriesJson.length())
         val names = HashMap<String, String>(categoriesJson.length())
+        val groups = HashMap<String, String>(categoriesJson.length())
         for (i in 0 until categoriesJson.length()) {
             val o = categoriesJson.getJSONObject(i)
-            val category = ReciteCategory(o.getString("id"), o.getString("name"))
+            val category = ReciteCategory(
+                id = o.getString("id"),
+                name = o.getString("name"),
+                group = o.optString("group"),
+            )
             categories.add(category)
-            names[category.id] = category.name
+            // 详情弹窗里显示「分组 · 分类」，分类名因此可以只写简称
+            names[category.id] =
+                if (category.group.isBlank()) category.name else "${category.group} · ${category.name}"
+            groups[category.id] = category.group
         }
 
         val cardsJson = root.getJSONArray("cards")
@@ -53,6 +62,7 @@ object ReciteRepository {
                     id = o.getString("id"),
                     categoryId = categoryId,
                     categoryName = names[categoryId] ?: categoryId,
+                    categoryGroup = groups[categoryId].orEmpty(),
                     text = o.getString("text"),
                     answers = answers,
                     note = o.optString("note"),
@@ -69,6 +79,40 @@ object ReciteRepository {
             categories = categories,
             cards = cards,
         )
+    }
+
+    // ---------------------------------------------------------------- 分组编排
+
+    /**
+     * 用户对分组的编排：返回（自定义分组名列表, 分类 id -> 分组名 覆盖）。
+     * 资产里的 group 只是默认值，用户改过的以这里为准。
+     */
+    fun groupLayout(context: Context): Pair<List<String>, Map<String, String>> {
+        val raw = QBankDb.get(context).getSetting(KEY_GROUP_LAYOUT).orEmpty()
+        if (raw.isBlank()) return emptyList<String>() to emptyMap()
+        return runCatching {
+            val root = JSONObject(raw)
+            val groups = ArrayList<String>()
+            root.optJSONArray("groups")?.let { a ->
+                for (i in 0 until a.length()) {
+                    a.optString(i).takeIf { it.isNotBlank() }?.let(groups::add)
+                }
+            }
+            val overrides = HashMap<String, String>()
+            root.optJSONObject("map")?.let { m ->
+                m.keys().forEach { key -> overrides[key] = m.optString(key) }
+            }
+            groups to (overrides as Map<String, String>)
+        }.getOrElse { emptyList<String>() to emptyMap() }
+    }
+
+    fun saveGroupLayout(context: Context, groups: List<String>, overrides: Map<String, String>) {
+        val root = JSONObject()
+        root.put("groups", JSONArray(groups))
+        val map = JSONObject()
+        overrides.forEach { (k, v) -> map.put(k, v) }
+        root.put("map", map)
+        QBankDb.get(context).setSetting(KEY_GROUP_LAYOUT, root.toString())
     }
 
     // ---------------------------------------------------------------- 掌握 / 重点
@@ -113,6 +157,7 @@ object ReciteRepository {
         QBankDb.get(context).setSetting(KEY_CATEGORY, categoryId.orEmpty())
     }
 
+    private const val KEY_GROUP_LAYOUT = "recite_group_layout"
     private const val ASSET_NAME = "recite_politics.json"
     private const val KEY_MASTERED = "recite_mastered"
     private const val KEY_FAVORITE = "recite_favorites"

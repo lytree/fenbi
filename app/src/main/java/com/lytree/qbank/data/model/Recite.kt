@@ -5,6 +5,7 @@ data class ReciteCard(
     val id: String,
     val categoryId: String,
     val categoryName: String,
+    val categoryGroup: String,
     val text: String,
     val answers: List<String>,
     val note: String,
@@ -15,6 +16,8 @@ data class ReciteCard(
 data class ReciteCategory(
     val id: String,
     val name: String,
+    /** 二级分组（弹层里的分组标题），空串表示不分组 */
+    val group: String = "",
 )
 
 data class ReciteCatalog(

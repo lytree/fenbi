@@ -18,9 +18,13 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
+import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
@@ -29,6 +33,7 @@ import com.lytree.qbank.R
 import com.lytree.qbank.data.ReciteRepository
 import com.lytree.qbank.data.model.ReciteCard
 import com.lytree.qbank.data.model.ReciteCatalog
+import com.lytree.qbank.data.model.ReciteCategory
 import com.lytree.qbank.databinding.ActivityReciteBinding
 import com.lytree.qbank.databinding.DialogReciteDetailBinding
 import com.lytree.qbank.ui.ScreenAdapt
@@ -54,6 +59,11 @@ class ReciteActivity : AppCompatActivity() {
     private val mastered = HashSet<String>()
     private val favorites = HashSet<String>()
 
+    /** 自定义分组（按创建顺序）与「分类 -> 分组」覆盖，存 settings 表 */
+    private val customGroups = ArrayList<String>()
+    private val groupOverrides = HashMap<String, String>()
+    private val catGroup = HashMap<String, String>()
+
     private var tab = TAB_UNMASTERED
     private var categoryFilter: String? = null
     private var favoriteOnly = false
@@ -72,8 +82,9 @@ class ReciteActivity : AppCompatActivity() {
         mastered += ReciteRepository.masteredIds(this)
         favorites += ReciteRepository.favoriteIds(this)
         fontLevel = ReciteRepository.fontLevel(this)
+        loadGroups()
         categoryFilter = ReciteRepository.rememberedCategory(this)
-            ?.takeIf { id -> catalog.categories.any { it.id == id } }
+            ?.takeIf { id -> isValidScope(id) }
         restoreState(savedInstanceState)
 
         binding.titleBar.showBack(true)
@@ -120,7 +131,7 @@ class ReciteActivity : AppCompatActivity() {
         favoriteOnly = state.getBoolean(STATE_FAVORITE_ONLY, false)
         if (state.containsKey(STATE_CATEGORY)) {
             categoryFilter = state.getString(STATE_CATEGORY)
-                ?.takeIf { id -> catalog.categories.any { it.id == id } }
+                ?.takeIf { id -> isValidScope(id) }
         }
         currentId = state.getString(STATE_CARD)
         revealed = state.getBoolean(STATE_REVEALED, false)
@@ -234,7 +245,7 @@ class ReciteActivity : AppCompatActivity() {
 
     private fun emptyMessage(): CharSequence {
         if (favoriteOnly && favorites.isEmpty()) return getString(R.string.recite_empty_favorite)
-        if (categoryFilter != null && catalog.cards.none { it.categoryId == categoryFilter }) {
+        if (categoryFilter != null && catalog.cards.none { inScope(it, categoryFilter) }) {
             return getString(R.string.recite_empty_scope)
         }
         return getString(
@@ -287,9 +298,22 @@ class ReciteActivity : AppCompatActivity() {
 
     // ---------------------------------------------------------------- 筛选 / 取数
 
+    /** scope 为 null=全部；"g|分组名"=整组；其余=单个分类 id */
+    private fun inScope(card: ReciteCard, scope: String?): Boolean = when {
+        scope == null -> true
+        scope.startsWith(GROUP_PREFIX) ->
+            (catGroup[card.categoryId] ?: UNGROUPED) == scope.removePrefix(GROUP_PREFIX)
+        else -> card.categoryId == scope
+    }
+
+    private fun isValidScope(id: String?): Boolean = when {
+        id == null -> true
+        id.startsWith(GROUP_PREFIX) -> groupNames().contains(id.removePrefix(GROUP_PREFIX))
+        else -> catalog.categories.any { it.id == id }
+    }
+
     private fun cardsInScope(): List<ReciteCard> = catalog.cards.filter { card ->
-        (categoryFilter == null || card.categoryId == categoryFilter) &&
-            (!favoriteOnly || card.id in favorites)
+        inScope(card, categoryFilter) && (!favoriteOnly || card.id in favorites)
     }
 
     private fun cardsFor(which: Int): List<ReciteCard> =
@@ -298,8 +322,11 @@ class ReciteActivity : AppCompatActivity() {
     private fun currentCard(): ReciteCard? =
         currentId?.let { id -> catalog.cards.firstOrNull { it.id == id } }
 
-    private fun categoryName(id: String?): String =
-        catalog.categories.firstOrNull { it.id == id }?.name ?: ""
+    private fun categoryName(id: String?): String = when {
+        id == null -> ""
+        id.startsWith(GROUP_PREFIX) -> id.removePrefix(GROUP_PREFIX)
+        else -> catalog.categories.firstOrNull { it.id == id }?.name ?: ""
+    }
 
     private fun switchTab(target: Int) {
         if (tab == target) return
@@ -401,7 +428,8 @@ class ReciteActivity : AppCompatActivity() {
         val view = LayoutInflater.from(this).inflate(R.layout.sheet_recite_catalog, null)
         val rows = view.findViewById<LinearLayout>(R.id.catalogRows)
         view.findViewById<TextView>(R.id.catalogMeta).text =
-            getString(R.string.recite_updated, catalog.updated, catalog.cards.size)
+            getString(R.string.recite_updated, catalog.updated, catalog.cards.size) +
+                " · " + getString(R.string.recite_group_hint)
 
         addSheetRow(
             rows,
@@ -423,17 +451,41 @@ class ReciteActivity : AppCompatActivity() {
         }
 
         addSheetDivider(rows)
-        catalog.categories.forEach { category ->
-            val total = catalog.cards.count { it.categoryId == category.id }
-            if (total == 0) return@forEach
-            addSheetRow(
+        groupNames().forEach { group ->
+            val members = catalog.categories.filter { category ->
+                (catGroup[category.id] ?: UNGROUPED) == group &&
+                    catalog.cards.any { it.categoryId == category.id }
+            }
+            addSheetGroupHeader(
                 rows,
-                category.name,
-                catalogCount(category.id),
-                categoryFilter == category.id && !favoriteOnly,
+                group,
+                if (members.isEmpty()) getString(R.string.recite_group_empty) else groupMeta(group),
+                categoryFilter == GROUP_PREFIX + group,
+                onMore = { anchor -> showGroupMenu(anchor, group) { reloadCatalog(sheet) } },
             ) {
-                applyFilter(category.id, false)
+                if (members.isEmpty()) return@addSheetGroupHeader
+                applyFilter(GROUP_PREFIX + group, false)
                 sheet.dismiss()
+            }
+            members.forEach { category ->
+                addSheetRow(
+                    rows,
+                    category.name,
+                    catalogCount(category.id),
+                    categoryFilter == category.id && !favoriteOnly,
+                    indent = 32,
+                    onLongClick = { showMoveDialog(category) { reloadCatalog(sheet) } },
+                ) {
+                    applyFilter(category.id, false)
+                    sheet.dismiss()
+                }
+            }
+        }
+
+        addSheetFooter(rows, getString(R.string.recite_group_new_action)) {
+            showGroupNameDialog(null) { _, new ->
+                createGroup(new)
+                reloadCatalog(sheet)
             }
         }
 
@@ -447,17 +499,121 @@ class ReciteActivity : AppCompatActivity() {
         return getString(R.string.recite_catalog_count, unmastered, cards.size)
     }
 
+    /** 分组标题：整组可点，点中即按「整组」背诵；右侧「⋯」可重命名 / 删除 / 新建分组 */
+    private fun addSheetGroupHeader(
+        container: LinearLayout,
+        group: String,
+        meta: String,
+        selected: Boolean,
+        onMore: (View) -> Unit,
+        onClick: () -> Unit,
+    ) {
+        val accent = ContextCompat.getColor(this, R.color.fb_primary)
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(20), 0, dp(8), 0)
+            isClickable = true
+            isFocusable = true
+            background = RippleDrawable(ColorStateList.valueOf(ContextCompat.getColor(context, R.color.fb_ripple)), null, null)
+            setOnClickListener { onClick() }
+        }
+        row.addView(
+            TextView(this).apply {
+                text = group
+                setTextSize(
+                    android.util.TypedValue.COMPLEX_UNIT_PX,
+                    resources.getDimension(R.dimen.fb_text_body_sm)
+                )
+                includeFontPadding = false
+                setTextColor(
+                    ContextCompat.getColor(
+                        this@ReciteActivity,
+                        if (selected) R.color.fb_primary else R.color.fb_text_secondary
+                    )
+                )
+                setTypeface(null, Typeface.BOLD)
+            },
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        )
+        row.addView(
+            TextView(this).apply {
+                text = meta
+                setTextSize(
+                    android.util.TypedValue.COMPLEX_UNIT_PX,
+                    resources.getDimension(R.dimen.fb_text_tag)
+                )
+                includeFontPadding = false
+                setTextColor(
+                    if (selected) accent
+                    else ContextCompat.getColor(this@ReciteActivity, R.color.fb_text_meta)
+                )
+            }
+        )
+        if (selected) {
+            row.addView(
+                TextView(this).apply {
+                    text = "✓"
+                    setTextSize(
+                        android.util.TypedValue.COMPLEX_UNIT_PX,
+                        resources.getDimension(R.dimen.fb_text_body_size)
+                    )
+                    includeFontPadding = false
+                    setTextColor(accent)
+                    setPadding(dp(8), 0, 0, 0)
+                }
+            )
+        }
+        val more = TextView(this).apply {
+            text = "⋯"
+            setTextSize(
+                android.util.TypedValue.COMPLEX_UNIT_PX,
+                resources.getDimension(R.dimen.fb_text_item_title)
+            )
+            includeFontPadding = false
+            gravity = Gravity.CENTER
+            setTextColor(ContextCompat.getColor(this@ReciteActivity, R.color.fb_text_meta))
+            isClickable = true
+            isFocusable = true
+            background = RippleDrawable(
+                ColorStateList.valueOf(
+                    ContextCompat.getColor(this@ReciteActivity, R.color.fb_ripple)
+                ), null, null
+            )
+            setOnClickListener { onMore(this) }
+        }
+        row.addView(more, LinearLayout.LayoutParams(dp(40), dp(40)))
+
+        container.addView(
+            row,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(40))
+        )
+    }
+
+    private fun groupMeta(group: String): String {
+        val sections = catalog.categories.count { (catGroup[it.id] ?: UNGROUPED) == group }
+        val cards = catalog.cards.filter { (catGroup[it.categoryId] ?: UNGROUPED) == group }
+        return getString(
+            R.string.recite_catalog_group_meta,
+            sections,
+            cards.count { it.id !in mastered },
+            cards.size,
+        )
+    }
+
     private fun addSheetRow(
         container: LinearLayout,
         title: String,
         meta: String,
         selected: Boolean,
+        indent: Int = 20,
+        onLongClick: (() -> Unit)? = null,
         onClick: () -> Unit,
     ) {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(20), 0, dp(20), 0)
+            setPadding(dp(indent), 0, dp(20), 0)
             isClickable = true
             isFocusable = true
             background = RippleDrawable(
@@ -466,6 +622,10 @@ class ReciteActivity : AppCompatActivity() {
                 ), null, null
             )
             setOnClickListener { onClick() }
+            onLongClick?.let { cb ->
+                isLongClickable = true
+                setOnLongClickListener { cb(); true }
+            }
         }
         row.addView(
             TextView(this).apply {
@@ -531,6 +691,204 @@ class ReciteActivity : AppCompatActivity() {
         )
     }
 
+    private fun addSheetFooter(container: LinearLayout, text: String, onClick: () -> Unit) {
+        container.addView(
+            TextView(this).apply {
+                this.text = text
+                setTextSize(
+                    android.util.TypedValue.COMPLEX_UNIT_PX,
+                    resources.getDimension(R.dimen.fb_text_body_size)
+                )
+                includeFontPadding = false
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(20), 0, dp(20), 0)
+                setTextColor(ContextCompat.getColor(this@ReciteActivity, R.color.fb_primary))
+                isClickable = true
+                isFocusable = true
+                background = RippleDrawable(
+                    ColorStateList.valueOf(
+                        ContextCompat.getColor(this@ReciteActivity, R.color.fb_ripple)
+                    ), null, null
+                )
+                setOnClickListener { onClick() }
+            },
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                resources.getDimensionPixelSize(R.dimen.fb_row_h)
+            ).apply { topMargin = dp(4) }
+        )
+    }
+
+    // ---------------------------------------------------------------- 分组增删改
+
+    /** 分组「⋯」菜单：重命名 / 删除 / 新建分组 */
+    private fun showGroupMenu(anchor: View, group: String, onChanged: () -> Unit) {
+        PopupMenu(this, anchor).apply {
+            menu.add(0, MENU_RENAME, 0, R.string.recite_group_rename)
+            menu.add(0, MENU_DELETE, 1, R.string.recite_group_delete)
+            menu.add(0, MENU_NEW, 2, R.string.recite_group_new)
+            setOnMenuItemClickListener { item ->
+                when (item.itemId) {
+                    MENU_RENAME -> showGroupNameDialog(group) { old, new ->
+                        renameGroup(old, new)
+                        onChanged()
+                    }
+                    MENU_DELETE -> confirmDeleteGroup(group, onChanged)
+                    MENU_NEW -> showGroupNameDialog(null) { _, new ->
+                        createGroup(new)
+                        onChanged()
+                    }
+                }
+                true
+            }
+            show()
+        }
+    }
+
+    /** 新建 / 重命名分组：传 group=null 为新建 */
+    private fun showGroupNameDialog(group: String?, onDone: (String, String) -> Unit) {
+        val input = EditText(this).apply {
+            hint = getString(R.string.recite_group_name_hint)
+            setText(group.orEmpty())
+            setSelection(text.length)
+            setSingleLine()
+        }
+        val wrap = FrameLayout(this).apply {
+            setPadding(dp(24), dp(8), dp(24), 0)
+            addView(input, FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            ))
+        }
+        AlertDialog.Builder(this)
+            .setTitle(if (group == null) R.string.recite_group_new else R.string.recite_group_rename)
+            .setView(wrap)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                val name = input.text.toString().trim()
+                if (name.isEmpty()) return@setPositiveButton
+                if (name == UNGROUPED) {
+                    toast(R.string.recite_group_name_reserved)
+                    return@setPositiveButton
+                }
+                onDone(group.orEmpty(), name)
+            }
+            .show()
+    }
+
+    private fun createGroup(name: String) {
+        if (groupNames().contains(name)) return
+        customGroups.add(name)
+        persistGroups()
+    }
+
+    private fun renameGroup(old: String, new: String) {
+        if (old == new || new.isBlank()) return
+        if (groupNames().contains(new)) {
+            toast(R.string.recite_group_exists)
+            return
+        }
+        catalog.categories.forEach { category ->
+            if ((catGroup[category.id] ?: UNGROUPED) == old) groupOverrides[category.id] = new
+        }
+        val idx = customGroups.indexOf(old)
+        if (idx >= 0) customGroups[idx] = new
+        if (categoryFilter == GROUP_PREFIX + old) categoryFilter = GROUP_PREFIX + new
+        persistGroups()
+    }
+
+    private fun confirmDeleteGroup(group: String, onChanged: () -> Unit) {
+        if (group == UNGROUPED) {
+            toast(R.string.recite_group_ungrouped_locked)
+            return
+        }
+        val count = catalog.categories.count { (catGroup[it.id] ?: UNGROUPED) == group }
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.recite_group_delete_title, group))
+            .setMessage(getString(R.string.recite_group_delete_msg, count))
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                catalog.categories.forEach { category ->
+                    if ((catGroup[category.id] ?: UNGROUPED) == group) {
+                        groupOverrides[category.id] = UNGROUPED
+                    }
+                }
+                customGroups.remove(group)
+                if (categoryFilter == GROUP_PREFIX + group) categoryFilter = null
+                persistGroups()
+                onChanged()
+            }
+            .show()
+    }
+
+    /** 课程（分类）移动到其他分组，长按课程行触发 */
+    private fun showMoveDialog(category: ReciteCategory, onChanged: () -> Unit) {
+        val names = groupNames()
+        val current = catGroup[category.id] ?: UNGROUPED
+        val options = names.toMutableList().apply {
+            if (!contains(UNGROUPED)) add(0, UNGROUPED)
+        }
+        val checked = options.indexOf(current)
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.recite_group_move_title, category.name))
+            .setSingleChoiceItems(options.toTypedArray(), checked) { dialog, which ->
+                val target = options[which]
+                if (target != current) {
+                    groupOverrides[category.id] = target
+                    if (categoryFilter == category.id) categoryFilter = null
+                    persistGroups()
+                    onChanged()
+                }
+                dialog.dismiss()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    /** 分组操作后重开弹层，让列表按最新分组重排 */
+    private fun reloadCatalog(sheet: BottomSheetDialog) {
+        sheet.dismiss()
+        binding.root.post { showCatalog() }
+    }
+
+    private fun loadGroups() {
+        val layout = ReciteRepository.groupLayout(this)
+        customGroups.clear()
+        customGroups.addAll(layout.first)
+        groupOverrides.clear()
+        groupOverrides.putAll(layout.second)
+        rebuildGroups()
+    }
+
+    /** 把「分类 -> 分组」算进缓存，分组筛选 / 标题都用它 */
+    private fun rebuildGroups() {
+        catGroup.clear()
+        catalog.categories.forEach { category ->
+            catGroup[category.id] =
+                (groupOverrides[category.id] ?: category.group).ifBlank { UNGROUPED }
+        }
+    }
+
+    private fun persistGroups() {
+        ReciteRepository.saveGroupLayout(this, customGroups, groupOverrides)
+        rebuildGroups()
+    }
+
+    /** 分组顺序：自定义分组在前（按创建顺序），其余按课程顺序 */
+    private fun groupNames(): List<String> {
+        val names = LinkedHashSet<String>()
+        customGroups.forEach(names::add)
+        catalog.categories.forEach { names.add(catGroup[it.id] ?: UNGROUPED) }
+        return names.toList()
+    }
+
+    private fun displayName(card: ReciteCard): String {
+        val category = catalog.categories.firstOrNull { it.id == card.categoryId }
+            ?: return card.categoryName
+        val group = catGroup[card.categoryId] ?: UNGROUPED
+        return if (group == UNGROUPED) "$UNGROUPED · ${category.name}" else "$group · ${category.name}"
+    }
+
     // ---------------------------------------------------------------- 考点详情
 
     private fun showDetail() {
@@ -541,7 +899,7 @@ class ReciteActivity : AppCompatActivity() {
         dialog.setCanceledOnTouchOutside(true)
 
         b.tvDetailTitle.text =
-            getString(R.string.recite_detail_title_fmt, card.seq, card.categoryName)
+            getString(R.string.recite_detail_title_fmt, card.seq, displayName(card))
         b.tvDetailText.text = cardSpanned(card, reveal = true, withSeq = false)
         if (card.note.isBlank()) {
             b.tvDetailNoteLabel.visibility = View.GONE
@@ -577,6 +935,16 @@ class ReciteActivity : AppCompatActivity() {
     private companion object {
         const val TAB_UNMASTERED = 0
         const val TAB_MASTERED = 1
+
+        /** 分组筛选的前缀：categoryFilter 为 "g|超格 · 新思想" 时代表按整组筛选 */
+        const val GROUP_PREFIX = "g|"
+
+        /** 未分组：删除分组后课程落到这里，也作为可编辑的普通分组出现 */
+        const val UNGROUPED = "未分组"
+
+        const val MENU_RENAME = 1
+        const val MENU_DELETE = 2
+        const val MENU_NEW = 3
 
         const val STATE_TAB = "recite_tab"
         const val STATE_CATEGORY = "recite_category"
