@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 顶栏「背诵模式」开启态底：浅蓝圆角，让开关一眼看得出是开着的 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/fb_primary_soft" />
+    <corners android:radius="8dp" />
+</shape>

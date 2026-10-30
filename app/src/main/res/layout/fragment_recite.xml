@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   考点背诵（并入「词库」Tab，与词库 / 成语共用顶部三段切换）
-  顶栏 + 三段切换 + 未掌握/已掌握 + 背诵模式开关 + 背诵卡 + 换一个 / 随机 / 记住了
+  顶栏（含背诵模式开关）+ 三段切换 + 未掌握/已掌握 + 背诵卡（左右滑动切题，无底部按钮）
   版式与全站一致：白底卡片 + 主蓝强调 + 底部白底操作条
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -82,30 +82,15 @@
         </LinearLayout>
     </LinearLayout>
 
-    <!-- 背诵模式：开了就直接显示答案（纯背诵 / 朗读用），关着就长按看答案（自测用） -->
+    <!-- 背诵模式的开关在顶栏（睁眼图标），这里只放当前范围与进度 -->
     <LinearLayout
         android:id="@+id/modeRow"
         android:layout_width="match_parent"
-        android:layout_height="40dp"
+        android:layout_height="32dp"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingStart="@dimen/fb_page_pad"
         android:paddingEnd="@dimen/fb_page_pad">
-
-        <com.lytree.qbank.ui.FbSwitchView
-            android:id="@+id/switchMode"
-            android:layout_width="38dp"
-            android:layout_height="22dp" />
-
-        <TextView
-            android:id="@+id/tvModeLabel"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:includeFontPadding="false"
-            android:text="@string/recite_mode"
-            android:textColor="@color/fb_text_secondary"
-            android:textSize="13sp" />
 
         <Space
             android:layout_width="0dp"
@@ -143,7 +128,7 @@
         android:paddingStart="@dimen/fb_page_pad"
         android:paddingTop="@dimen/fb_space_4"
         android:paddingEnd="@dimen/fb_page_pad"
-        android:paddingBottom="@dimen/fb_space_8">
+        android:paddingBottom="@dimen/fb_space_16">
 
         <FrameLayout
             android:id="@+id/card"
@@ -211,40 +196,4 @@
             android:visibility="gone"
             tools:visibility="visible" />
     </FrameLayout>
-
-    <View style="@style/FbDivider" />
-
-    <LinearLayout
-        android:id="@+id/bottomBar"
-        style="@style/FbBottomBar"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnNext"
-            style="@style/FbGhostButton"
-            android:layout_width="0dp"
-            android:layout_weight="1"
-            android:text="@string/recite_next" />
-
-        <ImageView
-            android:id="@+id/btnShuffle"
-            android:layout_width="@dimen/fb_btn_h"
-            android:layout_height="@dimen/fb_btn_h"
-            android:layout_marginStart="@dimen/fb_space_8"
-            android:layout_marginEnd="@dimen/fb_space_8"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:clickable="true"
-            android:contentDescription="@string/recite_shuffle"
-            android:focusable="true"
-            android:padding="11dp"
-            android:src="@drawable/ic_recite_shuffle" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnMaster"
-            style="@style/FbPrimaryButton"
-            android:layout_width="0dp"
-            android:layout_weight="1"
-            android:text="@string/recite_remember" />
-    </LinearLayout>
 </LinearLayout>

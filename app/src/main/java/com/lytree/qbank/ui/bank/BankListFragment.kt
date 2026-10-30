@@ -30,10 +30,6 @@ class BankListFragment : Fragment(), Refreshable {
         db = QBankDb.get(requireContext())
         binding.titleBar.usePageTitleStyle()
         binding.titleBar.setTitle(getString(com.lytree.qbank.R.string.page_banks))
-        binding.titleBar.addTextAction(getString(com.lytree.qbank.R.string.action_recite)) {
-            // 考点背诵已并进「词库」Tab（词库 / 成语 / 考点背诵），这里只做快捷跳转
-            (activity as? MainActivity)?.openRecite()
-        }
         binding.titleBar.addTextAction(getString(com.lytree.qbank.R.string.action_import)) { openImport() }
 
         binding.list.layoutManager = LinearLayoutManager(requireContext())

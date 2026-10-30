@@ -1,10 +1,7 @@
 package com.lytree.qbank.ui.recite
 
-import android.app.Dialog
 import android.content.res.ColorStateList
-import android.graphics.Color
 import android.graphics.Typeface
-import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.RippleDrawable
 import android.os.Bundle
 import android.text.SpannableStringBuilder
@@ -20,9 +17,9 @@ import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
-import android.view.WindowManager
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.PopupMenu
 import android.widget.TextView
@@ -37,22 +34,25 @@ import com.lytree.qbank.data.ReciteRepository
 import com.lytree.qbank.data.model.ReciteCard
 import com.lytree.qbank.data.model.ReciteCatalog
 import com.lytree.qbank.data.model.ReciteCategory
-import com.lytree.qbank.databinding.DialogReciteDetailBinding
 import com.lytree.qbank.databinding.FragmentReciteBinding
 import com.lytree.qbank.ui.LibrarySwitch
 import com.lytree.qbank.ui.idiom.IdiomListFragment
 import com.lytree.qbank.ui.word.WordListFragment
+import java.text.Collator
+import java.util.Locale
 import kotlin.math.abs
-import kotlin.random.Random
 
 /**
  * 考点背诵（对齐超格考点背诵），并进「词库」Tab，与词库 / 成语共用顶部三段切换。
  *
  * · 未掌握 / 已掌握两个标签页，数量实时更新
  * · 填空式背诵卡：**左右滑动切题**，**长按显示答案**（松手仍在，轻点收起）
- * · **背诵模式**：开关打开后答案直接显示，卡片下方提示改为「背诵模式」，适合通读 / 朗读
- * · 换一个（顺序下一个）/ 随机一个 / 记住了（未掌握→已掌握，已掌握→取消掌握）
- * · 顶栏：考点详情、考点范围（分类 / 只看重点）、字号 A小/A中/A大
+ * · **背诵模式**：顶栏的睁眼图标即开关，打开后答案直接显示、图标染主蓝，适合通读 / 朗读
+ * · 卡片右上角星标：重点收藏，配合「只看重点」筛选
+ * · 顶栏：背诵模式开关、考点范围（分类 / 只看重点）、字号 A小/A中/A大
+ * · 范围面板不再有「全部考点」：分组与组内课程都按拼音重排、「未分组」垫底，
+ *   首次进来默认落在第一个有考点的分组
+ * · 页面无底部按钮，切题全靠左右滑动，卡面留给正文
  *
  * 掌握、重点、背诵模式、字号、上次停在哪张卡都按考点 id / 设置项存库，退出重进仍在；
  * 分词正文与答案来自 assets。
@@ -63,6 +63,9 @@ class ReciteFragment : Fragment() {
     private val binding get() = _binding!!
 
     private lateinit var fontAction: TextView
+
+    /** 顶栏「背诵模式」开关：图标 + 底色随开关变化 */
+    private lateinit var modeAction: ImageView
 
     private var catalog: ReciteCatalog = ReciteCatalog.EMPTY
     private val mastered = HashSet<String>()
@@ -102,14 +105,16 @@ class ReciteFragment : Fragment() {
         loadGroups()
         categoryFilter = ReciteRepository.rememberedCategory(context)
             ?.takeIf { id -> isValidScope(id) }
+            ?: defaultScope()
         restoreState(savedInstanceState)
 
         binding.titleBar.usePageTitleStyle()
         binding.titleBar.setTitle(getString(R.string.title_recite))
-        binding.titleBar.addIconAction(
-            R.drawable.ic_recite_detail,
-            getString(R.string.recite_detail_entry)
-        ) { showDetail() }
+        // 顶栏第一颗图标就是「背诵模式」开关：睁眼=答案常显，一眼看得出当前是不是在背诵模式
+        modeAction = binding.titleBar.addIconAction(
+            R.drawable.ic_recite_mode,
+            getString(R.string.recite_mode)
+        ) { setReciteMode(!reciteMode) }
         binding.titleBar.addIconAction(
             R.drawable.ic_recite_catalog,
             getString(R.string.recite_catalog_title)
@@ -129,20 +134,8 @@ class ReciteFragment : Fragment() {
         binding.tabUnmastered.setOnClickListener { switchTab(TAB_UNMASTERED) }
         binding.tabMastered.setOnClickListener { switchTab(TAB_MASTERED) }
         binding.btnStar.setOnClickListener { toggleFavorite() }
-        binding.btnNext.setOnClickListener { step(1, fromButton = true) }
-        binding.btnShuffle.setOnClickListener { shuffle() }
-        binding.btnMaster.setOnClickListener { toggleMastered() }
 
-        binding.switchMode.setChecked(reciteMode, animate = false)
-        binding.switchMode.onCheckedChange = { on ->
-            reciteMode = on
-            ReciteRepository.setReciteMode(requireContext(), on)
-            if (!on) revealed = false
-            currentCard()?.let { bindCard(it) }
-        }
-        // 点「背诵模式」这四个字也能开关，不用非得点那个小圆点
-        binding.modeRow.setOnClickListener { binding.switchMode.performClick() }
-
+        updateModeAction()
         setupCardGestures()
         updateFontAction()
         render(animate = false)
@@ -206,9 +199,6 @@ class ReciteFragment : Fragment() {
         if (!isAdded) return
         renderTabs()
         renderFilterChip()
-        binding.btnMaster.setText(
-            if (tab == TAB_UNMASTERED) R.string.recite_remember else R.string.recite_forget
-        )
 
         val list = cardsFor(tab)
         if (list.isEmpty()) {
@@ -220,11 +210,9 @@ class ReciteFragment : Fragment() {
             binding.emptyText.isVisible = true
             binding.emptyText.setText(emptyMessage())
             binding.tvProgress.text = ""
-            setActionsEnabled(false)
             return
         }
 
-        setActionsEnabled(true)
         binding.emptyText.isVisible = false
         val target = list.firstOrNull { it.id == currentId } ?: list.first()
         if (target.id != currentId) {
@@ -323,7 +311,8 @@ class ReciteFragment : Fragment() {
         binding.filterChip.isVisible = label != null
         if (label != null) {
             binding.filterChip.text = getString(R.string.recite_filter_fmt, label)
-            binding.filterChip.setOnClickListener { applyFilter(null, false) }
+            // 面板里已经没有「全部考点」，清掉筛选就回到默认的第一组，不留「全部」这个看不见的状态
+            binding.filterChip.setOnClickListener { applyFilter(defaultScope(), false) }
         }
     }
 
@@ -338,11 +327,10 @@ class ReciteFragment : Fragment() {
         )
     }
 
-    private fun setActionsEnabled(enabled: Boolean) {
-        listOf(binding.btnNext, binding.btnShuffle, binding.btnMaster).forEach {
-            it.isEnabled = enabled
-            it.alpha = if (enabled) 1f else 0.38f
-        }
+    /** 当前范围内的序号：跟顶部「第几张 / 共几张」同一口径，切到某个组就从 1 重数 */
+    private fun seqInScope(card: ReciteCard): Int {
+        val index = cardsFor(tab).indexOfFirst { it.id == card.id }
+        return if (index >= 0) index + 1 else card.seq
     }
 
     /** 把正文里的 ____ 换成答案（或下划线），答案用主蓝高亮 */
@@ -352,7 +340,7 @@ class ReciteFragment : Fragment() {
         val soft = ContextCompat.getColor(context, R.color.fb_primary_soft)
         val hint = ContextCompat.getColor(context, R.color.fb_text_hint)
         val sb = SpannableStringBuilder()
-        if (withSeq) sb.append("${card.seq}. ")
+        if (withSeq) sb.append("${seqInScope(card)}. ")
 
         val parts = card.text.split("____")
         for (i in parts.indices) {
@@ -480,58 +468,16 @@ class ReciteFragment : Fragment() {
         render(animate = true)
     }
 
-    /** 左右切题 / 「换一个」：循环取下一张（到头回到第一张）；滑动手势不弹提示，按钮才提示 */
-    private fun step(delta: Int, fromButton: Boolean = false) {
+    /** 左右滑动切题：循环取下一张（到头回到第一张） */
+    private fun step(delta: Int) {
         val list = cardsFor(tab)
-        if (list.size <= 1) {
-            if (fromButton && list.size == 1) toast(R.string.recite_only_one)
-            return
-        }
+        if (list.size <= 1) return
         val current = currentId
         val index = list.indexOfFirst { it.id == current }.let { if (it < 0) 0 else it }
         val next = list[((index + delta) % list.size + list.size) % list.size]
         currentId = next.id
         revealed = false
         render(animate = true, forward = delta > 0)
-    }
-
-    private fun shuffle() {
-        val card = currentCard() ?: return
-        val list = cardsFor(tab)
-        if (list.size <= 1) {
-            toast(R.string.recite_only_one)
-            return
-        }
-        val next = list.filter { it.id != card.id }.let { it[Random.nextInt(it.size)] }
-        currentId = next.id
-        revealed = false
-        render(animate = true)
-    }
-
-    private fun toggleMastered() {
-        val card = currentCard() ?: return
-        val mastering = tab == TAB_UNMASTERED
-        val before = cardsFor(tab)
-        val index = before.indexOfFirst { it.id == card.id }.coerceAtLeast(0)
-
-        ReciteRepository.setMastered(requireContext(), card.id, mastering)
-        if (mastering) mastered.add(card.id) else mastered.remove(card.id)
-        toast(if (mastering) R.string.recite_added else R.string.recite_removed)
-
-        val after = cardsFor(tab)
-        currentId = after.getOrNull(index)?.id ?: after.lastOrNull()?.id
-        revealed = false
-        if (after.isEmpty()) {
-            binding.card.animate().alpha(0f).translationX(-dp(16).toFloat()).setDuration(120)
-                .withEndAction {
-                    if (_binding == null) return@withEndAction
-                    binding.card.alpha = 1f
-                    binding.card.translationX = 0f
-                    render(animate = false)
-                }.start()
-        } else {
-            render(animate = true)
-        }
     }
 
     private fun toggleFavorite() {
@@ -557,6 +503,37 @@ class ReciteFragment : Fragment() {
         currentId = null
         revealed = false
         render(animate = true)
+    }
+
+    // ---------------------------------------------------------------- 背诵模式开关
+
+    /**
+     * 顶栏那颗睁眼图标就是开关：开 = 答案常显（图标染主蓝 + 浅蓝底），
+     * 关 = 回到长按 / 轻点看答案。状态存库，下次进来还是上次的。
+     */
+    private fun setReciteMode(on: Boolean) {
+        if (reciteMode == on) return
+        reciteMode = on
+        ReciteRepository.setReciteMode(requireContext(), on)
+        if (!on) revealed = false
+        updateModeAction()
+        toast(if (on) R.string.recite_mode_on else R.string.recite_mode_off)
+        currentCard()?.let { bindCard(it) }
+    }
+
+    private fun updateModeAction() {
+        val context = requireContext()
+        modeAction.imageTintList = ColorStateList.valueOf(
+            ContextCompat.getColor(context, if (reciteMode) R.color.fb_primary else R.color.fb_icon)
+        )
+        modeAction.background = if (reciteMode) {
+            ContextCompat.getDrawable(context, R.drawable.bg_recite_mode_on)
+        } else {
+            null
+        }
+        modeAction.isSelected = reciteMode
+        modeAction.contentDescription =
+            getString(if (reciteMode) R.string.recite_mode_on else R.string.recite_mode)
     }
 
     // ---------------------------------------------------------------- 字号
@@ -590,15 +567,6 @@ class ReciteFragment : Fragment() {
 
         addSheetRow(
             rows,
-            getString(R.string.recite_catalog_all),
-            catalogCount(null),
-            categoryFilter == null && !favoriteOnly,
-        ) {
-            applyFilter(null, false)
-            sheet.dismiss()
-        }
-        addSheetRow(
-            rows,
             getString(R.string.recite_catalog_favorite),
             getString(R.string.recite_catalog_favorite_count, favorites.size),
             favoriteOnly,
@@ -609,10 +577,13 @@ class ReciteFragment : Fragment() {
 
         addSheetDivider(rows)
         groupNames().forEach { group ->
-            val members = catalog.categories.filter { category ->
-                (catGroup[category.id] ?: UNGROUPED) == group &&
-                    catalog.cards.any { it.categoryId == category.id }
-            }
+            // 组内课程也按拼音重排，和分组顺序同一口径
+            val members = catalog.categories
+                .filter { category ->
+                    (catGroup[category.id] ?: UNGROUPED) == group &&
+                        catalog.cards.any { it.categoryId == category.id }
+                }
+                .sortedWith(compareBy(CHINESE_ORDER) { it.name })
             addSheetGroupHeader(
                 rows,
                 group,
@@ -1046,49 +1017,17 @@ class ReciteFragment : Fragment() {
         val names = LinkedHashSet<String>()
         customGroups.forEach(names::add)
         catalog.categories.forEach { names.add(catGroup[it.id] ?: UNGROUPED) }
-        return names.toList()
+        // 面板顺序按拼音重排，「未分组」永远垫底：它是兜底组，夹在课程组中间会打断阅读
+        return names.sortedWith(CHINESE_ORDER).sortedBy { it == UNGROUPED }
     }
 
-    private fun displayName(card: ReciteCard): String {
-        val category = catalog.categories.firstOrNull { it.id == card.categoryId }
-            ?: return card.categoryName
-        val group = catGroup[card.categoryId] ?: UNGROUPED
-        return if (group == UNGROUPED) "$UNGROUPED · ${category.name}" else "$group · ${category.name}"
-    }
-
-    // ---------------------------------------------------------------- 考点详情
-
-    private fun showDetail() {
-        val card = currentCard() ?: return
-        val b = DialogReciteDetailBinding.inflate(layoutInflater)
-        val dialog = Dialog(requireContext())
-        dialog.setContentView(b.root)
-        dialog.setCanceledOnTouchOutside(true)
-
-        b.tvDetailTitle.text =
-            getString(R.string.recite_detail_title_fmt, card.seq, displayName(card))
-        b.tvDetailText.text = cardSpanned(card, reveal = true, withSeq = false)
-        if (card.note.isBlank()) {
-            b.tvDetailNoteLabel.visibility = View.GONE
-            b.tvDetailNote.visibility = View.GONE
-        } else {
-            b.tvDetailNote.text = card.note
-        }
-        b.tvDetailSource.text = getString(
-            R.string.recite_detail_source,
-            card.source.ifBlank { getString(R.string.recite_catalog_all) }
-        )
-        b.btnDetailClose.setOnClickListener { dialog.dismiss() }
-
-        dialog.window?.apply {
-            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-            val dm = resources.displayMetrics
-            val maxWidth = (340 * dm.density).toInt()
-            val width = minOf(maxWidth, dm.widthPixels - (56 * dm.density).toInt())
-            setLayout(width, WindowManager.LayoutParams.WRAP_CONTENT)
-        }
-        dialog.show()
-    }
+    /** 面板里已没有「全部考点」这一项，进来默认落到第一个有考点的分组 */
+    private fun defaultScope(): String? =
+        groupNames()
+            .firstOrNull { group ->
+                catalog.cards.any { (catGroup[it.categoryId] ?: UNGROUPED) == group }
+            }
+            ?.let { GROUP_PREFIX + it }
 
     // ---------------------------------------------------------------- 小工具
 
@@ -1100,6 +1039,11 @@ class ReciteFragment : Fragment() {
         (value * resources.displayMetrics.density + 0.5f).toInt()
 
     private companion object {
+        /** 中文按拼音排：分组 / 分类都用它，面板顺序才稳定可预期 */
+        val CHINESE_ORDER = Comparator<String> { a, b ->
+            Collator.getInstance(Locale.CHINA).compare(a, b)
+        }
+
         const val TAB_UNMASTERED = 0
         const val TAB_MASTERED = 1
 

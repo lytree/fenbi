@@ -10,16 +10,12 @@ import com.lytree.qbank.R
 import com.lytree.qbank.databinding.ActivityMainBinding
 import com.lytree.qbank.ui.bank.BankListFragment
 import com.lytree.qbank.ui.paper.PaperListFragment
-import com.lytree.qbank.ui.recite.ReciteFragment
 import com.lytree.qbank.ui.record.RecordListFragment
 import com.lytree.qbank.ui.word.WordListFragment
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
-
-    /** 从别的 Tab 直接跳「考点背诵」时置位：选中项要变，但内容不换成词库首页 */
-    private var suppressNavReplace = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -30,7 +26,6 @@ class MainActivity : AppCompatActivity() {
         binding.bottomNav.applyNavBarBottomPadding()
 
         binding.bottomNav.setOnItemSelectedListener { item ->
-            if (suppressNavReplace) return@setOnItemSelectedListener true
             val fragment: Fragment = when (item.itemId) {
                 R.id.nav_words -> WordListFragment()
                 R.id.nav_papers -> PaperListFragment()
@@ -78,21 +73,6 @@ class MainActivity : AppCompatActivity() {
 
     fun openImport() {
         startActivity(Intent(this, ImportActivity::class.java))
-    }
-
-    /**
-     * 直接打开「考点背诵」：它是词库 Tab 里的一段（词库 / 成语 / 考点背诵），
-     * 所以底部导航要跟着亮到「词库」，但内容不能换成词库首页，因此替换动作由这里自己发。
-     */
-    fun openRecite() {
-        if (binding.bottomNav.selectedItemId != R.id.nav_words) {
-            suppressNavReplace = true
-            binding.bottomNav.selectedItemId = R.id.nav_words
-            suppressNavReplace = false
-        }
-        supportFragmentManager.beginTransaction()
-            .replace(R.id.container, ReciteFragment())
-            .commit()
     }
 }
 
