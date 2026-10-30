@@ -236,8 +236,11 @@
     <string name="recite_font_small">小</string>
     <string name="recite_font_medium">中</string>
     <string name="recite_font_large">大</string>
-    <string name="recite_hint_reveal">轻点卡片显示答案</string>
-    <string name="recite_hint_hide">轻点卡片收起答案</string>
+    <string name="recite_hint_reveal">长按显示答案 · 左右滑动切题</string>
+    <string name="recite_hint_hide">轻点收起答案 · 左右滑动切题</string>
+    <string name="recite_hint_mode">背诵模式 · 答案已显示</string>
+    <string name="recite_mode">背诵模式</string>
+    <string name="recite_progress_fmt">%1$d / %2$d</string>
     <string name="recite_filter_fmt">筛选：%1$s ×</string>
     <string name="recite_filter_favorite">只看重点</string>
     <string name="recite_catalog_all">全部考点</string>

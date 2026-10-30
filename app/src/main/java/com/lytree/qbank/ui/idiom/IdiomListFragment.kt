@@ -22,6 +22,7 @@ import com.lytree.qbank.data.model.IdiomCatalog
 import com.lytree.qbank.databinding.FragmentIdiomBinding
 import com.lytree.qbank.ui.LibrarySwitch
 import com.lytree.qbank.ui.Refreshable
+import com.lytree.qbank.ui.recite.ReciteFragment
 import com.lytree.qbank.ui.word.WordListFragment
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -35,7 +36,7 @@ import kotlinx.coroutines.withContext
  * · 归类：文档末尾的归类表以两级标签呈现（大类 → 子类），点标签即筛选
  * · 释义：默认两行，点条目展开 / 收起
  *
- * 本页不占底部导航（导航最多 5 项），从词库页顶部的「词库 / 成语」切换进来，
+ * 本页不占底部导航（导航 4 项），从词库页顶部的「词库 / 成语 / 考点背诵」切换进来，
  * 切回词库同样是 replace，底部仍高亮「词库」。
  */
 class IdiomListFragment : Fragment(), Refreshable {
@@ -60,12 +61,13 @@ class IdiomListFragment : Fragment(), Refreshable {
         binding.titleBar.setTitle(getString(R.string.page_idioms))
         binding.titleBar.addTextAction(getString(R.string.action_reset)) { resetFilters() }
 
-        // 词库 / 成语 切换：当前已在成语，点「词库」把本页换回词库
+        // 词库 / 成语 / 考点背诵 切换：当前已在成语，点其余两段把本页换掉
         LibrarySwitch.bind(
             binding.librarySwitch,
-            idiomSelected = true,
+            LibrarySwitch.PAGE_IDIOMS,
             onWords = { openWords() },
-            onIdioms = {}
+            onIdioms = {},
+            onRecite = { openRecite() }
         )
 
         adapter = IdiomAdapter { group -> filterByGroup(group) }
@@ -106,6 +108,13 @@ class IdiomListFragment : Fragment(), Refreshable {
     private fun openWords() {
         parentFragmentManager.beginTransaction()
             .replace(R.id.container, WordListFragment())
+            .commit()
+    }
+
+    /** 换到考点背诵页：同样留在「词库」Tab 里 */
+    private fun openRecite() {
+        parentFragmentManager.beginTransaction()
+            .replace(R.id.container, ReciteFragment())
             .commit()
     }
 

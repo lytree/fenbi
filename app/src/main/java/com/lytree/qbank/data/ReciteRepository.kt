@@ -157,10 +157,28 @@ object ReciteRepository {
         QBankDb.get(context).setSetting(KEY_CATEGORY, categoryId.orEmpty())
     }
 
+    /** 上次背到哪张卡：切到词库 / 成语再切回来，接着上一张背 */
+    fun lastCard(context: Context): String? =
+        QBankDb.get(context).getSetting(KEY_LAST_CARD)?.takeIf { it.isNotBlank() }
+
+    fun rememberCard(context: Context, cardId: String) {
+        QBankDb.get(context).setSetting(KEY_LAST_CARD, cardId)
+    }
+
+    /** 背诵模式：开着就直接显示答案（通读 / 朗读），关着就长按看答案（自测） */
+    fun reciteMode(context: Context): Boolean =
+        QBankDb.get(context).getSetting(KEY_RECITE_MODE) == "1"
+
+    fun setReciteMode(context: Context, on: Boolean) {
+        QBankDb.get(context).setSetting(KEY_RECITE_MODE, if (on) "1" else "0")
+    }
+
     private const val KEY_GROUP_LAYOUT = "recite_group_layout"
     private const val ASSET_NAME = "recite_politics.json"
     private const val KEY_MASTERED = "recite_mastered"
     private const val KEY_FAVORITE = "recite_favorites"
     private const val KEY_FONT = "recite_font_level"
     private const val KEY_CATEGORY = "recite_category"
+    private const val KEY_LAST_CARD = "recite_last_card"
+    private const val KEY_RECITE_MODE = "recite_mode"
 }

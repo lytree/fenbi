@@ -20,6 +20,7 @@ import com.lytree.qbank.databinding.FragmentWordsBinding
 import com.lytree.qbank.ui.LibrarySwitch
 import com.lytree.qbank.ui.Refreshable
 import com.lytree.qbank.ui.idiom.IdiomListFragment
+import com.lytree.qbank.ui.recite.ReciteFragment
 
 /**
  * 词库页：成语和实词同表，按拼音首字母分组，右侧字母条直接跳组。
@@ -29,8 +30,9 @@ import com.lytree.qbank.ui.idiom.IdiomListFragment
  * - 标签（细分）——自由文本，个数随词表来源浮动，走弹窗多选，标签之间取并集。
  * 换分类会清空标签：标签清单本身是按分类统计的，留着旧标签多半一条都筛不出来。
  *
- * 成语汇总（[IdiomListFragment]）并进本页：底部导航只有 5 个入口，用顶部的「词库 / 成语」
- * 切换在两个页面之间换，切换只是 replace，不改底部导航的选中项。
+ * 成语汇总（[IdiomListFragment]）与考点背诵（[ReciteFragment]）都并进本页：底部导航只有
+ * 4 个入口，用顶部的「词库 / 成语 / 考点背诵」切换在三个页面之间换，切换只是 replace，
+ * 不改底部导航的选中项。
  */
 class WordListFragment : Fragment(), Refreshable {
 
@@ -58,12 +60,13 @@ class WordListFragment : Fragment(), Refreshable {
         binding.titleBar.setTitle(getString(R.string.page_words))
         binding.titleBar.addTextAction(getString(R.string.action_import)) { openImport() }
 
-        // 词库 / 成语 切换：当前已在词库，点「成语」只是把本页换成成语汇总
+        // 词库 / 成语 / 考点背诵 三段切换：当前已在词库，点另外两段只是把本页换掉
         LibrarySwitch.bind(
             binding.librarySwitch,
-            idiomSelected = false,
+            LibrarySwitch.PAGE_WORDS,
             onWords = {},
-            onIdioms = { openIdioms() }
+            onIdioms = { openIdioms() },
+            onRecite = { openRecite() }
         )
 
         binding.list.layoutManager = LinearLayoutManager(requireContext())
@@ -98,6 +101,13 @@ class WordListFragment : Fragment(), Refreshable {
     private fun openIdioms() {
         parentFragmentManager.beginTransaction()
             .replace(R.id.container, IdiomListFragment())
+            .commit()
+    }
+
+    /** 换成考点背诵页：同样留在「词库」Tab 里，背诵与词库共用一条切换条 */
+    private fun openRecite() {
+        parentFragmentManager.beginTransaction()
+            .replace(R.id.container, ReciteFragment())
             .commit()
     }
 

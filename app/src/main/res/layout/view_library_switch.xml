@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  词库页的页面切换：词库 / 成语。
-  底部导航最多 5 个入口，所以成语汇总并进词库页，用这条切换在两页之间来回。
+  词库页的页面切换：词库 / 成语 / 考点背诵。
+  底部导航只有 4 个入口，成语汇总和考点背诵都并进词库页，用这条切换在三页之间来回。
   选中态用主蓝文字 + 下划线，与下面的筛选胶囊区分开。
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -53,6 +53,7 @@
         android:gravity="center_horizontal"
         android:orientation="vertical"
         android:paddingTop="4dp"
+        android:paddingEnd="24dp"
         android:paddingBottom="2dp">
 
         <TextView
@@ -66,6 +67,35 @@
 
         <View
             android:id="@+id/switchIdiomsLine"
+            android:layout_width="18dp"
+            android:layout_height="2dp"
+            android:layout_marginTop="4dp"
+            android:background="@color/fb_primary"
+            android:visibility="invisible" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/switchRecite"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:paddingTop="4dp"
+        android:paddingBottom="2dp">
+
+        <TextView
+            android:id="@+id/switchReciteText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:includeFontPadding="false"
+            android:text="@string/title_recite"
+            android:textColor="@color/fb_text_secondary"
+            android:textSize="15sp" />
+
+        <View
+            android:id="@+id/switchReciteLine"
             android:layout_width="18dp"
             android:layout_height="2dp"
             android:layout_marginTop="4dp"

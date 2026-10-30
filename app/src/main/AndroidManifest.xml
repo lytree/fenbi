@@ -44,8 +44,6 @@
         <activity android:name=".ui.BankDetailActivity" android:exported="false" />
         <!-- 词库导入：选文档 → 预览 → 入库；返回时 MainActivity 会回调 Refreshable 刷新词库列表 -->
         <activity android:name=".ui.word.WordImportActivity" android:exported="false" />
-        <!-- 考点背诵：填空式背诵卡，手机锁竖屏 / 平板跟随旋转 -->
-        <activity android:name=".ui.recite.ReciteActivity" android:exported="false" />
         <!--
           答题页不锁竖屏：一旦在清单里写死 portrait，平板（Android 12L+ / 各家 ROM 的兼容模式）
           会把整个页面塞进一块手机比例的窗口里，两侧留黑边——就是「被收缩成手机」的根因。

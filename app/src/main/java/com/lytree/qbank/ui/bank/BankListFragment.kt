@@ -13,7 +13,6 @@ import com.lytree.qbank.ui.BankDetailActivity
 import com.lytree.qbank.ui.ImportActivity
 import com.lytree.qbank.ui.MainActivity
 import com.lytree.qbank.ui.Refreshable
-import com.lytree.qbank.ui.recite.ReciteActivity
 
 class BankListFragment : Fragment(), Refreshable {
 
@@ -32,7 +31,8 @@ class BankListFragment : Fragment(), Refreshable {
         binding.titleBar.usePageTitleStyle()
         binding.titleBar.setTitle(getString(com.lytree.qbank.R.string.page_banks))
         binding.titleBar.addTextAction(getString(com.lytree.qbank.R.string.action_recite)) {
-            startActivity(Intent(requireContext(), ReciteActivity::class.java))
+            // 考点背诵已并进「词库」Tab（词库 / 成语 / 考点背诵），这里只做快捷跳转
+            (activity as? MainActivity)?.openRecite()
         }
         binding.titleBar.addTextAction(getString(com.lytree.qbank.R.string.action_import)) { openImport() }
 

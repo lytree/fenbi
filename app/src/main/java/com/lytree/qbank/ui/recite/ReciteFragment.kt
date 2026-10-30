@@ -15,8 +15,11 @@ import android.text.style.StyleSpan
 import android.text.style.UnderlineSpan
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.EditText
 import android.widget.FrameLayout
@@ -25,34 +28,40 @@ import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
+import androidx.fragment.app.Fragment
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.lytree.qbank.R
 import com.lytree.qbank.data.ReciteRepository
 import com.lytree.qbank.data.model.ReciteCard
 import com.lytree.qbank.data.model.ReciteCatalog
 import com.lytree.qbank.data.model.ReciteCategory
-import com.lytree.qbank.databinding.ActivityReciteBinding
 import com.lytree.qbank.databinding.DialogReciteDetailBinding
-import com.lytree.qbank.ui.ScreenAdapt
-import com.lytree.qbank.ui.applyNavBarBottomPadding
+import com.lytree.qbank.databinding.FragmentReciteBinding
+import com.lytree.qbank.ui.LibrarySwitch
+import com.lytree.qbank.ui.idiom.IdiomListFragment
+import com.lytree.qbank.ui.word.WordListFragment
+import kotlin.math.abs
 import kotlin.random.Random
 
 /**
- * 考点背诵（对齐超格考点背诵）：
+ * 考点背诵（对齐超格考点背诵），并进「词库」Tab，与词库 / 成语共用顶部三段切换。
  *
  * · 未掌握 / 已掌握两个标签页，数量实时更新
- * · 填空式背诵卡：轻点卡片显示 / 收起答案，右上角星标重点
+ * · 填空式背诵卡：**左右滑动切题**，**长按显示答案**（松手仍在，轻点收起）
+ * · **背诵模式**：开关打开后答案直接显示，卡片下方提示改为「背诵模式」，适合通读 / 朗读
  * · 换一个（顺序下一个）/ 随机一个 / 记住了（未掌握→已掌握，已掌握→取消掌握）
  * · 顶栏：考点详情、考点范围（分类 / 只看重点）、字号 A小/A中/A大
  *
- * 掌握与重点状态按考点 id 存库，退出重进仍在；分词正文与答案来自 assets。
+ * 掌握、重点、背诵模式、字号、上次停在哪张卡都按考点 id / 设置项存库，退出重进仍在；
+ * 分词正文与答案来自 assets。
  */
-class ReciteActivity : AppCompatActivity() {
+class ReciteFragment : Fragment() {
 
-    private lateinit var binding: ActivityReciteBinding
+    private var _binding: FragmentReciteBinding? = null
+    private val binding get() = _binding!!
+
     private lateinit var fontAction: TextView
 
     private var catalog: ReciteCatalog = ReciteCatalog.EMPTY
@@ -71,23 +80,31 @@ class ReciteActivity : AppCompatActivity() {
     private var revealed = false
     private var fontLevel = 0
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        ScreenAdapt.applyOrientation(this)
-        binding = ActivityReciteBinding.inflate(layoutInflater)
-        setContentView(binding.root)
-        binding.bottomBar.applyNavBarBottomPadding()
+    /** 背诵模式：答案直接显示，不再需要长按 */
+    private var reciteMode = false
 
-        catalog = ReciteRepository.catalog(this)
-        mastered += ReciteRepository.masteredIds(this)
-        favorites += ReciteRepository.favoriteIds(this)
-        fontLevel = ReciteRepository.fontLevel(this)
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
+        _binding = FragmentReciteBinding.inflate(inflater, container, false)
+        return binding.root
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        val context = requireContext()
+        catalog = ReciteRepository.catalog(context)
+        mastered += ReciteRepository.masteredIds(context)
+        favorites += ReciteRepository.favoriteIds(context)
+        fontLevel = ReciteRepository.fontLevel(context)
+        reciteMode = ReciteRepository.reciteMode(context)
         loadGroups()
-        categoryFilter = ReciteRepository.rememberedCategory(this)
+        categoryFilter = ReciteRepository.rememberedCategory(context)
             ?.takeIf { id -> isValidScope(id) }
         restoreState(savedInstanceState)
 
-        binding.titleBar.showBack(true)
+        binding.titleBar.usePageTitleStyle()
         binding.titleBar.setTitle(getString(R.string.title_recite))
         binding.titleBar.addIconAction(
             R.drawable.ic_recite_detail,
@@ -98,20 +115,35 @@ class ReciteActivity : AppCompatActivity() {
             getString(R.string.recite_catalog_title)
         ) { showCatalog() }
         fontAction = binding.titleBar.addTextAction("") { cycleFont() }
-        fontAction.setTextColor(ContextCompat.getColor(this, R.color.fb_text_secondary))
+        fontAction.setTextColor(ContextCompat.getColor(context, R.color.fb_text_secondary))
+
+        // 词库 / 成语 / 考点背诵 三段切换：当前已在背诵，点另外两段把本页换掉
+        LibrarySwitch.bind(
+            binding.librarySwitch,
+            LibrarySwitch.PAGE_RECITE,
+            onWords = { openWords() },
+            onIdioms = { openIdioms() },
+            onRecite = {}
+        )
 
         binding.tabUnmastered.setOnClickListener { switchTab(TAB_UNMASTERED) }
         binding.tabMastered.setOnClickListener { switchTab(TAB_MASTERED) }
-        binding.card.setOnClickListener {
-            val card = currentCard() ?: return@setOnClickListener
-            revealed = !revealed
-            bindCard(card)
-        }
         binding.btnStar.setOnClickListener { toggleFavorite() }
-        binding.btnNext.setOnClickListener { nextCard(random = false) }
-        binding.btnShuffle.setOnClickListener { nextCard(random = true) }
+        binding.btnNext.setOnClickListener { step(1, fromButton = true) }
+        binding.btnShuffle.setOnClickListener { shuffle() }
         binding.btnMaster.setOnClickListener { toggleMastered() }
 
+        binding.switchMode.setChecked(reciteMode, animate = false)
+        binding.switchMode.onCheckedChange = { on ->
+            reciteMode = on
+            ReciteRepository.setReciteMode(requireContext(), on)
+            if (!on) revealed = false
+            currentCard()?.let { bindCard(it) }
+        }
+        // 点「背诵模式」这四个字也能开关，不用非得点那个小圆点
+        binding.modeRow.setOnClickListener { binding.switchMode.performClick() }
+
+        setupCardGestures()
         updateFontAction()
         render(animate = false)
     }
@@ -126,7 +158,11 @@ class ReciteActivity : AppCompatActivity() {
     }
 
     private fun restoreState(state: Bundle?) {
-        if (state == null) return
+        if (state == null) {
+            // 切到别的段再回来：接着上次那张卡背，不用从第一条重来
+            currentId = ReciteRepository.lastCard(requireContext())
+            return
+        }
         tab = state.getInt(STATE_TAB, TAB_UNMASTERED)
         favoriteOnly = state.getBoolean(STATE_FAVORITE_ONLY, false)
         if (state.containsKey(STATE_CATEGORY)) {
@@ -137,10 +173,37 @@ class ReciteActivity : AppCompatActivity() {
         revealed = state.getBoolean(STATE_REVEALED, false)
     }
 
+    override fun onPause() {
+        super.onPause()
+        // 记住停在哪张卡：切段 / 退出重进都接着背
+        currentId?.let { ReciteRepository.rememberCard(requireContext(), it) }
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        _binding = null
+    }
+
+    // ---------------------------------------------------------------- 页面切换
+
+    /** 换回词库页：仍在「词库」这个底部 Tab 里，只是页面内容换了 */
+    private fun openWords() {
+        parentFragmentManager.beginTransaction()
+            .replace(R.id.container, WordListFragment())
+            .commit()
+    }
+
+    /** 换到成语汇总页：同上，仍留在词库 Tab 里 */
+    private fun openIdioms() {
+        parentFragmentManager.beginTransaction()
+            .replace(R.id.container, IdiomListFragment())
+            .commit()
+    }
+
     // ---------------------------------------------------------------- 渲染
 
-    private fun render(animate: Boolean) {
-        if (isFinishing) return
+    private fun render(animate: Boolean, forward: Boolean = true) {
+        if (!isAdded) return
         renderTabs()
         renderFilterChip()
         binding.btnMaster.setText(
@@ -156,6 +219,7 @@ class ReciteActivity : AppCompatActivity() {
             binding.card.visibility = View.GONE
             binding.emptyText.isVisible = true
             binding.emptyText.setText(emptyMessage())
+            binding.tvProgress.text = ""
             setActionsEnabled(false)
             return
         }
@@ -168,35 +232,43 @@ class ReciteActivity : AppCompatActivity() {
             revealed = false
         }
         binding.card.visibility = View.VISIBLE
-        if (animate) animateTo(target) else bindCard(target)
+        if (animate) animateTo(target, forward) else bindCard(target)
     }
 
-    private fun animateTo(card: ReciteCard) {
+    private fun animateTo(card: ReciteCard, forward: Boolean) {
+        val out = if (forward) -dp(16).toFloat() else dp(16).toFloat()
+        val from = -out
         binding.card.animate().cancel()
         val hidden = binding.card.visibility != View.VISIBLE
         if (hidden || binding.card.alpha < 1f) {
             binding.card.visibility = View.VISIBLE
             bindCard(card)
             binding.card.alpha = 0f
-            binding.card.translationX = dp(16).toFloat()
+            binding.card.translationX = from
             binding.card.animate().alpha(1f).translationX(0f).setDuration(180).start()
             return
         }
-        binding.card.animate().alpha(0f).translationX(-dp(16).toFloat()).setDuration(110)
+        binding.card.animate().alpha(0f).translationX(out).setDuration(110)
             .withEndAction {
+                if (_binding == null) return@withEndAction
                 bindCard(card)
                 binding.card.alpha = 0f
-                binding.card.translationX = dp(16).toFloat()
+                binding.card.translationX = from
                 binding.card.animate().alpha(1f).translationX(0f).setDuration(180).start()
             }.start()
     }
 
     private fun bindCard(card: ReciteCard) {
+        val showAnswer = reciteMode || revealed
         binding.cardText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f + fontLevel * 2)
         binding.cardText.setLineSpacing(dp(7 + fontLevel).toFloat(), 1f)
-        binding.cardText.text = cardSpanned(card, reveal = revealed)
+        binding.cardText.text = cardSpanned(card, reveal = showAnswer)
         binding.cardHint.setText(
-            if (revealed) R.string.recite_hint_hide else R.string.recite_hint_reveal
+            when {
+                reciteMode -> R.string.recite_hint_mode
+                revealed -> R.string.recite_hint_hide
+                else -> R.string.recite_hint_reveal
+            }
         )
         val favorite = card.id in favorites
         binding.btnStar.setImageResource(
@@ -205,9 +277,21 @@ class ReciteActivity : AppCompatActivity() {
         binding.btnStar.imageTintList = if (favorite) {
             null
         } else {
-            ColorStateList.valueOf(ContextCompat.getColor(this, R.color.fb_text_meta))
+            ColorStateList.valueOf(ContextCompat.getColor(requireContext(), R.color.fb_text_meta))
         }
         binding.btnStar.contentDescription = getString(R.string.recite_favorite)
+        renderProgress()
+    }
+
+    /** 当前第几张 / 本范围共几张 */
+    private fun renderProgress() {
+        val list = cardsFor(tab)
+        val index = list.indexOfFirst { it.id == currentId }
+        binding.tvProgress.text = if (index < 0) {
+            ""
+        } else {
+            getString(R.string.recite_progress_fmt, index + 1, list.size)
+        }
     }
 
     private fun renderTabs() {
@@ -217,8 +301,8 @@ class ReciteActivity : AppCompatActivity() {
         binding.tvUnmastered.text = getString(R.string.recite_tab_unmastered, unmastered)
         binding.tvMastered.text = getString(R.string.recite_tab_mastered, masteredCount)
 
-        val selectedColor = ContextCompat.getColor(this, R.color.fb_primary)
-        val normalColor = ContextCompat.getColor(this, R.color.fb_text_meta)
+        val selectedColor = ContextCompat.getColor(requireContext(), R.color.fb_primary)
+        val normalColor = ContextCompat.getColor(requireContext(), R.color.fb_text_meta)
         val unselected = tab == TAB_UNMASTERED
         binding.tvUnmastered.setTextColor(if (unselected) selectedColor else normalColor)
         binding.tvMastered.setTextColor(if (unselected) normalColor else selectedColor)
@@ -263,9 +347,10 @@ class ReciteActivity : AppCompatActivity() {
 
     /** 把正文里的 ____ 换成答案（或下划线），答案用主蓝高亮 */
     private fun cardSpanned(card: ReciteCard, reveal: Boolean, withSeq: Boolean = true): CharSequence {
-        val accent = ContextCompat.getColor(this, R.color.fb_primary)
-        val soft = ContextCompat.getColor(this, R.color.fb_primary_soft)
-        val hint = ContextCompat.getColor(this, R.color.fb_text_hint)
+        val context = requireContext()
+        val accent = ContextCompat.getColor(context, R.color.fb_primary)
+        val soft = ContextCompat.getColor(context, R.color.fb_primary_soft)
+        val hint = ContextCompat.getColor(context, R.color.fb_text_hint)
         val sb = SpannableStringBuilder()
         if (withSeq) sb.append("${card.seq}. ")
 
@@ -294,6 +379,66 @@ class ReciteActivity : AppCompatActivity() {
             sb.setSpan(UnderlineSpan(), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         return sb
+    }
+
+    // ---------------------------------------------------------------- 手势：左右切题 / 长按看答案
+
+    /**
+     * 卡片上的三件事：
+     * - 左右滑：上一张 / 下一张（滑得够远或甩得够快都算）；
+     * - 长按：显示答案（松手不收回，轻点才收起——低头背完再收）；
+     * - 轻点：显示 / 收起答案。
+     * 背诵模式下答案本来就一直显示，长按 / 轻点都不再改状态。
+     */
+    private fun setupCardGestures() {
+        val slop = dp(44)
+        val detector = android.view.GestureDetector(
+            requireContext(),
+            object : android.view.GestureDetector.SimpleOnGestureListener() {
+                override fun onDown(e: MotionEvent): Boolean = true
+
+                override fun onSingleTapUp(e: MotionEvent): Boolean {
+                    if (!reciteMode) toggleReveal()
+                    return true
+                }
+
+                override fun onLongPress(e: MotionEvent) {
+                    if (reciteMode || revealed) return
+                    binding.card.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                    revealed = true
+                    currentCard()?.let { bindCard(it) }
+                }
+
+                override fun onFling(
+                    e1: MotionEvent?,
+                    e2: MotionEvent,
+                    velocityX: Float,
+                    velocityY: Float
+                ): Boolean {
+                    if (e1 == null) return false
+                    val dx = e2.x - e1.x
+                    val dy = e2.y - e1.y
+                    // 竖向为主的滑动不算切题（长题干可能在页内滚）
+                    if (abs(dx) < slop || abs(dx) < abs(dy) * 1.6f) return false
+                    step(if (dx < 0) 1 else -1)
+                    return true
+                }
+            }
+        )
+        // 只观察、不吞事件：卡片正文在 ScrollView 里，长答案要靠它纵向滚；
+        // 点击 / 长按 / 左右滑由 GestureDetector 顺带识别，不影响滚动。
+        val observer = View.OnTouchListener { _, event ->
+            detector.onTouchEvent(event)
+            false
+        }
+        binding.cardScroll.setOnTouchListener(observer)
+        binding.card.setOnTouchListener(observer)
+    }
+
+    private fun toggleReveal() {
+        val card = currentCard() ?: return
+        revealed = !revealed
+        bindCard(card)
     }
 
     // ---------------------------------------------------------------- 筛选 / 取数
@@ -335,19 +480,29 @@ class ReciteActivity : AppCompatActivity() {
         render(animate = true)
     }
 
-    private fun nextCard(random: Boolean) {
+    /** 左右切题 / 「换一个」：循环取下一张（到头回到第一张）；滑动手势不弹提示，按钮才提示 */
+    private fun step(delta: Int, fromButton: Boolean = false) {
+        val list = cardsFor(tab)
+        if (list.size <= 1) {
+            if (fromButton && list.size == 1) toast(R.string.recite_only_one)
+            return
+        }
+        val current = currentId
+        val index = list.indexOfFirst { it.id == current }.let { if (it < 0) 0 else it }
+        val next = list[((index + delta) % list.size + list.size) % list.size]
+        currentId = next.id
+        revealed = false
+        render(animate = true, forward = delta > 0)
+    }
+
+    private fun shuffle() {
         val card = currentCard() ?: return
         val list = cardsFor(tab)
         if (list.size <= 1) {
             toast(R.string.recite_only_one)
             return
         }
-        val index = list.indexOfFirst { it.id == card.id }.coerceAtLeast(0)
-        val next = if (random) {
-            list.filter { it.id != card.id }.let { it[Random.nextInt(it.size)] }
-        } else {
-            list[(index + 1) % list.size]
-        }
+        val next = list.filter { it.id != card.id }.let { it[Random.nextInt(it.size)] }
         currentId = next.id
         revealed = false
         render(animate = true)
@@ -359,7 +514,7 @@ class ReciteActivity : AppCompatActivity() {
         val before = cardsFor(tab)
         val index = before.indexOfFirst { it.id == card.id }.coerceAtLeast(0)
 
-        ReciteRepository.setMastered(this, card.id, mastering)
+        ReciteRepository.setMastered(requireContext(), card.id, mastering)
         if (mastering) mastered.add(card.id) else mastered.remove(card.id)
         toast(if (mastering) R.string.recite_added else R.string.recite_removed)
 
@@ -369,6 +524,7 @@ class ReciteActivity : AppCompatActivity() {
         if (after.isEmpty()) {
             binding.card.animate().alpha(0f).translationX(-dp(16).toFloat()).setDuration(120)
                 .withEndAction {
+                    if (_binding == null) return@withEndAction
                     binding.card.alpha = 1f
                     binding.card.translationX = 0f
                     render(animate = false)
@@ -381,7 +537,7 @@ class ReciteActivity : AppCompatActivity() {
     private fun toggleFavorite() {
         val card = currentCard() ?: return
         val add = card.id !in favorites
-        ReciteRepository.setFavorite(this, card.id, add)
+        ReciteRepository.setFavorite(requireContext(), card.id, add)
         if (add) favorites.add(card.id) else favorites.remove(card.id)
 
         if (!add && favoriteOnly) {
@@ -397,7 +553,7 @@ class ReciteActivity : AppCompatActivity() {
     private fun applyFilter(categoryId: String?, onlyFavorite: Boolean) {
         categoryFilter = categoryId
         favoriteOnly = onlyFavorite
-        ReciteRepository.rememberCategory(this, categoryId)
+        ReciteRepository.rememberCategory(requireContext(), categoryId)
         currentId = null
         revealed = false
         render(animate = true)
@@ -416,7 +572,7 @@ class ReciteActivity : AppCompatActivity() {
 
     private fun cycleFont() {
         fontLevel = (fontLevel + 1) % 3
-        ReciteRepository.setFontLevel(this, fontLevel)
+        ReciteRepository.setFontLevel(requireContext(), fontLevel)
         updateFontAction()
         currentCard()?.let { bindCard(it) }
     }
@@ -424,8 +580,9 @@ class ReciteActivity : AppCompatActivity() {
     // ---------------------------------------------------------------- 考点范围弹层
 
     private fun showCatalog() {
-        val sheet = BottomSheetDialog(this)
-        val view = LayoutInflater.from(this).inflate(R.layout.sheet_recite_catalog, null)
+        val context = requireContext()
+        val sheet = BottomSheetDialog(context)
+        val view = LayoutInflater.from(context).inflate(R.layout.sheet_recite_catalog, null)
         val rows = view.findViewById<LinearLayout>(R.id.catalogRows)
         view.findViewById<TextView>(R.id.catalogMeta).text =
             getString(R.string.recite_updated, catalog.updated, catalog.cards.size) +
@@ -508,27 +665,30 @@ class ReciteActivity : AppCompatActivity() {
         onMore: (View) -> Unit,
         onClick: () -> Unit,
     ) {
-        val accent = ContextCompat.getColor(this, R.color.fb_primary)
-        val row = LinearLayout(this).apply {
+        val context = requireContext()
+        val accent = ContextCompat.getColor(context, R.color.fb_primary)
+        val row = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(20), 0, dp(8), 0)
             isClickable = true
             isFocusable = true
-            background = RippleDrawable(ColorStateList.valueOf(ContextCompat.getColor(context, R.color.fb_ripple)), null, null)
+            background = RippleDrawable(
+                ColorStateList.valueOf(ContextCompat.getColor(context, R.color.fb_ripple)), null, null
+            )
             setOnClickListener { onClick() }
         }
         row.addView(
-            TextView(this).apply {
+            TextView(context).apply {
                 text = group
                 setTextSize(
-                    android.util.TypedValue.COMPLEX_UNIT_PX,
+                    TypedValue.COMPLEX_UNIT_PX,
                     resources.getDimension(R.dimen.fb_text_body_sm)
                 )
                 includeFontPadding = false
                 setTextColor(
                     ContextCompat.getColor(
-                        this@ReciteActivity,
+                        context,
                         if (selected) R.color.fb_primary else R.color.fb_text_secondary
                     )
                 )
@@ -537,25 +697,25 @@ class ReciteActivity : AppCompatActivity() {
             LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         )
         row.addView(
-            TextView(this).apply {
+            TextView(context).apply {
                 text = meta
                 setTextSize(
-                    android.util.TypedValue.COMPLEX_UNIT_PX,
+                    TypedValue.COMPLEX_UNIT_PX,
                     resources.getDimension(R.dimen.fb_text_tag)
                 )
                 includeFontPadding = false
                 setTextColor(
                     if (selected) accent
-                    else ContextCompat.getColor(this@ReciteActivity, R.color.fb_text_meta)
+                    else ContextCompat.getColor(context, R.color.fb_text_meta)
                 )
             }
         )
         if (selected) {
             row.addView(
-                TextView(this).apply {
+                TextView(context).apply {
                     text = "✓"
                     setTextSize(
-                        android.util.TypedValue.COMPLEX_UNIT_PX,
+                        TypedValue.COMPLEX_UNIT_PX,
                         resources.getDimension(R.dimen.fb_text_body_size)
                     )
                     includeFontPadding = false
@@ -564,21 +724,21 @@ class ReciteActivity : AppCompatActivity() {
                 }
             )
         }
-        val more = TextView(this).apply {
+        val more = TextView(context).apply {
             text = "⋯"
             setTextSize(
-                android.util.TypedValue.COMPLEX_UNIT_PX,
+                TypedValue.COMPLEX_UNIT_PX,
                 resources.getDimension(R.dimen.fb_text_item_title)
             )
             includeFontPadding = false
             gravity = Gravity.CENTER
-            setTextColor(ContextCompat.getColor(this@ReciteActivity, R.color.fb_text_meta))
+            setTextColor(ContextCompat.getColor(context, R.color.fb_text_meta))
             isClickable = true
             isFocusable = true
             background = RippleDrawable(
-                ColorStateList.valueOf(
-                    ContextCompat.getColor(this@ReciteActivity, R.color.fb_ripple)
-                ), null, null
+                ColorStateList.valueOf(ContextCompat.getColor(context, R.color.fb_ripple)),
+                null,
+                null
             )
             setOnClickListener { onMore(this) }
         }
@@ -610,16 +770,17 @@ class ReciteActivity : AppCompatActivity() {
         onLongClick: (() -> Unit)? = null,
         onClick: () -> Unit,
     ) {
-        val row = LinearLayout(this).apply {
+        val context = requireContext()
+        val row = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(indent), 0, dp(20), 0)
             isClickable = true
             isFocusable = true
             background = RippleDrawable(
-                ColorStateList.valueOf(
-                    ContextCompat.getColor(this@ReciteActivity, R.color.fb_ripple)
-                ), null, null
+                ColorStateList.valueOf(ContextCompat.getColor(context, R.color.fb_ripple)),
+                null,
+                null
             )
             setOnClickListener { onClick() }
             onLongClick?.let { cb ->
@@ -628,16 +789,16 @@ class ReciteActivity : AppCompatActivity() {
             }
         }
         row.addView(
-            TextView(this).apply {
+            TextView(context).apply {
                 text = title
                 setTextSize(
-                    android.util.TypedValue.COMPLEX_UNIT_PX,
+                    TypedValue.COMPLEX_UNIT_PX,
                     resources.getDimension(R.dimen.fb_text_item_title)
                 )
                 includeFontPadding = false
                 setTextColor(
                     ContextCompat.getColor(
-                        this@ReciteActivity,
+                        context,
                         if (selected) R.color.fb_primary else R.color.fb_text_primary
                     )
                 )
@@ -646,28 +807,26 @@ class ReciteActivity : AppCompatActivity() {
             LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         )
         row.addView(
-            TextView(this).apply {
+            TextView(context).apply {
                 text = meta
                 setTextSize(
-                    android.util.TypedValue.COMPLEX_UNIT_PX,
+                    TypedValue.COMPLEX_UNIT_PX,
                     resources.getDimension(R.dimen.fb_text_tag)
                 )
                 includeFontPadding = false
-                setTextColor(ContextCompat.getColor(this@ReciteActivity, R.color.fb_text_meta))
+                setTextColor(ContextCompat.getColor(context, R.color.fb_text_meta))
             }
         )
         if (selected) {
             row.addView(
-                TextView(this).apply {
+                TextView(context).apply {
                     text = "✓"
                     setTextSize(
-                        android.util.TypedValue.COMPLEX_UNIT_PX,
+                        TypedValue.COMPLEX_UNIT_PX,
                         resources.getDimension(R.dimen.fb_text_body_size)
                     )
                     includeFontPadding = false
-                    setTextColor(
-                        ContextCompat.getColor(this@ReciteActivity, R.color.fb_primary)
-                    )
+                    setTextColor(ContextCompat.getColor(context, R.color.fb_primary))
                     setPadding(dp(8), 0, 0, 0)
                 }
             )
@@ -682,8 +841,11 @@ class ReciteActivity : AppCompatActivity() {
     }
 
     private fun addSheetDivider(container: LinearLayout) {
+        val context = requireContext()
         container.addView(
-            View(this).apply { setBackgroundColor(ContextCompat.getColor(this@ReciteActivity, R.color.fb_divider)) },
+            View(context).apply {
+                setBackgroundColor(ContextCompat.getColor(context, R.color.fb_divider))
+            },
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1)).apply {
                 marginStart = dp(20)
                 marginEnd = dp(20)
@@ -692,23 +854,24 @@ class ReciteActivity : AppCompatActivity() {
     }
 
     private fun addSheetFooter(container: LinearLayout, text: String, onClick: () -> Unit) {
+        val context = requireContext()
         container.addView(
-            TextView(this).apply {
+            TextView(context).apply {
                 this.text = text
                 setTextSize(
-                    android.util.TypedValue.COMPLEX_UNIT_PX,
+                    TypedValue.COMPLEX_UNIT_PX,
                     resources.getDimension(R.dimen.fb_text_body_size)
                 )
                 includeFontPadding = false
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(20), 0, dp(20), 0)
-                setTextColor(ContextCompat.getColor(this@ReciteActivity, R.color.fb_primary))
+                setTextColor(ContextCompat.getColor(context, R.color.fb_primary))
                 isClickable = true
                 isFocusable = true
                 background = RippleDrawable(
-                    ColorStateList.valueOf(
-                        ContextCompat.getColor(this@ReciteActivity, R.color.fb_ripple)
-                    ), null, null
+                    ColorStateList.valueOf(ContextCompat.getColor(context, R.color.fb_ripple)),
+                    null,
+                    null
                 )
                 setOnClickListener { onClick() }
             },
@@ -723,7 +886,7 @@ class ReciteActivity : AppCompatActivity() {
 
     /** 分组「⋯」菜单：重命名 / 删除 / 新建分组 */
     private fun showGroupMenu(anchor: View, group: String, onChanged: () -> Unit) {
-        PopupMenu(this, anchor).apply {
+        PopupMenu(requireContext(), anchor).apply {
             menu.add(0, MENU_RENAME, 0, R.string.recite_group_rename)
             menu.add(0, MENU_DELETE, 1, R.string.recite_group_delete)
             menu.add(0, MENU_NEW, 2, R.string.recite_group_new)
@@ -747,20 +910,24 @@ class ReciteActivity : AppCompatActivity() {
 
     /** 新建 / 重命名分组：传 group=null 为新建 */
     private fun showGroupNameDialog(group: String?, onDone: (String, String) -> Unit) {
-        val input = EditText(this).apply {
+        val context = requireContext()
+        val input = EditText(context).apply {
             hint = getString(R.string.recite_group_name_hint)
             setText(group.orEmpty())
             setSelection(text.length)
             setSingleLine()
         }
-        val wrap = FrameLayout(this).apply {
+        val wrap = FrameLayout(context).apply {
             setPadding(dp(24), dp(8), dp(24), 0)
-            addView(input, FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT
-            ))
+            addView(
+                input,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
         }
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(context)
             .setTitle(if (group == null) R.string.recite_group_new else R.string.recite_group_rename)
             .setView(wrap)
             .setNegativeButton(android.R.string.cancel, null)
@@ -803,7 +970,7 @@ class ReciteActivity : AppCompatActivity() {
             return
         }
         val count = catalog.categories.count { (catGroup[it.id] ?: UNGROUPED) == group }
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(requireContext())
             .setTitle(getString(R.string.recite_group_delete_title, group))
             .setMessage(getString(R.string.recite_group_delete_msg, count))
             .setNegativeButton(android.R.string.cancel, null)
@@ -829,7 +996,7 @@ class ReciteActivity : AppCompatActivity() {
             if (!contains(UNGROUPED)) add(0, UNGROUPED)
         }
         val checked = options.indexOf(current)
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(requireContext())
             .setTitle(getString(R.string.recite_group_move_title, category.name))
             .setSingleChoiceItems(options.toTypedArray(), checked) { dialog, which ->
                 val target = options[which]
@@ -848,11 +1015,11 @@ class ReciteActivity : AppCompatActivity() {
     /** 分组操作后重开弹层，让列表按最新分组重排 */
     private fun reloadCatalog(sheet: BottomSheetDialog) {
         sheet.dismiss()
-        binding.root.post { showCatalog() }
+        binding.root.post { if (isAdded) showCatalog() }
     }
 
     private fun loadGroups() {
-        val layout = ReciteRepository.groupLayout(this)
+        val layout = ReciteRepository.groupLayout(requireContext())
         customGroups.clear()
         customGroups.addAll(layout.first)
         groupOverrides.clear()
@@ -870,7 +1037,7 @@ class ReciteActivity : AppCompatActivity() {
     }
 
     private fun persistGroups() {
-        ReciteRepository.saveGroupLayout(this, customGroups, groupOverrides)
+        ReciteRepository.saveGroupLayout(requireContext(), customGroups, groupOverrides)
         rebuildGroups()
     }
 
@@ -894,7 +1061,7 @@ class ReciteActivity : AppCompatActivity() {
     private fun showDetail() {
         val card = currentCard() ?: return
         val b = DialogReciteDetailBinding.inflate(layoutInflater)
-        val dialog = Dialog(this)
+        val dialog = Dialog(requireContext())
         dialog.setContentView(b.root)
         dialog.setCanceledOnTouchOutside(true)
 
@@ -926,7 +1093,7 @@ class ReciteActivity : AppCompatActivity() {
     // ---------------------------------------------------------------- 小工具
 
     private fun toast(resId: Int) {
-        Toast.makeText(this, resId, Toast.LENGTH_SHORT).show()
+        Toast.makeText(requireContext(), resId, Toast.LENGTH_SHORT).show()
     }
 
     private fun dp(value: Int): Int =
