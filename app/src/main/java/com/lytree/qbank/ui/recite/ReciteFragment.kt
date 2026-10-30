@@ -45,7 +45,7 @@ import kotlin.math.abs
 /**
  * 考点背诵（对齐超格考点背诵），并进「词库」Tab，与词库 / 成语共用顶部三段切换。
  *
- * · 未掌握 / 已掌握两个标签页，数量实时更新
+ * · 不分「未掌握 / 已掌握」，当前范围就是一条卡片流，序号从 1 数到最后一张
  * · 填空式背诵卡：**左右滑动切题**，**长按显示答案**（松手仍在，轻点收起）
  * · **背诵模式**：顶栏的睁眼图标即开关，打开后答案直接显示、图标染主蓝，适合通读 / 朗读
  * · 卡片右上角星标：重点收藏，配合「只看重点」筛选
@@ -68,7 +68,6 @@ class ReciteFragment : Fragment() {
     private lateinit var modeAction: ImageView
 
     private var catalog: ReciteCatalog = ReciteCatalog.EMPTY
-    private val mastered = HashSet<String>()
     private val favorites = HashSet<String>()
 
     /** 自定义分组（按创建顺序）与「分类 -> 分组」覆盖，存 settings 表 */
@@ -76,7 +75,6 @@ class ReciteFragment : Fragment() {
     private val groupOverrides = HashMap<String, String>()
     private val catGroup = HashMap<String, String>()
 
-    private var tab = TAB_UNMASTERED
     private var categoryFilter: String? = null
     private var favoriteOnly = false
     private var currentId: String? = null
@@ -98,14 +96,13 @@ class ReciteFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         val context = requireContext()
         catalog = ReciteRepository.catalog(context)
-        mastered += ReciteRepository.masteredIds(context)
         favorites += ReciteRepository.favoriteIds(context)
         fontLevel = ReciteRepository.fontLevel(context)
         reciteMode = ReciteRepository.reciteMode(context)
         loadGroups()
+        // 没记过范围就是「全部考点」（null），面板第一项也是它
         categoryFilter = ReciteRepository.rememberedCategory(context)
             ?.takeIf { id -> isValidScope(id) }
-            ?: defaultScope()
         restoreState(savedInstanceState)
 
         binding.titleBar.usePageTitleStyle()
@@ -131,8 +128,6 @@ class ReciteFragment : Fragment() {
             onRecite = {}
         )
 
-        binding.tabUnmastered.setOnClickListener { switchTab(TAB_UNMASTERED) }
-        binding.tabMastered.setOnClickListener { switchTab(TAB_MASTERED) }
         binding.btnStar.setOnClickListener { toggleFavorite() }
 
         updateModeAction()
@@ -143,7 +138,6 @@ class ReciteFragment : Fragment() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        outState.putInt(STATE_TAB, tab)
         outState.putString(STATE_CATEGORY, categoryFilter)
         outState.putBoolean(STATE_FAVORITE_ONLY, favoriteOnly)
         outState.putString(STATE_CARD, currentId)
@@ -156,7 +150,6 @@ class ReciteFragment : Fragment() {
             currentId = ReciteRepository.lastCard(requireContext())
             return
         }
-        tab = state.getInt(STATE_TAB, TAB_UNMASTERED)
         favoriteOnly = state.getBoolean(STATE_FAVORITE_ONLY, false)
         if (state.containsKey(STATE_CATEGORY)) {
             categoryFilter = state.getString(STATE_CATEGORY)
@@ -197,10 +190,9 @@ class ReciteFragment : Fragment() {
 
     private fun render(animate: Boolean, forward: Boolean = true) {
         if (!isAdded) return
-        renderTabs()
         renderFilterChip()
 
-        val list = cardsFor(tab)
+        val list = cardsInScope()
         if (list.isEmpty()) {
             currentId = null
             binding.card.animate().cancel()
@@ -273,31 +265,13 @@ class ReciteFragment : Fragment() {
 
     /** 当前第几张 / 本范围共几张 */
     private fun renderProgress() {
-        val list = cardsFor(tab)
+        val list = cardsInScope()
         val index = list.indexOfFirst { it.id == currentId }
         binding.tvProgress.text = if (index < 0) {
             ""
         } else {
             getString(R.string.recite_progress_fmt, index + 1, list.size)
         }
-    }
-
-    private fun renderTabs() {
-        val scope = cardsInScope()
-        val unmastered = scope.count { it.id !in mastered }
-        val masteredCount = scope.count { it.id in mastered }
-        binding.tvUnmastered.text = getString(R.string.recite_tab_unmastered, unmastered)
-        binding.tvMastered.text = getString(R.string.recite_tab_mastered, masteredCount)
-
-        val selectedColor = ContextCompat.getColor(requireContext(), R.color.fb_primary)
-        val normalColor = ContextCompat.getColor(requireContext(), R.color.fb_text_meta)
-        val unselected = tab == TAB_UNMASTERED
-        binding.tvUnmastered.setTextColor(if (unselected) selectedColor else normalColor)
-        binding.tvMastered.setTextColor(if (unselected) normalColor else selectedColor)
-        binding.tvUnmastered.setTypeface(null, if (unselected) Typeface.BOLD else Typeface.NORMAL)
-        binding.tvMastered.setTypeface(null, if (unselected) Typeface.NORMAL else Typeface.BOLD)
-        binding.indUnmastered.isVisible = unselected
-        binding.indMastered.isVisible = !unselected
     }
 
     private fun renderFilterChip() {
@@ -311,25 +285,19 @@ class ReciteFragment : Fragment() {
         binding.filterChip.isVisible = label != null
         if (label != null) {
             binding.filterChip.text = getString(R.string.recite_filter_fmt, label)
-            // 面板里已经没有「全部考点」，清掉筛选就回到默认的第一组，不留「全部」这个看不见的状态
-            binding.filterChip.setOnClickListener { applyFilter(defaultScope(), false) }
+            // chip 的 × 清掉筛选：回到默认的「全部考点」，chip 随之隐藏
+            binding.filterChip.setOnClickListener { applyFilter(null, false) }
         }
     }
 
     private fun emptyMessage(): CharSequence {
-        if (favoriteOnly && favorites.isEmpty()) return getString(R.string.recite_empty_favorite)
-        if (categoryFilter != null && catalog.cards.none { inScope(it, categoryFilter) }) {
-            return getString(R.string.recite_empty_scope)
-        }
-        return getString(
-            if (tab == TAB_UNMASTERED) R.string.recite_empty_unmastered
-            else R.string.recite_empty_mastered
-        )
+        if (favoriteOnly) return getString(R.string.recite_empty_favorite)
+        return getString(R.string.recite_empty_scope)
     }
 
     /** 当前范围内的序号：跟顶部「第几张 / 共几张」同一口径，切到某个组就从 1 重数 */
     private fun seqInScope(card: ReciteCard): Int {
-        val index = cardsFor(tab).indexOfFirst { it.id == card.id }
+        val index = cardsInScope().indexOfFirst { it.id == card.id }
         return if (index >= 0) index + 1 else card.seq
     }
 
@@ -449,9 +417,6 @@ class ReciteFragment : Fragment() {
         inScope(card, categoryFilter) && (!favoriteOnly || card.id in favorites)
     }
 
-    private fun cardsFor(which: Int): List<ReciteCard> =
-        cardsInScope().filter { (it.id in mastered) == (which == TAB_MASTERED) }
-
     private fun currentCard(): ReciteCard? =
         currentId?.let { id -> catalog.cards.firstOrNull { it.id == id } }
 
@@ -461,16 +426,9 @@ class ReciteFragment : Fragment() {
         else -> catalog.categories.firstOrNull { it.id == id }?.name ?: ""
     }
 
-    private fun switchTab(target: Int) {
-        if (tab == target) return
-        tab = target
-        revealed = false
-        render(animate = true)
-    }
-
     /** 左右滑动切题：循环取下一张（到头回到第一张） */
     private fun step(delta: Int) {
-        val list = cardsFor(tab)
+        val list = cardsInScope()
         if (list.size <= 1) return
         val current = currentId
         val index = list.indexOfFirst { it.id == current }.let { if (it < 0) 0 else it }
@@ -487,7 +445,7 @@ class ReciteFragment : Fragment() {
         if (add) favorites.add(card.id) else favorites.remove(card.id)
 
         if (!add && favoriteOnly) {
-            val after = cardsFor(tab)
+            val after = cardsInScope()
             currentId = after.firstOrNull()?.id
             revealed = false
             render(animate = true)
@@ -567,6 +525,15 @@ class ReciteFragment : Fragment() {
 
         addSheetRow(
             rows,
+            getString(R.string.recite_catalog_all),
+            catalogCount(null),
+            categoryFilter == null && !favoriteOnly,
+        ) {
+            applyFilter(null, false)
+            sheet.dismiss()
+        }
+        addSheetRow(
+            rows,
             getString(R.string.recite_catalog_favorite),
             getString(R.string.recite_catalog_favorite_count, favorites.size),
             favoriteOnly,
@@ -621,10 +588,10 @@ class ReciteFragment : Fragment() {
         sheet.show()
     }
 
+    /** categoryId 为 null 时统计全部考点 */
     private fun catalogCount(categoryId: String?): String {
-        val cards = catalog.cards.filter { categoryId == null || it.categoryId == categoryId }
-        val unmastered = cards.count { it.id !in mastered }
-        return getString(R.string.recite_catalog_count, unmastered, cards.size)
+        val count = catalog.cards.count { categoryId == null || it.categoryId == categoryId }
+        return getString(R.string.recite_catalog_count, count)
     }
 
     /** 分组标题：整组可点，点中即按「整组」背诵；右侧「⋯」可重命名 / 删除 / 新建分组 */
@@ -724,12 +691,7 @@ class ReciteFragment : Fragment() {
     private fun groupMeta(group: String): String {
         val sections = catalog.categories.count { (catGroup[it.id] ?: UNGROUPED) == group }
         val cards = catalog.cards.filter { (catGroup[it.categoryId] ?: UNGROUPED) == group }
-        return getString(
-            R.string.recite_catalog_group_meta,
-            sections,
-            cards.count { it.id !in mastered },
-            cards.size,
-        )
+        return getString(R.string.recite_catalog_group_meta, sections, cards.size)
     }
 
     private fun addSheetRow(
@@ -1021,14 +983,6 @@ class ReciteFragment : Fragment() {
         return names.sortedWith(CHINESE_ORDER).sortedBy { it == UNGROUPED }
     }
 
-    /** 面板里已没有「全部考点」这一项，进来默认落到第一个有考点的分组 */
-    private fun defaultScope(): String? =
-        groupNames()
-            .firstOrNull { group ->
-                catalog.cards.any { (catGroup[it.categoryId] ?: UNGROUPED) == group }
-            }
-            ?.let { GROUP_PREFIX + it }
-
     // ---------------------------------------------------------------- 小工具
 
     private fun toast(resId: Int) {
@@ -1044,9 +998,6 @@ class ReciteFragment : Fragment() {
             Collator.getInstance(Locale.CHINA).compare(a, b)
         }
 
-        const val TAB_UNMASTERED = 0
-        const val TAB_MASTERED = 1
-
         /** 分组筛选的前缀：categoryFilter 为 "g|超格 · 新思想" 时代表按整组筛选 */
         const val GROUP_PREFIX = "g|"
 
@@ -1057,7 +1008,6 @@ class ReciteFragment : Fragment() {
         const val MENU_DELETE = 2
         const val MENU_NEW = 3
 
-        const val STATE_TAB = "recite_tab"
         const val STATE_CATEGORY = "recite_category"
         const val STATE_FAVORITE_ONLY = "recite_favorite_only"
         const val STATE_CARD = "recite_card"

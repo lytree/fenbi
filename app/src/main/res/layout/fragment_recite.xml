@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   考点背诵（并入「词库」Tab，与词库 / 成语共用顶部三段切换）
-  顶栏（含背诵模式开关）+ 三段切换 + 未掌握/已掌握 + 背诵卡（左右滑动切题，无底部按钮）
+  顶栏（含背诵模式开关）+ 三段切换 + 范围/进度 + 背诵卡（左右滑动切题，无底部按钮）
   版式与全站一致：白底卡片 + 主蓝强调 + 底部白底操作条
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -19,68 +19,6 @@
         layout="@layout/view_library_switch"
         android:layout_width="match_parent"
         android:layout_height="wrap_content" />
-
-    <!-- 未掌握 / 已掌握：等分两栏，选中态下方一条主蓝短横线 -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:orientation="horizontal">
-
-        <LinearLayout
-            android:id="@+id/tabUnmastered"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
-            android:background="?attr/selectableItemBackground"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center"
-            android:orientation="vertical">
-
-            <TextView
-                android:id="@+id/tvUnmastered"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:includeFontPadding="false"
-                android:textColor="@color/fb_text_title"
-                android:textSize="@dimen/fb_text_item_title"
-                android:textStyle="bold"
-                tools:text="未掌握(86)" />
-
-            <View
-                android:id="@+id/indUnmastered"
-                android:layout_width="22dp"
-                android:layout_height="3dp"
-                android:layout_marginTop="@dimen/fb_space_4"
-                android:background="@drawable/bg_recite_tab_indicator" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/tabMastered"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
-            android:gravity="center"
-            android:orientation="vertical">
-
-            <TextView
-                android:id="@+id/tvMastered"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:includeFontPadding="false"
-                android:textColor="@color/fb_text_meta"
-                android:textSize="@dimen/fb_text_item_title"
-                tools:text="已掌握(0)" />
-
-            <View
-                android:id="@+id/indMastered"
-                android:layout_width="22dp"
-                android:layout_height="3dp"
-                android:layout_marginTop="@dimen/fb_space_4"
-                android:background="@drawable/bg_recite_tab_indicator"
-                android:visibility="invisible" />
-        </LinearLayout>
-    </LinearLayout>
 
     <!-- 背诵模式的开关在顶栏（睁眼图标），这里只放当前范围与进度 -->
     <LinearLayout
@@ -192,7 +130,7 @@
             style="@style/FbEmptyText"
             android:layout_gravity="center"
             android:paddingBottom="0dp"
-            android:text="@string/recite_empty_unmastered"
+            android:text="@string/recite_empty_scope"
             android:visibility="gone"
             tools:visibility="visible" />
     </FrameLayout>

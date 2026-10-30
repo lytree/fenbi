@@ -224,13 +224,6 @@
 
     <!-- ===== 考点背诵 ===== -->
     <string name="title_recite">考点背诵</string>
-    <string name="action_recite">考点背诵</string>
-    <string name="recite_tab_unmastered">未掌握(%1$d)</string>
-    <string name="recite_tab_mastered">已掌握(%1$d)</string>
-    <string name="recite_next">换一个</string>
-    <string name="recite_shuffle">随机一个</string>
-    <string name="recite_remember">记住了</string>
-    <string name="recite_forget">取消掌握</string>
     <string name="recite_favorite">标为重点</string>
     <string name="recite_font_fmt">A%1$s</string>
     <string name="recite_font_small">小</string>
@@ -247,8 +240,8 @@
     <string name="recite_filter_favorite">只看重点</string>
     <string name="recite_catalog_all">全部考点</string>
     <string name="recite_catalog_favorite">只看重点收藏</string>
-    <string name="recite_catalog_count">%1$d 未掌握 / 共 %2$d</string>
-    <string name="recite_catalog_group_meta">%1$d 节 · %2$d 未掌握 / 共 %3$d</string>
+    <string name="recite_catalog_count">共 %1$d 个考点</string>
+    <string name="recite_catalog_group_meta">%1$d 节 · 共 %2$d 个考点</string>
     <string name="recite_group_new">新建分组</string>
     <string name="recite_group_new_action">＋ 新建分组</string>
     <string name="recite_group_rename">重命名分组</string>
@@ -264,16 +257,7 @@
     <string name="recite_group_empty">空分组 · 长按课程可移入</string>
     <string name="recite_catalog_favorite_count">%1$d 个</string>
     <string name="recite_catalog_title">选择考点范围</string>
-    <string name="recite_empty_unmastered">这个范围的考点都掌握了\n去「已掌握」再复习一遍吧</string>
-    <string name="recite_empty_mastered">还没有已掌握的考点\n背完点「记住了」就会出现在这里</string>
     <string name="recite_empty_scope">这个范围还没有考点</string>
     <string name="recite_empty_favorite">还没有标为重点的考点\n点卡片右上角的星，重点就会收在这里</string>
-    <string name="recite_only_one">当前范围只有一个考点</string>
-    <string name="recite_added">已加入已掌握</string>
-    <string name="recite_removed">已取消掌握</string>
-    <string name="recite_detail_title_fmt">%1$d · %2$s</string>
-    <string name="recite_detail_entry">考点详情</string>
-    <string name="recite_detail_note">记忆提示</string>
-    <string name="recite_detail_source">来源：%1$s</string>
     <string name="recite_updated">更新于 %1$s · 共 %2$d 个考点</string>
 </resources>
