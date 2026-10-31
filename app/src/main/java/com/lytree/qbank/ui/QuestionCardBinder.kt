@@ -1,9 +1,11 @@
 package com.lytree.qbank.ui
 
 import android.util.TypedValue
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import com.lytree.qbank.R
@@ -283,9 +285,6 @@ object QuestionCardBinder {
         val inflater = LayoutInflater.from(ctx)
         val multi = q.type == QuestionType.MULTI || q.type == QuestionType.UNCERTAIN
         val selected = parseKeys(answers[q.id])
-        val optionTextColor = ContextCompat.getColor(
-            ctx, if (night) R.color.fb_night_text_body else R.color.fb_option_text
-        )
         // 即时判分的着色基准：正确项 = 绿，选错的项 = 红
         val correctKeys = if (revealNow) revealKeys(q) else emptySet()
         val wrongSelected = if (revealNow) selected.filter { it !in correctKeys }.toSet() else emptySet()
@@ -295,12 +294,7 @@ object QuestionCardBinder {
             val item = ItemOptionBinding.inflate(inflater, b.optionsBox, false)
             item.tvKey.text = opt.key
             item.tvKey.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f * fontScale)
-            item.tvText.text = opt.text
-            item.tvText.setTextColor(optionTextColor)
-            item.tvText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f * fontScale)
-            item.tvText.setLineSpacing(
-                5f * ctx.resources.displayMetrics.density * fontScale, 1f
-            )
+            bindOptionBody(item, opt.text, night, fontScale)
             val key = opt.key.uppercase()
             applyCircleState(
                 item,
@@ -332,6 +326,60 @@ object QuestionCardBinder {
 
         // 选项一律单列（对齐参考应用手机端：即便「2个 / 3个」这种超短选项也是竖排一列）
         q.options.forEach { opt -> b.optionsBox.addView(bindOption(opt).root) }
+    }
+
+    /**
+     * 选项正文：文字 + 配图。
+     *
+     * 图形推理那种「四个选项就是四张图」的题，选项单元格里放的就是图片地址
+     * （写法与材料图片一致，见 [MaterialRenderer.splitOption]）。图片按选项正文宽度铺开、
+     * 最高 240dp，**不抢点击**——点图就等于点这一项；只有图没有字时正文行整个隐藏。
+     *
+     * 分屏页（[SplitExamActivity]）也走这里，两处口径一致，别各写一份。
+     */
+    fun bindOptionBody(
+        item: ItemOptionBinding,
+        text: String,
+        night: Boolean,
+        fontScale: Float = 1f
+    ) {
+        val ctx = item.root.context
+        val content = MaterialRenderer.splitOption(text)
+        item.tvText.text = content.text
+        item.tvText.setTextColor(
+            ContextCompat.getColor(
+                ctx, if (night) R.color.fb_night_text_body else R.color.fb_option_text
+            )
+        )
+        item.tvText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f * fontScale)
+        item.tvText.setLineSpacing(5f * ctx.resources.displayMetrics.density * fontScale, 1f)
+        item.tvText.visibility = if (content.text.isNotEmpty()) View.VISIBLE else View.GONE
+
+        // 徽标对齐：带图的选项顶对齐——图一高，圆标居中会飘到图中间，A/B/C/D 反而对不上号；
+        // 纯文字仍整块居中（多行时圈落在文字块中间，与原来的口径一致）。
+        // 只有图时图顶有 6dp 间距（见 MaterialRenderer.buildImage），徽标跟着让 6dp 才对得齐。
+        val hasImage = content.hasImages
+        (item.root as? LinearLayout)?.gravity =
+            if (hasImage) Gravity.TOP else Gravity.CENTER_VERTICAL
+        (item.tvKey.layoutParams as? LinearLayout.LayoutParams)?.let { lp ->
+            val top = if (hasImage && content.text.isEmpty()) {
+                (6 * ctx.resources.displayMetrics.density).toInt()
+            } else {
+                0
+            }
+            if (lp.topMargin != top) {
+                lp.topMargin = top
+                item.tvKey.layoutParams = lp
+            }
+        }
+
+        if (content.hasImages) {
+            item.optionMedia.visibility = View.VISIBLE
+            MaterialRenderer.renderOptionImages(ctx, item.optionMedia, content.images, night)
+        } else {
+            item.optionMedia.visibility = View.GONE
+            item.optionMedia.removeAllViews()
+        }
     }
 
     /** 作答后就地刷新所有选项徽标（不重绑整张卡） */

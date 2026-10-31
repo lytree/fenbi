@@ -13,6 +13,7 @@ import com.lytree.qbank.data.model.Question
 import com.lytree.qbank.databinding.ActivityPaperDetailBinding
 import com.lytree.qbank.databinding.ItemQuestionBinding
 import com.lytree.qbank.ui.ExamActivity
+import com.lytree.qbank.ui.MaterialRenderer
 import com.lytree.qbank.ui.applyNavBarBottomPadding
 
 /**
@@ -95,7 +96,9 @@ class QuestionAdapter : RecyclerView.Adapter<QuestionAdapter.VH>() {
             }
         }
         holder.binding.tvStem.text = q.stem
-        holder.binding.tvOptions.text = q.options.joinToString("\n") { "${it.key}. ${it.text}" }
+        holder.binding.tvOptions.text = q.options.joinToString("\n") {
+            "${it.key}. ${MaterialRenderer.optionSummary(it.text)}"
+        }
         holder.binding.tvAnswer.text = if (q.answer.isBlank()) {
             "答案：待补答案"
         } else {

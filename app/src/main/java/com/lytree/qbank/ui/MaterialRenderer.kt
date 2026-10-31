@@ -67,7 +67,7 @@ object MaterialRenderer {
                 is Block.Table -> container.addView(buildTable(context, block, night, scale))
                 is Block.Paragraph -> container.addView(buildParagraph(context, block.text, night, scale))
                 is Block.Chart -> container.addView(buildChart(context, block.spec, night, chartScale))
-                is Block.Image -> container.addView(buildImage(context, block, night))
+                is Block.Image -> container.addView(buildImage(context, block.src, block.alt, night))
             }
         }
     }
@@ -298,6 +298,10 @@ object MaterialRenderer {
     private val MD_IMAGE = Regex("^!\\[([^\\]]*)]\\((.+)\\)$")
     private val IMAGE_EXT = Regex("(?i).*\\.(png|jpe?g|webp|gif|bmp)(\\?.*)?$")
 
+    /** 选项正文里夹着的图片：`![说明](地址)`、`[图片](地址)` 两种写法，路径允许带空格 */
+    private val MD_IMAGE_INLINE = Regex("""!\[([^\]]*)]\(\s*([^)\n]+?)\s*\)""")
+    private val BRACKET_IMAGE_INLINE = Regex("""\[(?:图片|图片地址|图)]\(\s*([^)\n]+?)\s*\)""")
+
     /**
      * 图片行：`![图1](路径)`、`[图片](路径)`，或整行就是一个图片地址
      * （`/sdcard/...`、`file://`、`content://`、`asset://`、`data:image/...`）。
@@ -307,6 +311,10 @@ object MaterialRenderer {
         MD_IMAGE.matchEntire(line)?.let {
             return it.groupValues[2].trim() to it.groupValues[1].trim()
         }
+        // `[图片](路径)`：括号里没感叹号，单独认一种，别把普通链接当真
+        BRACKET_IMAGE_INLINE.matchEntire(line)?.let {
+            return it.groupValues[1].trim() to ""
+        }
         val t = line.removePrefix("[图片]").trim()
         if (!IMAGE_EXT.matches(t) && !t.startsWith("data:image/", true)) return null
         val looksLikePath = t.contains("://") ||
@@ -314,6 +322,87 @@ object MaterialRenderer {
             Regex("^[A-Za-z]:[\\\\/]").containsMatchIn(t) ||
             t.startsWith("data:", true)
         return if (looksLikePath) t to "" else null
+    }
+
+    // ---------------- 选项图文 ----------------
+
+    /** 选项里的一处图片引用（写法与材料图片同一套） */
+    data class OptionImage(val src: String, val alt: String = "")
+
+    /**
+     * 选项正文拆出来的两块：[text] 是去掉图片引用后的文字，[images] 按出现顺序。
+     * 图形推理那种「四个选项就是四张图」的题，选项单元格里写的就是图片地址。
+     */
+    data class OptionContent(val text: String, val images: List<OptionImage>) {
+        val hasImages: Boolean get() = images.isNotEmpty()
+    }
+
+    /**
+     * 拆选项正文。认三种写法（与材料图片同口径）：
+     * `![说明](地址)`、`[图片](地址)`、整格只有一个图片地址。
+     * 其余文字原样保留——文字在前、图片在后，不为了混排把一行字拆成好几段。
+     */
+    fun splitOption(text: String): OptionContent {
+        if (text.isBlank()) return OptionContent("", emptyList())
+        val images = ArrayList<OptionImage>(2)
+        var rest = MD_IMAGE_INLINE.replace(text) { m ->
+            images += OptionImage(m.groupValues[2].trim(), m.groupValues[1].trim())
+            ""
+        }
+        rest = BRACKET_IMAGE_INLINE.replace(rest) { m ->
+            images += OptionImage(m.groupValues[1].trim())
+            ""
+        }
+        var plain = tidyOptionText(rest)
+        if (images.isEmpty()) {
+            // 整格就是一个图片地址（导出的试卷里常见）：没有别的文字才算，免得把题干话术当路径
+            val rows = plain.lines().map { it.trim() }.filter { it.isNotEmpty() }
+            if (rows.size == 1) {
+                parseImageLine(rows[0])?.let {
+                    images += OptionImage(it.first, it.second)
+                    plain = ""
+                }
+            }
+        }
+        return OptionContent(plain, images)
+    }
+
+    /** 去掉图片引用后收拾一下：空行与行首尾空白（`![..](..)` 单独占一行时容易留下空行） */
+    private fun tidyOptionText(raw: String): String =
+        raw.replace("\r\n", "\n")
+            .lines()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .joinToString("\n")
+
+    /** 列表 / 导入预览用的纯文字：图片引用收成「［图片］」，别把一长串路径糊到界面上 */
+    fun optionSummary(text: String): String {
+        val c = splitOption(text)
+        if (!c.hasImages) return c.text
+        return listOf(c.text, "［图片］").filter { it.isNotEmpty() }.joinToString(" ")
+    }
+
+    /**
+     * 把选项里的图片铺进 [container]（按选项正文宽度，最高 240dp）。
+     *
+     * 与材料配图两点不同：**不抢点击**（图形推理里点图就是选这一项），
+     * 上限也矮一档（四个选项各占一屏就没法比较了）。
+     */
+    fun renderOptionImages(
+        context: Context,
+        container: ViewGroup,
+        images: List<OptionImage>,
+        night: Boolean = false
+    ) {
+        container.removeAllViews()
+        images.forEach { img ->
+            container.addView(
+                buildImage(
+                    context, img.src, img.alt, night,
+                    maxHeightDp = 240f, previewOnTap = false
+                )
+            )
+        }
     }
 
     // ---------------- 渲染 ----------------
@@ -536,10 +625,19 @@ object MaterialRenderer {
     }
 
     /**
-     * 材料配图：按原图比例铺满材料宽度（最高 420dp），点一下整屏看。
-     * 加载中先占位，失败直接写清是哪张图没取到——刷题时最怕「图没了但不知道哪张」。
+     * 配图：按原图比例铺满可用宽度（最高 [maxHeightDp] dp）。
+     *
+     * 材料图默认 420dp、点一下整屏看；选项图上限 240dp 且 [previewOnTap] = false——
+     * 选项整行本身就是热区，图片把点击吃掉的话「点图选这项」就没了。
      */
-    private fun buildImage(context: Context, block: Block.Image, night: Boolean): View {
+    private fun buildImage(
+        context: Context,
+        src: String,
+        alt: String,
+        night: Boolean,
+        maxHeightDp: Float = 420f,
+        previewOnTap: Boolean = true
+    ): View {
         val metaColor = ContextCompat.getColor(
             context, if (night) R.color.fb_night_text_meta else R.color.fb_text_meta
         )
@@ -565,10 +663,10 @@ object MaterialRenderer {
         )
         holder.addView(hint)
 
-        val image = RatioImageView(context, dp(context, 420f))
+        val image = RatioImageView(context, dp(context, maxHeightDp))
         image.visibility = View.GONE
         image.scaleType = ImageView.ScaleType.FIT_CENTER
-        image.contentDescription = block.alt
+        image.contentDescription = alt
         image.layoutParams = FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
         )
@@ -576,17 +674,19 @@ object MaterialRenderer {
 
         val reqWidth = (context.resources.displayMetrics.widthPixels - dp(context, 88f))
             .coerceAtLeast(dp(context, 240f))
-        ImageLoader.load(context, block.src, reqWidth) { bmp ->
+        ImageLoader.load(context, src, reqWidth) { bmp ->
             if (bmp == null) {
-                hint.text = context.getString(R.string.material_image_failed, block.src)
+                hint.text = context.getString(R.string.material_image_failed, src)
             } else {
                 hint.visibility = View.GONE
                 image.setImageBitmap(bmp)
                 image.ratio = bmp.height.toFloat() / bmp.width.coerceAtLeast(1)
                 image.visibility = View.VISIBLE
                 image.requestLayout()
-                image.setOnClickListener {
-                    context.findActivity()?.let { ImagePreviewDialog.show(it, bmp) }
+                if (previewOnTap) {
+                    image.setOnClickListener {
+                        context.findActivity()?.let { ImagePreviewDialog.show(it, bmp) }
+                    }
                 }
             }
         }

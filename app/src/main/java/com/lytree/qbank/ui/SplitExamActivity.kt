@@ -344,7 +344,8 @@ class SplitExamActivity : AppCompatActivity() {
             q.options.forEach { opt ->
                 val item = ItemOptionBinding.inflate(inflater, card.optionsBox, false)
                 item.tvKey.text = opt.key
-                item.tvText.text = opt.text
+                // 文字 + 配图（图形推理的选项可能就是一张图）；分屏页暂无夜间配色
+                QuestionCardBinder.bindOptionBody(item, opt.text, night = false)
                 // 卷面已经给了左右留白（fb_content_padding_h），选项行不再二次缩进，否则会比题干多缩一截
                 item.root.setPadding(0, item.root.paddingTop, 0, item.root.paddingBottom)
                 val isSel = selected.contains(opt.key.uppercase())

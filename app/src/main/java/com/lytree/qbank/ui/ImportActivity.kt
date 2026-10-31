@@ -790,7 +790,9 @@ class PreviewAdapter : androidx.recyclerview.widget.RecyclerView.Adapter<Preview
         }
         holder.binding.tvType.text = q.type.label
         holder.binding.tvStem.text = q.stem
-        val opts = q.options.joinToString("\n") { "${it.key}. ${it.text}" }
+        val opts = q.options.joinToString("\n") {
+            "${it.key}. ${MaterialRenderer.optionSummary(it.text)}"
+        }
         holder.binding.tvOptions.text = if (opts.isBlank()) "" else opts
         holder.binding.tvAnswer.text = if (q.answer.isBlank()) {
             "答案：" + holder.itemView.context.getString(com.lytree.qbank.R.string.import_answer_pending_tip)

@@ -3,6 +3,8 @@
   选项行（全站唯一的选项版式）：圆形徽标 + 单列正文。
   · 徽标 32dp（平板 46dp），字母 15sp，未选浅蓝灰描边
   · 正文 16sp 次级色，行距 5dp；徽标与文字块上下居中（多行时圈落在文字块中间）
+  · 正文下面可以带图：图形推理那种「四个选项就是四张图」的题，
+    图片由 QuestionCardBinder.bindOptionBody 塞进 optionMedia（默认隐藏，纯文字选项没有额外开销）
   · 左右留白走 fb_option_row_padding_start / fb_content_padding_h，与题干对齐
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -20,14 +22,30 @@
         android:textSize="@dimen/fb_option_circle_text_size"
         tools:text="A" />
 
-    <TextView
-        android:id="@+id/tvText"
+    <LinearLayout
+        android:id="@+id/optionBody"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_marginStart="@dimen/fb_option_text_gap"
         android:layout_weight="1"
-        android:lineSpacingExtra="@dimen/fb_option_line_space"
-        android:textColor="@color/fb_option_text"
-        android:textSize="@dimen/fb_option_text_size"
-        tools:text="大力推进健康学校建设，坚持健康第一的教育理念，提升学生健康素养" />
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/tvText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:lineSpacingExtra="@dimen/fb_option_line_space"
+            android:textColor="@color/fb_option_text"
+            android:textSize="@dimen/fb_option_text_size"
+            tools:text="大力推进健康学校建设，坚持健康第一的教育理念，提升学生健康素养" />
+
+        <!-- 选项配图（见 QuestionCardBinder.bindOptionBody）：按选项正文宽度铺开 -->
+        <LinearLayout
+            android:id="@+id/optionMedia"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone"
+            tools:visibility="visible" />
+    </LinearLayout>
 </LinearLayout>

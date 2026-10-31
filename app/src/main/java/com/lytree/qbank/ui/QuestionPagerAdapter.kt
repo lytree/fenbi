@@ -2,6 +2,7 @@ package com.lytree.qbank.ui
 
 import android.view.LayoutInflater
 import android.view.MotionEvent
+import android.view.View
 import android.view.ViewGroup
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.ContextCompat
@@ -159,6 +160,15 @@ class QuestionPagerAdapter(
         onMaterialExpand = onMaterialExpand
     )
 
+    /**
+     * 材料组页头上的「弹出材料」。
+     *
+     * 构造参数只在初始化器里可见，而组页是在 [bindGroupPage] 里现绑的，所以先存一份；
+     * 独题页 / 列表里走的是题目卡上的同名入口（[QuestionCardBinder]），两处最终都落到
+     * 答题页的 `showMaterialPopup`——**一则材料带多道小题时，单题模式同样能弹出**。
+     */
+    private val expandMaterial: ((Question) -> Unit)? = onMaterialExpand
+
     class QuestionVH(val page: ItemQuestionPagerPageBinding) : RecyclerView.ViewHolder(page.root)
 
     class ModuleVH(val page: ItemModulePageBinding) : RecyclerView.ViewHolder(page.root)
@@ -302,6 +312,25 @@ class QuestionPagerAdapter(
         b.questionPane.setBackgroundResource(
             if (night) R.drawable.bg_fb_sheet_night else R.drawable.bg_fb_sheet
         )
+
+        // 材料头：与题目卡上的材料头同一套配色；「弹出材料」在组页也留着——
+        // 上区再宽也就半屏，表格 / 图表想看清还是得弹出来（平板就地分屏 / 手机半屏浮层）
+        b.tvGroupMaterialTag.setBackgroundResource(
+            if (night) R.drawable.bg_fb_material_tag_night else R.drawable.bg_fb_material_tag
+        )
+        b.tvGroupMaterialTag.setTextColor(
+            ContextCompat.getColor(
+                ctx, if (night) R.color.fb_night_tag_text else R.color.fb_type_tag_text
+            )
+        )
+        val metaColor = ContextCompat.getColor(
+            ctx, if (night) R.color.fb_night_text_meta else R.color.fb_text_meta
+        )
+        b.tvGroupMaterialExpand.setTextColor(metaColor)
+        b.icGroupMaterialExpand.setColorFilter(metaColor)
+        b.btnGroupMaterialExpand.visibility =
+            if (!hideMaterial && expandMaterial != null) View.VISIBLE else View.GONE
+        b.btnGroupMaterialExpand.setOnClickListener { expandMaterial?.invoke(questions[page.start]) }
 
         // 上下占比：偏好记忆（拖动结束时写回，见 attachGroupDrag）
         applyGroupRatio(b, groupRatioPrefs(ctx).getFloat(KEY_GROUP_RATIO, RATIO_DEFAULT))
