@@ -30,6 +30,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         createV7Tables(db)
         createV8Columns(db)
         createV10Tables(db)
+        createV11Tables(db)
     }
 
     /**
@@ -95,7 +96,8 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
                 partial_count INTEGER DEFAULT 0,
                 score REAL DEFAULT 0.0,
                 full_score REAL DEFAULT 0.0,
-                marked TEXT DEFAULT ''
+                marked TEXT DEFAULT '',
+                status TEXT DEFAULT 'done'
             )""".trimIndent()
         )
         db.execSQL(
@@ -134,6 +136,8 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         }
         // v10：一次导入 = 一个标题（组）。旧数据的卷子按「导入自 xxx」来源回填成组，不丢卷
         if (oldVersion < 10) createV10Tables(db)
+        // v11：记录从「交卷才生成」改成「开始答题就生成」，并补上每题用时
+        if (oldVersion < 11) createV11Tables(db)
     }
 
     /** v3：收藏表 + 答题进度表（对齐参考应用「收藏跨会话保留 / 中途退出可续做」） */
@@ -233,6 +237,39 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         }
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_paper_set ON papers(set_id)")
         backfillPaperSets(db)
+    }
+
+    /**
+     * v11：**记录从「开始答题」就开始，而不是交卷才生成**；同时记下**每道题各花了多久**。
+     *
+     * 旧实现只在交卷时插一行 `records`，中途退出等于没练过——记录页看不到、也没法回头接着做。
+     * 现在进卷即落一条 `status = 'ongoing'`（未完成）的记录：作答数、已用时随答题实时回写，
+     * 交卷改成 `status = 'done'`（已完成）并补齐成绩；重新开始时上一轮改记 `abandoned`
+     * （同样归到「未完成」，只是不再续做），这样任何一次进场都在记录里留痕。
+     *
+     * 每题用时单开一张 `record_question_times`：一题累计一行（切题时把上一题的秒数加进去），
+     * 交卷后成绩报告里能逐题回看，看哪道题磨了很久。
+     */
+    private fun createV11Tables(db: SQLiteDatabase) {
+        if (!hasColumn(db, "records", "status")) {
+            db.execSQL("ALTER TABLE records ADD COLUMN status TEXT DEFAULT ''")
+        }
+        // 老记录都是「交卷才生成」的，一律回填成已完成，别让它们凭空变成未完成
+        db.execSQL(
+            """UPDATE records SET status = CASE WHEN submitted_at > 0 THEN '$STATUS_DONE' ELSE '$STATUS_ONGOING' END
+               WHERE IFNULL(status, '') = ''""".trimIndent()
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_record_status ON records(status)")
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS record_question_times(
+                record_id INTEGER NOT NULL,
+                question_id INTEGER NOT NULL,
+                seconds INTEGER DEFAULT 0,
+                updated_at INTEGER DEFAULT 0,
+                PRIMARY KEY(record_id, question_id)
+            )""".trimIndent()
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_rqt_record ON record_question_times(record_id)")
     }
 
     /** 旧卷子按来源文件回填成组：同一份「导入自 X」的卷归一组，没有来源的落到「历史试卷」 */
@@ -829,6 +866,10 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
                 "DELETE FROM record_inks WHERE record_id IN (SELECT id FROM records WHERE paper_id = ?)",
                 arrayOf<Any>(id)
             )
+            db.execSQL(
+                "DELETE FROM record_question_times WHERE record_id IN (SELECT id FROM records WHERE paper_id = ?)",
+                arrayOf<Any>(id)
+            )
             db.execSQL("DELETE FROM records WHERE paper_id = ?", arrayOf<Any>(id))
             db.execSQL("DELETE FROM exam_progress WHERE paper_id = ?", arrayOf<Any>(id))
             db.execSQL("DELETE FROM favorites WHERE question_id IN ($orphanQuestions)", args)
@@ -964,27 +1005,88 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
     /**
      * 取本卷当前未交卷的草稿记录，没有就新建一条。
      *
-     * 标注要跟随「本次作答」保存，而正式记录是交卷时才生成的；所以进卷先落一条草稿
-     * （`submitted_at = 0`），交卷时再由 [finalizeRecord] 转正。`source` 存在 `mode` 列，
-     * 用来区分答题页 / 分屏页各自的草稿，避免两个页面共用同一条记录。
+     * **进卷即建记录**：以前正式记录是交卷时才生成的，中途退出等于没练过，记录页也查不到；
+     * 现在一进来就落一条 `status = 'ongoing'` 的记录，作答数 / 已用时随答题回写，
+     * 交卷时再由 [finalizeRecord] 转成 `done`——所以「未完成」也能在记录列表里看到并点回来接着做。
+     *
+     * 标注也挂在它上面：`source` 存在 `mode` 列，用来区分答题页 / 分屏页各自的草稿，
+     * 两个页面不会互相覆盖对方的笔迹。
      */
-    fun ensureDraftRecord(paperId: Long, source: String, startedAt: Long): Long {
+    fun ensureDraftRecord(
+        paperId: Long,
+        source: String,
+        startedAt: Long,
+        name: String = ""
+    ): Long {
+        // 按试卷找「进行中」，不看来源：答题页与分屏页是同一场练习，不能各挂一条未完成
         readableDatabase.rawQuery(
-            "SELECT id FROM records WHERE paper_id = ? AND submitted_at = 0 AND mode = ? ORDER BY id DESC LIMIT 1",
-            arrayOf(paperId.toString(), source)
+            "SELECT id FROM records WHERE paper_id = ? AND submitted_at = 0 AND status = ? ORDER BY id DESC LIMIT 1",
+            arrayOf(paperId.toString(), STATUS_ONGOING)
         ).use { c -> if (c.moveToFirst()) return c.getLong(0) }
 
         val cv = ContentValues().apply {
             put("paper_id", paperId)
-            put("name", "答题草稿")
+            put("name", name.ifBlank { paperName(paperId).ifBlank { "答题记录" } })
             put("mode", source)
             put("started_at", startedAt)
             put("submitted_at", 0)
+            put("total_count", countQuestions(paperId))
+            put("status", STATUS_ONGOING)
         }
         return writableDatabase.insert("records", null, cv)
     }
 
-    /** 丢弃未交卷的草稿（重新开始 / 放弃分屏练习）：记录、作答与笔迹一并清掉 */
+    /** 卷名（记录标题用它，别让列表里全是「练习记录」） */
+    fun paperName(paperId: Long): String =
+        readableDatabase.rawQuery("SELECT name FROM papers WHERE id = ?", arrayOf(paperId.toString()))
+            .use { c -> if (c.moveToFirst()) c.getString(0) ?: "" else "" }
+
+    /**
+     * 一条记录**第一次开始**的时间。
+     *
+     * 中途退出再进卷复用的是同一条记录，`started_at` 要保住最初那一刻——
+     * 否则每次续做都把「开始时间」刷新成今天，记录列表里的时间就全乱了。
+     */
+    fun recordStartedAt(recordId: Long): Long =
+        readableDatabase.rawQuery(
+            "SELECT IFNULL(started_at, 0) FROM records WHERE id = ?", arrayOf(recordId.toString())
+        ).use { c -> if (c.moveToFirst()) c.getLong(0) else 0L }
+
+    /**
+     * 放弃本轮：把未交卷的草稿记成「未完成」而不是删掉。
+     *
+     * 「重新开始」时会走这里——上一轮已经花掉的时间、答过的题得留在记录里，
+     * 但不能再被 `ensureDraftRecord` 当成「进行中」捡回来续做。
+     */
+    fun abandonDraftRecords(paperId: Long, source: String? = null) {
+        val cv = ContentValues().apply { put("status", STATUS_ABANDONED) }
+        val where = StringBuilder("paper_id = ? AND submitted_at = 0 AND status = ?")
+        val args = arrayListOf(paperId.toString(), STATUS_ONGOING)
+        if (!source.isNullOrBlank()) {
+            where.append(" AND mode = ?")
+            args.add(source)
+        }
+        writableDatabase.update("records", cv, where.toString(), args.toTypedArray())
+    }
+
+    /** 正在答题时把「答了几题 / 一共几题 / 已用多久」回写到这条未完成记录上 */
+    fun updateRecordLive(recordId: Long, answered: Int, total: Int, durationSec: Int) {
+        if (recordId <= 0L) return
+        val cv = ContentValues().apply {
+            put("answered_count", answered)
+            put("total_count", total)
+            put("duration_sec", durationSec)
+            put("status", STATUS_ONGOING)
+        }
+        writableDatabase.update(
+            "records", cv, "id = ? AND submitted_at = 0", arrayOf(recordId.toString())
+        )
+    }
+
+    /**
+     * 丢弃未交卷的草稿（连同作答与笔迹）。只留给「这一轮彻底不要了」的场景，
+     * 正常的「重新开始」走 [abandonDraftRecords]，记录本身要留下。
+     */
     fun discardDraftRecords(paperId: Long, source: String) {
         val db = writableDatabase
         val args = arrayOf(paperId.toString(), source)
@@ -993,6 +1095,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         try {
             db.delete("record_inks", where, args)
             db.delete("record_answers", where, args)
+            db.delete("record_question_times", where, args)
             db.delete("records", "paper_id = ? AND submitted_at = 0 AND mode = ?", args)
             db.setTransactionSuccessful()
         } finally {
@@ -1000,11 +1103,67 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         }
     }
 
+    /** 删掉一条记录（含逐题作答、笔迹、每题用时）；未完成的记录删掉就等于放弃这一轮 */
+    fun deleteRecord(recordId: Long) {
+        if (recordId <= 0L) return
+        val db = writableDatabase
+        val id = arrayOf(recordId.toString())
+        db.beginTransaction()
+        try {
+            db.delete("record_answers", "record_id = ?", id)
+            db.delete("record_inks", "record_id = ?", id)
+            db.delete("record_question_times", "record_id = ?", id)
+            db.delete("records", "id = ?", id)
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    // ---------------- 每题用时 ----------------
+
+    /** 给某题的用时**累加** [seconds]（一题一行，切题时把上一段秒数加进来） */
+    fun addQuestionTime(recordId: Long, questionId: Long, seconds: Int) {
+        if (recordId <= 0L || questionId <= 0L || seconds <= 0) return
+        val db = writableDatabase
+        val args = arrayOf(recordId.toString(), questionId.toString())
+        val exist = db.rawQuery(
+            "SELECT seconds FROM record_question_times WHERE record_id = ? AND question_id = ?", args
+        ).use { c -> if (c.moveToFirst()) c.getInt(0) else -1 }
+        if (exist >= 0) {
+            // 不用 UPSERT 语法：Android 7 上的 SQLite 还不支持 ON CONFLICT DO UPDATE
+            db.execSQL(
+                "UPDATE record_question_times SET seconds = IFNULL(seconds, 0) + ?, updated_at = ? WHERE record_id = ? AND question_id = ?",
+                arrayOf<Any>(seconds, System.currentTimeMillis(), recordId, questionId)
+            )
+        } else {
+            db.insert("record_question_times", null, ContentValues().apply {
+                put("record_id", recordId)
+                put("question_id", questionId)
+                put("seconds", seconds)
+                put("updated_at", System.currentTimeMillis())
+            })
+        }
+    }
+
+    /** 一条记录的逐题用时：题目 id → 秒数 */
+    fun getQuestionTimes(recordId: Long): Map<Long, Int> {
+        val out = HashMap<Long, Int>()
+        if (recordId <= 0L) return out
+        readableDatabase.rawQuery(
+            "SELECT question_id, seconds FROM record_question_times WHERE record_id = ?",
+            arrayOf(recordId.toString())
+        ).use { c ->
+            while (c.moveToNext()) out[c.getLong(0)] = c.getInt(1)
+        }
+        return out
+    }
+
     /**
      * 把草稿转成正式记录：补上交卷时间与成绩，并用本次判分结果替换逐题作答。
      *
-     * 笔迹（`record_inks`）不删——它本来就挂在这条记录上，交卷后仍能回看。
-     * [recordId] 为 0 或记录已不存在时直接新插一条。
+     * 笔迹（`record_inks`）与每题用时（`record_question_times`）都不删——它们本来就挂在
+     * 这条记录上，交卷后仍能回看。[recordId] 为 0 或记录已不存在时直接新插一条。
      */
     fun finalizeRecord(
         recordId: Long,
@@ -1058,13 +1217,23 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         put("full_score", record.fullScore)
         // 标记随记录留档（与 exam_progress.marked 同一种逗号串编码）
         put("marked", record.marked.joinToString(","))
+        put("status", record.status.ifBlank { STATUS_DONE })
     }
 
-    /** 记录列表只出已交卷的；未交卷草稿只在续做时按试卷读取 */
+    /**
+     * 记录列表：**已交卷的、还没做完的都出**（需求：一进答题页就留痕）。
+     *
+     * 按记录 id 倒序，最新练的在最上面；未完成的点进去就能接着做。
+     */
     fun listRecords(): List<ExamRecord> {
         val out = ArrayList<ExamRecord>()
         readableDatabase.rawQuery(
-            "SELECT id, paper_id, name, mode, started_at, submitted_at, duration_sec, total_count, answered_count, correct_count, partial_count, score, full_score, marked FROM records WHERE submitted_at > 0 ORDER BY id DESC",
+            """SELECT r.id, r.paper_id, r.name, r.mode, r.started_at, r.submitted_at,
+                      r.duration_sec, r.total_count, r.answered_count, r.correct_count,
+                      r.partial_count, r.score, r.full_score, r.marked,
+                      IFNULL(r.status, ''), IFNULL(p.name, '')
+               FROM records r LEFT JOIN papers p ON p.id = r.paper_id
+               ORDER BY r.id DESC""",
             null
         ).use { c ->
             while (c.moveToNext()) {
@@ -1075,7 +1244,9 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
                         durationSec = c.getInt(6), totalCount = c.getInt(7), answeredCount = c.getInt(8),
                         correctCount = c.getInt(9), partialCount = c.getInt(10),
                         score = c.getDouble(11), fullScore = c.getDouble(12),
-                        marked = parseIdTextSet(c.getString(13) ?: "")
+                        marked = parseIdTextSet(c.getString(13) ?: ""),
+                        status = c.getString(14).orEmpty().ifBlank { STATUS_DONE },
+                        paperName = c.getString(15) ?: ""
                     )
                 )
             }
@@ -1302,7 +1473,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         const val DB_NAME = "qbank.db"
 
         /** 库版本。云备份包里的 manifest 会记下它，恢复时据此判断能否直接落地 */
-        const val DB_VERSION = 10
+        const val DB_VERSION = 11
 
         /** 重练卷统一挂的组名 */
         private const val RETRY_SET_TITLE = "错题重练"
@@ -1340,6 +1511,15 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
 
         /** 笔迹目标：材料（target_id = 材料组首题 id） */
         const val INK_KIND_MATERIAL = "material"
+
+        /** 记录状态：还没交卷，正在做（可以从记录列表点回来接着答） */
+        const val STATUS_ONGOING = "ongoing"
+
+        /** 记录状态：已交卷，成绩与用时都可回看 */
+        const val STATUS_DONE = "done"
+
+        /** 记录状态：这一轮放弃了（「重新开始」把上一轮留成这个状态），仍算「未完成」 */
+        const val STATUS_ABANDONED = "abandoned"
 
         @Volatile
         private var instance: QBankDb? = null

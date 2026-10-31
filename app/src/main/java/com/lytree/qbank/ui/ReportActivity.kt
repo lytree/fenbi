@@ -98,7 +98,8 @@ class ReportActivity : AppCompatActivity() {
         setupRetryWrong(record)
 
         binding.list.layoutManager = LinearLayoutManager(this)
-        binding.list.adapter = ReportAdapter(record.results, record.marked)
+        // 每题用时：答题时按题计时落库，这里逐题带出来，能看出哪道题磨得最久
+        binding.list.adapter = ReportAdapter(record.results, record.marked, db.getQuestionTimes(record.id))
 
         // 本次标记过的题在逐题解析里带「已标记」标签，标题里先给个总数，免得逐页翻找
         binding.tvAnalysisTitle.text = if (record.marked.isEmpty()) {
@@ -250,10 +251,12 @@ class ReportActivity : AppCompatActivity() {
  *
  * [marked] 是本次作答被标记（细线星）的题 id —— 交卷时随记录落库，
  * 所以回看旧记录也能看出当时标了哪几题，而不只是当轮答题卡上的点。
+ * [times] 是每道题各自花掉的秒数（答题时逐题计时），做题节奏一目了然。
  */
 class ReportAdapter(
     private val items: List<AnswerResult>,
-    private val marked: Set<Long> = emptySet()
+    private val marked: Set<Long> = emptySet(),
+    private val times: Map<Long, Int> = emptyMap()
 ) :
     RecyclerView.Adapter<ReportAdapter.VH>() {
 
@@ -267,7 +270,12 @@ class ReportAdapter(
     override fun onBindViewHolder(holder: VH, position: Int) {
         val r = items[position]
         val ctx = holder.itemView.context
-        holder.binding.tvIndex.text = "第 ${position + 1} 题 · ${r.question.type.label}"
+        val sec = times[r.question.id] ?: 0
+        holder.binding.tvIndex.text = buildString {
+            append("第 ${position + 1} 题 · ${r.question.type.label}")
+            // 单独记的每题用时：没计到（比如旧记录）就不显示，不硬塞一个 0 秒
+            if (sec > 0) append(" · 用时 ${RecordAdapter.fmtDuration(sec)}")
+        }
         holder.binding.tvStem.text = r.question.stem
         holder.binding.tvMark.visibility =
             if (r.question.id in marked) android.view.View.VISIBLE else android.view.View.GONE

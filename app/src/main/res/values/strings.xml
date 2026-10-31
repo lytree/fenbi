@@ -177,6 +177,20 @@
     <string name="empty_paper_questions">这份试卷暂无题目</string>
     <string name="empty_records">还没有考试记录</string>
 
+    <!-- 练习记录：进入答题页即留痕，完成 / 未完成两种标识 -->
+    <string name="record_status_done">已完成</string>
+    <string name="record_status_ongoing">未完成</string>
+    <string name="record_continue">继续</string>
+    <string name="record_tap_continue">点击接着做</string>
+    <string name="record_interrupted">已中断</string>
+    <string name="empty_records_hint">一进答题页这里就会留下记录：做完的是「已完成」，可以看成绩和用时；没做完的是「未完成」，点一下接着做</string>
+    <string name="record_delete_title">删除这条记录</string>
+    <string name="record_delete_confirm">删除「%1$s」后，这一场的作答、成绩、笔迹与每题用时都会一并清掉，无法恢复。</string>
+    <string name="record_deleted">记录已删除</string>
+    <string name="record_actions">更多操作</string>
+    <string name="record_action_open">查看成绩报告</string>
+    <string name="record_action_resume">继续答题</string>
+
     <string name="title_import">导入</string>
     <string name="import_pick">选择试卷文件</string>
     <string name="import_word_title">导入词表</string>

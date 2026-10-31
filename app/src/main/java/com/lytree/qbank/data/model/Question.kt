@@ -180,9 +180,23 @@ data class ExamRecord(
     val fullScore: Double = 0.0,
     /** 本次作答被标记（细线星）的题目 id；交卷时随记录落库，回看记录可见 */
     val marked: Set<Long> = emptySet(),
+    /** 记录状态：done 已完成 / ongoing 进行中 / abandoned 已中断；后两者都是「未完成」 */
+    val status: String = "done",
+    /** 所属试卷名（记录列表拿它当标题，别让列表里全是「练习记录」） */
+    val paperName: String = "",
     val correctRate: Double = 0.0,
     val results: List<AnswerResult> = emptyList()
 ) {
     /** 待补答案的题数（这些题不参与判分） */
     val pendingCount: Int get() = results.count { it.pending }
+
+    /** 已完成：交了卷，有成绩可看 */
+    val isDone: Boolean get() = status == "done"
+
+    /** 还在做：可以从记录列表点回去接着答 */
+    val isOngoing: Boolean get() = status == "ongoing"
+
+    /** 列表标题：优先用卷名，卷子被删了才退回记录自带的名称 */
+    val displayTitle: String
+        get() = paperName.ifBlank { name.ifBlank { "练习记录" } }
 }

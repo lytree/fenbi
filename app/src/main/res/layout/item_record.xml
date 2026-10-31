@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 练习记录卡：左「卷名 + 完成/未完成标签 + 元信息」，右侧已完成的得分（未完成显示「继续」），
+     最右「⋯」是这一条的菜单（查看 / 继续 / 删除） -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    style="@style/FbListCard"
+    android:gravity="center_vertical"
+    android:orientation="horizontal">
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/title"
+                style="@style/FbItemTitle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:maxLines="1" />
+
+            <TextView
+                android:id="@+id/tvStatus"
+                style="@style/FbTag"
+                android:layout_marginStart="@dimen/fb_space_8"
+                android:text="@string/record_status_done" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/subtitle"
+            style="@style/FbItemSub"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/fb_space_4" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/score"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="@dimen/fb_space_12"
+        android:includeFontPadding="false"
+        android:textColor="@color/fb_primary"
+        android:textSize="@dimen/fb_text_bar_title"
+        android:textStyle="bold" />
+
+    <!-- 「⋯」：删除等操作从这里进，不再只靠长按（长按仍然有效，但没人猜得到） -->
+    <ImageView
+        android:id="@+id/btnMore"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:layout_marginStart="@dimen/fb_space_4"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/record_actions"
+        android:padding="10dp"
+        android:scaleType="fitCenter"
+        android:src="@drawable/ic_fb_more" />
+</LinearLayout>
+

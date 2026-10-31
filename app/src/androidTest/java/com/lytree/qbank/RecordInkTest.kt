@@ -17,10 +17,11 @@ import org.junit.runner.RunWith
  * 手写标注跟随作答记录保存的回归测试。
  *
  * 覆盖四条产品口径：
- * 1. 进卷先落草稿记录，同一张卷 / 同一个来源反复进入拿到的是同一条草稿，草稿不进记录列表；
+ * 1. 进卷先落一条「未完成」记录，同一张卷反复进入拿到的是同一条；
+ *    答题页与分屏页是同一场练习，共用这条记录（记录列表里不会一场两条）；
  * 2. 笔迹挂在本轮记录上：换一轮练习（另一条记录）看不到上一轮的圈画；
  * 3. 同一记录同一目标只保留最新一份（后写覆盖前写，不涨行数），撤销到空即删行；
- * 4. 交卷转正后记录 id 不变、笔迹还在；重新开始 / 放弃时连带笔迹一起清掉；
+ * 4. 交卷转正后记录 id 不变、笔迹还在；彻底丢弃草稿时连带笔迹一起清掉；
  *    题目（question）与材料（material）分开存，互不覆盖。
  */
 @RunWith(AndroidJUnit4::class)
@@ -46,6 +47,7 @@ class RecordInkTest {
             for (id in ids) {
                 db.writableDatabase.delete("record_inks", "record_id = ?", arrayOf(id.toString()))
                 db.writableDatabase.delete("record_answers", "record_id = ?", arrayOf(id.toString()))
+                db.writableDatabase.delete("record_question_times", "record_id = ?", arrayOf(id.toString()))
                 db.writableDatabase.delete("records", "id = ?", arrayOf(id.toString()))
             }
             db.writableDatabase.setTransactionSuccessful()
@@ -55,18 +57,22 @@ class RecordInkTest {
     }
 
     @Test
-    fun draft_record_is_reused_and_hidden_from_list() {
+    fun draft_record_is_reused_and_listed_as_unfinished() {
         val first = db.ensureDraftRecord(paperId, source, 1_000L)
         assertTrue("草稿应有 id", first > 0L)
 
         val again = db.ensureDraftRecord(paperId, source, 2_000L)
-        assertEquals("同一张卷同一来源复用同一条草稿", first, again)
+        assertEquals("同一张卷反复进入复用同一条草稿", first, again)
 
-        assertTrue("草稿不进入记录列表", db.listRecords().none { it.id == first })
+        // 进卷即留痕：未交卷的记录也进列表，状态是「未完成」
+        val listed = db.listRecords().firstOrNull { it.id == first }
+        assertTrue("未交卷的记录要出现在记录列表里", listed != null)
+        assertEquals("未交卷记为进行中", QBankDb.STATUS_ONGOING, listed!!.status)
+        assertFalse("进行中不算已完成", listed.isDone)
 
-        // 另一个来源（分屏页）是另一条草稿
+        // 分屏页是同一场练习的另一个页面：共用这条记录，记录列表里不会一场两条
         val split = db.ensureDraftRecord(paperId, "split", 3_000L)
-        assertNotEquals("答题页与分屏页的草稿分开", first, split)
+        assertEquals("答题页与分屏页共用同一条记录", first, split)
     }
 
     @Test
@@ -121,6 +127,7 @@ class RecordInkTest {
         )
         assertEquals("交卷不换记录 id", draft, rid)
         assertTrue("交卷后进入记录列表", db.listRecords().any { it.id == rid })
+        assertTrue("交卷后这条记录是已完成", db.listRecords().first { it.id == rid }.isDone)
         assertEquals("题目笔迹随记录保留", "kept", db.getInk(rid, QBankDb.INK_KIND_QUESTION, 303L))
         assertEquals("材料笔迹随记录保留", "kept-material", db.getInk(rid, QBankDb.INK_KIND_MATERIAL, 304L))
 

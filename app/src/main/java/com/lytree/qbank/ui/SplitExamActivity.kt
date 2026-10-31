@@ -45,13 +45,18 @@ class SplitExamActivity : AppCompatActivity() {
     private lateinit var db: QBankDb
 
     private var paperId = 0L
-    /** 本次分屏练习的记录 id（草稿）：标注按它落库，交卷时转正 */
+    /** 本次分屏练习的记录 id（草稿）：一进来就落库，标注与每题用时都挂在它上面 */
     private var recordId = 0L
+    /** 每题用时：切题时把上一题的秒数累加进库 */
+    private lateinit var questionTimer: QuestionTimer
     private var questions: List<Question> = emptyList()
     private lateinit var structure: PaperStructure
     private val answers = HashMap<Long, String>()
     private val marked = HashSet<Long>()
+    /** 本页进入时间：顶栏正计时与「本次用了多久」都按它算 */
     private var startedAt = 0L
+    /** 这条记录最初开始的时间（和答题页可能是同一条，别被本页的进入时间覆盖） */
+    private var recordStartedAt = 0L
     private var submitted = false
     private var revealAnswers = false
     private var inkMode = false
@@ -93,8 +98,13 @@ class SplitExamActivity : AppCompatActivity() {
         indexOffset = group?.startIndex ?: 0
 
         startedAt = System.currentTimeMillis()
-        // 标注跟随本次分屏作答：先建（或取回）草稿记录，交卷时转正
+        // **一进来就有记录**：先落一条「未完成」，交卷时转成「已完成」；
+        // 标注与每题用时都按这条记录存
         recordId = db.ensureDraftRecord(paperId, DRAFT_SOURCE, startedAt)
+        // 记录最初的开始时间单独留着：顶栏的正计时要从「进这一页」算起，
+        // 而记录上的「开始时间」得是最早那次进卷的时刻
+        recordStartedAt = db.recordStartedAt(recordId).takeIf { it > 0L } ?: startedAt
+        questionTimer = QuestionTimer(db).apply { bindRecord(recordId) }
         binding.inkOverlay.recordId = recordId
         binding.titleBar.showDivider(false)
         // 对齐参考应用的分屏页：顶栏只留「返回 + 计时」，不放卷名与右侧动作
@@ -376,6 +386,8 @@ class SplitExamActivity : AppCompatActivity() {
         tvIndex.text = getString(R.string.question_index, currentIndex + 1, questions.size)
         updateTimer()
         syncInkQuestion()
+        // 每题用时：滚到 / 点到哪一题就把表拨到哪一题
+        if (::questionTimer.isInitialized) questionTimer.switchTo(questions.getOrNull(currentIndex)?.id)
     }
 
     /** 顶栏计时：从进入分屏起正计时（参考应用分屏页左上是「🕐 01:08」） */
@@ -450,9 +462,9 @@ class SplitExamActivity : AppCompatActivity() {
             okText = "退出",
             cancelText = "继续答题",
             onOk = {
-                // 分屏页没有续做入口：放弃这次练习就把草稿（含标注）一起丢掉，
-                // 避免下次进来只看到上一轮圈画、作答却是空的
-                db.discardDraftRecords(paperId, DRAFT_SOURCE)
+                // 退出分屏只是离开这个页面：记录和那一轮的圈画都留着（和答题页是同一条记录），
+                // 下次进来仍是同一场练习
+                if (::questionTimer.isInitialized) questionTimer.stop()
                 finish()
             }
         )
@@ -476,6 +488,7 @@ class SplitExamActivity : AppCompatActivity() {
     private fun submit() {
         if (submitted) return
         submitted = true
+        if (::questionTimer.isInitialized) questionTimer.stop()
         revealAnswers = true
 
         val policy = db.getPolicy()
@@ -485,9 +498,9 @@ class SplitExamActivity : AppCompatActivity() {
 
         val record = ExamRecord(
             paperId = intent.getLongExtra(EXTRA_PAPER_ID, 0L),
-            name = "分屏练习记录",
+            name = db.paperName(paperId).ifBlank { "分屏练习记录" },
             mode = "资料分析分屏",
-            startedAt = startedAt,
+            startedAt = if (recordStartedAt > 0L) recordStartedAt else startedAt,
             submittedAt = now,
             durationSec = ((now - startedAt) / 1000).toInt(),
             totalCount = summary.total,
@@ -497,7 +510,9 @@ class SplitExamActivity : AppCompatActivity() {
             score = summary.score,
             fullScore = summary.fullScore,
             // 与答题页同口径：标记跟着这条记录走
-            marked = marked.toSet()
+            marked = marked.toSet(),
+            // 交卷即「已完成」：成绩与每题用时都能在记录里回看
+            status = QBankDb.STATUS_DONE
         )
         // 草稿转正：记录 id 不变，挂在它上面的标注（record_inks）继续可用
         val rid = db.finalizeRecord(recordId, record, results)
@@ -534,5 +549,15 @@ class SplitExamActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         binding.root.removeCallbacks(timerTick)
+        // 切后台就结算：当前题的秒数落库，记录里的作答数 / 用时也跟着刷新
+        if (!submitted) {
+            if (::questionTimer.isInitialized) questionTimer.stop()
+            db.updateRecordLive(
+                recordId,
+                questions.count { (answers[it.id] ?: "").isNotBlank() },
+                questions.size,
+                ((System.currentTimeMillis() - startedAt) / 1000).toInt()
+            )
+        }
     }
 }

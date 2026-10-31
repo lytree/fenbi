@@ -79,8 +79,12 @@ class ExamActivity : AppCompatActivity() {
     private val revealed = HashSet<Long>()
     private var timer: CountDownTimer? = null
     private var paperId = 0L
-    /** 本次作答的记录 id（草稿）：标注按它落库，交卷时转正 */
+    /** 本次作答的记录 id（草稿）：一进页面就落库，标注与每题用时都按它存，交卷时转正 */
     private var recordId = 0L
+    /** 记录标题（题头卷名，记录列表里显示的就是它） */
+    private var recordName = ""
+    /** 每题用时：切题时把上一题的秒数累加进库 */
+    private lateinit var questionTimer: QuestionTimer
     private var durationMin = 0
     private var startedAt = 0L
     private var submitted = false
@@ -175,10 +179,16 @@ class ExamActivity : AppCompatActivity() {
         questions.addAll(paper.questions)
         structure = PaperStructure(questions)
         durationMin = paper.durationMin
+        recordName = intent.getStringExtra(EXTRA_PAPER_NAME)?.takeIf { it.isNotBlank() }
+            ?: paper.name.ifBlank { "练习记录" }
         startedAt = System.currentTimeMillis()
         sessionStartWall = startedAt
-        // 标注要跟随本次作答记录：先进库建（或取回）草稿，交卷时再转正
-        recordId = db.ensureDraftRecord(paperId, DRAFT_SOURCE, startedAt)
+        // **一进卷就有记录**：先落一条「未完成」（status = ongoing），作答数 / 用时随答题回写，
+        // 中途退出也能在记录列表里看到并点回来接着做；标注与每题用时都挂在它上面
+        recordId = db.ensureDraftRecord(paperId, DRAFT_SOURCE, startedAt, recordName)
+        // 续做时沿用最初那次的开始时间，别每进一次就把「开始时间」刷成今天
+        db.recordStartedAt(recordId).takeIf { it > 0L }?.let { startedAt = it }
+        questionTimer = QuestionTimer(db).apply { bindRecord(recordId) }
 
         // 收藏跨会话保留：从库里读出本卷题目的收藏状态（对齐参考应用「我的收藏」）
         val qids = questions.map { it.id }.toHashSet()
@@ -293,6 +303,8 @@ class ExamActivity : AppCompatActivity() {
     /** 作答后的联动：练习模式即时判分；单选题「自动展示下一题」时翻到 / 滚到下一题 */
     private fun onAnswered(q: Question) {
         questions.indexOfFirst { it.id == q.id }.takeIf { it >= 0 }?.let { currentPos = it }
+        // 记录里的「答了几题 / 已用多久」实时回写：退出时列表看到的就是当时的进度
+        syncLiveRecord()
         if (practiceMode && !submitted && q.id !in revealed) {
             // 练习模式（参考应用「练习」口径）：作答立刻判色 + 内联解析，不等交卷
             revealed.add(q.id)
@@ -611,6 +623,7 @@ class ExamActivity : AppCompatActivity() {
             splitListAdapter?.notifyDataSetChanged()
         }
         refreshSplitProgress()
+        syncLiveRecord()
         if (!autoNext) return
         if (q.type != com.lytree.qbank.data.model.QuestionType.SINGLE) return
         val nextInGroup = splitGroup.indexOfFirst { it.id == q.id } + 1
@@ -1018,6 +1031,8 @@ class ExamActivity : AppCompatActivity() {
         binding.inkOverlay.bindQuestion(inkQ?.id ?: 0L)
         val markQ = if (onModuleIntro) null else currentQuestion()
         inkToolbar.setMarked(markQ != null && markQ.id in marked)
+        // 每题用时：换题就把表拨到当前题（说明页 / 无题时不计时），上一题的秒数同时落库
+        if (::questionTimer.isInitialized) questionTimer.switchTo(inkQ?.id)
     }
 
     /**
@@ -1126,6 +1141,21 @@ class ExamActivity : AppCompatActivity() {
         return (elapsedBaseSec + consumed.coerceAtLeast(0)).coerceAtMost(durationMin * 60)
     }
 
+    /**
+     * 把「答了几题 / 一共几题 / 已用多久」写回这条未完成记录。
+     *
+     * 记录页看到的就是这些数：中途退出、切到后台时都不会只剩一条光秃秃的「未完成」。
+     */
+    private fun syncLiveRecord() {
+        if (recordId <= 0L || submitted) return
+        db.updateRecordLive(
+            recordId,
+            questions.count { (answers[it.id] ?: "").isNotBlank() },
+            questions.size,
+            elapsedSec()
+        )
+    }
+
     // ---------------- 续做（中途退出保存进度） ----------------
 
     /**
@@ -1159,12 +1189,17 @@ class ExamActivity : AppCompatActivity() {
 
     /**
      * 重新开始：上一轮的进度与标注一起作废，另起一条草稿记录。
-     * 标注是挂在记录上的，只清进度不清记录会把上一轮的圈画带到新一轮。
+     *
+     * 上一轮**不删**，改成 `abandoned`（在记录列表里算「未完成」）——练过就该留痕；
+     * 删掉的话反而像是没来过，而且它身上还挂着那一轮的圈画。
      */
     private fun restartDraftRecord() {
-        db.discardDraftRecords(paperId, DRAFT_SOURCE)
+        if (::questionTimer.isInitialized) questionTimer.stop()
+        // 不看来源：这份卷当前进行中的那条一律改成「未完成（已中断）」
+        db.abandonDraftRecords(paperId)
         startedAt = System.currentTimeMillis()
-        recordId = db.ensureDraftRecord(paperId, DRAFT_SOURCE, startedAt)
+        recordId = db.ensureDraftRecord(paperId, DRAFT_SOURCE, startedAt, recordName)
+        questionTimer.bindRecord(recordId)
         binding.inkOverlay.recordId = recordId
         syncInkQuestion()
     }
@@ -1185,6 +1220,9 @@ class ExamActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         if (!submitted && paperId > 0L) {
+            // 先停表再落库：这一步之后的时间不该再算到「正在看的那道题」上
+            if (::questionTimer.isInitialized) questionTimer.stop()
+            syncLiveRecord()
             db.saveProgress(paperId, answers, marked, elapsedSec())
         }
     }
@@ -1581,6 +1619,8 @@ class ExamActivity : AppCompatActivity() {
     private fun submit(auto: Boolean) {
         if (submitted) return
         submitted = true
+        // 收表：把当前题的秒数结算掉，之后的时间不再算进任何一题
+        if (::questionTimer.isInitialized) questionTimer.stop()
         timer?.cancel()
         // 已交卷：清掉未交卷进度，下次进入是全新一轮
         db.clearProgress(paperId)
@@ -1597,11 +1637,13 @@ class ExamActivity : AppCompatActivity() {
 
         val record = ExamRecord(
             paperId = intent.getLongExtra(EXTRA_PAPER_ID, 0L),
-            name = "练习记录",
+            name = recordName,
             mode = if (auto) "超时自动交卷" else "手动交卷",
             startedAt = startedAt,
             submittedAt = now,
-            durationSec = ((now - startedAt) / 1000).toInt(),
+            // 用时取「实际做了多久」而不是墙上时间差：中途退出再进来续做时，
+            // 两次会话之间的空档不该算进做题时间
+            durationSec = elapsedSec(),
             totalCount = summary.total,
             answeredCount = summary.answered,
             correctCount = summary.correct,
@@ -1610,7 +1652,9 @@ class ExamActivity : AppCompatActivity() {
             fullScore = summary.fullScore,
             // 标记随本次作答留档：交卷时 clearProgress 会删掉进度里的 marked，
             // 这里先把它写进记录，回看报告才知道当时标了哪几题
-            marked = marked.toSet()
+            marked = marked.toSet(),
+            // 草稿转正：这条记录从「未完成」变成「已完成」，成绩与用时都能回看
+            status = QBankDb.STATUS_DONE
         )
         // 草稿转正：记录 id 不变，挂在它上面的标注（record_inks）继续可用
         val rid = db.finalizeRecord(recordId, record, results)
