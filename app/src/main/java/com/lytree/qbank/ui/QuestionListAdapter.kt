@@ -92,6 +92,8 @@ class QuestionListAdapter(
             // 资料分析常是一则材料带多题：材料只在材料组的第一题渲染一次，
             // 后面的题接着往下排（对齐参考应用的连续卷面）
             hideMaterial = hideAllMaterials || !structure.isGroupStart(position),
+            // 「弹出材料」只给一材料多题的组留入口（组内只有一题时材料在卡上已完整显示）
+            materialGroupSize = structure.groupOf(questions[position])?.count ?: 1,
             // 大类说明卡：同一个大类只在首题出现一次（对齐参考应用的「资料分析 (20题)」）
             moduleHeader = if (hideModuleHeaders) {
                 null

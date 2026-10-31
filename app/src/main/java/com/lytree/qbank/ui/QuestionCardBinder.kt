@@ -101,6 +101,13 @@ object QuestionCardBinder {
         /** 模块说明卡：只在该模块第一题传值，其余题传 null（卷面上一模块只出现一次） */
         moduleHeader: ModuleHeader? = null,
         /**
+         * 本题所属材料组里的题量（默认 1 = 一道材料只带一道题）。
+         *
+         * 「弹出材料」只对**一材料多题**有意义：一道材料只带一道题时，材料在卡上本来
+         * 就整段完整显示，再弹一层只是把同一段文字重看一遍，入口反而占地方。
+         */
+        materialGroupSize: Int = 1,
+        /**
          * 题间分隔线。多题浏览是卷面通铺，靠这条线分题；
          * 单题浏览一屏一题、下面没有「下一题」，画了反而像被截断。
          */
@@ -210,18 +217,19 @@ object QuestionCardBinder {
                     ctx, if (night) R.color.fb_night_tag_text else R.color.fb_type_tag_text
                 )
             )
-            // 「弹出材料」：窄屏里材料被卡宽压着，表格 / 图表都看不清，单独弹出来看
-            b.tvMaterialExpand.setTextColor(
-                ContextCompat.getColor(
+            // 「弹出材料」：窄屏里材料被卡宽压着，表格 / 图表都看不清，单独弹出来看。
+            // 但只有**一则材料带多道小题**才留这个入口——单题材料在卡上已完整展开，
+            // 弹出等于把同一段材料再看一遍；分屏右栏（onMaterialExpand = null）同理不留。
+            val canExpandMaterial = cb.onMaterialExpand != null && materialGroupSize > 1
+            b.btnMaterialExpand.visibility = if (canExpandMaterial) View.VISIBLE else View.GONE
+            if (canExpandMaterial) {
+                val metaColor = ContextCompat.getColor(
                     ctx, if (night) R.color.fb_night_text_meta else R.color.fb_text_meta
                 )
-            )
-            b.icMaterialExpand.setColorFilter(
-                ContextCompat.getColor(
-                    ctx, if (night) R.color.fb_night_text_meta else R.color.fb_text_meta
-                )
-            )
-            b.btnMaterialExpand.setOnClickListener { cb.onMaterialExpand?.invoke(q) }
+                b.tvMaterialExpand.setTextColor(metaColor)
+                b.icMaterialExpand.setColorFilter(metaColor)
+                b.btnMaterialExpand.setOnClickListener { cb.onMaterialExpand?.invoke(q) }
+            }
             MaterialRenderer.render(ctx, b.materialContent, q.material, night)
         } else {
             b.materialBox.visibility = View.GONE

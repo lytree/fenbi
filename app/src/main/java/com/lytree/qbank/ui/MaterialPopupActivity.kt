@@ -8,11 +8,13 @@ import com.lytree.qbank.R
 import com.lytree.qbank.databinding.ActivityMaterialPopupBinding
 
 /**
- * 「弹出材料」只读页。
+ * 「弹出材料」只读整页。
  *
- * 一则材料只带一道题时，从材料卡右上角「弹出材料」进入：整页只显示材料，
- * A- / A+ 调字号。材料带多道题时不再进这里——答题页会**就地左右分屏**
- * （左材料 / 右题目，见 [ExamActivity.openSplit]），对齐参考应用平板端的交互。
+ * 现在只有资料分析分屏页（[SplitExamActivity]）的左栏「弹出材料」还会进这里——左栏只有
+ * 半屏宽，表格 / 图表常挤成一团，弹到整页看。A- / A+ 调字号。
+ *
+ * 答题页不再跳这里：一则材料带**多道**小题时手机走半屏浮层、平板就地左右分屏
+ * （见 [ExamActivity.showMaterialPopup]）；一则材料只带**一道**题时不出弹出入口。
  */
 class MaterialPopupActivity : AppCompatActivity() {
 

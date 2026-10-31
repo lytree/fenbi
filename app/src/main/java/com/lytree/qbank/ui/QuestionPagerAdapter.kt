@@ -274,6 +274,8 @@ class QuestionPagerAdapter(
                 night = night,
                 // 组页里材料只在第一题渲染一次，后面的小题接着往下排
                 hideMaterial = hideMaterial || k > 0,
+                // 「弹出材料」只给一材料多题留入口：单题材料这一页材料整段在卡上，不必再弹
+                materialGroupSize = structure.groupOf(questions[qi])?.count ?: 1,
                 // 大类说明已经单独占一页，组页不再内嵌那张卡
                 moduleHeader = null,
                 // 组内有题与题的细线；页内最后一题下面没有下一题，不画

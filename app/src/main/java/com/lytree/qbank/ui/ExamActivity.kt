@@ -477,17 +477,23 @@ class ExamActivity : AppCompatActivity() {
     /**
      * 「弹出材料」。
      *
-     * 交互对齐参考应用，**平板 / 手机两套模式**：
-     * - 平板（最小屏宽 ≥ 600dp）+ 材料组：**就地左右分屏**——左栏材料（可「收起材料」还原），
+     * **只在「一则材料带多道小题」时才有这个交互**——一道材料只带一道题时，材料在卡上
+     * 已经整段完整展开，弹出只是把同一段文字再看一遍，入口和浮层都省掉（卡片上的按钮
+     * 也由 [QuestionCardBinder] 按组题量隐藏）。
+     *
+     * 交互对齐参考应用，**单题 / 多题两种浏览模式都能弹，平板 / 手机两套形态**：
+     * - 平板（最小屏宽 ≥ 600dp）：**就地左右分屏**——左栏材料（可「收起材料」还原），
      *   右栏这组题目一屏一题、左右滑动切题，照常作答，且**卡片不再重复渲染材料**（左栏已有整栏）；
-     * - 手机（或材料只带一道题）：**半屏浮层**——从底部弹出约 65% 屏高，材料独立滚动，
+     * - 手机：**半屏浮层**——从底部弹出约 65% 屏高，材料独立滚动，
      *   A- / A+ 调字号，答题状态完全不打断。
      */
     private fun showMaterialPopup(q: Question) {
         if (q.material.isBlank()) return
         // 以材料为准：这组 = 该题所属的材料组（跨大类的同名材料本来就断成两组）
-        val group = structure.groupOf(q)?.takeIf { it.isMaterialGroup }?.questions ?: listOf(q)
-        if (group.size > 1 && isTablet) {
+        val group = structure.groupOf(q)?.takeIf { it.isMaterialGroup }?.questions.orEmpty()
+        // 一材料一题：不弹（按钮已隐藏，这里再兜一层，防止别的入口绕过来）
+        if (group.size < 2) return
+        if (isTablet) {
             openSplit(q, group)
         } else {
             showMaterialSheet(q.material)
