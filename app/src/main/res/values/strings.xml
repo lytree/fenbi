@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">自定义题库</string>
-    <string name="tab_banks">题库</string>
     <!-- 底部导航这一项叫「背诵」，里面分 词库 / 政治 / 常识 三块 -->
     <string name="tab_recite">背诵</string>
     <string name="tab_words">词库</string>
@@ -11,7 +10,6 @@
     <string name="tab_records">记录</string>
 
     <!-- 页面大标题 -->
-    <string name="page_banks">我的题库</string>
     <string name="page_words">我的词库</string>
     <string name="page_papers">我的试卷</string>
     <string name="page_records">练习记录</string>
@@ -62,6 +60,7 @@
 
     <string name="action_import">导入</string>
     <string name="action_start">开始答题</string>
+    <string name="action_view_questions">查看题目</string>
     <string name="action_exam">开始考试</string>
     <string name="action_submit">交卷</string>
     <string name="action_answer_card">答题卡</string>
@@ -174,19 +173,18 @@
     <!-- 弹出材料半屏浮层 -->
     <string name="material_sheet_scale">字号 %1$d%%</string>
 
-    <string name="empty_banks">还没有题库，导入一份 Excel（.xlsx）或题库包（zip）就能开始刷题</string>
-    <string name="empty_bank_questions">该题库暂无题目</string>
-    <string name="empty_papers">还没有试卷，导入一份 Excel（.xlsx）就会生成一份试卷</string>
+    <string name="empty_papers">还没有试卷，导入一份 Excel（.xlsx）就能开练：有几个工作表就建几份卷</string>
+    <string name="empty_paper_questions">这份试卷暂无题目</string>
     <string name="empty_records">还没有考试记录</string>
 
     <string name="title_import">导入</string>
-    <string name="import_pick">选择题库文件</string>
+    <string name="import_pick">选择试卷文件</string>
     <string name="import_word_title">导入词表</string>
     <string name="import_word_hint">背单词用的词库走另一套流程：Word(.docx) / Excel(.xlsx) / CSV / TXT 里按表头取「词条 / 拼音 / 释义 / 分类」，解析后逐条勾选再入库。</string>
     <string name="import_link_action">从链接导入</string>
     <string name="import_link_title">从链接导入</string>
-    <string name="import_link_hint">粘贴题库文件的下载链接（http/https），下载完成后直接进入预览。支持 Excel（.xlsx）与题库包（zip）。</string>
-    <string name="import_link_placeholder">题库文件链接</string>
+    <string name="import_link_hint">粘贴试卷文件的下载链接（http/https），下载完成后直接进入预览。支持 Excel（.xlsx）与题库包（zip）。</string>
+    <string name="import_link_placeholder">试卷文件链接</string>
     <string name="import_link_download">下载并预览</string>
     <string name="import_link_downloading">正在下载…</string>
     <string name="import_link_invalid">请填写 http/https 开头的链接</string>
@@ -201,6 +199,18 @@
     <string name="import_answer_pending_tip">待补答案（可做完后补录）</string>
     <string name="import_done">导入成功</string>
     <string name="import_failed">导入失败</string>
+
+    <!-- 一份文件多份试卷 -->
+    <string name="import_pick_hint">支持 Excel(.xlsx) 与题库包(zip：Excel + 图片)，自动识别编码与表头别名。每个工作表生成一份试卷（sheet 名即卷名），一张表里排了多套题时加一列「试卷」也能自动分开；导入前逐题勾选。</string>
+    <string name="import_multi_title">文件里有 %1$d 份试卷 · 共 %2$d 题</string>
+    <string name="import_multi_hint">点上面的卷名切换预览，每份的勾选各自保存；导入时一次全部建卷，卷名取自工作表名（或「试卷」列）。</string>
+    <string name="import_paper_chip">%1$s · %2$d 题</string>
+    <string name="import_confirm_papers">导入全部 %1$d 份试卷</string>
+    <string name="import_done_paper">已生成试卷「%1$s」，共 %2$d 题</string>
+    <string name="import_done_papers">已生成 %1$d 份试卷，共 %2$d 题</string>
+    <string name="import_done_skipped">；%1$d 份没有勾选任何题目，未建卷</string>
+    <string name="import_pick_none">请至少勾选一道题</string>
+    <string name="import_overwrite_multi">已存在同名试卷（%1$s 等 %2$d 份），继续导入会覆盖原有题目和作答记录。</string>
 
     <string name="question_index">%1$d/%2$d</string>
     <string name="score_summary">得分 %1$s / %2$s</string>

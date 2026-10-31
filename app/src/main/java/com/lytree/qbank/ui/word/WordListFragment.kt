@@ -63,7 +63,7 @@ class WordListFragment : Fragment(), Refreshable {
 
         binding.titleBar.usePageTitleStyle()
         binding.titleBar.setTitle(getString(R.string.page_words))
-        // 顶栏不再放「导入」：统一从题库页的导入入口进，再选「导入词表」
+        // 顶栏不再放「导入」：统一从试卷页的导入入口进，再选「导入词表」
 
         // 词库 / 政治 / 常识 三段切换：当前已在词库，点另外两段只是把本页换掉
         LibrarySwitch.bind(

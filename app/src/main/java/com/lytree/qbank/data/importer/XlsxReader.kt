@@ -9,7 +9,8 @@ import java.util.zip.ZipInputStream
  * 极简 XLSX 读取器。
  * 不引入 Apache POI（体积大、Android 兼容差），直接按 OOXML 规范解 zip + 拉式解析 XML。
  *
- * 支持：sharedStrings、inlineStr、数字、布尔、公式缓存值；多 sheet 时取第一个有数据的 sheet。
+ * 支持：sharedStrings、inlineStr、数字、布尔、公式缓存值；多 sheet 全部读出来（[readAll]），
+ * 只需一份数据时用 [read] 取第一张有内容的。
  * 用 XmlPullParserFactory（而非 android.util.Xml）取解析器，JVM 单元测试加 kxml2 即可复用。
  */
 object XlsxReader {
@@ -20,7 +21,20 @@ object XlsxReader {
 
     data class Sheet(val name: String, val rows: List<List<String>>)
 
+    /** 只要一份数据（答题卡、词表）：第一张有内容的 sheet，都没有就给第一张 */
     fun read(input: InputStream): Sheet {
+        val sheets = readAll(input)
+        return sheets.firstOrNull { it.rows.size > 1 }
+            ?: sheets.firstOrNull()
+            ?: Sheet("Sheet1", emptyList())
+    }
+
+    /**
+     * 读出全部工作表（按工作表顺序，跳过完全没有内容的那几张）。
+     *
+     * 「一份 Excel 里有多份试卷」最常见的写法就是**一个工作表一份卷**，所以这里不能只取第一张。
+     */
+    fun readAll(input: InputStream): List<Sheet> {
         val entries = HashMap<String, ByteArray>()
         ZipInputStream(input).use { zis ->
             while (true) {
@@ -36,24 +50,23 @@ object XlsxReader {
         // sheet 名表
         val sheetNames = parseWorkbookSheets(entries["xl/workbook.xml"])
 
-        // 依次尝试每个 sheet，取第一个解析出内容且行数>1 的
         val sheetFiles = entries.keys
             .filter { it.matches(Regex("xl/worksheets/sheet\\d+\\.xml")) }
             .sortedBy { extractSheetIndex(it) }
 
-        for (sf in sheetFiles) {
-            val rows = parseSheet(entries[sf]!!, shared)
-            if (rows.size > 1) {
-                val idx = extractSheetIndex(sf)
-                return Sheet(sheetNames.getOrElse(idx) { "Sheet$idx" }, rows)
-            }
+        return sheetFiles.mapNotNull { sf ->
+            val rows = parseSheet(entries[sf]!!, shared).trimTrailingBlankRows()
+            if (rows.isEmpty()) return@mapNotNull null
+            val idx = extractSheetIndex(sf)
+            Sheet(sheetNames.getOrElse(idx) { "Sheet$idx" }, rows)
         }
-        // 兜底：至少返回解析到的第一张
-        val sf = sheetFiles.firstOrNull() ?: return Sheet("Sheet1", emptyList())
-        return Sheet(
-            sheetNames.getOrElse(extractSheetIndex(sf)) { "Sheet1" },
-            parseSheet(entries[sf]!!, shared)
-        )
+    }
+
+    /** 末尾的空行没有意义，留着只会让「最后一张表」被误判成有内容 */
+    private fun List<List<String>>.trimTrailingBlankRows(): List<List<String>> {
+        var end = size
+        while (end > 0 && this[end - 1].all { it.isBlank() }) end--
+        return if (end == size) this else subList(0, end)
     }
 
     private fun extractSheetIndex(path: String): Int =

@@ -21,12 +21,48 @@ enum class ImportFormat(val ext: String, val label: String, val mime: String) {
 }
 
 /**
- * 导入调度：格式探测 + 分发 + 规范化 + 校验。
+ * 一份待建卷的解析结果。
+ *
+ * 一个文件可能拆出多份（见 [PaperSplitter]），所以「导入」的单位从「文件」变成了「卷」：
+ * 每卷有自己的卷名、题目、去重计数与校验问题。
+ */
+data class PaperDraft(
+    val name: String,
+    val questions: List<Question>,
+    /** 这一卷对应文件里的数据行数（含被跳过的） */
+    val totalRows: Int,
+    /** 本卷内判定为重复而跳过的题数 */
+    val duplicateSkipped: Int,
+    val issues: List<ImportIssue>,
+    /** 卷名从哪来的：`「试卷」列` / `工作表「Sheet2」`；空串表示整文件一卷 */
+    val origin: String = ""
+)
+
+/** 整份文件的解析结果：一份或多份试卷 + 文件级问题 */
+data class MultiPaperOutcome(
+    val format: String,
+    val papers: List<PaperDraft>,
+    /** 文件级问题：解析失败、多工作表说明、包内择优等，不属于某一卷 */
+    val issues: List<ImportIssue>
+) {
+    val questionCount get() = papers.sumOf { it.questions.size }
+    val totalRows get() = papers.sumOf { it.totalRows }
+    val duplicateSkipped get() = papers.sumOf { it.duplicateSkipped }
+    val errorCount get() = issues.count { it.level == ImportIssue.Level.ERROR }
+    val warnCount get() = issues.count { it.level == ImportIssue.Level.WARN }
+    val multi get() = papers.size > 1
+}
+
+/**
+ * 导入调度：格式探测 + 分发 + 拆卷 + 规范化 + 校验。
  *
  * 三条贯穿全程的原则（借自 Anki 导入器的实用做法）：
  * 1. **按结果取舍，不按文件名取舍**：题库包里有几份 Excel 就都试一遍，谁真能解析出题用谁；
  * 2. **先报数再入库**：去重、跳过、警告都在预览页一次说清，别让用户点完「导入」才发现少了一半；
  * 3. **宽容解析**：表头别名、图片路径写法、答案写法都尽量认，认不出来才报错。
+ *
+ * 关于「一个文件几份卷」：拆卷规则见 [PaperSplitter]（「试卷」列 / 多工作表），
+ * 拆不开就老老实实当一卷——把两套题并成一卷，比少拆一卷严重得多。
  */
 object Importer {
 
@@ -42,64 +78,208 @@ object Importer {
         return ImportFormat.XLSX
     }
 
-    fun parse(format: ImportFormat, bytes: ByteArray): ImportResult {
-        val issues = ArrayList<ImportIssue>()
-        val raw = when (format) {
-            ImportFormat.XLSX -> parseXlsx(bytes, issues)
-            ImportFormat.ZIP -> {
-                // 题库包必须先解压（见 build），走到这里说明调用方漏传了解压目录
-                issues.add(
-                    ImportIssue(0, ImportIssue.Level.ERROR, "题库包需要先解压，请重新选择文件导入")
-                )
-                ImportResult(emptyList(), issues, "ZIP", 0)
-            }
-        }
-        return raw
-    }
-
-    private fun parseXlsx(bytes: ByteArray, issues: MutableList<ImportIssue>): ImportResult {
-        return try {
-            val sheet = XlsxReader.read(ByteArrayInputStream(bytes))
-            if (sheet.rows.isEmpty()) {
-                issues.add(ImportIssue(0, ImportIssue.Level.ERROR, "Excel 中没有可读数据"))
-                ImportResult(emptyList(), issues, "XLSX", 0)
-            } else {
-                val csvText = sheet.rows.joinToString("\n") { row ->
-                    row.joinToString(",") { cell ->
-                        if (cell.contains(',') || cell.contains('"') || cell.contains('\n')) {
-                            "\"" + cell.replace("\"", "\"\"") + "\""
-                        } else cell
-                    }
+    /**
+     * 完整导入流程：解析 → 拆卷 → 规范化 → 去重 → 校验。
+     *
+     * @param fileName 原始文件名：整文件只有一卷时，卷名默认用它（去掉扩展名）
+     * @param pkgDir 题库包解压到哪里（普通格式不需要）
+     */
+    fun buildPapers(
+        format: ImportFormat,
+        bytes: ByteArray,
+        fileName: String = "",
+        pkgDir: File? = null
+    ): MultiPaperOutcome {
+        val baseName = fileName.substringBeforeLast('.').trim()
+        return when (format) {
+            ImportFormat.XLSX -> {
+                val issues = ArrayList<ImportIssue>()
+                val papers = try {
+                    papersOfSheets(bytes, baseName, null, issues)
+                } catch (e: Exception) {
+                    issues.add(
+                        ImportIssue(
+                            0, ImportIssue.Level.ERROR,
+                            "只支持 Excel（.xlsx）文件：${e.message ?: e.javaClass.simpleName}"
+                        )
+                    )
+                    emptyList()
                 }
-                val r = CsvImporter.parse(ByteArrayInputStream(csvText.toByteArray(Charsets.UTF_8)), issues)
-                r.copy(format = "XLSX")
+                val out = MultiPaperOutcome("XLSX", papers, issues)
+                out.withMultiNote()
             }
-        } catch (e: Exception) {
-            issues.add(ImportIssue(0, ImportIssue.Level.ERROR, "只支持 Excel（.xlsx）文件：${e.message}"))
-            ImportResult(emptyList(), issues, "XLSX", 0)
+            ImportFormat.ZIP -> buildPackage(bytes, baseName, pkgDir)
         }
     }
 
     /**
-     * 完整导入流程：解析 → 规范化 → 去重 → 校验。
-     * @param selectedIndices 只保留规范化后列表中的这些下标（null 表示全部）
+     * 单卷便捷入口（老调用方与单元测试用）：多卷文件会按卷顺序摊平返回。
+     *
+     * 新代码请直接走 [buildPapers]，否则多卷文件里只有第一行的卷名能用上。
+     *
+     * @param selectedIndices 只保留摊平后列表中的这些下标（null 表示全部）；多卷时不建议用
      */
     fun build(
         format: ImportFormat,
         bytes: ByteArray,
         selectedIndices: Set<Int>? = null,
-        // 题库包解压到哪里（普通格式不需要）
+        fileName: String = "",
         pkgDir: File? = null
     ): ImportOutcome {
-        if (format == ImportFormat.ZIP) return buildPackage(bytes, selectedIndices, pkgDir)
+        val multi = buildPapers(format, bytes, fileName, pkgDir)
+        val all = multi.papers.flatMap { it.questions }
+        val chosen = if (selectedIndices == null) all else all.filterIndexed { i, _ -> i in selectedIndices }
+        return ImportOutcome(
+            format = multi.format,
+            total = multi.totalRows,
+            imported = chosen.size,
+            questions = chosen,
+            issues = multi.issues + multi.papers.flatMap { it.issues },
+            suggestedName = multi.papers.firstOrNull()?.name,
+            duplicateSkipped = multi.duplicateSkipped,
+            papers = multi.papers
+        )
+    }
 
-        val parsed = parse(format, bytes)
-        val issues = ArrayList(parsed.issues)
-        val all = ArrayList<Question>()
-        parsed.questions.forEach { raw ->
-            Normalizer.toQuestion(raw, issues)?.let { all.add(it) }
+    /** 拆出多卷时补一条文件级说明：让「为什么变成 N 份试卷」有据可查 */
+    private fun MultiPaperOutcome.withMultiNote(): MultiPaperOutcome {
+        if (papers.size <= 1) return this
+        val how = papers.map { it.origin }.filter { it.isNotEmpty() }.distinct().joinToString("、")
+        val note = ImportIssue(
+            0, ImportIssue.Level.INFO,
+            "检测到 ${papers.size} 份试卷" + (if (how.isNotEmpty()) "（按$how 拆分）" else "") +
+                "，共 $questionCount 题；导入后会各建一份试卷"
+        )
+        return copy(issues = issues + note)
+    }
+
+    /** 一张工作表解析出来的东西 */
+    private data class SheetData(val name: String, val result: ImportResult)
+
+    /**
+     * 解析 Excel 的所有工作表 → 拆卷 → 逐卷规范化。
+     *
+     * 工作表级的错误处理有一条分寸：**只要有任意一张表出了题，其余表的错误就降级成提示**。
+     * 「说明」「答题卡」这类表在很多题库里都存在，它们解析不出题是正常的，
+     * 报成红色错误只会让用户以为自己导错了。
+     */
+    private fun papersOfSheets(
+        bytes: ByteArray,
+        fallbackName: String,
+        assets: Map<String, String>?,
+        fileIssues: MutableList<ImportIssue>
+    ): List<PaperDraft> {
+        val sheets = XlsxReader.readAll(ByteArrayInputStream(bytes))
+        if (sheets.isEmpty()) {
+            fileIssues.add(ImportIssue(0, ImportIssue.Level.ERROR, "Excel 中没有可读数据"))
+            return emptyList()
         }
-        return finish(format.label, parsed.totalRows, all, issues, selectedIndices, null)
+
+        val parsed = sheets.map { s ->
+            val sheetIssues = ArrayList<ImportIssue>()
+            SheetData(s.name, CsvImporter.parseRows(s.rows, sheetIssues, "XLSX"))
+        }
+
+        val withQuestions = parsed.filter { it.result.questions.isNotEmpty() }
+        val multiSheet = parsed.size > 1
+
+        if (withQuestions.isEmpty()) {
+            // 一张表都没出题：每张表给一条硬错误，否则用户只看到「0 题」不知道哪儿错了
+            parsed.forEach { s ->
+                val first = s.result.issues.firstOrNull { it.level == ImportIssue.Level.ERROR }
+                    ?: s.result.issues.firstOrNull()
+                fileIssues.add(
+                    ImportIssue(
+                        0, ImportIssue.Level.ERROR,
+                        (if (multiSheet) "工作表「${s.name}」" else "") +
+                            (first?.message ?: "没有可导入的题目")
+                    )
+                )
+            }
+            return emptyList()
+        }
+
+        parsed.filter { it.result.questions.isEmpty() }.forEach { s ->
+            val first = s.result.issues.firstOrNull { it.level == ImportIssue.Level.ERROR }
+            fileIssues.add(
+                ImportIssue(
+                    0, ImportIssue.Level.INFO,
+                    "工作表「${s.name}」没有可导入的题目，已忽略" +
+                        (first?.let { "（${it.message}）" } ?: "")
+                )
+            )
+        }
+
+        // 出题的表：表头推断、整行跳过之类的提示按表归属上报（多表时标上表名，否则对不上号）
+        withQuestions.forEach { s ->
+            s.result.issues.forEach { i ->
+                fileIssues.add(
+                    if (!multiSheet) i else i.copy(message = "「${s.name}」${i.message}")
+                )
+            }
+        }
+
+        return papersOf(withQuestions, fallbackName, assets, fileIssues)
+    }
+
+    /**
+     * 把各表的行拆成卷，再逐卷规范化、去重、体检。
+     *
+     * 去重按**卷内**做：同一道题出现在两份卷子里是正常的（真题会重复用），不能跨卷吞掉。
+     */
+    private fun papersOf(
+        sheets: List<SheetData>,
+        fallbackName: String,
+        assets: Map<String, String>?,
+        fileIssues: MutableList<ImportIssue>
+    ): List<PaperDraft> {
+        val blocks = PaperSplitter.split(
+            sheets.map { PaperSplitter.SheetQuestions(it.name, it.result.questions) },
+            fallbackName
+        )
+
+        val drafts = ArrayList<PaperDraft>(blocks.size)
+        blocks.forEach { block ->
+            val issues = ArrayList<ImportIssue>()
+            val questions = ArrayList<Question>(block.raws.size)
+            block.raws.forEach { raw ->
+                Normalizer.toQuestion(raw, issues)?.let { q ->
+                    questions.add(if (assets.isNullOrEmpty()) q else rewriteAssets(q, assets))
+                }
+            }
+            val (unique, duplicated) = dedup(questions)
+            if (duplicated > 0) {
+                issues.add(
+                    ImportIssue(0, ImportIssue.Level.INFO, "$duplicated 题内容完全重复，已自动跳过")
+                )
+            }
+            // 卷面结构体检：按卷各查一遍（三级结构由 subject/material 的连续重复派生）
+            issues.addAll(StructureCheck.check(unique))
+            drafts.add(
+                PaperDraft(
+                    name = block.name,
+                    questions = unique,
+                    totalRows = block.raws.size,
+                    duplicateSkipped = duplicated,
+                    issues = issues,
+                    origin = block.origin
+                )
+            )
+        }
+
+        // 一题都没有的卷不建：把原因留成提示，而不是建一份空卷让用户自己发现
+        val usable = drafts.filter { it.questions.isNotEmpty() }
+        drafts.filter { it.questions.isEmpty() }.forEach { d ->
+            val first = d.issues.firstOrNull { it.level == ImportIssue.Level.ERROR }
+            fileIssues.add(
+                ImportIssue(
+                    0,
+                    if (usable.isEmpty()) ImportIssue.Level.ERROR else ImportIssue.Level.INFO,
+                    "「${d.name}」没有可导入的题目，已跳过" + (first?.let { "：${it.message}" } ?: "")
+                )
+            )
+        }
+        return usable
     }
 
     /**
@@ -109,80 +289,75 @@ object Importer {
      */
     private fun buildPackage(
         bytes: ByteArray,
-        selectedIndices: Set<Int>?,
+        fallbackName: String,
         pkgDir: File?
-    ): ImportOutcome {
+    ): MultiPaperOutcome {
         val issues = ArrayList<ImportIssue>()
         if (pkgDir == null) {
             issues.add(ImportIssue(0, ImportIssue.Level.ERROR, "题库包缺少解压目录，无法导入"))
-            return ImportOutcome("题库包", 0, 0, emptyList(), issues)
+            return MultiPaperOutcome("题库包", emptyList(), issues)
         }
         val pack = try {
             QbankPackage.open(bytes, pkgDir)
         } catch (e: Exception) {
             issues.add(ImportIssue(0, ImportIssue.Level.ERROR, "题库包解压失败：${e.message}"))
-            return ImportOutcome("题库包", 0, 0, emptyList(), issues)
+            return MultiPaperOutcome("题库包", emptyList(), issues)
         }
 
-        val attempts = pack.candidates.map { tryParse(it, pack.assets) }
+        // 包名优先当卷名：包里那份 Excel 只有一卷时，用户认的是压缩包的名字，不是「Sheet1」
+        val name = pack.name.takeIf { it.isNotBlank() } ?: fallbackName
+        val attempts = pack.candidates.map { tryParse(it, pack.assets, name) }
         // 并列时保留靠前的（命名与扩展名优先级更高）：只在严格更多时才换
         var bestIndex = 0
         attempts.forEachIndexed { i, a ->
-            if (a.questions.size > attempts[bestIndex].questions.size) bestIndex = i
+            if (a.count > attempts[bestIndex].count) bestIndex = i
         }
         val best = attempts[bestIndex]
 
         issues.addAll(best.issues)
         if (pack.candidates.size > 1) issues.addAll(reportChoice(attempts, bestIndex))
 
-        return finish(
-            formatLabel = "题库包 · " + best.format.label,
-            totalRows = best.total,
-            questions = best.questions,
-            issues = issues,
-            selectedIndices = selectedIndices,
-            suggestedName = pack.name.takeIf { it.isNotBlank() }
-        )    }
+        val out = MultiPaperOutcome("题库包 · ${best.format.label}", best.papers, issues)
+        return out.withMultiNote()
+    }
 
     /** 单个候选的试解析结果 */
     private data class Attempt(
         val candidate: QbankPackage.Candidate,
         val format: ImportFormat,
-        val total: Int,
-        val questions: List<Question>,
+        val papers: List<PaperDraft>,
         val issues: List<ImportIssue>
-    )
+    ) {
+        val count: Int get() = papers.sumOf { it.questions.size }
+    }
 
     /**
-     * 试解析一个候选文件：解析 + 规范化 + 换图片路径。
+     * 试解析一个候选文件：解析 + 拆卷 + 规范化 + 换图片路径。
      *
      * 失败不抛异常——包里有几份数据文件，一份坏不该拖垮整个导入，交给调用方择优。
      */
     private fun tryParse(
         candidate: QbankPackage.Candidate,
-        assets: Map<String, String>
+        assets: Map<String, String>,
+        fallbackName: String
     ): Attempt {
         val format = detect(candidate.path, candidate.bytes)
         if (format == ImportFormat.ZIP) {
             return Attempt(
-                candidate, format, 0, emptyList(),
+                candidate, format, emptyList(),
                 listOf(ImportIssue(0, ImportIssue.Level.ERROR, "题库包不能嵌套压缩包"))
             )
         }
-        val parsed = try {
-            parse(format, candidate.bytes)
+        return try {
+            val issues = ArrayList<ImportIssue>()
+            val papers = papersOfSheets(candidate.bytes, fallbackName, assets, issues)
+            Attempt(candidate, format, papers, issues)
         } catch (e: Exception) {
-            return Attempt(
-                candidate, format, 0, emptyList(),
+            Attempt(
+                candidate, format, emptyList(),
                 listOf(ImportIssue(0, ImportIssue.Level.ERROR, "解析失败：${e.message}"))
             )
         }
-        val issues = ArrayList(parsed.issues)
-        val questions = ArrayList<Question>()
-        parsed.questions.forEach { raw ->
-            Normalizer.toQuestion(raw, issues)?.let { questions.add(rewriteAssets(it, assets)) }
-        }
-        return Attempt(candidate, format, parsed.totalRows, questions, issues)
     }
 
     /**
@@ -193,7 +368,7 @@ object Importer {
     private fun reportChoice(attempts: List<Attempt>, bestIndex: Int): List<ImportIssue> {
         val others = attempts.filterIndexed { i, _ -> i != bestIndex }
         val best = attempts[bestIndex]
-        if (best.questions.isEmpty()) {
+        if (best.count == 0) {
             // 全军覆没：每份都给出第一条硬错误，否则用户只知道「0 题」不知道哪儿错了
             return attempts.map { a ->
                 val first = a.issues.firstOrNull { it.level == ImportIssue.Level.ERROR }
@@ -203,54 +378,16 @@ object Importer {
                 )
             }
         }
-        val usable = others.filter { it.questions.isNotEmpty() }
+        val usable = others.filter { it.count > 0 }
         val level = if (usable.isEmpty()) ImportIssue.Level.INFO else ImportIssue.Level.WARN
         val tail = others.joinToString("") { a ->
-            "；已忽略「${a.candidate.path}」（${a.questions.size} 题）"
+            "；已忽略「${a.candidate.path}」（${a.count} 题）"
         }
         return listOf(
             ImportIssue(
                 0, level,
-                "包内有 ${attempts.size} 个数据文件，已选用「${best.candidate.path}」（${best.questions.size} 题）" + tail
+                "包内有 ${attempts.size} 个数据文件，已选用「${best.candidate.path}」（${best.count} 题）" + tail
             )
-        )
-    }
-
-    /**
-     * 统一收尾：批次内去重 → 按勾选过滤 → 卷面体检。
-     *
-     * 去重是 Anki 导入器最实用的一条经验：同一份题重复导入、或导出时把同一张卡片复制了几份，
-     * 都不该变成卷子里的重复题目。用户会先在预览页看到「重复跳过 N」，而不是入库后自己发现。
-     */
-    private fun finish(
-        formatLabel: String,
-        totalRows: Int,
-        questions: List<Question>,
-        issues: MutableList<ImportIssue>,
-        selectedIndices: Set<Int>?,
-        suggestedName: String?
-    ): ImportOutcome {
-        val (unique, duplicated) = dedup(questions)
-        if (duplicated > 0) {
-            issues.add(
-                ImportIssue(0, ImportIssue.Level.INFO, "$duplicated 题内容完全重复，已自动跳过")
-            )
-        }
-
-        val chosen = if (selectedIndices == null) unique
-        else unique.filterIndexed { i, _ -> i in selectedIndices }
-
-        // 卷面结构体检：只体检真正会入库的题（三级结构由 subject/material 的连续重复派生）
-        issues.addAll(StructureCheck.check(chosen))
-
-        return ImportOutcome(
-            format = formatLabel,
-            total = totalRows,
-            imported = chosen.size,
-            questions = chosen,
-            issues = issues,
-            suggestedName = suggestedName,
-            duplicateSkipped = duplicated
         )
     }
 
@@ -359,7 +496,7 @@ object Importer {
     }
 }
 
-/** 导入最终产物 */
+/** 导入最终产物（单卷语义的汇总；多卷细节在 [papers] 里） */
 data class ImportOutcome(
     val format: String,
     val total: Int,
@@ -369,7 +506,9 @@ data class ImportOutcome(
     // 题库包自带的题库名（普通格式为空），导入时作为默认试卷名
     val suggestedName: String? = null,
     // 批次内判定为重复而跳过的题数
-    val duplicateSkipped: Int = 0
+    val duplicateSkipped: Int = 0,
+    // 拆出来的各卷（单卷文件里只有一个元素）
+    val papers: List<PaperDraft> = emptyList()
 ) {
     val errorCount get() = issues.count { it.level == ImportIssue.Level.ERROR }
     val warnCount get() = issues.count { it.level == ImportIssue.Level.WARN }

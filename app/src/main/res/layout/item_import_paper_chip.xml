@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  多卷导入的卷名胶囊：选中态在代码里换背景与字色（与词库标签一致的做法）
+-->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    style="@style/FbChip"
+    android:clickable="true"
+    android:ellipsize="end"
+    android:focusable="true"
+    android:maxWidth="220dp"
+    android:singleLine="true" />

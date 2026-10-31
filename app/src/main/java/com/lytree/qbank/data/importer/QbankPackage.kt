@@ -20,7 +20,7 @@ import java.util.zip.ZipInputStream
  * 规则：
  * 1. **主数据不再靠文件名钦定**：包根目录（或一层子目录）下所有 xlsx 都作为候选收下来，
  *    交给 [Importer] 逐个试解析，最后按「真正能导入多少题」择优。
- * 2. 允许整个包多包一层目录（压缩软件默认行为），这层目录会被剥掉；题库名取这层目录名；
+ * 2. 允许整个包多包一层目录（压缩软件默认行为），这层目录会被剥掉；包名（包内只有一卷时作默认试卷名）取这层目录名；
  * 3. 图片在题库里写**相对路径**（`images/chart-01.png`）或**纯文件名**（`src="x.png"`），
  *    导入时解压到应用私有目录并替换成绝对路径，之后换手机、清缓存都不影响已有题目；
  * 4. 解压只取普通文件，`..`、绝对路径、`__MACOSX/` 这类条目一律跳过；
@@ -69,7 +69,7 @@ object QbankPackage {
     /**
      * 解包结果。
      *
-     * @param name 题库名（取自主数据的 `bank` / `name`，或 Anki 的 `#deck:`，没有则为空）
+     * @param name 包名（默认试卷名；取自包根目录名，没有则为空）
      * @param candidates 候选数据文件，已按优先级排好序；**第一个是名义主数据**，不一定是最优解
      * @param assets 包内相对路径 → 解压后的本机绝对路径
      */
@@ -149,7 +149,7 @@ object QbankPackage {
             throw IllegalArgumentException("主数据文件为空或超过 ${MAX_CANDIDATE_BYTES / 1024 / 1024} MB")
         }
 
-        // 题库名取包根目录名（压缩软件多包的那层），没有外层目录就留空交给文件名兜底
+        // 包名取包根目录名（压缩软件多包的那层），没有外层目录就留空交给文件名兜底
         val name = root.substringAfterLast('/').trim()
         return Pack(
             name = name,

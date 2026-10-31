@@ -372,7 +372,7 @@ object BackupArchive {
 
     private fun tableCounts(db: QBankDb): Map<String, Int> {
         val out = LinkedHashMap<String, Int>()
-        listOf("banks", "questions", "papers", "records", "words").forEach { table ->
+        listOf("questions", "papers", "records", "words").forEach { table ->
             runCatching {
                 db.readableDatabase.rawQuery("SELECT COUNT(*) FROM $table", null).use { c ->
                     if (c.moveToFirst()) out[table] = c.getInt(0)

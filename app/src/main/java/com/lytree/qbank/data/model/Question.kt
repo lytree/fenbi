@@ -61,7 +61,6 @@ data class Option(val key: String, val text: String) {
  */
 data class Question(
     val id: Long = 0L,
-    val bankId: Long = 0L,
     val type: QuestionType = QuestionType.SINGLE,
     val stem: String = "",
     val material: String = "",
@@ -116,21 +115,18 @@ data class Question(
     }
 }
 
-/** 题库 */
-data class Bank(
-    val id: Long = 0L,
-    val name: String = "",
-    val description: String = "",
-    val subject: String = "",
-    val createdAt: Long = 0L,
-    val questionCount: Int = 0
-)
-
-/** 试卷 */
+/**
+ * 试卷。**它就是题库本身**——导入一个文件即得到一份试卷，题目挂在试卷上，
+ * 不再有单独的「题库」层。
+ *
+ * 错题重练会以同一批题目另建一份卷（多对多走 `paper_questions`），
+ * 所以同一道题可能同时属于原卷与重练卷，收藏 / 笔记 / 笔迹按题目 id 连续继承。
+ */
 data class Paper(
     val id: Long = 0L,
     val name: String = "",
-    val bankId: Long = 0L,
+    /** 来源说明，导入时写「导入自 xxx.xlsx」 */
+    val description: String = "",
     val createdAt: Long = 0L,
     val totalScore: Double = 0.0,
     val durationMin: Int = 0,

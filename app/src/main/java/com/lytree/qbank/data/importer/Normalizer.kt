@@ -24,6 +24,11 @@ object Field {
     const val YEAR = "year"
     const val SCORE = "score"
     const val KEYWORDS = "keywords"
+    /**
+     * 试卷名。一份 Excel 里放多份试卷时，用这一列把行分组到不同卷子；
+     * 不参与 [Question] 的任何字段，只在拆分阶段消费。
+     */
+    const val PAPER = "paper"
 }
 
 /**
@@ -85,6 +90,12 @@ object FieldAliases {
         ),
         Field.KEYWORDS to setOf(
             "得分点", "关键词", "采分点", "keywords", "keypoints", "scoringpoints"
+        ),
+        // 一份 Excel 放多份试卷：按这一列拆卷（见 PaperSplitter）
+        Field.PAPER to setOf(
+            "试卷", "试卷名", "试卷名称", "卷名", "卷子", "套卷", "套题", "试题卷",
+            "试卷编号", "试卷序号", "卷号", "paper", "papername", "paperno",
+            "examname", "testname", "exam", "testpaper"
         )
     )
 

@@ -39,7 +39,7 @@ class AnswerBackfillTest {
         TestXlsx.QuestionRow("判断", "行政复议不收费", listOf("正确", "错误"))
     )
 
-    private var bankId = 0L
+    private var paperId = 0L
     private var recordId = 0L
 
     @After
@@ -48,7 +48,7 @@ class AnswerBackfillTest {
             db.writableDatabase.delete("record_answers", "record_id = ?", arrayOf(recordId.toString()))
             db.writableDatabase.delete("records", "id = ?", arrayOf(recordId.toString()))
         }
-        if (bankId > 0) db.deleteBank(bankId)
+        if (paperId > 0) db.deletePaper(paperId)
     }
 
     private fun importNoAnswerBank() =
@@ -153,8 +153,8 @@ class AnswerBackfillTest {
     fun backfill_then_rejudge_uses_existing_answers() {
         val questions = importNoAnswerBank()
         val name = "回归测试卷-${System.currentTimeMillis()}"
-        val imported = db.importAsPaper(name, "", "", name, 0, questions)
-        bankId = imported.bankId
+        val imported = db.importPaper(name, "", 0, questions)
+        paperId = imported.paperId
 
         val paperQuestions = db.getPaper(imported.paperId)!!.questions
         assertEquals(3, paperQuestions.size)

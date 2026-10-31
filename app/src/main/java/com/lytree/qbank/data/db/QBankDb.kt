@@ -5,7 +5,6 @@ import android.content.Context
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
-import com.lytree.qbank.data.model.Bank
 import com.lytree.qbank.data.model.ExamRecord
 import com.lytree.qbank.data.model.Option
 import com.lytree.qbank.data.model.Paper
@@ -22,19 +21,27 @@ import com.lytree.qbank.engine.Policy
 class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VERSION) {
 
     override fun onCreate(db: SQLiteDatabase) {
+        createPaperTables(db)
+        db.execSQL("CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT DEFAULT '')")
+        db.execSQL("CREATE TABLE inks(question_id INTEGER PRIMARY KEY, strokes TEXT DEFAULT '')")
+        db.execSQL("CREATE TABLE notes(question_id INTEGER PRIMARY KEY, note TEXT DEFAULT '')")
+        createV3Tables(db)
+        createV4Tables(db)
+        createV7Tables(db)
+        createV8Columns(db)
+    }
+
+    /**
+     * 题目 / 试卷 / 作答记录这几张核心表。
+     *
+     * 没有 `banks`：一份试卷就是一份卷，题目通过 `paper_questions` 挂到卷上。
+     * 导入时一题一行写进 `questions`，同一份文件只落一份题；错题重练另建一份卷时
+     * 复用原有题目行（多对多），收藏、笔记、笔迹因此能跨卷延续。
+     */
+    private fun createPaperTables(db: SQLiteDatabase) {
         db.execSQL(
-            """CREATE TABLE banks(
+            """CREATE TABLE IF NOT EXISTS questions(
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                description TEXT DEFAULT '',
-                subject TEXT DEFAULT '',
-                created_at INTEGER DEFAULT 0
-            )""".trimIndent()
-        )
-        db.execSQL(
-            """CREATE TABLE questions(
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                bank_id INTEGER NOT NULL,
                 type TEXT NOT NULL,
                 stem TEXT NOT NULL,
                 material TEXT DEFAULT '',
@@ -51,29 +58,29 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
                 keywords TEXT DEFAULT ''
             )""".trimIndent()
         )
-        db.execSQL("CREATE INDEX idx_q_bank ON questions(bank_id)")
-        db.execSQL("CREATE INDEX idx_q_knowledge ON questions(knowledge)")
-        db.execSQL("CREATE INDEX idx_q_type ON questions(type)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_q_knowledge ON questions(knowledge)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_q_type ON questions(type)")
         db.execSQL(
-            """CREATE TABLE papers(
+            """CREATE TABLE IF NOT EXISTS papers(
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
-                bank_id INTEGER DEFAULT 0,
+                description TEXT DEFAULT '',
                 created_at INTEGER DEFAULT 0,
                 duration_min INTEGER DEFAULT 0,
                 mode TEXT DEFAULT ''
             )""".trimIndent()
         )
         db.execSQL(
-            """CREATE TABLE paper_questions(
+            """CREATE TABLE IF NOT EXISTS paper_questions(
                 paper_id INTEGER NOT NULL,
                 question_id INTEGER NOT NULL,
                 position INTEGER NOT NULL,
                 PRIMARY KEY(paper_id, question_id)
             )""".trimIndent()
         )
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_pq_question ON paper_questions(question_id)")
         db.execSQL(
-            """CREATE TABLE records(
+            """CREATE TABLE IF NOT EXISTS records(
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 paper_id INTEGER DEFAULT 0,
                 name TEXT DEFAULT '',
@@ -91,7 +98,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
             )""".trimIndent()
         )
         db.execSQL(
-            """CREATE TABLE record_answers(
+            """CREATE TABLE IF NOT EXISTS record_answers(
                 record_id INTEGER NOT NULL,
                 question_id INTEGER NOT NULL,
                 user_answer TEXT DEFAULT '',
@@ -100,13 +107,6 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
                 PRIMARY KEY(record_id, question_id)
             )""".trimIndent()
         )
-        db.execSQL("CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT DEFAULT '')")
-        db.execSQL("CREATE TABLE inks(question_id INTEGER PRIMARY KEY, strokes TEXT DEFAULT '')")
-        db.execSQL("CREATE TABLE notes(question_id INTEGER PRIMARY KEY, note TEXT DEFAULT '')")
-        createV3Tables(db)
-        createV4Tables(db)
-        createV7Tables(db)
-        createV8Columns(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -121,6 +121,16 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         if (oldVersion < 6) normalizeWordTags(db)
         if (oldVersion < 7) createV7Tables(db)
         if (oldVersion < 8) createV8Columns(db)
+        // v9：取消「题库」这一层（banks），题目改为直接挂在试卷上。
+        // 结构无法原地兼容，题库相关表整体重建；词库、背诵进度与设置不受影响。
+        if (oldVersion < 9) {
+            QUESTION_TABLES.forEach { db.execSQL("DROP TABLE IF EXISTS $it") }
+            createPaperTables(db)
+            createV3Tables(db)
+            createV7Tables(db)
+            db.execSQL("CREATE TABLE IF NOT EXISTS inks(question_id INTEGER PRIMARY KEY, strokes TEXT DEFAULT '')")
+            db.execSQL("CREATE TABLE IF NOT EXISTS notes(question_id INTEGER PRIMARY KEY, note TEXT DEFAULT '')")
+        }
     }
 
     /** v3：收藏表 + 答题进度表（对齐参考应用「收藏跨会话保留 / 中途退出可续做」） */
@@ -381,69 +391,9 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         createdAt = c.getLong(c.getColumnIndexOrThrow("created_at"))
     )
 
-    // ---------------- Bank ----------------
-
-    fun insertBank(name: String, description: String, subject: String): Long {
-        val cv = ContentValues().apply {
-            put("name", name)
-            put("description", description)
-            put("subject", subject)
-            put("created_at", System.currentTimeMillis())
-        }
-        return writableDatabase.insert("banks", null, cv)
-    }
-
-    fun listBanks(): List<Bank> {
-        val out = ArrayList<Bank>()
-        readableDatabase.rawQuery(
-            """SELECT b.id, b.name, b.description, b.subject, b.created_at,
-                      (SELECT COUNT(*) FROM questions q WHERE q.bank_id = b.id)
-               FROM banks b ORDER BY b.created_at DESC""",
-            null
-        ).use { c -> while (c.moveToNext()) out.add(readBank(c)) }
-        return out
-    }
-
-    fun getBank(id: Long): Bank? {
-        readableDatabase.rawQuery(
-            """SELECT b.id, b.name, b.description, b.subject, b.created_at,
-                      (SELECT COUNT(*) FROM questions q WHERE q.bank_id = b.id)
-               FROM banks b WHERE b.id = ?""",
-            arrayOf(id.toString())
-        ).use { c -> return if (c.moveToFirst()) readBank(c) else null }
-    }
-
-    private fun readBank(c: Cursor) = Bank(
-        id = c.getLong(0),
-        name = c.getString(1) ?: "",
-        description = c.getString(2) ?: "",
-        subject = c.getString(3) ?: "",
-        createdAt = c.getLong(4),
-        questionCount = c.getInt(5)
-    )
-
-    /** 删题库时连带删掉它生成的试卷，避免留下「空壳卷」 */
-    fun deleteBank(id: Long) {
-        val db = writableDatabase
-        db.beginTransaction()
-        try {
-            db.execSQL(
-                "DELETE FROM paper_questions WHERE paper_id IN (SELECT id FROM papers WHERE bank_id = ?)",
-                arrayOf<Any>(id)
-            )
-            db.delete("papers", "bank_id = ?", arrayOf(id.toString()))
-            db.delete("questions", "bank_id = ?", arrayOf(id.toString()))
-            db.delete("banks", "id = ?", arrayOf(id.toString()))
-            db.setTransactionSuccessful()
-        } finally {
-            db.endTransaction()
-        }
-    }
-
     // ---------------- Question ----------------
 
-    private fun questionValues(bankId: Long, q: Question): ContentValues = ContentValues().apply {
-        put("bank_id", bankId)
+    private fun questionValues(q: Question): ContentValues = ContentValues().apply {
         put("type", q.type.code)
         put("stem", q.stem)
         put("material", q.material)
@@ -460,18 +410,21 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         put("keywords", q.keywords)
     }
 
-    fun listQuestions(bankId: Long, limit: Int = 5000): List<Question> {
+    /** 某份试卷的题目，按卷面顺序 */
+    fun listQuestions(paperId: Long, limit: Int = 5000): List<Question> {
         val out = ArrayList<Question>()
         readableDatabase.rawQuery(
-            "SELECT * FROM questions WHERE bank_id = ? ORDER BY id LIMIT ?",
-            arrayOf(bankId.toString(), limit.toString())
+            """SELECT q.* FROM paper_questions pq
+               JOIN questions q ON q.id = pq.question_id
+               WHERE pq.paper_id = ? ORDER BY pq.position LIMIT ?""",
+            arrayOf(paperId.toString(), limit.toString())
         ).use { c -> while (c.moveToNext()) out.add(readQuestion(c)) }
         return out
     }
 
-    fun countQuestions(bankId: Long): Int {
+    fun countQuestions(paperId: Long): Int {
         readableDatabase.rawQuery(
-            "SELECT COUNT(*) FROM questions WHERE bank_id = ?", arrayOf(bankId.toString())
+            "SELECT COUNT(*) FROM paper_questions WHERE paper_id = ?", arrayOf(paperId.toString())
         ).use { c -> return if (c.moveToFirst()) c.getInt(0) else 0 }
     }
 
@@ -482,7 +435,6 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
 
     private fun readQuestion(c: Cursor) = Question(
         id = c.getLong(c.getColumnIndexOrThrow("id")),
-        bankId = c.getLong(c.getColumnIndexOrThrow("bank_id")),
         type = QuestionType.parse(c.getString(c.getColumnIndexOrThrow("type"))) ?: QuestionType.SINGLE,
         stem = c.getString(c.getColumnIndexOrThrow("stem")) ?: "",
         material = c.getString(c.getColumnIndexOrThrow("material")) ?: "",
@@ -502,86 +454,95 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
     // ---------------- Paper ----------------
 
     /**
-     * 导入即建卷：一个文件 → 一个题库 + 一份试卷，题目按文件里的顺序整卷入卷。
+     * 导入即建卷：一个文件 → 一份试卷，题目按文件里的顺序整卷入卷。
      *
-     * 放在同一个事务里，避免出现「题库建好了、试卷却是空的」这类半成品数据。
+     * 题目与试卷在同一个事务里写，避免出现「卷建好了、题却是空的」这类半成品数据。
      */
-    fun importAsPaper(
-        bankName: String,
+    fun importPaper(
+        name: String,
         description: String,
-        subject: String,
-        paperName: String,
         durationMin: Int,
         questions: List<Question>
     ): ImportResult {
         val db = writableDatabase
         db.beginTransaction()
         try {
-            val bankId = db.insert("banks", null, ContentValues().apply {
-                put("name", bankName)
-                put("description", description)
-                put("subject", subject)
-                put("created_at", System.currentTimeMillis())
-            })
-            val ids = ArrayList<Long>(questions.size)
-            for (q in questions) {
-                val qid = db.insert("questions", null, questionValues(bankId, q))
-                if (qid != -1L) ids.add(qid)
-            }
-            val paperId = db.insert("papers", null, paperValues(paperName, bankId, durationMin, MODE_IMPORT))
-            ids.forEachIndexed { i, qid ->
-                db.insert("paper_questions", null, ContentValues().apply {
-                    put("paper_id", paperId)
-                    put("question_id", qid)
-                    put("position", i)
-                })
-            }
+            val result = insertPaper(db, name, description, durationMin, questions)
             db.setTransactionSuccessful()
-            return ImportResult(bankId, paperId, ids.size, paperName)
+            return result
         } finally {
             db.endTransaction()
         }
     }
 
-    /** 用题库里现有的全部题目生成一份试卷（试卷被删后重新开练用） */
-    fun createPaperFromBank(
-        bankId: Long,
-        paperName: String,
-        durationMin: Int = 0,
-        mode: String = MODE_IMPORT
-    ): Long {
-        val questions = listQuestions(bankId)
-        if (questions.isEmpty()) return 0L
+    /**
+     * 一次导入多份试卷（一份 Excel 拆出来的多卷）。
+     *
+     * 全程一个事务：中途失败不会留下「前几卷建好了、后面没了」的残局。
+     * [replace] 为真时先清掉同名的旧卷，连同它的题目与作答记录。
+     */
+    fun importAsPapers(papers: List<PaperImport>, replace: Boolean = true): List<ImportResult> {
+        val usable = papers.filter { it.questions.isNotEmpty() }
+        if (usable.isEmpty()) return emptyList()
         val db = writableDatabase
         db.beginTransaction()
         try {
-            val pid = db.insert("papers", null, paperValues(paperName, bankId, durationMin, mode))
-            questions.forEachIndexed { i, q ->
-                db.insert("paper_questions", null, ContentValues().apply {
-                    put("paper_id", pid)
-                    put("question_id", q.id)
-                    put("position", i)
-                })
+            if (replace) {
+                val names = usable.map { it.name }.toSet()
+                listPapers().filter { it.name in names }.forEach { deletePaper(it.id) }
+            }
+            val out = ArrayList<ImportResult>(usable.size)
+            usable.forEach { p ->
+                out.add(insertPaper(db, p.name, p.description, p.durationMin, p.questions))
             }
             db.setTransactionSuccessful()
-            return pid
+            return out
         } finally {
             db.endTransaction()
         }
     }
 
-    /** 用给定的题目（按传入顺序）生成一份新试卷——「错题重练」用：从练习记录里挑出答错的题再练一遍 */
+    /** 建卷 + 挂题（不开事务，由调用方决定事务边界） */
+    private fun insertPaper(
+        db: SQLiteDatabase,
+        name: String,
+        description: String,
+        durationMin: Int,
+        questions: List<Question>
+    ): ImportResult {
+        val paperId = db.insert("papers", null, paperValues(name, description, durationMin, MODE_IMPORT))
+        val ids = ArrayList<Long>(questions.size)
+        for (q in questions) {
+            val qid = db.insert("questions", null, questionValues(q))
+            if (qid != -1L) ids.add(qid)
+        }
+        ids.forEachIndexed { i, qid ->
+            db.insert("paper_questions", null, ContentValues().apply {
+                put("paper_id", paperId)
+                put("question_id", qid)
+                put("position", i)
+            })
+        }
+        return ImportResult(paperId, ids.size, name)
+    }
+
+    /**
+     * 用给定的题目（按传入顺序）生成一份新试卷——「错题重练」用：从练习记录里挑出答错的题再练一遍。
+     *
+     * 复用原有题目行，不复制题干：同一道题可以同时属于原卷和重练卷，
+     * 收藏 / 笔记 / 笔迹按题目 id 挂，练第二轮时照样在。
+     */
     fun createPaperFromQuestions(
-        bankId: Long,
         paperName: String,
         questionIds: List<Long>,
-        durationMin: Int = 0
+        durationMin: Int = 0,
+        description: String = ""
     ): Long {
         if (questionIds.isEmpty()) return 0L
         val db = writableDatabase
         db.beginTransaction()
         try {
-            val pid = db.insert("papers", null, paperValues(paperName, bankId, durationMin, MODE_RETRY))
+            val pid = db.insert("papers", null, paperValues(paperName, description, durationMin, MODE_RETRY))
             questionIds.forEachIndexed { i, qid ->
                 db.insert("paper_questions", null, ContentValues().apply {
                     put("paper_id", pid)
@@ -596,10 +557,10 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         }
     }
 
-    private fun paperValues(name: String, bankId: Long, durationMin: Int, mode: String): ContentValues =
+    private fun paperValues(name: String, description: String, durationMin: Int, mode: String): ContentValues =
         ContentValues().apply {
             put("name", name)
-            put("bank_id", bankId)
+            put("description", description)
             put("created_at", System.currentTimeMillis())
             put("duration_min", durationMin)
             put("mode", mode)
@@ -608,7 +569,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
     fun listPapers(): List<Paper> {
         val out = ArrayList<Paper>()
         readableDatabase.rawQuery(
-            """SELECT p.id, p.name, p.bank_id, p.created_at, p.duration_min, p.mode,
+            """SELECT p.id, p.name, p.description, p.created_at, p.duration_min, p.mode,
                       (SELECT COUNT(*) FROM paper_questions pq WHERE pq.paper_id = p.id),
                       (SELECT COUNT(*) FROM paper_questions pq2
                          JOIN questions q2 ON q2.id = pq2.question_id
@@ -618,7 +579,8 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
             while (c.moveToNext()) {
                 out.add(
                     Paper(
-                        id = c.getLong(0), name = c.getString(1) ?: "", bankId = c.getLong(2),
+                        id = c.getLong(0), name = c.getString(1) ?: "",
+                        description = c.getString(2) ?: "",
                         createdAt = c.getLong(3), durationMin = c.getInt(4), mode = c.getString(5) ?: "",
                         questionCount = c.getInt(6),
                         missingAnswers = c.getInt(7),
@@ -642,26 +604,45 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         return p.copy(questions = qs)
     }
 
-    /** 题库对应的试卷：一次导入只会产生一份卷，取最新的一份 */
-    fun getPaperByBank(bankId: Long): Paper? {
-        val id = readableDatabase.rawQuery(
-            "SELECT id FROM papers WHERE bank_id = ? ORDER BY id DESC LIMIT 1",
-            arrayOf(bankId.toString())
-        ).use { c -> if (c.moveToFirst()) c.getLong(0) else null } ?: return null
-        return getPaper(id)
-    }
-
     /** 同名试卷（导入重名时用来提示覆盖） */
     fun findPaperByName(name: String): Paper? =
         listPapers().firstOrNull { it.name == name }
 
-    /** 同名题库（兼容升级前只建库没建卷的旧数据） */
-    fun findBankByName(name: String): Bank? =
-        listBanks().firstOrNull { it.name == name }
-
+    /**
+     * 删除一份试卷：卷面关系、只属于这份卷的题目、以及这份卷的作答记录一起清掉。
+     *
+     * 「只属于」指没有别的卷引用它——错题重练复用原卷的题目行，那些题要留着。
+     * 收藏 / 笔记 / 笔迹按题目 id 挂，题目真的没人用了才一并删除，不留孤儿行。
+     */
     fun deletePaper(id: Long) {
-        writableDatabase.delete("paper_questions", "paper_id = ?", arrayOf(id.toString()))
-        writableDatabase.delete("papers", "id = ?", arrayOf(id.toString()))
+        val db = writableDatabase
+        val args = arrayOf<Any>(id, id)
+        val orphanQuestions = """
+            SELECT question_id FROM paper_questions
+            WHERE paper_id = ? AND question_id NOT IN
+                  (SELECT question_id FROM paper_questions WHERE paper_id <> ?)
+        """.trimIndent()
+        db.beginTransaction()
+        try {
+            db.execSQL(
+                "DELETE FROM record_answers WHERE record_id IN (SELECT id FROM records WHERE paper_id = ?)",
+                arrayOf<Any>(id)
+            )
+            db.execSQL(
+                "DELETE FROM record_inks WHERE record_id IN (SELECT id FROM records WHERE paper_id = ?)",
+                arrayOf<Any>(id)
+            )
+            db.execSQL("DELETE FROM records WHERE paper_id = ?", arrayOf<Any>(id))
+            db.execSQL("DELETE FROM exam_progress WHERE paper_id = ?", arrayOf<Any>(id))
+            db.execSQL("DELETE FROM favorites WHERE question_id IN ($orphanQuestions)", args)
+            db.execSQL("DELETE FROM notes WHERE question_id IN ($orphanQuestions)", args)
+            db.execSQL("DELETE FROM questions WHERE id IN ($orphanQuestions)", args)
+            db.delete("paper_questions", "paper_id = ?", arrayOf(id.toString()))
+            db.delete("papers", "id = ?", arrayOf(id.toString()))
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
     }
 
     /**
@@ -1118,7 +1099,14 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         const val DB_NAME = "qbank.db"
 
         /** 库版本。云备份包里的 manifest 会记下它，恢复时据此判断能否直接落地 */
-        const val DB_VERSION = 8
+        const val DB_VERSION = 9
+
+        /** v9 重建时整体清空、一并重建的表（题库相关；词库 / 背诵 / 设置不动） */
+        private val QUESTION_TABLES = listOf(
+            "banks", "paper_questions", "questions", "papers",
+            "records", "record_answers", "record_inks", "exam_progress",
+            "favorites", "notes", "inks"
+        )
 
         /** 试卷来源：由导入文件生成 */
         const val MODE_IMPORT = "导入"
@@ -1151,12 +1139,19 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
     }
 }
 
-/** 导入结果：一个文件生成的一份题库 + 一份试卷 */
+/** 导入结果：一个文件生成的一份试卷 */
 data class ImportResult(
-    val bankId: Long,
     val paperId: Long,
     val questionCount: Int,
     val paperName: String
+)
+
+/** 待建的一份试卷（批量导入用） */
+data class PaperImport(
+    val name: String,
+    val description: String,
+    val durationMin: Int,
+    val questions: List<Question>
 )
 
 /** 待写入的标准答案（[analysis] 为空时保留题目原有解析） */

@@ -27,6 +27,26 @@ object CsvImporter {
             issues.add(ImportIssue(0, ImportIssue.Level.ERROR, "CSV 内容为空或无法解析"))
             return ImportResult(emptyList(), issues, "CSV", 0)
         }
+        return parseRows(table, issues, "CSV")
+    }
+
+    /**
+     * 已经是二维表的解析（Excel 各工作表、包内候选都走这里）。
+     *
+     * 单独拆出来是因为 Excel 不该先序列化成 CSV 文本再解析：那样单元格里的逗号、换行要来回转义，
+     * 多工作表也没地方放。表格已经是表了，直接按行列走。
+     *
+     * @param format 结果里回填的格式名（"XLSX" / "CSV"），只影响提示文案
+     */
+    fun parseRows(
+        table: List<List<String>>,
+        issues: MutableList<ImportIssue>,
+        format: String = "CSV"
+    ): ImportResult {
+        if (table.isEmpty()) {
+            issues.add(ImportIssue(0, ImportIssue.Level.ERROR, "文件内容为空或无法解析"))
+            return ImportResult(emptyList(), issues, format, 0)
+        }
 
         val header = table.first()
 
@@ -52,7 +72,7 @@ object CsvImporter {
                 issues.add(
                     ImportIssue(1, ImportIssue.Level.ERROR, "未找到「题干/题目/stem」列，无法识别表头")
                 )
-                return ImportResult(emptyList(), issues, "CSV", table.size)
+                return ImportResult(emptyList(), issues, format, table.size)
             }
             fieldByCol.clear()
             fieldByCol.putAll(layout.fields)
@@ -87,7 +107,7 @@ object CsvImporter {
             }
             raws.add(raw)
         }
-        return ImportResult(raws, issues, "CSV", table.size - dataStart)
+        return ImportResult(raws, issues, format, table.size - dataStart)
     }
 
     /** 编码识别：优先 UTF-8 BOM，其次严格 UTF-8 校验，失败回落 GBK */

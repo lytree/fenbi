@@ -41,7 +41,7 @@
                 <data android:mimeType="*/*" />
             </intent-filter>
         </activity>
-        <activity android:name=".ui.BankDetailActivity" android:exported="false" />
+        <activity android:name=".ui.paper.PaperDetailActivity" android:exported="false" />
         <!-- 词库导入：选文档 → 预览 → 入库；返回时 MainActivity 会回调 Refreshable 刷新词库列表 -->
         <activity android:name=".ui.word.WordImportActivity" android:exported="false" />
         <!--

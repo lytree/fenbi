@@ -36,7 +36,7 @@
                     <TextView
                         style="@style/FbBodySm"
                         android:layout_marginTop="@dimen/fb_space_8"
-                        android:text="支持 JSON / CSV / Excel(xlsx) / TXT / 题库包(zip)，自动识别编码与表头别名。一个文件会生成一份试卷，导入前可逐题勾选。" />
+                        android:text="@string/import_pick_hint" />
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnPick"
@@ -107,6 +107,42 @@
                         android:id="@+id/tvStat"
                         style="@style/FbBodySm"
                         android:layout_marginTop="@dimen/fb_space_8" />
+                </LinearLayout>
+
+                <!--
+                  多卷提示：一份 Excel 里塞了几套题时才会出现（按「试卷」列或多工作表拆开）。
+                  单卷文件下整块隐藏，页面与以前完全一样。
+                -->
+                <LinearLayout
+                    android:id="@+id/multiPanel"
+                    style="@style/FbCard"
+                    android:layout_marginTop="@dimen/fb_card_gap_v"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:id="@+id/tvMultiTitle"
+                        style="@style/FbGroupTitle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+
+                    <TextView
+                        android:id="@+id/tvMultiHint"
+                        style="@style/FbBodySm"
+                        android:layout_marginTop="@dimen/fb_space_8"
+                        android:text="@string/import_multi_hint" />
+
+                    <HorizontalScrollView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/fb_space_12"
+                        android:scrollbars="none">
+
+                        <LinearLayout
+                            android:id="@+id/chipRow"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal" />
+                    </HorizontalScrollView>
                 </LinearLayout>
 
                 <!-- 解析完成后再定卷名 / 限时，确认前随时可改 -->

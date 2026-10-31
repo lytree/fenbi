@@ -22,9 +22,9 @@ import com.lytree.qbank.ui.MainActivity
 import com.lytree.qbank.ui.Refreshable
 
 /**
- * 试卷列表：一次导入 = 一份试卷，点进去直接开练。
- * 不再提供随机组卷入口；顶栏也不放「导入」——全 App 的导入入口统一在题库页，
- * 这里只有空态时留一个引导按钮，指向同一个导入页。
+ * 试卷列表：一个工作表 = 一份试卷（单表文件就是一份卷），点进去直接开练。
+ *
+ * 这是 App 的主页，也是唯一的导入入口——原本挂「题库」页的导入按钮随题库层一起并到这里。
  */
 class PaperListFragment : Fragment(), Refreshable {
 
@@ -53,7 +53,7 @@ class PaperListFragment : Fragment(), Refreshable {
         db = QBankDb.get(requireContext())
         binding.titleBar.usePageTitleStyle()
         binding.titleBar.setTitle(getString(R.string.page_papers))
-        // 顶栏不再放「导入」：全 App 只在题库页留一个导入入口（试卷 / 词表都在那一页分发）
+        binding.titleBar.addTextAction(getString(R.string.action_import)) { openImport() }
 
         binding.list.layoutManager = LinearLayoutManager(requireContext())
         binding.list.adapter = adapter
@@ -73,9 +73,10 @@ class PaperListFragment : Fragment(), Refreshable {
             ?: startActivity(Intent(requireContext(), ImportActivity::class.java))
     }
 
-    /** 长按：补录答案 / 导入答案 / 删除。导入的试卷常常没答案，补答案是这里的日常操作 */
+    /** 长按：查看题目 / 补录答案 / 导入答案 / 删除。导入的试卷常常没答案，补答案是这里的日常操作 */
     private fun showPaperActions(paper: Paper) {
         val actions = arrayOf(
+            getString(R.string.action_view_questions),
             getString(R.string.action_fill_answer),
             getString(R.string.action_import_answer),
             getString(R.string.action_delete)
@@ -86,10 +87,14 @@ class PaperListFragment : Fragment(), Refreshable {
             items = actions,
             onPick = { which ->
                 when (which) {
-                    0 -> startActivity(Intent(requireContext(), AnswerEntryActivity::class.java).apply {
+                    0 -> startActivity(Intent(requireContext(), PaperDetailActivity::class.java).apply {
+                        putExtra(PaperDetailActivity.EXTRA_PAPER_ID, paper.id)
+                        putExtra(PaperDetailActivity.EXTRA_PAPER_NAME, paper.name)
+                    })
+                    1 -> startActivity(Intent(requireContext(), AnswerEntryActivity::class.java).apply {
                         putExtra(AnswerEntryActivity.EXTRA_PAPER_ID, paper.id)
                     })
-                    1 -> {
+                    2 -> {
                         pendingPaper = paper
                         try {
                             answerPicker.launch(AnswerImportUi.MIME)
@@ -106,7 +111,7 @@ class PaperListFragment : Fragment(), Refreshable {
     private fun confirmDelete(paperId: Long, name: String) {
         FbDialog.confirm(
             requireContext(),
-            "删除试卷「$name」？题目仍保留在「题库」里，可再从题库开练。",
+            "删除试卷「$name」？这份卷的题目和它的作答记录会一起删除，删了不能恢复。",
             okText = getString(R.string.action_delete),
             onOk = {
                 db.deletePaper(paperId)

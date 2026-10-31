@@ -185,7 +185,7 @@ class BackupFragment : Fragment(), Refreshable {
             )
             val counts = outcome.manifest.counts
             val detail = buildString {
-                append("题库 ${counts["banks"] ?: 0} 个 · 题目 ${counts["questions"] ?: 0} 道")
+                append("试卷 ${counts["papers"] ?: 0} 份 · 题目 ${counts["questions"] ?: 0} 道")
                 append(" · 记录 ${counts["records"] ?: 0} 次")
                 if (outcome.manifest.imageCount > 0) append(" · 配图 ${outcome.manifest.imageCount} 张")
                 append("\n${BackupArchive.humanSize(outcome.localFile.length())}")
@@ -298,7 +298,7 @@ class BackupFragment : Fragment(), Refreshable {
             val dialog = FbDialog.alert(
                 requireContext(),
                 "已恢复到 ${formatTime(manifest.createdAt)} 的备份。\n\n" +
-                    "题库 ${counts["banks"] ?: 0} 个 · 题目 ${counts["questions"] ?: 0} 道 · " +
+                    "试卷 ${counts["papers"] ?: 0} 份 · 题目 ${counts["questions"] ?: 0} 道 · " +
                     "记录 ${counts["records"] ?: 0} 次\n\n" +
                     "App 需要重启一次才能读到新数据。",
                 title = "恢复完成",

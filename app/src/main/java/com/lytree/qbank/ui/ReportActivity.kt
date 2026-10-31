@@ -163,9 +163,8 @@ class ReportActivity : AppCompatActivity() {
             .map { it.question.id }
         if (wrongIds.isEmpty()) return
         binding.titleBar.addTextAction(getString(R.string.report_retry_wrong)) {
-            val bankId = db.getPaper(record.paperId)?.bankId ?: 0L
             val name = "${record.name}·错题重练"
-            val newPaperId = db.createPaperFromQuestions(bankId, name, wrongIds)
+            val newPaperId = db.createPaperFromQuestions(name, wrongIds)
             if (newPaperId == 0L) {
                 android.widget.Toast.makeText(this, "生成错题卷失败", android.widget.Toast.LENGTH_SHORT).show()
                 return@addTextAction

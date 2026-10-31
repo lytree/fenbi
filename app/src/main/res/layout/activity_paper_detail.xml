@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 题库详情：统一标题栏 + 题目卡列表 + 底部通栏主按钮 -->
+<!-- 试卷详情：统一标题栏 + 题目卡列表 + 底部通栏主按钮 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     style="@style/FbPage">
 
@@ -27,7 +27,7 @@
             android:layout_gravity="center"
             android:layout_width="wrap_content"
             android:paddingBottom="0dp"
-            android:text="@string/empty_bank_questions"
+            android:text="@string/empty_paper_questions"
             android:visibility="gone" />
     </FrameLayout>
 

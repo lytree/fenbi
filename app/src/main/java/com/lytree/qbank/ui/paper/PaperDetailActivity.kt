@@ -1,4 +1,4 @@
-package com.lytree.qbank.ui
+package com.lytree.qbank.ui.paper
 
 import android.content.Intent
 import android.os.Bundle
@@ -10,33 +10,37 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.lytree.qbank.data.db.QBankDb
 import com.lytree.qbank.data.model.Question
-import com.lytree.qbank.databinding.ActivityBankDetailBinding
+import com.lytree.qbank.databinding.ActivityPaperDetailBinding
 import com.lytree.qbank.databinding.ItemQuestionBinding
+import com.lytree.qbank.ui.ExamActivity
+import com.lytree.qbank.ui.applyNavBarBottomPadding
 
 /**
- * 题库详情：查看题目列表，并直接用该题库的整卷开练。
- * 题库与试卷一一对应（导入时已生成），试卷被删掉时这里会按题库重建一份。
+ * 试卷详情：查看这份卷的题目清单，并直接开练。
+ *
+ * 原本这页挂在「题库」下（题库详情），题库这一层取消后并到试卷上——
+ * 题目清单本来就是这份卷的内容，没有第二个所有者。
  */
-class BankDetailActivity : AppCompatActivity() {
+class PaperDetailActivity : AppCompatActivity() {
 
     companion object {
-        const val EXTRA_BANK_ID = "bank_id"
-        const val EXTRA_BANK_NAME = "bank_name"
+        const val EXTRA_PAPER_ID = "paper_id"
+        const val EXTRA_PAPER_NAME = "paper_name"
     }
 
-    private lateinit var binding: ActivityBankDetailBinding
+    private lateinit var binding: ActivityPaperDetailBinding
     private val adapter = QuestionAdapter()
-    private var bankId = 0L
-    private var bankName = "题库"
+    private var paperId = 0L
+    private var paperName = "试卷"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityBankDetailBinding.inflate(layoutInflater)
+        binding = ActivityPaperDetailBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        bankId = intent.getLongExtra(EXTRA_BANK_ID, 0L)
-        bankName = intent.getStringExtra(EXTRA_BANK_NAME) ?: "题库"
-        binding.titleBar.setTitle(bankName)
+        paperId = intent.getLongExtra(EXTRA_PAPER_ID, 0L)
+        paperName = intent.getStringExtra(EXTRA_PAPER_NAME) ?: "试卷"
+        binding.titleBar.setTitle(paperName)
         binding.bottomBar.applyNavBarBottomPadding()
 
         binding.list.layoutManager = LinearLayoutManager(this)
@@ -47,14 +51,9 @@ class BankDetailActivity : AppCompatActivity() {
     }
 
     private fun startExam() {
-        val db = QBankDb.get(this)
-        var paper = db.getPaperByBank(bankId)
+        val paper = QBankDb.get(this).getPaper(paperId)
         if (paper == null || paper.questions.isEmpty()) {
-            val pid = db.createPaperFromBank(bankId, bankName)
-            paper = if (pid > 0L) db.getPaper(pid) else null
-        }
-        if (paper == null || paper.questions.isEmpty()) {
-            Toast.makeText(this, "题库为空", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "这份试卷没有题目", Toast.LENGTH_SHORT).show()
             return
         }
         startActivity(
@@ -66,7 +65,7 @@ class BankDetailActivity : AppCompatActivity() {
     }
 
     private fun reload() {
-        val list = QBankDb.get(this).listQuestions(bankId)
+        val list = QBankDb.get(this).listQuestions(paperId)
         adapter.submit(list)
         binding.empty.visibility = if (list.isEmpty()) android.view.View.VISIBLE else android.view.View.GONE
     }

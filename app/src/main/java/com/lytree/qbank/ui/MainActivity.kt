@@ -8,7 +8,6 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.Fragment
 import com.lytree.qbank.R
 import com.lytree.qbank.databinding.ActivityMainBinding
-import com.lytree.qbank.ui.bank.BankListFragment
 import com.lytree.qbank.ui.paper.PaperListFragment
 import com.lytree.qbank.ui.record.RecordListFragment
 import com.lytree.qbank.ui.word.WordListFragment
@@ -28,9 +27,8 @@ class MainActivity : AppCompatActivity() {
         binding.bottomNav.setOnItemSelectedListener { item ->
             val fragment: Fragment = when (item.itemId) {
                 R.id.nav_recite -> WordListFragment()
-                R.id.nav_papers -> PaperListFragment()
                 R.id.nav_records -> RecordListFragment()
-                else -> BankListFragment()
+                else -> PaperListFragment()
             }
             supportFragmentManager.beginTransaction()
                 .replace(R.id.container, fragment)
@@ -50,12 +48,12 @@ class MainActivity : AppCompatActivity() {
                 .commit()
         }
         // 首次启动直接放首页。不能靠 selectedItemId 触发上面的监听器：
-        // BottomNavigationView 载入菜单时第一项（nav_banks）就已经是选中态，
+        // BottomNavigationView 载入菜单时第一项（nav_papers）就已经是选中态，
         // 再 setSelectedItemId 同一个 id 只会走「重选」分支，不会回调 onItemSelected，
         // 结果容器一直是空的——装完首次打开表现为首页空白，切到词库再切回来才出内容
         if (savedInstanceState == null && supportFragmentManager.findFragmentById(R.id.container) == null) {
             supportFragmentManager.beginTransaction()
-                .replace(R.id.container, BankListFragment())
+                .replace(R.id.container, PaperListFragment())
                 .commit()
         }
 
