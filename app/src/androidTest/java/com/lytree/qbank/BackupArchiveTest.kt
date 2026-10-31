@@ -18,7 +18,7 @@ import java.util.zip.ZipOutputStream
  * 只测「生成 → 解开 → 校验」这一段，**不动真实数据库**：
  * [BackupArchive.create] 是只读的（先 wal_checkpoint 再读文件），
  * 真正会覆盖数据的 [BackupArchive.install] 不在测试范围里——那条路径一跑就把测试机上
- * 的题库换掉了，不适合放进自动化测试。
+ * 的试卷换掉了，不适合放进自动化测试。
  */
 @RunWith(AndroidJUnit4::class)
 class BackupArchiveTest {

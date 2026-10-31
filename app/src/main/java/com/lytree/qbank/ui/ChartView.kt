@@ -22,7 +22,7 @@ import kotlin.math.roundToInt
 /**
  * 图表数据。
  *
- * 资料分析的材料里经常带折线图 / 柱状图，但题库是纯文本导入的，
+ * 资料分析的材料里经常带折线图 / 柱状图，但试卷是纯文本导入的，
  * 所以约定用一段 `:::chart` 代码块描述图表，由 [MaterialRenderer] 解析成 [ChartSpec]，
  * 再由 [ChartView] 画出来——不引第三方图表库，也不依赖图片。
  *

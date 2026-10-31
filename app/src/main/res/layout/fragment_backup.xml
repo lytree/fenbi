@@ -85,7 +85,7 @@
 
                         <TextView
                             style="@style/FbRowSub"
-                            android:text="题库、作答记录、手写笔迹、材料配图一次打包" />
+                            android:text="试卷、作答记录、手写笔迹、材料配图一次打包" />
                     </LinearLayout>
 
                     <TextView
@@ -338,7 +338,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/fb_space_16"
-                android:text="备份包里的内容：题库与题目、作答记录与成绩、手写笔迹与笔记、背诵掌握进度、判题规则、材料配图。恢复会把当前数据整个换成包里的那份，旧库会留一份 .before-restore 兜底。" />
+                android:text="备份包里的内容：试卷与题目、作答记录与成绩、手写笔迹与笔记、背诵掌握进度、判题规则、材料配图。恢复会把当前数据整个换成包里的那份，旧库会留一份 .before-restore 兜底。" />
         </LinearLayout>
     </ScrollView>
 </LinearLayout>

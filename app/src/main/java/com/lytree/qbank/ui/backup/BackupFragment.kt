@@ -263,7 +263,7 @@ class BackupFragment : Fragment(), Refreshable {
     private fun confirmRestore(source: String, onConfirm: () -> Unit) {
         FbDialog.confirm(
             requireContext(),
-            "将用这份备份覆盖当前所有题库、作答记录、笔迹与设置：\n\n$source\n\n当前数据库会留一份 .before-restore 兜底，但仍建议先自己备份一次。",
+            "将用这份备份覆盖当前所有试卷、作答记录、笔迹与设置：\n\n$source\n\n当前数据库会留一份 .before-restore 兜底，但仍建议先自己备份一次。",
             okText = "覆盖并恢复",
             onOk = { onConfirm() }
         )

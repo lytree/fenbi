@@ -57,7 +57,7 @@ data class Option(val key: String, val text: String) {
 }
 
 /**
- * 题目。字段命名刻意贴近刷题类 App 的通用模型，方便与各类题库文件做映射。
+ * 题目。字段命名刻意贴近刷题类 App 的通用模型，方便与各类试卷文件做映射。
  */
 data class Question(
     val id: Long = 0L,
@@ -116,8 +116,9 @@ data class Question(
 }
 
 /**
- * 试卷。**它就是题库本身**——导入一个文件即得到一份试卷，题目挂在试卷上，
- * 不再有单独的「题库」层。
+ * 试卷。**它就是内容本身**——导入一个文件即得到一份试卷，题目挂在试卷上，
+ * 不再有单独的「题库」层（v9 已删除）。试卷再往上只有一层：导入组（标题），
+ * 一次导入一个标题，列表按「标题 → 试卷 → 题目」树形展开。
  *
  * 错题重练会以同一批题目另建一份卷（多对多走 `paper_questions`），
  * 所以同一道题可能同时属于原卷与重练卷，收藏 / 笔记 / 笔迹按题目 id 连续继承。
@@ -131,6 +132,8 @@ data class Paper(
     val totalScore: Double = 0.0,
     val durationMin: Int = 0,
     val mode: String = "",
+    /** 所属导入组（列在树上的那个标题）；0 表示历史遗留、未归组 */
+    val setId: Long = 0L,
     /** 列表查询时只带题量，不加载整卷题目 */
     val questionCount: Int = 0,
     /** 还缺标准答案的题数（试卷先导入、答案后补） */

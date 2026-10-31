@@ -5,12 +5,12 @@ import com.lytree.qbank.data.model.Question
 import java.io.ByteArrayInputStream
 import java.io.File
 
-/** 支持的题库文件格式：统一只认 Excel；图片等媒体资源放 zip 包里随 Excel 一起导入 */
+/** 支持的试卷文件格式：统一只认 Excel；图片等媒体资源放 zip 包里随 Excel 一起导入 */
 enum class ImportFormat(val ext: String, val label: String, val mime: String) {
     XLSX("xlsx", "Excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
 
-    /** 题库包：zip 里放 题库.xlsx + images/ 等媒体文件 */
-    ZIP("zip", "题库包", "application/zip");
+    /** 试卷包：zip 里放 试卷.xlsx + images/ 等媒体文件 */
+    ZIP("zip", "试卷包", "application/zip");
 
     companion object {
         fun of(name: String): ImportFormat? {
@@ -57,7 +57,7 @@ data class MultiPaperOutcome(
  * 导入调度：格式探测 + 分发 + 拆卷 + 规范化 + 校验。
  *
  * 三条贯穿全程的原则（借自 Anki 导入器的实用做法）：
- * 1. **按结果取舍，不按文件名取舍**：题库包里有几份 Excel 就都试一遍，谁真能解析出题用谁；
+ * 1. **按结果取舍，不按文件名取舍**：试卷包里有几份 Excel 就都试一遍，谁真能解析出题用谁；
  * 2. **先报数再入库**：去重、跳过、警告都在预览页一次说清，别让用户点完「导入」才发现少了一半；
  * 3. **宽容解析**：表头别名、图片路径写法、答案写法都尽量认，认不出来才报错。
  *
@@ -66,10 +66,10 @@ data class MultiPaperOutcome(
  */
 object Importer {
 
-    /** 根据文件名与内容探测格式：zip 壳里认得出题库包就是 ZIP，其余一律按 Excel 走解析（失败时报「只支持 Excel」） */
+    /** 根据文件名与内容探测格式：zip 壳里认得出试卷包就是 ZIP，其余一律按 Excel 走解析（失败时报「只支持 Excel」） */
     fun detect(fileName: String, bytes: ByteArray): ImportFormat {
         val head = bytes.take(4)
-        // PK\x03\x04 → zip：里面是题库包（有 Excel 数据文件）还是普通 Excel
+        // PK\x03\x04 → zip：里面是试卷包（有 Excel 数据文件）还是普通 Excel
         if (head.size >= 4 && head[0] == 0x50.toByte() && head[1] == 0x4B.toByte() &&
             head[2] == 0x03.toByte() && head[3] == 0x04.toByte()
         ) {
@@ -82,7 +82,7 @@ object Importer {
      * 完整导入流程：解析 → 拆卷 → 规范化 → 去重 → 校验。
      *
      * @param fileName 原始文件名：整文件只有一卷时，卷名默认用它（去掉扩展名）
-     * @param pkgDir 题库包解压到哪里（普通格式不需要）
+     * @param pkgDir 试卷包解压到哪里（普通格式不需要）
      */
     fun buildPapers(
         format: ImportFormat,
@@ -160,7 +160,7 @@ object Importer {
      * 解析 Excel 的所有工作表 → 拆卷 → 逐卷规范化。
      *
      * 工作表级的错误处理有一条分寸：**只要有任意一张表出了题，其余表的错误就降级成提示**。
-     * 「说明」「答题卡」这类表在很多题库里都存在，它们解析不出题是正常的，
+     * 「说明」「答题卡」这类表在很多真题文件里都存在，它们解析不出题是正常的，
      * 报成红色错误只会让用户以为自己导错了。
      */
     private fun papersOfSheets(
@@ -283,7 +283,7 @@ object Importer {
     }
 
     /**
-     * 题库包导入：解压 → **逐个候选试解析** → 选真正能出题的那份 → 图片路径换成本机绝对路径。
+     * 试卷包导入：解压 → **逐个候选试解析** → 选真正能出题的那份 → 图片路径换成本机绝对路径。
      *
      * 换路径在入库前做完，题目存的就是最终地址，之后翻题不必再算包内位置。
      */
@@ -294,14 +294,14 @@ object Importer {
     ): MultiPaperOutcome {
         val issues = ArrayList<ImportIssue>()
         if (pkgDir == null) {
-            issues.add(ImportIssue(0, ImportIssue.Level.ERROR, "题库包缺少解压目录，无法导入"))
-            return MultiPaperOutcome("题库包", emptyList(), issues)
+            issues.add(ImportIssue(0, ImportIssue.Level.ERROR, "试卷包缺少解压目录，无法导入"))
+            return MultiPaperOutcome("试卷包", emptyList(), issues)
         }
         val pack = try {
             QbankPackage.open(bytes, pkgDir)
         } catch (e: Exception) {
-            issues.add(ImportIssue(0, ImportIssue.Level.ERROR, "题库包解压失败：${e.message}"))
-            return MultiPaperOutcome("题库包", emptyList(), issues)
+            issues.add(ImportIssue(0, ImportIssue.Level.ERROR, "试卷包解压失败：${e.message}"))
+            return MultiPaperOutcome("试卷包", emptyList(), issues)
         }
 
         // 包名优先当卷名：包里那份 Excel 只有一卷时，用户认的是压缩包的名字，不是「Sheet1」
@@ -317,7 +317,7 @@ object Importer {
         issues.addAll(best.issues)
         if (pack.candidates.size > 1) issues.addAll(reportChoice(attempts, bestIndex))
 
-        val out = MultiPaperOutcome("题库包 · ${best.format.label}", best.papers, issues)
+        val out = MultiPaperOutcome("试卷包 · ${best.format.label}", best.papers, issues)
         return out.withMultiNote()
     }
 
@@ -345,7 +345,7 @@ object Importer {
         if (format == ImportFormat.ZIP) {
             return Attempt(
                 candidate, format, emptyList(),
-                listOf(ImportIssue(0, ImportIssue.Level.ERROR, "题库包不能嵌套压缩包"))
+                listOf(ImportIssue(0, ImportIssue.Level.ERROR, "试卷包不能嵌套压缩包"))
             )
         }
         return try {
@@ -394,7 +394,7 @@ object Importer {
     /**
      * 按「题干 + 材料 + 选项」的归一化指纹去重，保留第一次出现的。
      *
-     * 空白差异不算差异（全角空格、换行、多余空格在题库里非常常见）。
+     * 空白差异不算差异（全角空格、换行、多余空格在真题文件里非常常见）。
      */
     private fun dedup(list: List<Question>): Pair<List<Question>, Int> {
         if (list.size < 2) return list to 0
@@ -503,7 +503,7 @@ data class ImportOutcome(
     val imported: Int,
     val questions: List<Question>,
     val issues: List<ImportIssue>,
-    // 题库包自带的题库名（普通格式为空），导入时作为默认试卷名
+    // 试卷包自带的试卷名（普通格式为空），导入时作为默认试卷名
     val suggestedName: String? = null,
     // 批次内判定为重复而跳过的题数
     val duplicateSkipped: Int = 0,

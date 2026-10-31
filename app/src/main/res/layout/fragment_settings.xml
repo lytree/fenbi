@@ -190,7 +190,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/fb_section_gap"
                 android:layout_marginBottom="@dimen/fb_space_8"
-                android:text="支持的题库格式" />
+                android:text="支持的试卷格式" />
 
             <LinearLayout style="@style/FbCard">
 
@@ -234,7 +234,7 @@
 
                         <TextView
                             style="@style/FbRowSub"
-                            android:text="题库、作答、笔迹、配图打成一份包，可存进网盘；换机时整份还原" />
+                            android:text="试卷、作答、笔迹、配图打成一份包，可存进网盘；换机时整份还原" />
                     </LinearLayout>
 
                     <TextView

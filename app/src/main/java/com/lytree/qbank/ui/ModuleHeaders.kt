@@ -14,7 +14,7 @@ import com.lytree.qbank.data.model.PaperStructure
  * 这里只负责「把结构翻译成一张卡」：标题 `模块名 (N题)` + 该模块的作答说明文案。
  *
  * 说明卡只在大类**首题**出现一次；`subject` 为空的大类（[PaperStructure.Section.name] 为 null）
- * 不出卡——手打题库常见单一题型，硬加一个空标题只会碍眼。
+ * 不出卡——手打试题常见单一题型，硬加一个空标题只会碍眼。
  */
 object ModuleHeaders {
 

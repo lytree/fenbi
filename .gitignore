@@ -46,7 +46,7 @@ jadx-out/
 jadx-launcher*.jar
 /gen-jadx-launcher.js
 
-# ---- 题库生成产物（本地生成，含 700 张配图与 apkg/zip，体积约 120MB，不入库）----
+# ---- 试卷生成产物（本地生成，含 700 张配图与 apkg/zip，体积约 120MB，不入库）----
 qbank_out/
 
 # ---- 日志与临时文件 ----

@@ -8,7 +8,7 @@ import java.net.URLDecoder
 import java.util.zip.GZIPInputStream
 
 /**
- * 从链接下载题库文件。
+ * 从链接下载试卷文件。
  *
  * 只做「拿到字节 + 猜一个文件名」这一件事，解析仍走 [Importer]，
  * 因此链接导入和本地文件导入共用同一套格式探测、校验与预览流程。

@@ -16,7 +16,7 @@ import com.lytree.qbank.engine.Judge
 import com.lytree.qbank.engine.Policy
 
 /**
- * 本地题库存储。用原生 SQLiteOpenHelper，不引入 Room，避免注解处理器带来的构建复杂度。
+ * 本地试卷存储。用原生 SQLiteOpenHelper，不引入 Room，避免注解处理器带来的构建复杂度。
  */
 class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VERSION) {
 
@@ -29,6 +29,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         createV4Tables(db)
         createV7Tables(db)
         createV8Columns(db)
+        createV10Tables(db)
     }
 
     /**
@@ -110,7 +111,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // 无损升级：只补新增的表，不动用户已有的题库数据
+        // 无损升级：只补新增的表，不动用户已有的试卷数据
         if (oldVersion < 2) {
             db.execSQL("CREATE TABLE IF NOT EXISTS inks(question_id INTEGER PRIMARY KEY, strokes TEXT DEFAULT '')")
             db.execSQL("CREATE TABLE IF NOT EXISTS notes(question_id INTEGER PRIMARY KEY, note TEXT DEFAULT '')")
@@ -131,6 +132,8 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
             db.execSQL("CREATE TABLE IF NOT EXISTS inks(question_id INTEGER PRIMARY KEY, strokes TEXT DEFAULT '')")
             db.execSQL("CREATE TABLE IF NOT EXISTS notes(question_id INTEGER PRIMARY KEY, note TEXT DEFAULT '')")
         }
+        // v10：一次导入 = 一个标题（组）。旧数据的卷子按「导入自 xxx」来源回填成组，不丢卷
+        if (oldVersion < 10) createV10Tables(db)
     }
 
     /** v3：收藏表 + 答题进度表（对齐参考应用「收藏跨会话保留 / 中途退出可续做」） */
@@ -205,6 +208,66 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         }
     }
 
+    /**
+     * v10：**一次导入 = 一个标题**。
+     *
+     * 以前导入只落「试卷」，多份文件导进来全平铺在一页里，谁也说不清哪几份是同一批。
+     * 新增 `paper_sets`（导入组）后，试卷挂到组上：导 3 个文件就有 3 个标题，
+     * 每个标题下面才是那份文件拆出来的卷子，列表按「标题 → 试卷 → 题目」三级展开。
+     *
+     * 旧数据没有组信息，按卷子 description 里的「导入自 xxx.xlsx」回填——
+     * 同一份文件导出来的卷天然落进同一组，实在没来源的归到「历史试卷」。
+     */
+    private fun createV10Tables(db: SQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS paper_sets(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                source TEXT DEFAULT '',
+                created_at INTEGER DEFAULT 0
+            )""".trimIndent()
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_set_created ON paper_sets(created_at)")
+        if (!hasColumn(db, "papers", "set_id")) {
+            db.execSQL("ALTER TABLE papers ADD COLUMN set_id INTEGER DEFAULT 0")
+        }
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_paper_set ON papers(set_id)")
+        backfillPaperSets(db)
+    }
+
+    /** 旧卷子按来源文件回填成组：同一份「导入自 X」的卷归一组，没有来源的落到「历史试卷」 */
+    private fun backfillPaperSets(db: SQLiteDatabase) {
+        data class Row(val id: Long, val source: String, val createdAt: Long)
+
+        val rows = ArrayList<Row>()
+        db.rawQuery(
+            "SELECT id, IFNULL(description,''), IFNULL(created_at,0) FROM papers WHERE IFNULL(set_id,0) = 0",
+            null
+        ).use { c ->
+            while (c.moveToNext()) rows.add(Row(c.getLong(0), c.getString(1) ?: "", c.getLong(2)))
+        }
+        if (rows.isEmpty()) return
+
+        val groups = LinkedHashMap<String, MutableList<Row>>()
+        rows.forEach { r -> groups.getOrPut(setTitleOf(r.source)) { ArrayList() }.add(r) }
+
+        groups.forEach { (title, list) ->
+            val created = list.map { it.createdAt }.filter { it > 0 }.minOrNull()
+                ?: System.currentTimeMillis()
+            val setId = db.insert("paper_sets", null, ContentValues().apply {
+                put("title", title)
+                put("source", list.first().source)
+                put("created_at", created)
+            })
+            list.forEach { r ->
+                db.execSQL(
+                    "UPDATE papers SET set_id = ? WHERE id = ?",
+                    arrayOf<Any>(setId, r.id)
+                )
+            }
+        }
+    }
+
     /** 补列前先查一次，重复执行不会因为「列已存在」抛异常 */
     private fun hasColumn(db: SQLiteDatabase, table: String, column: String): Boolean {
         db.rawQuery("PRAGMA table_info($table)", null).use { c ->
@@ -219,7 +282,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
      * v6：去掉标签里的「第 N 组」前缀，只留真正的细分名。
      *
      * 两件事都是重写 tag 列，索性全表扫一遍统一走 [Word.normalizeTag]，
-     * 其它字段与用户题库数据一律不动。
+     * 其它字段与用户试卷数据一律不动。
      */
     private fun normalizeWordTags(db: SQLiteDatabase) {
         val fixes = ArrayList<Pair<Long, String>>()
@@ -454,9 +517,10 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
     // ---------------- Paper ----------------
 
     /**
-     * 导入即建卷：一个文件 → 一份试卷，题目按文件里的顺序整卷入卷。
+     * 导入即建卷：一份试卷落进一个**新建的组**（标题 = 卷名）。
      *
-     * 题目与试卷在同一个事务里写，避免出现「卷建好了、题却是空的」这类半成品数据。
+     * 单元测试与「单卷直建」的调用方走这里；正式导入页走 [importSets]，
+     * 因为一次导入可能是一组里挂好几份卷。
      */
     fun importPaper(
         name: String,
@@ -464,36 +528,42 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         durationMin: Int,
         questions: List<Question>
     ): ImportResult {
-        val db = writableDatabase
-        db.beginTransaction()
-        try {
-            val result = insertPaper(db, name, description, durationMin, questions)
-            db.setTransactionSuccessful()
-            return result
-        } finally {
-            db.endTransaction()
-        }
+        val sets = importSets(
+            listOf(SetImport(name, description, listOf(PaperImport(name, description, durationMin, questions)))),
+            replace = false
+        )
+        return sets.firstOrNull()?.papers?.firstOrNull() ?: ImportResult(0, 0, name)
     }
 
     /**
-     * 一次导入多份试卷（一份 Excel 拆出来的多卷）。
+     * 按「导入组」一次写入：一组 = 一次导入 = 列表里的一个标题。
      *
-     * 全程一个事务：中途失败不会留下「前几卷建好了、后面没了」的残局。
-     * [replace] 为真时先清掉同名的旧卷，连同它的题目与作答记录。
+     * 全程一个事务：中途失败不会留下「前几组建好了、后面没了」的残局。
+     * [replace] 为真时先清掉**同标题**的旧组（连同组里的卷、题目、作答记录），
+     * 于是同一个文件重导一次不会越堆越多，也不会把别的组误删。
      */
-    fun importAsPapers(papers: List<PaperImport>, replace: Boolean = true): List<ImportResult> {
-        val usable = papers.filter { it.questions.isNotEmpty() }
+    fun importSets(sets: List<SetImport>, replace: Boolean = true): List<SetImportResult> {
+        val usable = sets
+            .map { s -> s.copy(papers = s.papers.filter { it.questions.isNotEmpty() }) }
+            .filter { it.papers.isNotEmpty() }
         if (usable.isEmpty()) return emptyList()
+
         val db = writableDatabase
         db.beginTransaction()
         try {
             if (replace) {
-                val names = usable.map { it.name }.toSet()
-                listPapers().filter { it.name in names }.forEach { deletePaper(it.id) }
+                val titles = usable.map { it.title }.toSet()
+                listPaperSets(withPapers = false)
+                    .filter { it.id > 0 && it.title in titles }
+                    .forEach { deletePaperSet(it.id) }
             }
-            val out = ArrayList<ImportResult>(usable.size)
-            usable.forEach { p ->
-                out.add(insertPaper(db, p.name, p.description, p.durationMin, p.questions))
+            val out = ArrayList<SetImportResult>(usable.size)
+            usable.forEach { s ->
+                val setId = db.insert("paper_sets", null, setValues(s.title, s.source))
+                val papers = s.papers.map { p ->
+                    insertPaper(db, setId, p.name, p.description, p.durationMin, p.questions)
+                }
+                out.add(SetImportResult(setId, s.title, papers))
             }
             db.setTransactionSuccessful()
             return out
@@ -505,12 +575,16 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
     /** 建卷 + 挂题（不开事务，由调用方决定事务边界） */
     private fun insertPaper(
         db: SQLiteDatabase,
+        setId: Long,
         name: String,
         description: String,
         durationMin: Int,
         questions: List<Question>
     ): ImportResult {
-        val paperId = db.insert("papers", null, paperValues(name, description, durationMin, MODE_IMPORT))
+        val paperId = db.insert(
+            "papers", null,
+            paperValues(name, description, durationMin, MODE_IMPORT, setId)
+        )
         val ids = ArrayList<Long>(questions.size)
         for (q in questions) {
             val qid = db.insert("questions", null, questionValues(q))
@@ -542,7 +616,12 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         val db = writableDatabase
         db.beginTransaction()
         try {
-            val pid = db.insert("papers", null, paperValues(paperName, description, durationMin, MODE_RETRY))
+            // 重练卷不是导入来的，统一挂在「错题重练」这一组下面，别把导入标题混脏
+            val setId = findOrCreateSet(RETRY_SET_TITLE, "错题重练")
+            val pid = db.insert(
+                "papers", null,
+                paperValues(paperName, description, durationMin, MODE_RETRY, setId)
+            )
             questionIds.forEachIndexed { i, qid ->
                 db.insert("paper_questions", null, ContentValues().apply {
                     put("paper_id", pid)
@@ -557,14 +636,122 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         }
     }
 
-    private fun paperValues(name: String, description: String, durationMin: Int, mode: String): ContentValues =
-        ContentValues().apply {
-            put("name", name)
-            put("description", description)
-            put("created_at", System.currentTimeMillis())
-            put("duration_min", durationMin)
-            put("mode", mode)
+    private fun paperValues(
+        name: String,
+        description: String,
+        durationMin: Int,
+        mode: String,
+        setId: Long = 0
+    ): ContentValues = ContentValues().apply {
+        put("name", name)
+        put("description", description)
+        put("created_at", System.currentTimeMillis())
+        put("duration_min", durationMin)
+        put("mode", mode)
+        put("set_id", setId)
+    }
+
+    private fun setValues(title: String, source: String): ContentValues = ContentValues().apply {
+        put("title", title)
+        put("source", source)
+        put("created_at", System.currentTimeMillis())
+    }
+
+    // ---------------- PaperSet（导入组 / 标题） ----------------
+
+    /** 组 id；没有就新建一个（错题重练这类的固定组用） */
+    private fun findOrCreateSet(title: String, source: String): Long {
+        val db = writableDatabase
+        db.rawQuery("SELECT id FROM paper_sets WHERE title = ? LIMIT 1", arrayOf(title)).use { c ->
+            if (c.moveToFirst()) return c.getLong(0)
         }
+        return db.insert("paper_sets", null, setValues(title, source))
+    }
+
+    fun findPaperSetByTitle(title: String): PaperSet? =
+        listPaperSets(withPapers = false).firstOrNull { it.title == title }
+
+    /**
+     * 列表用：组 + 组内试卷（不含题目正文）。
+     *
+     * 按导入时间倒序，最新的那批在最上面；组内按建卷顺序（id 升序），
+     * 也就是文件里第 1 个工作表排第 1，不会因为先插进去的时间戳差几毫秒而乱序。
+     * `set_id = 0` 的漏网卷子兜底归到「未分组」，不让它从列表里消失。
+     */
+    fun listPaperSets(withPapers: Boolean = true): List<PaperSet> {
+        val sets = ArrayList<PaperSet>()
+        readableDatabase.rawQuery(
+            """SELECT s.id, s.title, s.source, s.created_at,
+                      (SELECT COUNT(*) FROM papers p WHERE p.set_id = s.id),
+                      (SELECT COUNT(*) FROM paper_questions pq JOIN papers p ON p.id = pq.paper_id
+                         WHERE p.set_id = s.id),
+                      (SELECT COUNT(*) FROM paper_questions pq JOIN papers p ON p.id = pq.paper_id
+                         JOIN questions q ON q.id = pq.question_id
+                         WHERE p.set_id = s.id AND TRIM(IFNULL(q.answer, '')) = '')
+               FROM paper_sets s ORDER BY s.created_at DESC, s.id DESC""",
+            null
+        ).use { c ->
+            while (c.moveToNext()) {
+                sets.add(
+                    PaperSet(
+                        id = c.getLong(0),
+                        title = c.getString(1) ?: "",
+                        source = c.getString(2) ?: "",
+                        createdAt = c.getLong(3),
+                        paperCount = c.getInt(4),
+                        questionCount = c.getInt(5),
+                        missingAnswers = c.getInt(6)
+                    )
+                )
+            }
+        }
+        if (!withPapers) return sets
+
+        val papers = listPapers()
+        val known = sets.map { it.id }.toHashSet()
+        val orphans = papers.filter { it.setId !in known }
+        val grouped = papers.groupBy { it.setId }
+        val out = sets.map { s ->
+            s.copy(papers = grouped[s.id].orEmpty().sortedBy { it.id })
+        }.toMutableList()
+        if (orphans.isNotEmpty()) {
+            out.add(
+                PaperSet(
+                    id = 0L,
+                    title = UNGROUPED_SET_TITLE,
+                    source = "",
+                    createdAt = orphans.maxOfOrNull { it.createdAt } ?: 0L,
+                    paperCount = orphans.size,
+                    questionCount = orphans.sumOf { it.questionCount },
+                    missingAnswers = orphans.sumOf { it.missingAnswers },
+                    papers = orphans.sortedBy { it.id }
+                )
+            )
+        }
+        return out
+    }
+
+    /** 改导入组的标题（只是换个名字，卷与记录都不动） */
+    fun renamePaperSet(id: Long, title: String) {
+        val name = title.trim()
+        if (id <= 0 || name.isEmpty()) return
+        writableDatabase.update(
+            "paper_sets",
+            ContentValues().apply { put("title", name) },
+            "id = ?",
+            arrayOf(id.toString())
+        )
+    }
+
+    /** 删掉一整组：组里的每份卷连同作答记录一起走，最后删组本身 */
+    fun deletePaperSet(id: Long) {
+        if (id <= 0) return
+        val paperIds = ArrayList<Long>()
+        readableDatabase.rawQuery("SELECT id FROM papers WHERE set_id = ?", arrayOf(id.toString()))
+            .use { c -> while (c.moveToNext()) paperIds.add(c.getLong(0)) }
+        paperIds.forEach { deletePaper(it, keepSetCleanup = true) }
+        writableDatabase.delete("paper_sets", "id = ?", arrayOf(id.toString()))
+    }
 
     fun listPapers(): List<Paper> {
         val out = ArrayList<Paper>()
@@ -573,7 +760,8 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
                       (SELECT COUNT(*) FROM paper_questions pq WHERE pq.paper_id = p.id),
                       (SELECT COUNT(*) FROM paper_questions pq2
                          JOIN questions q2 ON q2.id = pq2.question_id
-                         WHERE pq2.paper_id = p.id AND TRIM(IFNULL(q2.answer, '')) = '')
+                         WHERE pq2.paper_id = p.id AND TRIM(IFNULL(q2.answer, '')) = ''),
+                      IFNULL(p.set_id, 0)
                FROM papers p ORDER BY p.created_at DESC""", null
         ).use { c ->
             while (c.moveToNext()) {
@@ -584,6 +772,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
                         createdAt = c.getLong(3), durationMin = c.getInt(4), mode = c.getString(5) ?: "",
                         questionCount = c.getInt(6),
                         missingAnswers = c.getInt(7),
+                        setId = c.getLong(8),
                         questions = emptyList()
                     )
                 )
@@ -614,8 +803,16 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
      * 「只属于」指没有别的卷引用它——错题重练复用原卷的题目行，那些题要留着。
      * 收藏 / 笔记 / 笔迹按题目 id 挂，题目真的没人用了才一并删除，不留孤儿行。
      */
-    fun deletePaper(id: Long) {
+    fun deletePaper(id: Long) = deletePaper(id, keepSetCleanup = false)
+
+    /**
+     * @param keepSetCleanup 为真时不动组（整组删除流程在最后统一删组行），
+     *   为假时删完这份卷如果组里一卷不剩就把空组一起清掉，列表上不留空标题
+     */
+    private fun deletePaper(id: Long, keepSetCleanup: Boolean) {
         val db = writableDatabase
+        val setId = db.rawQuery("SELECT IFNULL(set_id,0) FROM papers WHERE id = ?", arrayOf(id.toString()))
+            .use { c -> if (c.moveToFirst()) c.getLong(0) else 0L }
         val args = arrayOf<Any>(id, id)
         val orphanQuestions = """
             SELECT question_id FROM paper_questions
@@ -639,6 +836,12 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
             db.execSQL("DELETE FROM questions WHERE id IN ($orphanQuestions)", args)
             db.delete("paper_questions", "paper_id = ?", arrayOf(id.toString()))
             db.delete("papers", "id = ?", arrayOf(id.toString()))
+            if (!keepSetCleanup && setId > 0) {
+                val left = db.rawQuery(
+                    "SELECT COUNT(*) FROM papers WHERE set_id = ?", arrayOf(setId.toString())
+                ).use { c -> if (c.moveToFirst()) c.getInt(0) else 0 }
+                if (left == 0) db.delete("paper_sets", "id = ?", arrayOf(setId.toString()))
+            }
             db.setTransactionSuccessful()
         } finally {
             db.endTransaction()
@@ -708,7 +911,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
     }
 
     /**
-     * 用题库当前的标准答案重判一条练习记录。
+     * 用当前的标准答案重判一条练习记录。
      *
      * 补完答案后调用：保留用户原来的作答，只重算得分与对错，
      * 所以「先做完、后补答案」的卷子能直接出对比结果，不需要重做一遍。
@@ -1099,7 +1302,25 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         const val DB_NAME = "qbank.db"
 
         /** 库版本。云备份包里的 manifest 会记下它，恢复时据此判断能否直接落地 */
-        const val DB_VERSION = 9
+        const val DB_VERSION = 10
+
+        /** 重练卷统一挂的组名 */
+        private const val RETRY_SET_TITLE = "错题重练"
+
+        /** 没有组信息的卷子在列表里的兜底标题 */
+        private const val UNGROUPED_SET_TITLE = "未分组"
+
+        /** 旧数据回填时，连来源都没有的卷子归到这组 */
+        private const val LEGACY_SET_TITLE = "历史试卷"
+
+        /** 从「导入自 xxx.xlsx」这类来源串里取出组标题（去前缀、去扩展名） */
+        fun setTitleOf(source: String): String {
+            val s = source.trim()
+            if (s.isEmpty()) return LEGACY_SET_TITLE
+            val name = s.removePrefix("导入自").trim()
+            val base = name.substringBeforeLast('.', name).trim()
+            return base.ifBlank { LEGACY_SET_TITLE }
+        }
 
         /** v9 重建时整体清空、一并重建的表（题库相关；词库 / 背诵 / 设置不动） */
         private val QUESTION_TABLES = listOf(
@@ -1145,6 +1366,40 @@ data class ImportResult(
     val questionCount: Int,
     val paperName: String
 )
+
+/**
+ * 一次导入 = 一个标题（树上的第一层）。
+ *
+ * [papers] 只在 `listPaperSets()` 里带内容，`withPapers = false` 时为空。
+ */
+data class PaperSet(
+    val id: Long = 0L,
+    val title: String = "",
+    /** 来源说明：「导入自 xxx.xlsx」/「错题重练」 */
+    val source: String = "",
+    val createdAt: Long = 0L,
+    val paperCount: Int = 0,
+    val questionCount: Int = 0,
+    /** 组里还缺标准答案的题数 */
+    val missingAnswers: Int = 0,
+    val papers: List<Paper> = emptyList()
+)
+
+/** 待写入的一组导入：标题 + 来源 + 组里的各份卷 */
+data class SetImport(
+    val title: String,
+    val source: String,
+    val papers: List<PaperImport>
+)
+
+/** 一组导入写完的结果 */
+data class SetImportResult(
+    val setId: Long,
+    val title: String,
+    val papers: List<ImportResult>
+) {
+    val questionCount: Int get() = papers.sumOf { it.questionCount }
+}
 
 /** 待建的一份试卷（批量导入用） */
 data class PaperImport(

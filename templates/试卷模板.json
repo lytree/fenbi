@@ -1,6 +1,6 @@
 {
-  "bank": "题库模板",
-  "description": "5 道示例题：单选 / 多选 / 一篇材料带 3 道小题。把 questions 里的内容换成你自己的题即可，字段说明见 docs/02-题库格式规范.md",
+  "bank": "试卷模板",
+  "description": "5 道示例题：单选 / 多选 / 一篇材料带 3 道小题。把 questions 里的内容换成你自己的题即可，字段说明见 docs/02-试卷格式规范.md",
   "questions": [
     {
       "type": "单选",

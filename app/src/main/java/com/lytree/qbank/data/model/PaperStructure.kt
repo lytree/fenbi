@@ -3,7 +3,7 @@ package com.lytree.qbank.data.model
 /**
  * 试卷三级结构：大类题型 → 材料 → 题目。
  *
- * 题库文件是「一题一行」平铺导入的（`paper_questions` 只记顺序），但真实试卷的组织方式是：
+ * 试卷文件是「一题一行」平铺导入的（`paper_questions` 只记顺序），但真实试卷的组织方式是：
  *
  * ```
  * 试卷
@@ -162,7 +162,7 @@ class PaperStructure(private val questions: List<Question>) {
     companion object {
         /**
          * 大类命名归一：`行测·资料分析` / `行测-资料分析` / `行测/资料分析` → `资料分析`；
-         * 空串返回 null（这段题不渲染说明卡，避免给手打题库硬塞一个空标题）。
+         * 空串返回 null（这段题不渲染说明卡，避免给手打试题硬塞一个空标题）。
          */
         fun sectionName(q: Question): String? {
             val raw = q.subject.trim()

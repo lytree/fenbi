@@ -10,10 +10,10 @@ import org.junit.Test
 import java.io.File
 
 /**
- * 「图推700题题库包」的导入回归：**按套拆成 35 份试卷，每份 20 题**。
+ * 「图推700题试卷包」的导入回归：**按套拆成 35 份试卷，每份 20 题**。
  *
  * 数据来自 Anki 导入包（一张图一道题、答案 A–D、题干与选项都画在图里），
- * 由 `tools/qbank/build_app_package.py` 转成题库包。这里不自己造 xlsx，
+ * 由 `tools/qbank/build_app_package.py` 转成试卷包。这里不自己造 xlsx，
  * 直接拿生成好的真实包走一遍完整导入链路（QbankPackage 解压 → XlsxReader 多表 →
  * PaperSplitter 拆卷 → Normalizer 规范化 → 图片相对路径改写为解压后的绝对路径），
  * 钉住「一表一卷」在真实数据上的表现。
@@ -22,11 +22,14 @@ import java.io.File
  */
 class TuituiPackageTest {
 
+    /** 新旧两种包名都认：旧的「题库包」是改名前的生成物，留着当兼容回归 */
     private fun pkgFile(): File? = listOf(
-        File("../qbank_out/图推700题题库包.zip"),   // 从 app/ 跑
-        File("qbank_out/图推700题题库包.zip"),      // 从仓库根跑
-        File("../../qbank_out/图推700题题库包.zip")
-    ).firstOrNull { it.isFile }
+        "../qbank_out/图推700题试卷包.zip",   // 从 app/ 跑
+        "qbank_out/图推700题试卷包.zip",      // 从仓库根跑
+        "../../qbank_out/图推700题试卷包.zip",
+        "../qbank_out/图推700题题库包.zip",
+        "qbank_out/图推700题题库包.zip"
+    ).map(::File).firstOrNull { it.isFile }
 
     /**
      * 干净的临时解压根目录。
@@ -43,7 +46,7 @@ class TuituiPackageTest {
     @Test
     fun splits_into_35_papers_of_20_questions() {
         val file = pkgFile()
-        assumeTrue("qbank_out 里没有图推题库包，跳过", file != null)
+        assumeTrue("qbank_out 里没有图推试卷包，跳过", file != null)
         val pkgDir = freshPkgDir()
 
         val out = Importer.build(
@@ -99,7 +102,7 @@ class TuituiPackageTest {
     @Test
     fun reimport_is_stable() {
         val file = pkgFile()
-        assumeTrue("qbank_out 里没有图推题库包，跳过", file != null)
+        assumeTrue("qbank_out 里没有图推试卷包，跳过", file != null)
         val pkgDir = freshPkgDir()
         fun once() = Importer.build(
             ImportFormat.ZIP, file!!.readBytes(), fileName = file.name, pkgDir = pkgDir

@@ -6,7 +6,7 @@ import com.lytree.qbank.data.model.QuestionType
 
 /**
  * 判题计分规则。不同机构口径不同，这里把差异点全部收敛到 [Policy]，
- * 用户可在设置里切换，题库本身不绑定规则。
+ * 用户可在设置里切换，试卷本身不绑定规则。
  */
 data class Policy(
     /** 多选题：少选是否给部分分（参考应用口径为"多选、少选、错选均不得分"） */

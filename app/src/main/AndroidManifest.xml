@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- 「从链接导入」需要联网下载题库文件 -->
+    <!-- 「从链接导入」需要联网下载试卷文件 -->
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
@@ -27,7 +27,7 @@
             android:name=".ui.ImportActivity"
             android:exported="true"
             android:windowSoftInputMode="adjustResize">
-            <!-- 支持从文件管理器/其他应用直接打开题库文件 -->
+            <!-- 支持从文件管理器/其他应用直接打开试卷文件 -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

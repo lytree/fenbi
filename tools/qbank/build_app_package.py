@@ -2,20 +2,20 @@
 # -*- coding: utf-8 -*-
 """
 把「图推700题」的 Anki 导入包（anki_import.tsv + images/）转换成当前 App
-能直接导入的「题库包」，并按套拆成 35 份试卷：
+能直接导入的「试卷包」，并按套拆成 35 份试卷：
 
-    图推700题题库包/
-    ├── 题库.xlsx          # 35 张工作表 = 35 份试卷（图推第01套 … 图推第35套）
+    图推700题试卷包/
+    ├── 试卷.xlsx          # 35 张工作表 = 35 份试卷（图推第01套 … 图推第35套）
     └── images/            # 700 张题图，随包走、换设备不丢图
 
-再压成 图推700题题库包.zip，可直接在 App 导入页选入；导入预览页顶部会出现
+再压成 图推700题试卷包.zip，可直接在 App 导入页选入；导入预览页顶部会出现
 35 个卷名胶囊，想建哪几套就勾哪几套。
 
 背景：原始数据是 Anki 的四列 TSV（`<img src>` + 答案字母 + 题号标签 + 标签列），
 一张图就是一道完整题（题干文字和 A–D 四个选项都画在图里），没有文字选项。
 当前 App 的规则是：
 
-* 一个工作表 = 一份试卷（docs/02-题库格式规范.md）——所以「按套拆卷」就是把
+* 一个工作表 = 一份试卷（docs/02-试卷格式规范.md）——所以「按套拆卷」就是把
   每套题写成一张工作表，而不是把 700 题平铺在一张表里；
 * 题干必填且不渲染 Markdown —— 题图走「图片」列（导入时转成 material 里的图片
   并前置渲染，出现在题干上方），题干只放「第几套·第几题」的定位文字；
@@ -44,7 +44,7 @@ OUT = os.path.join(ROOT, "qbank_out")
 DEFAULT_TSV = os.path.join(OUT, "anki_import.tsv")
 DEFAULT_IMAGES = os.path.join(OUT, "images")
 
-PKG_NAME = "图推700题题库包"
+PKG_NAME = "图推700题试卷包"
 PKG_DIR = os.path.join(OUT, PKG_NAME)
 PKG_ZIP = os.path.join(OUT, PKG_NAME + ".zip")
 SPLIT_DIR = os.path.join(OUT, PKG_NAME + "-分卷")
@@ -291,7 +291,7 @@ def write_package(sheets, records, img_dir):
         shutil.rmtree(PKG_DIR)
     os.makedirs(os.path.join(PKG_DIR, "images"))
 
-    xlsx_path = os.path.join(PKG_DIR, "题库.xlsx")
+    xlsx_path = os.path.join(PKG_DIR, "试卷.xlsx")
     with zipfile.ZipFile(xlsx_path, "w", zipfile.ZIP_DEFLATED) as z:
         for name, data in build_xlsx(sheets).items():
             z.writestr(name, data.encode("utf-8"))
@@ -303,7 +303,7 @@ def write_package(sheets, records, img_dir):
     if os.path.exists(PKG_ZIP):
         os.remove(PKG_ZIP)
     with zipfile.ZipFile(PKG_ZIP, "w") as z:
-        z.write(xlsx_path, "%s/题库.xlsx" % PKG_NAME, compress_type=zipfile.ZIP_DEFLATED)
+        z.write(xlsx_path, "%s/试卷.xlsx" % PKG_NAME, compress_type=zipfile.ZIP_DEFLATED)
         for r in records:
             z.write(os.path.join(img_dir, r["image"]),
                     "%s/images/%s" % (PKG_NAME, r["image"]),
@@ -321,7 +321,7 @@ def write_split_packages(sets, img_dir):
         name = sheet_name(recs[0]["set"])
         tsv_dir = os.path.join(SPLIT_DIR, name)
         os.makedirs(os.path.join(tsv_dir, "images"))
-        with zipfile.ZipFile(os.path.join(tsv_dir, "题库.xlsx"), "w",
+        with zipfile.ZipFile(os.path.join(tsv_dir, "试卷.xlsx"), "w",
                              zipfile.ZIP_DEFLATED) as z:
             for fname, data in build_xlsx([(name, rows_of_set(recs))]).items():
                 z.writestr(fname, data.encode("utf-8"))
@@ -330,7 +330,7 @@ def write_split_packages(sets, img_dir):
                          os.path.join(tsv_dir, "images", r["image"]))
         zpath = os.path.join(SPLIT_DIR, name + ".zip")
         with zipfile.ZipFile(zpath, "w") as z:
-            z.write(os.path.join(tsv_dir, "题库.xlsx"), "%s/题库.xlsx" % name,
+            z.write(os.path.join(tsv_dir, "试卷.xlsx"), "%s/试卷.xlsx" % name,
                     compress_type=zipfile.ZIP_DEFLATED)
             for r in recs:
                 z.write(os.path.join(img_dir, r["image"]),
@@ -342,7 +342,7 @@ def write_split_packages(sets, img_dir):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="图推700题 → App 题库包（按套拆 35 卷）")
+    ap = argparse.ArgumentParser(description="图推700题 → App 试卷包（按套拆 35 卷）")
     ap.add_argument("--zip", help="原始 Anki 导入包（含 tsv + images），给了就从中取源")
     ap.add_argument("--tsv", default=DEFAULT_TSV, help="anki TSV 路径")
     ap.add_argument("--images", default=DEFAULT_IMAGES, help="题图目录")

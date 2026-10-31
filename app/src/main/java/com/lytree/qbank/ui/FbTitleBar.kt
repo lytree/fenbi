@@ -25,7 +25,7 @@ import com.lytree.qbank.R
  * 状态栏高度自动并入 padding，避免 Android 15 强制 edge-to-edge 后被状态栏压住。
  *
  * ```kotlin
- * titleBar.setTitle("导入题库")
+ * titleBar.setTitle("导入试卷")
  * titleBar.showBack(true)
  * titleBar.addTextAction("全选") { toggleAll() }
  * ```

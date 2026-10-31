@@ -72,7 +72,7 @@ class UrlDownloadTest {
             )
         ) { base ->
             val result = UrlDownloader.download("$base/download?id=1")
-            assertEquals("题库.json", result.fileName)
+            assertEquals("试卷.json", result.fileName)
             assertEquals(json, String(result.bytes, Charsets.UTF_8))
         }
     }

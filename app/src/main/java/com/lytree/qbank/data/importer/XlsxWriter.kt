@@ -12,7 +12,7 @@ import java.util.zip.ZipOutputStream
  * 不引入 Apache POI，直接按 OOXML 规范拼 zip + XML：
  * - 单元格用 **inlineStr**（内联字符串），不需要 sharedStrings 表，写出逻辑最短；
  *   Excel / WPS / 本 App 的读取器都认这种标准写法。
- * - 单 sheet，表名「题库」，表头与统一模板（templates/题库模板.xlsx）完全一致，
+ * - 单 sheet，表名「试卷」，表头与统一模板（templates/试卷模板.xlsx）完全一致，
  *   导出的文件**可以直接再导入**（下载 → 换手机 → 再导入的闭环）。
  *
  * 列规则：`题型 / 题干 / 材料 / 图片` + 按选项实际用到的字母展开 `选项A–H`
@@ -106,7 +106,7 @@ object XlsxWriter {
             """.trimIndent())
             put(zip, "xl/workbook.xml", """
                 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-                <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="题库" sheetId="1" r:id="rId1"/></sheets></workbook>
+                <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="试卷" sheetId="1" r:id="rId1"/></sheets></workbook>
             """.trimIndent())
             put(zip, "xl/_rels/workbook.xml.rels", """
                 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>

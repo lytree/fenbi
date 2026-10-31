@@ -15,7 +15,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 /**
- * 题库包（zip = 题库 Excel + 媒体文件）导入：标准目录结构、主数据识别、
+ * 试卷包（zip = 试卷 Excel + 媒体文件）导入：标准目录结构、主数据识别、
  * 图片相对路径 → 绝对路径、zip slip 防护。
  */
 @RunWith(AndroidJUnit4::class)
@@ -27,9 +27,9 @@ class PackageImportTest {
     private fun asset(name: String): ByteArray =
         ctx.assets.open("samples/$name").use { it.readBytes() }
 
-    /** 造一个带外层目录 + images 的题库包（主数据是 题库.xlsx） */
+    /** 造一个带外层目录 + images 的试卷包（主数据是 试卷.xlsx） */
     private fun makeZip(
-        prefix: String = "资料分析题库包/",
+        prefix: String = "资料分析试卷包/",
         extra: Map<String, ByteArray> = emptyMap(),
         xlsx: ByteArray = TestXlsx.bank(
             TestXlsx.QuestionRow(
@@ -48,7 +48,7 @@ class PackageImportTest {
                 zos.write(data)
                 zos.closeEntry()
             }
-            put("题库.xlsx", xlsx)
+            put("试卷.xlsx", xlsx)
             put("images/chart-01.png", asset("资料分析折线图.png"))
             put("README.txt", "说明不会导入".toByteArray())
             extra.forEach { (n, d) -> put(n, d) }
@@ -59,10 +59,10 @@ class PackageImportTest {
     @Test
     fun detectsPackageAndReadsMainXlsx() {
         val bytes = makeZip()
-        assertEquals(ImportFormat.ZIP, Importer.detect("题库包.zip", bytes))
+        assertEquals(ImportFormat.ZIP, Importer.detect("试卷包.zip", bytes))
         // 没有扩展名时也要靠内容认出来
-        assertEquals(ImportFormat.ZIP, Importer.detect("题库包", bytes))
-        // 普通 xlsx 仍然是 Excel，不会被误判成题库包
+        assertEquals(ImportFormat.ZIP, Importer.detect("试卷包", bytes))
+        // 普通 xlsx 仍然是 Excel，不会被误判成试卷包
         assertEquals(ImportFormat.XLSX, Importer.detect("a.xlsx", asset("行测基础示例.xlsx")))
     }
 
@@ -72,8 +72,8 @@ class PackageImportTest {
         val out = Importer.build(ImportFormat.ZIP, makeZip(), pkgDir = dir)
 
         assertEquals(1, out.imported)
-        assertEquals("题库包 · Excel", out.format)
-        assertEquals("题库名取包根目录名", "资料分析题库包", out.suggestedName)
+        assertEquals("试卷包 · Excel", out.format)
+        assertEquals("试卷名取包根目录名", "资料分析试卷包", out.suggestedName)
 
         val q = out.questions.single()
         assertTrue("材料里应保留图片说明", q.material.contains("![增速]("))
@@ -102,12 +102,12 @@ class PackageImportTest {
         val bos = ByteArrayOutputStream()
         ZipOutputStream(bos).use { zos ->
             zos.putNextEntry(ZipEntry("notes.txt"))
-            zos.write("没有题库".toByteArray())
+            zos.write("没有试卷".toByteArray())
             zos.closeEntry()
         }
         val out = Importer.build(ImportFormat.ZIP, bos.toByteArray(), pkgDir = dir)
         assertEquals(0, out.imported)
         assertTrue(out.errorCount > 0)
-        assertTrue(out.issues.any { it.message.contains("题库.xlsx") || it.message.contains("Excel") })
+        assertTrue(out.issues.any { it.message.contains("试卷.xlsx") || it.message.contains("Excel") })
     }
 }

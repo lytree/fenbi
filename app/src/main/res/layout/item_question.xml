@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 题目卡（题库详情目录）：与答题页同一套字色/字号，但不带选项圆徽标 -->
+<!-- 题目卡（试卷详情目录）：与答题页同一套字色/字号，但不带选项圆徽标 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     style="@style/FbListCard">
 

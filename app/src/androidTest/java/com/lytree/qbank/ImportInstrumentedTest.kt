@@ -16,12 +16,12 @@ import org.junit.runner.RunWith
  * 导入 + 判题的端到端仪器化测试：统一 Excel 格式必须解析出全部题目、题型齐全，
  * 且关键题目的答案与判题结果符合预期；老格式（json / csv / txt）一律不再解析。
  *
- * 当前版本只支持选择题（单选 / 多选 / 不定项 / 判断），填空与主观题不再进入题库。
+ * 当前版本只支持选择题（单选 / 多选 / 不定项 / 判断），填空与主观题不再进入试卷。
  */
 @RunWith(AndroidJUnit4::class)
 class ImportInstrumentedTest {
 
-    /** 示例题库总题数（以 app 内置 samples/行测基础示例.xlsx 为准） */
+    /** 示例试卷总题数（以 app 内置 samples/行测基础示例.xlsx 为准） */
     private val total = 11
 
     private fun asset(name: String): ByteArray {
@@ -79,7 +79,7 @@ class ImportInstrumentedTest {
 
     @Test
     fun legacy_formats_fail_loudly() {
-        listOf("题库.json" to "{}", "题库.csv" to "题干,答案", "题库.txt" to "1.A")
+        listOf("试卷.json" to "{}", "试卷.csv" to "题干,答案", "试卷.txt" to "1.A")
             .forEach { (name, content) ->
                 val r = importOf(name, Importer.detect(name, content.toByteArray()))
                 assertEquals("$name 应导入 0 题", 0, r.imported)

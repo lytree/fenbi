@@ -18,11 +18,13 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.lytree.qbank.R
 import com.lytree.qbank.data.db.PaperImport
 import com.lytree.qbank.data.db.QBankDb
+import com.lytree.qbank.data.db.SetImport
 import com.lytree.qbank.data.importer.ImportFormat
 import com.lytree.qbank.data.importer.ImportIssue
 import com.lytree.qbank.data.importer.Importer
@@ -45,14 +47,35 @@ import java.io.File
 /**
  * 试卷导入：选文件 → 解析 → 校验预览 → 勾选 → 建卷。
  *
- * 一个文件可以是**一份卷子，也可以是几份**（一个工作表 = 一份试卷，「试卷」列可在表内再分，
- * 规则见 [com.lytree.qbank.data.importer.PaperSplitter]）。拆出多卷时顶部多一排卷名胶囊，
- * 预览与勾选按卷切换，最后一次性把勾到题的卷全部建出来。
+ * 结构是**三层**的，与试卷列表一一对应：
+ * 1. 一次导入可以选**多个文件**，每个文件 = 列表上的一个**标题**（导入组）；
+ * 2. 一个文件里可以是**一份卷，也可以是几份**（一个工作表 = 一份试卷，「试卷」列可在表内再分，
+ *    规则见 [com.lytree.qbank.data.importer.PaperSplitter]），拆出多卷时顶部多一排卷名胶囊；
+ * 3. 每份卷里才是题目，逐题可勾选。
  *
- * 同时也是全 App 唯一的导入入口：导入得到的直接是试卷（没有单独的题库层），
+ * 预览始终只显示「当前文件 · 当前卷」的题，勾选按（文件, 卷）各存一份，
+ * 来回切不会互相覆盖；最后一次性把勾到题的组全部建出来。
+ *
+ * 同时也是全 App 唯一的导入入口：导入得到的直接是试卷（只有「标题 → 试卷」两层，没有单独的题库层），
  * 词表不进这一页，由「导入词表」卡片分发到 [com.lytree.qbank.ui.word.WordImportActivity]。
  */
 class ImportActivity : AppCompatActivity() {
+
+    /**
+     * 一次导入里的一个文件 = 列表上的一个标题。
+     *
+     * [title] 可变：用户可以在页面上改这一组的名字，默认取文件名。
+     */
+    private data class FileBatch(
+        var title: String,
+        val source: String,
+        val format: String,
+        val totalRows: Int,
+        val papers: List<PaperDraft>,
+        val issues: List<ImportIssue>
+    ) {
+        val questionCount: Int get() = papers.sumOf { it.questions.size }
+    }
 
     private lateinit var binding: ActivityImportBinding
     private lateinit var db: QBankDb
@@ -61,26 +84,23 @@ class ImportActivity : AppCompatActivity() {
     private val issueAdapter = IssueAdapter()
 
     private var fileName: String = ""
-    private var format: ImportFormat = ImportFormat.XLSX
-    private var bytes: ByteArray = ByteArray(0)
 
-    /** 题库包（zip）的解压根目录：图片落到应用私有目录，清缓存也不影响已有题目 */
+    /** 试卷包（zip）的解压根目录：图片落到应用私有目录，清缓存也不影响已有题目 */
     private lateinit var pkgDir: File
 
-    /** 文件拆出来的各卷（带答案的原始样貌） */
-    private var papers: List<PaperDraft> = emptyList()
-    /** 文件级问题：解析失败、多工作表说明、包内择优等，不属于某一卷 */
-    private var fileIssues: List<ImportIssue> = emptyList()
+    /** 本次导入拆出来的各文件（每个文件一个标题） */
+    private var batches: List<FileBatch> = emptyList()
 
-    /** 当前预览的是第几卷（单卷文件恒为 0） */
+    /** 当前预览的是第几个文件 / 文件里的第几卷（单文件单卷时恒为 0） */
+    private var activeBatch = 0
     private var activePaper = 0
-    /** 每卷各自的勾选：来回切卷不丢，导入时按卷取 */
-    private val selections = HashMap<Int, Set<Int>>()
-    /** 卷名胶囊（与 [papers] 一一对应）：勾选变了只改文案，不重建视图 */
-    private val chips = ArrayList<TextView>()
 
-    private var outcomeFormat: String = ""
-    private var outcomeTotal: Int = 0
+    /** 勾选按「文件#卷」分开存，来回切不丢 */
+    private val selections = HashMap<String, Set<Int>>()
+
+    /** 卷名 / 文件名胶囊（与当前层一一对应）：勾选变了只改文案，不重建视图 */
+    private val chips = ArrayList<TextView>()
+    private val batchChips = ArrayList<TextView>()
 
     /** 是否把答案一起导入（关掉 = 只导题目，做完在成绩报告里补录） */
     private var importAnswers = true
@@ -91,11 +111,8 @@ class ImportActivity : AppCompatActivity() {
     /** 解析任务：换文件 / 退出页面时取消，避免旧结果覆盖新预览 */
     private var parseJob: Job? = null
 
-    /** 上一次自动填的试卷名：用户没改过才跟着新文件变，改过就尊重用户的输入 */
-    private var lastAutoName: String = ""
-
-    private val picker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) loadFile(uri)
+    private val picker = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) loadFiles(uris)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -121,6 +138,16 @@ class ImportActivity : AppCompatActivity() {
         // 逐题勾选时卷名胶囊上的题数跟着变，用户一眼能看出哪卷被勾空了
         qAdapter.onSelectionChanged = { updateChipLabels() }
 
+        // 改标题时文件胶囊跟着变：一眼能看出改的是哪一组
+        binding.inputName.doAfterTextChanged { editable ->
+            val b = batches.getOrNull(activeBatch) ?: return@doAfterTextChanged
+            val text = editable?.toString()?.trim().orEmpty()
+            if (text.isEmpty()) return@doAfterTextChanged
+            b.title = text
+            batchChips.getOrNull(activeBatch)?.text =
+                getString(R.string.import_file_chip, text, b.papers.size)
+        }
+
         binding.list.layoutManager = LinearLayoutManager(this)
         binding.list.adapter = qAdapter
         binding.listIssues.layoutManager = LinearLayoutManager(this)
@@ -138,7 +165,7 @@ class ImportActivity : AppCompatActivity() {
         handleIncomingIntent(intent)
     }
 
-    /** 支持从外部（文件管理器 / 分享）直接打开题库文件 */
+    /** 支持从外部（文件管理器 / 分享）直接打开试卷文件 */
     private fun handleIncomingIntent(intent: Intent?) {
         if (intent == null) return
         val candidate: Uri? = when (intent.action) {
@@ -150,7 +177,7 @@ class ImportActivity : AppCompatActivity() {
             else -> null
         }
         val uri = candidate ?: return
-        loadFile(uri)
+        loadFiles(listOf(uri))
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -159,6 +186,7 @@ class ImportActivity : AppCompatActivity() {
         handleIncomingIntent(intent)
     }
 
+    /** 多选：一次挑几个文件，就建几个标题 */
     private fun pickFile() {
         try {
             picker.launch(
@@ -236,29 +264,29 @@ class ImportActivity : AppCompatActivity() {
 
     /** 下载完成的字节按本地文件同样处理：探测格式 → 补扩展名 → 解析预览 */
     private fun applyDownloaded(result: UrlDownloader.Result) {
-        format = Importer.detect(result.fileName, result.bytes)
-        fileName = ensureExtension(result.fileName, format)
-        parseAsync("正在解析「$fileName」…") { fileName to result.bytes }
+        val fmt = Importer.detect(result.fileName, result.bytes)
+        fileName = ensureExtension(result.fileName, fmt)
+        parseAsync("正在解析「$fileName」…") { listOf(fileName to result.bytes) }
     }
 
-    /** 链接常以 download?id=1 结尾、拿不到扩展名，按内容探测结果补一个，卷名才好取 */
+    /** 链接常以 download?id=1 结尾、拿不到扩展名，按内容探测结果补一个，标题才好取 */
     private fun ensureExtension(name: String, format: ImportFormat): String {
         if (ImportFormat.of(name) != null) return name
         val base = name.substringBeforeLast('.', name).ifBlank { "导入文件" }
         return "$base.${format.ext}"
     }
 
-    /** 「载入示例」：内置样例，普通题库 / 带图材料 / zip 题库包 */
+    /** 「载入示例」：内置样例，普通单表 / 带图材料 / zip 试卷包 */
     private fun loadSample() {
         val samples = arrayOf(
             "行测基础示例.xlsx" to "行测基础示例（11 题 · 覆盖全部选择题型）",
             "多套卷示例.xlsx" to "多套卷示例（2 个工作表 · 一次导入 2 份试卷）",
             "资料分析示例.xlsx" to "资料分析示例（含图表材料）",
-            "资料分析题库包.zip" to "资料分析题库包（Excel + 图片 · 图片随包）"
+            "资料分析试卷包.zip" to "资料分析试卷包（Excel + 图片 · 图片随包）"
         )
         FbDialog.list(
             context = this,
-            title = "载入示例题库",
+            title = "载入示例",
             items = samples.map { it.second }.toTypedArray(),
             onPick = { which -> loadSample(samples[which].first) }
         )
@@ -271,18 +299,28 @@ class ImportActivity : AppCompatActivity() {
             toast("示例文件读取失败：${e.message}")
             return
         }
-        parseAsync("正在解析「$name」…") { name to data }
+        parseAsync("正在解析「$name」…") { listOf(name to data) }
     }
 
-    private fun applyParsed(outcome: MultiPaperOutcome) {
-        papers = outcome.papers
-        fileIssues = outcome.issues
-        outcomeFormat = outcome.format
-        outcomeTotal = outcome.totalRows
+    /** 解析完成：按文件成组，组内按卷排好，默认预览第一组的第一卷 */
+    private fun applyParsed(list: List<FileBatch>) {
+        batches = list
+        activeBatch = 0
         activePaper = 0
         selections.clear()
+        chips.clear()
+        batchChips.clear()
 
-        if (papers.isEmpty()) {
+        // 同一个文件导过就沿用上次的标题：默认标题只是文件名，用户改过的名字不该被冲掉，
+        // 也不要因为重导一次就多出一个同名分组（标题一致时接下来会走「覆盖导入」确认）
+        val existing = db.listPaperSets(withPapers = false)
+        batches.forEach { b ->
+            val source = "导入自 ${b.source}"
+            existing.firstOrNull { it.source == source }?.let { b.title = it.title }
+        }
+
+        val questionTotal = batches.sumOf { it.questionCount }
+        if (questionTotal == 0) {
             toast("没有解析出任何题目，请检查文件格式")
         }
 
@@ -291,59 +329,79 @@ class ImportActivity : AppCompatActivity() {
         binding.btnImport.visibility = View.VISIBLE
         binding.bottomBar.visibility = View.VISIBLE
         binding.bottomDivider.visibility = View.VISIBLE
-        binding.tvFile.text = fileName
 
-        // 卷名跟着文件走，但用户手动改过就不再覆盖；多卷时每卷自带卷名，输入框收起
-        val autoName = papers.firstOrNull()?.name ?: fileName.substringBeforeLast('.')
-        val current = binding.inputName.text?.toString()?.trim().orEmpty()
-        if (current.isEmpty() || current == lastAutoName) {
-            binding.inputName.setText(autoName)
-            lastAutoName = autoName
+        val paperCount = batches.sumOf { it.papers.size }
+        binding.tvFile.text = when {
+            batches.size > 1 -> getString(R.string.import_file_count, batches.size)
+            batches.size == 1 -> batches.first().source
+            else -> fileName
         }
 
-        val multi = papers.size > 1
-        binding.multiPanel.visibility = if (multi) View.VISIBLE else View.GONE
-        binding.inputLayoutName.visibility = if (multi) View.GONE else View.VISIBLE
-        binding.btnAll.visibility = if (papers.isEmpty()) View.GONE else View.VISIBLE
-        binding.btnImport.isEnabled = papers.isNotEmpty()
-        binding.btnImport.text = if (multi) {
-            getString(R.string.import_confirm_papers, papers.size)
-        } else {
-            getString(R.string.import_confirm_paper)
-        }
-        if (multi) {
-            binding.tvMultiTitle.text =
-                getString(R.string.import_multi_title, papers.size, papers.sumOf { it.questions.size })
+        // 标题默认取文件名，改过就尊重用户输入；多文件时输入框跟着当前文件走
+        binding.inputName.setText(batches.getOrNull(activeBatch)?.title.orEmpty())
+        binding.tvTitleHint.visibility = if (batches.size > 1) View.VISIBLE else View.GONE
+
+        binding.btnAll.visibility = if (questionTotal == 0) View.GONE else View.VISIBLE
+        binding.btnImport.isEnabled = questionTotal > 0
+        binding.btnImport.text = when {
+            questionTotal == 0 -> getString(R.string.import_confirm_paper)
+            batches.size > 1 -> getString(R.string.import_confirm_sets, batches.size, paperCount)
+            paperCount > 1 -> getString(R.string.import_confirm_papers, paperCount)
+            else -> getString(R.string.import_confirm_paper)
         }
 
+        renderBatchChips()
         renderChips()
         refreshPreview(keepSelection = false)
+    }
+
+    /** 文件胶囊：一次选了多个文件才出现，点哪个就预览哪个文件拆出来的卷 */
+    private fun renderBatchChips() {
+        batchChips.clear()
+        binding.fileChipRow.removeAllViews()
+        if (batches.size <= 1) {
+            binding.fileChipPanel.visibility = View.GONE
+            return
+        }
+        binding.fileChipPanel.visibility = View.VISIBLE
+        val margin = (6 * resources.displayMetrics.density).toInt()
+        batches.forEachIndexed { i, b ->
+            val chip = chipView()
+            val on = i == activeBatch
+            chip.text = getString(R.string.import_file_chip, b.title, b.papers.size)
+            styleChip(chip, on, dim = !on && b.questionCount == 0)
+            chip.setOnClickListener { switchBatch(i) }
+            binding.fileChipRow.addView(
+                chip,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { marginEnd = margin }
+            )
+            batchChips.add(chip)
+        }
     }
 
     /** 卷名胶囊：选中态换实心背景，题数跟着勾选实时变 */
     private fun renderChips() {
         chips.clear()
         binding.chipRow.removeAllViews()
-        if (papers.size <= 1) return
+        val papers = batches.getOrNull(activeBatch)?.papers.orEmpty()
+        if (papers.size <= 1) {
+            binding.multiPanel.visibility = View.GONE
+            return
+        }
+        binding.multiPanel.visibility = View.VISIBLE
+        binding.tvMultiTitle.text =
+            getString(R.string.import_multi_title, papers.size, papers.sumOf { it.questions.size })
         val margin = (6 * resources.displayMetrics.density).toInt()
         papers.forEachIndexed { i, paper ->
-            val chip = LayoutInflater.from(this)
-                .inflate(R.layout.item_import_paper_chip, binding.chipRow, false) as TextView
-            val sel = selections[i]
+            val chip = chipView()
+            val sel = selections[key(activeBatch, i)]
             val count = if (sel == null) questionsOf(paper).size else sel.size
             val on = i == activePaper
             chip.text = getString(R.string.import_paper_chip, paper.name, count)
-            chip.setBackgroundResource(
-                if (on) R.drawable.bg_fb_chip_selected else R.drawable.bg_fb_chip
-            )
-            chip.setTextColor(
-                ContextCompat.getColor(
-                    this,
-                    if (on) R.color.fb_text_on_primary else R.color.fb_text_secondary
-                )
-            )
-            // 整卷都没勾的卷子淡一点：导入时不会建卷，提前透个底
-            chip.alpha = if (!on && count == 0) 0.55f else 1f
+            styleChip(chip, on, dim = !on && count == 0)
             chip.setOnClickListener { switchPaper(i) }
             binding.chipRow.addView(
                 chip,
@@ -356,29 +414,78 @@ class ImportActivity : AppCompatActivity() {
         }
     }
 
-    /** 只改胶囊上的题数（勾选在逐个点，重建视图会跳滚动位置） */
+    private fun chipView(): TextView =
+        LayoutInflater.from(this)
+            .inflate(R.layout.item_import_paper_chip, binding.chipRow, false) as TextView
+
+    private fun styleChip(chip: TextView, on: Boolean, dim: Boolean) {
+        chip.setBackgroundResource(if (on) R.drawable.bg_fb_chip_selected else R.drawable.bg_fb_chip)
+        chip.setTextColor(
+            ContextCompat.getColor(
+                this,
+                if (on) R.color.fb_text_on_primary else R.color.fb_text_secondary
+            )
+        )
+        // 整卷都没勾的卷子淡一点：导入时不会建卷，提前透个底
+        chip.alpha = if (dim) 0.55f else 1f
+    }
+
+    /** 只改胶囊上的题数（逐题点勾选时重建视图会跳滚动位置） */
     private fun updateChipLabels() {
-        if (papers.size <= 1 || chips.size != papers.size) return
-        papers.forEachIndexed { i, paper ->
-            val sel = if (i == activePaper) qAdapter.selection() else selections[i]
-            val count = if (sel == null) questionsOf(paper).size else sel.size
-            chips[i].text = getString(R.string.import_paper_chip, paper.name, count)
-            chips[i].alpha = if (i == activePaper || count > 0) 1f else 0.55f
+        val papers = batches.getOrNull(activeBatch)?.papers.orEmpty()
+        if (chips.size == papers.size) {
+            papers.forEachIndexed { i, paper ->
+                val sel = if (i == activePaper) qAdapter.selection() else selections[key(activeBatch, i)]
+                val count = if (sel == null) questionsOf(paper).size else sel.size
+                chips[i].text = getString(R.string.import_paper_chip, paper.name, count)
+                chips[i].alpha = if (i == activePaper || count > 0) 1f else 0.55f
+            }
         }
+        batches.forEachIndexed { i, b ->
+            batchChips.getOrNull(i)?.text =
+                getString(R.string.import_file_chip, b.title, b.papers.size)
+        }
+    }
+
+    /** 切文件：先存下这组的标题与勾选，再按新组重画 */
+    private fun switchBatch(index: Int) {
+        if (index == activeBatch || index !in batches.indices) return
+        saveTitle()
+        saveSelection()
+        activeBatch = index
+        activePaper = 0
+        binding.inputName.setText(batches[index].title)
+        renderBatchChips()
+        renderChips()
+        refreshPreview(keepSelection = false, restore = selections[key(index, 0)])
     }
 
     /** 切卷：先把当前卷的勾选存下来，再按目标卷的勾选重画预览 */
     private fun switchPaper(index: Int) {
+        val papers = batches.getOrNull(activeBatch)?.papers.orEmpty()
         if (index == activePaper || index !in papers.indices) return
         saveSelection()
         activePaper = index
         renderChips()
-        refreshPreview(keepSelection = false, restore = selections[index])
+        refreshPreview(keepSelection = false, restore = selections[key(activeBatch, index)])
     }
 
+    private fun key(batch: Int, paper: Int) = "$batch#$paper"
+
     private fun saveSelection() {
-        if (papers.isNotEmpty()) selections[activePaper] = qAdapter.selection()
+        if (batches.isEmpty()) return
+        selections[key(activeBatch, activePaper)] = qAdapter.selection()
     }
+
+    /** 把输入框里的标题写回当前文件（空着就保留默认的文件名） */
+    private fun saveTitle() {
+        val b = batches.getOrNull(activeBatch) ?: return
+        val typed = binding.inputName.text?.toString()?.trim().orEmpty()
+        b.title = typed.ifBlank { defaultTitle(b.source) }
+    }
+
+    private fun defaultTitle(source: String): String =
+        source.substringBeforeLast('.').trim().ifBlank { "我的试卷" }
 
     /** 当前卷真正会入库的题：关掉「同时导入答案」时把答案（主观题连关键词一起）清空 */
     private fun questionsOf(draft: PaperDraft): List<Question> =
@@ -393,28 +500,32 @@ class ImportActivity : AppCompatActivity() {
      * @param restore 指定这卷的勾选（切卷时用）；null 表示按 [keepSelection] 走默认规则
      */
     private fun refreshPreview(keepSelection: Boolean, restore: Set<Int>? = null) {
-        val draft = papers.getOrNull(activePaper)
+        val batch = batches.getOrNull(activeBatch)
+        val draft = batch?.papers?.getOrNull(activePaper)
         val questions = draft?.let { questionsOf(it) } ?: emptyList()
-        val issues = fileIssues + (draft?.issues ?: emptyList())
+        val issues = (batch?.issues ?: emptyList()) + (draft?.issues ?: emptyList())
 
         binding.tvStat.text = buildString {
-            append("格式：$outcomeFormat")
-            append("　总行数：$outcomeTotal")
-            if (papers.size > 1) {
-                append("　共 ${papers.size} 份 / ${papers.sumOf { questionsOf(it).size }} 题")
+            append("格式：").append(batch?.format ?: "-")
+            append("　总行数：").append(batch?.totalRows ?: 0)
+            if (batches.size > 1) {
+                append("　共 ").append(batches.size).append(" 个文件 / ")
+                append(batches.sumOf { it.papers.size }).append(" 份试卷")
+            } else if ((batch?.papers?.size ?: 0) > 1) {
+                append("　本文件 ").append(batch?.papers?.size).append(" 份试卷")
             }
-            append("　本卷可导入：${questions.size}")
+            append("　本卷可导入：").append(questions.size)
             if (draft != null && draft.duplicateSkipped > 0) {
-                append("　重复跳过：${draft.duplicateSkipped}")
+                append("　重复跳过：").append(draft.duplicateSkipped)
             }
             if (importAnswers) {
                 val missing = questions.count { it.answer.isBlank() }
-                if (missing > 0) append("　缺答案：$missing")
+                if (missing > 0) append("　缺答案：").append(missing)
             } else {
                 append("　").append(getString(R.string.import_answer_skipped, questions.size))
             }
-            append("　警告：${issues.count { it.level == ImportIssue.Level.WARN }}")
-            append("　错误：${issues.count { it.level == ImportIssue.Level.ERROR }}")
+            append("　警告：").append(issues.count { it.level == ImportIssue.Level.WARN })
+            append("　错误：").append(issues.count { it.level == ImportIssue.Level.ERROR })
         }
 
         qAdapter.submit(questions, keepSelection, restore)
@@ -428,12 +539,15 @@ class ImportActivity : AppCompatActivity() {
     /**
      * 读文件 + 解析全在后台线程做。
      *
-     * 题库包要解压几百张图、再把主数据逐份试解析，主线程做完必然卡白屏（甚至 ANR）；
+     * 试卷包要解压几百张图、再把主数据逐份试解析，主线程做完必然卡白屏（甚至 ANR）；
      * 普通文件也可能几 MB。这里统一走 [parseAsync]，期间用遮罩挡住交互。
      */
-    private fun loadFile(uri: Uri) {
-        val name = displayName(uri)
-        parseAsync("正在读取「$name」…") { readBytes(uri)?.let { name to it } }
+    private fun loadFiles(uris: List<Uri>) {
+        val names = uris.map { displayName(it) }
+        parseAsync(if (names.size == 1) "正在读取「${names[0]}」…" else "正在读取 ${names.size} 个文件…") {
+            uris.mapIndexed { i, uri -> names[i] to (readBytes(uri) ?: ByteArray(0)) }
+                .filter { it.second.isNotEmpty() }
+        }
     }
 
     private fun readBytes(uri: Uri): ByteArray? =
@@ -444,34 +558,44 @@ class ImportActivity : AppCompatActivity() {
         }
 
     /**
-     * 后台读字节 → 探测格式 → 解析（拆卷 + 规范化）→ 刷新预览。
+     * 后台读字节 → 探测格式 → 解析（拆卷 + 规范化）→ 组装成「每个文件一组」→ 刷新预览。
      *
      * 同一个 `parseJob` 统一管：新任务取消旧任务，避免用户连点选择时旧结果盖掉新预览。
      *
-     * @param load 在 IO 线程执行，返回「文件名 + 字节」；返回 null 表示读取失败
+     * @param load 在 IO 线程执行，返回「文件名 + 字节」列表；为空表示读取失败
      */
-    private fun parseAsync(loadingText: String, load: () -> Pair<String, ByteArray>?) {
+    private fun parseAsync(loadingText: String, load: () -> List<Pair<String, ByteArray>>) {
         parseJob?.cancel()
         showLoading(loadingText)
         parseJob = lifecycleScope.launch {
             try {
                 val loaded = withContext(Dispatchers.IO) { load() }
-                if (loaded == null) {
+                if (loaded.isEmpty()) {
                     hideLoading()
                     toast("无法读取所选文件")
                     return@launch
                 }
-                val (name, data) = loaded
-                val fmt = withContext(Dispatchers.Default) { Importer.detect(name, data) }
-                binding.tvLoading.text = "正在解析「$name」…"
-                val outcome = withContext(Dispatchers.IO) {
-                    Importer.buildPapers(fmt, data, name, pkgDir)
+                val built = withContext(Dispatchers.IO) {
+                    loaded.mapIndexed { i, (name, data) ->
+                        if (loaded.size > 1) {
+                            runOnUiThread { binding.tvLoading.text = "正在解析 ${i + 1}/${loaded.size}：$name" }
+                        }
+                        val fmt = Importer.detect(name, data)
+                        val outcome: MultiPaperOutcome = Importer.buildPapers(fmt, data, name, pkgDir)
+                        FileBatch(
+                            title = defaultTitle(name),
+                            source = name,
+                            format = outcome.format,
+                            totalRows = outcome.totalRows,
+                            papers = outcome.papers,
+                            issues = outcome.issues
+                        )
+                    }
                 }
-                fileName = name
-                bytes = data
-                format = fmt
+                val first = loaded.first()
+                fileName = if (loaded.size == 1) first.first else ""
                 hideLoading()
-                applyParsed(outcome)
+                applyParsed(built)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -496,91 +620,94 @@ class ImportActivity : AppCompatActivity() {
     }
 
     /**
-     * 导入即建卷：每卷（勾到的题）按文件里的顺序整卷入卷，不随机抽题。
+     * 导入即建组：每个文件一个标题，标题下的卷按文件里的顺序整卷入卷，不随机抽题。
      *
-     * 「一个文件 = 一份试卷」的老口径保留在单卷文件上——那边的名字仍以输入框为准；
-     * 多卷时不在这里统一改名，每卷用它自己解析出来的卷名，避免三份卷子叫同一个名字。
+     * 单卷文件里，卷名就跟标题走（用户改的那个名字就是他在列表上看到的名字）；
+     * 多卷时每卷用它自己解析出来的卷名，避免三份卷子叫同一个名字。
      */
     private fun doImport() {
-        if (papers.isEmpty()) {
+        if (batches.isEmpty()) {
             toast(getString(R.string.import_pick_none))
             return
         }
+        saveTitle()
         saveSelection()
 
-        val single = papers.size == 1
-        val typedName = binding.inputName.text?.toString()?.trim().orEmpty()
         val durationMin = binding.inputDuration.text?.toString()?.trim()
             ?.toIntOrNull()?.coerceAtLeast(0) ?: 0
 
-        val items = ArrayList<PaperImport>(papers.size)
-        papers.forEachIndexed { i, paper ->
-            val all = questionsOf(paper)
-            val sel = if (single) null else selections[i]
-            val picked = if (sel == null) all else all.filterIndexed { k, _ -> k in sel }
-            // 一卷都没勾的卷子不建（拆卷拆出空卷也走这条路）
-            if (picked.isEmpty()) return@forEachIndexed
-            val name = if (single) {
-                typedName.ifBlank { paper.name }
-                    .ifBlank { fileName.substringBeforeLast('.').trim() }
-                    .ifBlank { "我的试卷" }
-            } else {
-                paper.name
+        val sets = ArrayList<SetImport>(batches.size)
+        var skipped = 0
+        batches.forEachIndexed { bi, batch ->
+            val title = batch.title.trim().ifBlank { defaultTitle(batch.source) }
+            val single = batch.papers.size == 1
+            val items = ArrayList<PaperImport>(batch.papers.size)
+            batch.papers.forEachIndexed { pi, paper ->
+                val all = questionsOf(paper)
+                val sel = if (single) null else selections[key(bi, pi)]
+                val picked = if (sel == null) all else all.filterIndexed { k, _ -> k in sel }
+                // 一卷都没勾的卷子不建（拆卷拆出空卷也走这条路）
+                if (picked.isEmpty()) return@forEachIndexed
+                val name = if (single) title else paper.name.ifBlank { title }
+                items.add(PaperImport(name, "导入自 ${batch.source}", durationMin, picked))
             }
-            items.add(PaperImport(name, "导入自 $fileName", durationMin, picked))
+            if (items.isEmpty()) skipped++ else {
+                sets.add(SetImport(title, "导入自 ${batch.source}", items))
+            }
         }
 
-        if (items.isEmpty()) {
+        if (sets.isEmpty()) {
             toast(getString(R.string.import_pick_none))
             return
         }
 
-        val conflicts = items.map { it.name }.filter { db.findPaperByName(it) != null }
+        val conflicts = sets.map { it.title }.filter { db.findPaperSetByTitle(it) != null }
         if (conflicts.isNotEmpty()) {
             FbDialog.confirm(
                 this,
                 overwriteMessage(conflicts),
                 okText = "覆盖导入",
-                onOk = { commitImport(items, papers.size - items.size) }
+                onOk = { commitImport(sets, skipped) }
             )
         } else {
-            commitImport(items, papers.size - items.size)
+            commitImport(sets, skipped)
         }
     }
 
-    private fun overwriteMessage(conflicts: List<String>): String =
-        if (conflicts.size == 1) {
-            "已存在同名试卷「${conflicts[0]}」，继续导入会覆盖原有的题目和作答记录。"
-        } else {
-            getString(
-                R.string.import_overwrite_multi,
-                conflicts.take(3).joinToString("、"),
-                conflicts.size
-            )
-        }
+    private fun overwriteMessage(conflicts: List<String>): String = if (conflicts.size == 1) {
+        "列表里已经有同名标题「${conflicts[0]}」，继续导入会覆盖这一组原有的试卷和作答记录。"
+    } else {
+        "列表里已经有 ${conflicts.size} 个同名标题（${conflicts.take(3).joinToString("、")}），" +
+            "继续导入会覆盖这些组原有的试卷和作答记录。"
+    }
 
     /**
-     * 一次事务写完所有卷：中途失败不会留下「前几卷建好了」的残局。
+     * 一次事务写完所有组：中途失败不会留下「前几组建好了」的残局。
      *
-     * @param skipped 因为一题都没勾而没建卷的份数（多卷时提示一下，别让用户以为丢卷了）
+     * @param skipped 因为一题都没勾而没建组的文件数（多文件时提示一下，别让用户以为丢文件了）
      */
-    private fun commitImport(items: List<PaperImport>, skipped: Int) {
+    private fun commitImport(sets: List<SetImport>, skipped: Int) {
         showLoading("正在写入试卷…")
         lifecycleScope.launch {
             try {
-                val results = withContext(Dispatchers.IO) { db.importAsPapers(items, replace = true) }
+                val results = withContext(Dispatchers.IO) { db.importSets(sets, replace = true) }
                 hideLoading()
                 if (results.isEmpty()) {
                     toast("导入失败：没有可写入的题目")
                     return@launch
                 }
-                val total = results.sumOf { it.questionCount }
-                val msg = if (results.size == 1) {
-                    getString(R.string.import_done_paper, results[0].paperName, results[0].questionCount)
-                } else {
-                    getString(R.string.import_done_papers, results.size, total) +
-                        if (skipped > 0) getString(R.string.import_done_skipped, skipped) else ""
-                }
+                val paperCount = results.sumOf { it.papers.size }
+                val questionCount = results.sumOf { it.questionCount }
+                val msg = when {
+                    results.size == 1 -> getString(
+                        R.string.import_done_set,
+                        results[0].title, paperCount, questionCount
+                    )
+                    else -> getString(
+                        R.string.import_done_sets,
+                        results.size, paperCount, questionCount
+                    )
+                } + if (skipped > 0) getString(R.string.import_done_skipped, skipped) else ""
                 toast(msg)
                 setResult(Activity.RESULT_OK)
                 finish()

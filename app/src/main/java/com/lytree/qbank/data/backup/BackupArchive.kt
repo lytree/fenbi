@@ -24,7 +24,7 @@ import java.util.zip.ZipOutputStream
  * ```
  * qbank-backup-20261029-2230.zip
  * ├── manifest.json     # 谁备的、什么时候、库版本、条数、体积、校验值
- * ├── qbank.db          # 题库 + 作答 + 笔迹 + 设置（整库）
+ * ├── qbank.db          # 试卷 + 作答 + 笔迹 + 设置（整库）
  * ├── prefs.json        # shared_prefs 全量（笔色、浏览模式等）
  * └── pkg/…             # filesDir/qbank_pkg 下的材料配图
  * ```
@@ -147,7 +147,7 @@ object BackupArchive {
 
         val dbFile = context.getDatabasePath(DB_ENTRY)
         if (!dbFile.isFile || dbFile.length() == 0L) {
-            throw BackupException("本地还没有题库数据，先导入一份再来备份")
+            throw BackupException("本地还没有试卷数据，先导入一份再来备份")
         }
 
         val prefsBytes = prefsToJson(context).toString().toByteArray(Charsets.UTF_8)
@@ -184,7 +184,7 @@ object BackupArchive {
                 zip.write(manifest.toJson().toString().toByteArray(Charsets.UTF_8))
                 zip.closeEntry()
 
-                onProgress(0.02f, "写入题库数据库")
+                onProgress(0.02f, "写入试卷数据库")
                 zip.putNextEntry(ZipEntry(DB_ENTRY))
                 written += pump(FileInputStream(dbFile), zip)
                 zip.closeEntry()
@@ -372,7 +372,7 @@ object BackupArchive {
 
     private fun tableCounts(db: QBankDb): Map<String, Int> {
         val out = LinkedHashMap<String, Int>()
-        listOf("questions", "papers", "records", "words").forEach { table ->
+        listOf("questions", "papers", "paper_sets", "records", "words").forEach { table ->
             runCatching {
                 db.readableDatabase.rawQuery("SELECT COUNT(*) FROM $table", null).use { c ->
                     if (c.moveToFirst()) out[table] = c.getInt(0)

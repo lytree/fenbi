@@ -57,7 +57,7 @@
                         style="@style/FbTextButton"
                         android:layout_width="match_parent"
                         android:layout_marginTop="@dimen/fb_space_4"
-                        android:text="载入示例题库（体验用）" />
+                        android:text="载入示例（体验用）" />
                 </LinearLayout>
 
                 <!-- 词表走另一个页面，但入口只留这一个：全 App 的「导入」都先落到这里 -->
@@ -110,6 +110,25 @@
                 </LinearLayout>
 
                 <!--
+                  多文件提示：一次选了几个文件，就有几个标题（每个文件一组）。
+                  每个文件拆出的各卷在下面的卷名胶囊里切。
+                -->
+                <HorizontalScrollView
+                    android:id="@+id/fileChipPanel"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/fb_card_gap_v"
+                    android:scrollbars="none"
+                    android:visibility="gone">
+
+                    <LinearLayout
+                        android:id="@+id/fileChipRow"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal" />
+                </HorizontalScrollView>
+
+                <!--
                   多卷提示：一份 Excel 里塞了几套题时才会出现（按「试卷」列或多工作表拆开）。
                   单卷文件下整块隐藏，页面与以前完全一样。
                 -->
@@ -154,7 +173,7 @@
                         style="@style/FbGroupTitle"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="生成试卷" />
+                        android:text="导入标题" />
 
                     <com.google.android.material.textfield.TextInputLayout
                         android:id="@+id/inputLayoutName"
@@ -162,13 +181,20 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/fb_space_12"
-                        android:hint="试卷名称（默认用文件名）">
+                        android:hint="标题（默认用文件名，导入后在列表里作为分组）">
 
                         <com.google.android.material.textfield.TextInputEditText
                             android:id="@+id/inputName"
                             style="@style/FbEditText"
                             android:inputType="text" />
                     </com.google.android.material.textfield.TextInputLayout>
+
+                    <TextView
+                        android:id="@+id/tvTitleHint"
+                        style="@style/FbBodySm"
+                        android:layout_marginTop="@dimen/fb_space_8"
+                        android:text="@string/import_title_hint"
+                        android:visibility="gone" />
 
                     <com.google.android.material.textfield.TextInputLayout
                         android:id="@+id/inputLayoutDuration"
@@ -257,7 +283,7 @@
         </androidx.core.widget.NestedScrollView>
 
         <!--
-          解析遮罩：题库包要解压几百张图再逐题解析，普通文件也要读几 MB 文本。
+          解析遮罩：试卷包要解压几百张图再逐题解析，普通文件也要读几 MB 文本。
           这活儿放在 IO 线程做，期间挡住交互，避免连点选择按钮起重复任务。
         -->
         <LinearLayout

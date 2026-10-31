@@ -5,13 +5,13 @@ import java.io.File
 import java.util.zip.ZipInputStream
 
 /**
- * 题库包（zip）：**题库 Excel + 媒体文件**。
+ * 试卷包（zip）：**试卷 Excel + 媒体文件**。
  *
  * 标准目录结构：
  * ```
- * 资料分析题库包.zip
- * └── 资料分析题库包/
- *     ├── 题库.xlsx            # 题库主数据（统一 Excel 模板）
+ * 资料分析试卷包.zip
+ * └── 资料分析试卷包/
+ *     ├── 试卷.xlsx            # 试卷主数据（统一 Excel 模板）
  *     ├── images/              # 图片等媒体资源
  *     │   └── chart-01.png
  *     └── README.txt           # 可选：说明（不会导入）
@@ -21,15 +21,21 @@ import java.util.zip.ZipInputStream
  * 1. **主数据不再靠文件名钦定**：包根目录（或一层子目录）下所有 xlsx 都作为候选收下来，
  *    交给 [Importer] 逐个试解析，最后按「真正能导入多少题」择优。
  * 2. 允许整个包多包一层目录（压缩软件默认行为），这层目录会被剥掉；包名（包内只有一卷时作默认试卷名）取这层目录名；
- * 3. 图片在题库里写**相对路径**（`images/chart-01.png`）或**纯文件名**（`src="x.png"`），
+ * 3. 图片在试题里写**相对路径**（`images/chart-01.png`）或**纯文件名**（`src="x.png"`），
  *    导入时解压到应用私有目录并替换成绝对路径，之后换手机、清缓存都不影响已有题目；
  * 4. 解压只取普通文件，`..`、绝对路径、`__MACOSX/` 这类条目一律跳过；
  * 5. 素材**边读边写**，不在内存里攒，避免几百张图的包把低端机顶到 OOM。
  */
 object QbankPackage {
 
-    /** 主数据文件名，按优先级排列（同包多份 xlsx 时先试标准命名的） */
-    private val MAIN_NAMES = listOf("题库.xlsx", "qbank.xlsx", "questions.xlsx", "bank.xlsx")
+    /**
+     * 主数据文件名，按优先级排列（同包多份 xlsx 时先试标准命名的）。
+     *
+     * 「题库.xlsx」是 v10 之前的旧约定，老包还留着兼容；新包的模板叫「试卷.xlsx」。
+     */
+    private val MAIN_NAMES = listOf(
+        "试卷.xlsx", "题库.xlsx", "qbank.xlsx", "questions.xlsx", "bank.xlsx"
+    )
 
     /** 不是数据的文件：不参与候选推断 */
     private val META_NAMES = setOf(
@@ -51,7 +57,7 @@ object QbankPackage {
     private const val MAX_CANDIDATE_BYTES = 16L * 1024 * 1024
     private const val MAX_TOTAL_BYTES = 256L * 1024 * 1024
 
-    /** 条目数上限：防止畸形压缩包把扫描拖住（正常题库包最多几千个条目） */
+    /** 条目数上限：防止畸形压缩包把扫描拖住（正常试卷包最多几千个条目） */
     private const val MAX_ENTRIES = 20_000
 
     /**
@@ -80,7 +86,7 @@ object QbankPackage {
         val assets: Map<String, String>
     )
 
-    /** 判断一个 zip 是不是题库包（xlsx 也是 zip，靠「有没有数据文件」区分） */
+    /** 判断一个 zip 是不是试卷包（xlsx 也是 zip，靠「有没有数据文件」区分） */
     fun looksLikePackage(bytes: ByteArray): Boolean {
         val names = readNames(bytes, full = false) ?: return false
         return names.any { isCandidate(it) }
@@ -98,7 +104,7 @@ object QbankPackage {
         val candidatePaths = candidateNames(names)
         if (candidatePaths.isEmpty()) {
             throw IllegalArgumentException(
-                "压缩包里没有找到题库 Excel（.xlsx），请把「题库.xlsx」放在包根目录（或只包一层文件夹）"
+                "压缩包里没有找到试卷 Excel（.xlsx），请把「试卷.xlsx」放在包根目录（或只包一层文件夹）"
             )
         }
         val candidateSet = candidatePaths.toHashSet()

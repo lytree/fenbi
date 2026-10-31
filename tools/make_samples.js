@@ -1,6 +1,6 @@
 // 生成 App 内置示例（app/src/main/assets/samples/）：
-//   资料分析示例.xlsx      —— 普通题库（材料里的图用 asset:// 内置图，渲染期解析）
-//   资料分析题库包.zip     —— 题库包新结构：题库.xlsx + images/资料分析折线图.png + README.txt
+//   资料分析示例.xlsx      —— 普通试卷（材料里的图用 asset:// 内置图，渲染期解析）
+//   资料分析试卷包.zip     —— 试卷包新结构：试卷.xlsx + images/资料分析折线图.png + README.txt
 //
 // 数据源：仓库根的 sample/资料分析示例.json（与旧版内置 JSON 示例同源）。
 // 用法：node tools/make_samples.js
@@ -119,30 +119,30 @@ function toRow(q, material) {
 // 示例 1：普通 xlsx——材料里的图用 asset:// 指向内置图，渲染期解析
 const plainRows = src.questions.map(q => toRow(q, q.material));
 fs.writeFileSync(path.join(SAMPLES, '资料分析示例.xlsx'),
-  Buffer.concat(writeZipChunks(buildXlsx([{ name: '题库', rows: [HEADERS, ...plainRows] }]))));
+  Buffer.concat(writeZipChunks(buildXlsx([{ name: '试卷', rows: [HEADERS, ...plainRows] }]))));
 
-// 示例 2：题库包——题库.xlsx + images/（材料引用包内相对路径）
+// 示例 2：试卷包——试卷.xlsx + images/（材料引用包内相对路径）
 const IMG_REF = 'images/' + PNG_NAME;
 const pkgMaterial = src.questions[0].material.replace(/asset:\/\/samples\/[^)]+/, IMG_REF);
 const pkgRows = src.questions.map(q => toRow(q, pkgMaterial));
-const pkgReadme = `资料分析题库包（示例）
+const pkgReadme = `资料分析试卷包（示例）
 
 结构：
-  题库.xlsx                    题库主数据（统一 Excel 模板，材料里引用 images/资料分析折线图.png）
+  试卷.xlsx                    试卷主数据（统一 Excel 模板，材料里引用 images/资料分析折线图.png）
   images/资料分析折线图.png    材料配图
   README.txt                   这个文件，不参与导入（也可以删）
 
 怎么用：
-  1. 把 题库.xlsx 换成你自己的（模板见仓库 templates/题库模板.xlsx）；
+  1. 把 试卷.xlsx 换成你自己的（模板见仓库 templates/试卷模板.xlsx）；
   2. 图片放进 images/（文件名任意，Excel 的「材料 / 图片」列里写 images/xxx.png 这样的相对路径）；
   3. 整个文件夹压成 zip（外层多包一层文件夹也没关系）；
   4. App 里「导入」选这个 zip。
 `;
 writeZip([
-  ['资料分析题库包/题库.xlsx', Buffer.concat(writeZipChunks(buildXlsx([{ name: '题库', rows: [HEADERS, ...pkgRows] }])))],
-  [`资料分析题库包/${IMG_REF}`, pngBuf],
-  ['资料分析题库包/README.txt', pkgReadme],
-], path.join(SAMPLES, '资料分析题库包.zip'));
+  ['资料分析试卷包/试卷.xlsx', Buffer.concat(writeZipChunks(buildXlsx([{ name: '试卷', rows: [HEADERS, ...pkgRows] }])))],
+  [`资料分析试卷包/${IMG_REF}`, pngBuf],
+  ['资料分析试卷包/README.txt', pkgReadme],
+], path.join(SAMPLES, '资料分析试卷包.zip'));
 
 /** writeZip 的变体：返回 buffer 而不落盘（xlsx 嵌套进 zip 用） */
 function writeZipChunks(entries) {
@@ -176,40 +176,40 @@ for (const f of ['行测基础示例.csv', '行测基础示例.json', '行测基
   if (fs.existsSync(p)) fs.unlinkSync(p);
 }
 
-console.log('示例已生成：资料分析示例.xlsx / 资料分析题库包.zip（题库.xlsx + images/）');
+console.log('示例已生成：资料分析示例.xlsx / 资料分析试卷包.zip（试卷.xlsx + images/）');
 
 /* ---------------- 行测基础示例.xlsx（同步为新表头） ---------------- */
 
 const baseSrc = JSON.parse(fs.readFileSync(path.join(ROOT, 'sample/行测基础示例.json'), 'utf8'));
 const baseRows = baseSrc.questions.map(q => toRow(q, q.material));
 fs.writeFileSync(path.join(SAMPLES, '行测基础示例.xlsx'),
-  Buffer.concat(writeZipChunks(buildXlsx([{ name: '题库', rows: [HEADERS, ...baseRows] }]))));
+  Buffer.concat(writeZipChunks(buildXlsx([{ name: '试卷', rows: [HEADERS, ...baseRows] }]))));
 console.log(`行测基础示例.xlsx：${baseSrc.questions.length} 题`);
 
 /* ---------------- 仓库 sample/ 目录同步（新结构：xlsx + images/） ---------------- */
 
 const SAMPLE_DIR = path.join(ROOT, 'sample');
 fs.writeFileSync(path.join(SAMPLE_DIR, '行测基础示例.xlsx'),
-  Buffer.concat(writeZipChunks(buildXlsx([{ name: '题库', rows: [HEADERS, ...baseRows] }]))));
+  Buffer.concat(writeZipChunks(buildXlsx([{ name: '试卷', rows: [HEADERS, ...baseRows] }]))));
 
-const samplePkgDir = path.join(SAMPLE_DIR, '资料分析题库包');
+const samplePkgDir = path.join(SAMPLE_DIR, '资料分析试卷包');
 fs.mkdirSync(path.join(samplePkgDir, 'images'), { recursive: true });
-fs.writeFileSync(path.join(samplePkgDir, '题库.xlsx'),
-  Buffer.concat(writeZipChunks(buildXlsx([{ name: '题库', rows: [HEADERS, ...pkgRows] }]))));
+fs.writeFileSync(path.join(samplePkgDir, '试卷.xlsx'),
+  Buffer.concat(writeZipChunks(buildXlsx([{ name: '试卷', rows: [HEADERS, ...pkgRows] }]))));
 fs.writeFileSync(path.join(samplePkgDir, 'images', PNG_NAME), pngBuf);
-fs.writeFileSync(path.join(samplePkgDir, 'README.txt'), `资料分析题库包（示例）
+fs.writeFileSync(path.join(samplePkgDir, 'README.txt'), `资料分析试卷包（示例）
 
 结构：
-  题库.xlsx                    题库主数据（统一 Excel 模板，材料里引用 images/资料分析折线图.png）
+  试卷.xlsx                    试卷主数据（统一 Excel 模板，材料里引用 images/资料分析折线图.png）
   images/资料分析折线图.png    材料配图
   README.txt                   这个文件，不参与导入（也可以删）
 
-App 导入页「载入示例题库」用的就是这个包的打包版（app/src/main/assets/samples/）。
+App 导入页「载入示例试卷」用的就是这个包的打包版（app/src/main/assets/samples/）。
 `, 'utf8');
-fs.writeFileSync(path.join(SAMPLE_DIR, '资料分析题库包.zip'), fs.readFileSync(path.join(SAMPLES, '资料分析题库包.zip')));
+fs.writeFileSync(path.join(SAMPLE_DIR, '资料分析试卷包.zip'), fs.readFileSync(path.join(SAMPLES, '资料分析试卷包.zip')));
 
-for (const f of ['行测基础示例.csv', '行测基础示例.txt', '资料分析题库包/qbank.json']) {
+for (const f of ['行测基础示例.csv', '行测基础示例.txt', '资料分析试卷包/qbank.json']) {
   const p2 = path.join(SAMPLE_DIR, f);
   if (fs.existsSync(p2)) fs.unlinkSync(p2);
 }
-console.log('sample/ 已同步：行测基础示例.xlsx / 资料分析题库包（题库.xlsx + images/）');
+console.log('sample/ 已同步：行测基础示例.xlsx / 资料分析试卷包（试卷.xlsx + images/）');

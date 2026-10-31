@@ -32,7 +32,7 @@ object Field {
 }
 
 /**
- * 表头别名表。中文题库导出常见叫法五花八门，这里尽量兼容，
+ * 表头别名表。中文试卷导出常见叫法五花八门，这里尽量兼容，
  * 并且做归一化（去空格/下划线/连字符/全角）后再比对。
  */
 object FieldAliases {
@@ -326,7 +326,7 @@ object Normalizer {
      * 把「图片」列的内容转成 Markdown 图片引用，**前置**到材料前面（无材料则整段作为材料）。
      *
      * 图片列支持一个或多个地址（换行 / 竖线 / 分号分隔），兼容五类来源（与材料内嵌图片一致）：
-     * 本地路径、`file://`、`content://`、题库包内相对路径（`images/x.png`，由导入链路统一改写）、
+     * 本地路径、`file://`、`content://`、试卷包内相对路径（`images/x.png`，由导入链路统一改写）、
      * `data:image/...;base64`。已经是 `![..](..)` / `<img` / `[..](..)` 写法的原样保留。
      */
     fun mergeImages(material: String, images: String): String {

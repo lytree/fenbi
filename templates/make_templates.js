@@ -1,15 +1,15 @@
-// 由「题库模板.json」这一份数据源生成全部模板，并在末尾回读校验。
+// 由「试卷模板.json」这一份数据源生成全部模板，并在末尾回读校验。
 //
 // 用法：node templates/make_templates.js
 //
 // 产物（都在 templates/ 下，**统一只有 Excel 一种格式**）：
-//   题库模板.xlsx            两张表：「题库」填数据 +「使用说明」内置指南
+//   试卷模板.xlsx            两张表：「试卷」填数据 +「使用说明」内置指南
 //   答案模板.xlsx            补答案：题号 / 答案 / 解析
 //   解析模板.xlsx            只补解析：题号 / 解析（不动答案）
-//   题库包模板.zip            题库包：题库.xlsx + images/chart-01.png + README.txt
-//   题库包模板/               上面 zip 的目录形态
+//   试卷包模板.zip            试卷包：试卷.xlsx + images/chart-01.png + README.txt
+//   试卷包模板/               上面 zip 的目录形态
 //
-// 题库模板.json 只是生成脚本的数据源，不再是可导入格式（导入只认 Excel）。
+// 试卷模板.json 只是生成脚本的数据源，不再是可导入格式（导入只认 Excel）。
 // 回读校验按 App 导入器的规则做（xlsx sharedStrings、zip 条目），
 // 任何一条不通过都会以非零码退出，避免模板悄悄坏掉。
 const fs = require('fs');
@@ -17,7 +17,7 @@ const path = require('path');
 const zlib = require('zlib');
 
 const DIR = __dirname;
-const SOURCE = path.join(DIR, '题库模板.json');
+const SOURCE = path.join(DIR, '试卷模板.json');
 const HEADERS = ['题型', '题干', '材料', '图片', '选项A', '选项B', '选项C', '选项D', '答案', '解析', '知识点', '难度', '地区', '科目', '来源', '年份', '分值'];
 
 /* ============================ 基础工具 ============================ */
@@ -240,7 +240,7 @@ function buildXlsx(sheets) {
 
 const src = JSON.parse(fs.readFileSync(SOURCE, 'utf8'));
 const questions = src.questions;
-if (!Array.isArray(questions) || questions.length === 0) throw new Error('题库模板.json 里没有 questions');
+if (!Array.isArray(questions) || questions.length === 0) throw new Error('试卷模板.json 里没有 questions');
 
 function toRow(q) {
   const o = q.options || {};
@@ -263,27 +263,29 @@ function toRow(q) {
 }
 const rows = questions.map(toRow);
 
-/** 「使用说明」表内容：两列（条目 / 说明），跟「题库」表一起打进 xlsx */
+/** 「使用说明」表内容：两列（条目 / 说明），跟「试卷」表一起打进 xlsx */
 const GUIDE_ROWS = [
-  ['题库模板 · 使用说明', '（本表只是说明，导入时会被自动跳过）'],
-  ['怎么导入', '在「题库」表里填题（一行一题，表头别改），App 里点「导入」选这个文件。统一只支持 Excel（.xlsx）'],
-  ['带图片怎么导', '图片多时做成题库包：把 题库.xlsx 和图片文件夹（如 images/）一起压成 zip 再导入（见 题库包模板.zip）；材料 / 图片列里写 images/xxx.png 这样的包内相对路径'],
+  ['试卷模板 · 使用说明', '（本表只是说明，导入时会被自动跳过）'],
+  ['怎么导入', '在「试卷」表里填题（一行一题，表头别改），App 里点「导入」选这个文件；一次可以选多个文件。统一只支持 Excel（.xlsx）'],
+  ['一次导入一个标题', '每个文件在试卷列表里成一个标题（默认取文件名，导入前可改），这个文件拆出的卷挂在标题下面——列表就是「标题 → 试卷 → 题目」三级，没有单独的试卷层'],
+  ['多套卷怎么放', '一个工作表 = 一份试卷（表名就是卷名）。按套分表放同一个文件里，一次导入就多建几份卷，它们同属这一个标题；一张表里再排几套题，加一列「试卷」也能按行分开'],
+  ['带图片怎么导', '图片多时做成试卷包：把 试卷.xlsx 和图片文件夹（如 images/）一起压成 zip 再导入（见 试卷包模板.zip）；材料 / 图片列里写 images/xxx.png 这样的包内相对路径'],
   ['必填列', '只有「题干」必填，其余列全部可以留空'],
   ['题型', '留空按单选；多选 / 判断 / 不定项要写清楚；多选答案用逗号分隔（如 A,C,D）'],
   ['答案', '可以整列先空着 = 待补答案。导完先做题，之后在成绩报告页「补答案」：逐题填，或导入文件（答案模板.xlsx），会按你的作答自动重判'],
   ['解析', '可以整列先空着。之后导入「解析模板.xlsx」（题号 + 解析两列），App 自动识别、只补解析不动答案'],
-  ['图片', '填图片地址，多张用 | 分隔；支持手机本地路径、content://、base64；题库包里写包内相对路径（见 题库包模板.zip）。图片会显示在材料顶部'],
+  ['图片', '填图片地址，多张用 | 分隔；支持手机本地路径、content://、base64；试卷包里写包内相对路径（见 试卷包模板.zip）。图片会显示在材料顶部'],
   ['材料', '大段文字（含表格）放这里；支持 Markdown 表格、内嵌图片 ![](路径)、自绘图 :::chart。同一道题的材料和图片都写在它自己的行里'],
   ['选项', '最多到 H 列，用不到的留空即可'],
-  ['更多帮助', '格式细节见 docs/02-题库格式规范.md；答案 / 解析后补见 docs/04-答案后补.md；题库包见 docs/03-题库包.md'],
+  ['更多帮助', '格式细节见 docs/02-试卷格式规范.md；答案 / 解析后补见 docs/04-答案后补.md；试卷包见 docs/03-试卷包.md'],
 ];
 
 /* ============================ 产物 ============================ */
 
-// 1) 题库模板.xlsx：题库 + 使用说明
-const xlsxPath = path.join(DIR, '题库模板.xlsx');
+// 1) 试卷模板.xlsx：试卷 + 使用说明
+const xlsxPath = path.join(DIR, '试卷模板.xlsx');
 writeZip(buildXlsx([
-  { name: '题库', rows: [HEADERS, ...rows] },
+  { name: '试卷', rows: [HEADERS, ...rows] },
   { name: '使用说明', rows: GUIDE_ROWS },
 ]), xlsxPath);
 
@@ -297,12 +299,12 @@ const analysisRows = questions.map((q, i) => [String(i + 1), q.analysis || '']);
 writeZip(buildXlsx([{ name: '解析', rows: [['题号', '解析'], ...analysisRows] }]),
   path.join(DIR, '解析模板.xlsx'));
 
-// 4) 题库包：题库.xlsx + images/ + README.txt
-const PKG_DIR = path.join(DIR, '题库包模板');
-const PKG_NAME = '题库包模板';
+// 4) 试卷包：试卷.xlsx + images/ + README.txt
+const PKG_DIR = path.join(DIR, '试卷包模板');
+const PKG_NAME = '试卷包模板';
 fs.mkdirSync(path.join(PKG_DIR, 'images'), { recursive: true });
 
-const PKG_XLSX_NAME = '题库.xlsx';
+const PKG_XLSX_NAME = '试卷.xlsx';
 const pkgQuestions = questions.map((q, i) => {
   const r = toRow(q);
   if (i === 0) r[3] = 'images/chart-01.png';                       // 图片列示范
@@ -311,30 +313,30 @@ const pkgQuestions = questions.map((q, i) => {
   }
   return r;
 });
-const pkgXlsx = buildXlsx([{ name: '题库', rows: [HEADERS, ...pkgQuestions] }]);
+const pkgXlsx = buildXlsx([{ name: '试卷', rows: [HEADERS, ...pkgQuestions] }]);
 fs.writeFileSync(path.join(PKG_DIR, PKG_XLSX_NAME), pkgXlsx);
 
 const pngBuf = makeChartPng(720, 360);
 fs.writeFileSync(path.join(PKG_DIR, 'images', 'chart-01.png'), pngBuf);
 
-const pkgReadme = `题库包模板
+const pkgReadme = `试卷包模板
 
 结构：
-  题库.xlsx            题库主数据（统一 Excel 模板，「材料 / 图片」列里引用 images/xxx.png）
+  试卷.xlsx            试卷主数据（统一 Excel 模板，「材料 / 图片」列里引用 images/xxx.png）
   images/              图片等媒体资源
   README.txt           这个文件，不参与导入（也可以删）
 
 怎么用：
-  1. 把 题库.xlsx 换成你自己的（直接改这份，或从 题库模板.xlsx 复制表头）；
+  1. 把 试卷.xlsx 换成你自己的（直接改这份，或从 试卷模板.xlsx 复制表头）；
   2. 把 images/chart-01.png 换成你自己的图（文件名任意，记得同步改 Excel 里的引用）；
   3. 整个文件夹压成 zip（外层多包一层文件夹也没关系）；
   4. App 里「导入」选这个 zip。
 
-细节见 docs/03-题库包.md。
+细节见 docs/03-试卷包.md。
 `;
 fs.writeFileSync(path.join(PKG_DIR, 'README.txt'), pkgReadme, 'utf8');
 
-const pkgZipPath = path.join(DIR, '题库包模板.zip');
+const pkgZipPath = path.join(DIR, '试卷包模板.zip');
 writeZip([
   [`${PKG_NAME}/${PKG_XLSX_NAME}`, pkgXlsx],
   [`${PKG_NAME}/images/chart-01.png`, pngBuf],
@@ -404,7 +406,7 @@ const check = (name, ok, detail = '') => checks.push({ name, ok: !!ok, detail })
 const N = questions.length;
 
 // 1) JSON 数据源自身
-check('题库模板.json 可解析', N >= 3, `${N} 题`);
+check('试卷模板.json 可解析', N >= 3, `${N} 题`);
 for (const [i, q] of questions.entries()) {
   const keys = Object.keys(q.options || {});
   const ansKeys = String(q.answer || '').split(/[,，、\s]+/).filter(Boolean).map(s => s.toUpperCase()).sort();
@@ -412,19 +414,19 @@ for (const [i, q] of questions.entries()) {
   check(`第 ${i + 1} 题字段自洽（题干/选项/答案在选项内）`, ok);
 }
 
-// 2) 题库模板.xlsx
+// 2) 试卷模板.xlsx
 const xlsxEntries = readZipStore(fs.readFileSync(xlsxPath));
 const xlsxRows = readSheet(xlsxEntries, 'sheet1.xml');
-check(`题库模板.xlsx 行数 = 表头 + ${N}`, xlsxRows.length === N + 1, `${xlsxRows.length} 行`);
-check('题库模板.xlsx 表头正确', JSON.stringify(xlsxRows[0]) === JSON.stringify(HEADERS));
+check(`试卷模板.xlsx 行数 = 表头 + ${N}`, xlsxRows.length === N + 1, `${xlsxRows.length} 行`);
+check('试卷模板.xlsx 表头正确', JSON.stringify(xlsxRows[0]) === JSON.stringify(HEADERS));
 const xlsxFlatSame = xlsxRows.slice(1).every((r, i) => r.slice(1).every((c, j) => c === rows[i][j + 1]));
-check('题库模板.xlsx 单元格内容与源数据一致', xlsxFlatSame);
+check('试卷模板.xlsx 单元格内容与源数据一致', xlsxFlatSame);
 
-// 「使用说明」表：必须排在题库表后面——App 的 XlsxReader 取第一个有数据的 sheet
+// 「使用说明」表：必须排在试卷表后面——App 的 XlsxReader 取第一个有数据的 sheet
 const wbXml = xlsxEntries.get('xl/workbook.xml').toString('utf8');
-check('XLSX 双表：题库在前、使用说明在后',
-  wbXml.includes('name="题库"') && wbXml.includes('name="使用说明"') &&
-  wbXml.indexOf('name="题库"') < wbXml.indexOf('name="使用说明"'));
+check('XLSX 双表：试卷在前、使用说明在后',
+  wbXml.includes('name="试卷"') && wbXml.includes('name="使用说明"') &&
+  wbXml.indexOf('name="试卷"') < wbXml.indexOf('name="使用说明"'));
 const guideRows = readSheet(xlsxEntries, 'sheet2.xml');
 check(`使用说明表有 ${GUIDE_ROWS.length} 行说明`,
   guideRows.length === GUIDE_ROWS.length &&
@@ -456,26 +458,26 @@ check('使用说明不残留其他格式说法',
     rs.length === N + 1 && rs.slice(1).every((r, i) => Number(r[0]) === i + 1 && (r[1] || '').length > 0));
 }
 
-// 5) 题库包
+// 5) 试卷包
 const pkgEntries = readZipStore(fs.readFileSync(pkgZipPath));
 const pkgNames = [...pkgEntries.keys()];
-check('题库包内有 题库.xlsx', pkgNames.includes(`${PKG_NAME}/${PKG_XLSX_NAME}`), pkgNames.join(','));
-check('题库包内有 images/chart-01.png', pkgNames.includes(`${PKG_NAME}/images/chart-01.png`));
+check('试卷包内有 试卷.xlsx', pkgNames.includes(`${PKG_NAME}/${PKG_XLSX_NAME}`), pkgNames.join(','));
+check('试卷包内有 images/chart-01.png', pkgNames.includes(`${PKG_NAME}/images/chart-01.png`));
 const png = pkgEntries.get(`${PKG_NAME}/images/chart-01.png`);
 check('占位图是合法 PNG', png.slice(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])), `${png.length} bytes`);
 const pkgXlsxEntries = readZipStore(pkgEntries.get(`${PKG_NAME}/${PKG_XLSX_NAME}`));
 const pkgRows = readSheet(pkgXlsxEntries, 'sheet1.xml');
-check('题库包 题库.xlsx 行数正确', pkgRows.length === N + 1, `${pkgRows.length} 行`);
-check('题库包第 1 题图片列引用相对路径', pkgRows[1][3] === 'images/chart-01.png', pkgRows[1][3]);
-check('题库包末题材料内嵌图片引用相对路径',
+check('试卷包 试卷.xlsx 行数正确', pkgRows.length === N + 1, `${pkgRows.length} 行`);
+check('试卷包第 1 题图片列引用相对路径', pkgRows[1][3] === 'images/chart-01.png', pkgRows[1][3]);
+check('试卷包末题材料内嵌图片引用相对路径',
   /!\[[^\]]*\]\(images\/chart-01\.png\)/.test(pkgRows[N][2] || ''));
-check('题库包外层目录单一（可被自动剥掉）',
+check('试卷包外层目录单一（可被自动剥掉）',
   new Set(pkgNames.map(n => n.split('/')[0])).size === 1);
 
 /* ============================ 输出 ============================ */
 
 const failed = checks.filter(c => !c.ok);
-console.log(`模板已生成：${questions.length} 题 → 题库.xlsx（含使用说明）/ 答案.xlsx / 解析.xlsx / 题库包\n`);
+console.log(`模板已生成：${questions.length} 题 → 试卷.xlsx（含使用说明）/ 答案.xlsx / 解析.xlsx / 试卷包\n`);
 for (const c of checks) {
   if (!c.ok) console.log(`  ✗ ${c.name}${c.detail ? ' — ' + c.detail : ''}`);
 }

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  导入组标题（树的第一层）：左边折叠箭头 + 标题 + 「N 份 · M 题 · 来源」，点一下展开 / 收起。
+  与下面的试卷卡拉开一点距离，读起来是「一组卷」而不是又一张卡。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    style="@style/FbPressable"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="@dimen/fb_page_pad"
+    android:paddingTop="@dimen/fb_space_16"
+    android:paddingEnd="@dimen/fb_page_pad"
+    android:paddingBottom="@dimen/fb_space_4">
+
+    <TextView
+        android:id="@+id/arrow"
+        android:layout_width="14dp"
+        android:layout_height="wrap_content"
+        android:includeFontPadding="false"
+        android:textColor="@color/fb_text_meta"
+        android:textSize="@dimen/fb_text_item_sub"
+        tools:text="▾" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="@dimen/fb_space_4"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/title"
+            style="@style/FbItemTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:maxLines="1" />
+
+        <TextView
+            android:id="@+id/subtitle"
+            style="@style/FbItemSub"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:maxLines="1" />
+    </LinearLayout>
+</LinearLayout>

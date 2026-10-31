@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">自定义题库</string>
+    <string name="app_name">自定义试卷</string>
     <!-- 底部导航这一项叫「背诵」，里面分 词库 / 政治 / 常识 三块 -->
     <string name="tab_recite">背诵</string>
     <string name="tab_words">词库</string>
@@ -173,7 +173,7 @@
     <!-- 弹出材料半屏浮层 -->
     <string name="material_sheet_scale">字号 %1$d%%</string>
 
-    <string name="empty_papers">还没有试卷，导入一份 Excel（.xlsx）就能开练：有几个工作表就建几份卷</string>
+    <string name="empty_papers">还没有试卷，导入一份 Excel（.xlsx）就能开练：每个文件成一个标题，有几个工作表就建几份卷</string>
     <string name="empty_paper_questions">这份试卷暂无题目</string>
     <string name="empty_records">还没有考试记录</string>
 
@@ -183,13 +183,13 @@
     <string name="import_word_hint">背单词用的词库走另一套流程：Word(.docx) / Excel(.xlsx) / CSV / TXT 里按表头取「词条 / 拼音 / 释义 / 分类」，解析后逐条勾选再入库。</string>
     <string name="import_link_action">从链接导入</string>
     <string name="import_link_title">从链接导入</string>
-    <string name="import_link_hint">粘贴试卷文件的下载链接（http/https），下载完成后直接进入预览。支持 Excel（.xlsx）与题库包（zip）。</string>
+    <string name="import_link_hint">粘贴试卷文件的下载链接（http/https），下载完成后直接进入预览。支持 Excel（.xlsx）与试卷包（zip）。</string>
     <string name="import_link_placeholder">试卷文件链接</string>
     <string name="import_link_download">下载并预览</string>
     <string name="import_link_downloading">正在下载…</string>
     <string name="import_link_invalid">请填写 http/https 开头的链接</string>
     <string name="import_link_failed">下载失败：%1$s</string>
-    <string name="import_supported">支持 Excel(.xlsx) / 题库包(zip：Excel + 图片)</string>
+    <string name="import_supported">支持 Excel(.xlsx) / 试卷包(zip：Excel + 图片)</string>
     <string name="import_preview">解析预览</string>
     <string name="import_confirm">确认导入</string>
     <string name="import_confirm_paper">导入并生成试卷</string>
@@ -200,15 +200,21 @@
     <string name="import_done">导入成功</string>
     <string name="import_failed">导入失败</string>
 
-    <!-- 一份文件多份试卷 -->
-    <string name="import_pick_hint">支持 Excel(.xlsx) 与题库包(zip：Excel + 图片)，自动识别编码与表头别名。每个工作表生成一份试卷（sheet 名即卷名），一张表里排了多套题时加一列「试卷」也能自动分开；导入前逐题勾选。</string>
-    <string name="import_multi_title">文件里有 %1$d 份试卷 · 共 %2$d 题</string>
-    <string name="import_multi_hint">点上面的卷名切换预览，每份的勾选各自保存；导入时一次全部建卷，卷名取自工作表名（或「试卷」列）。</string>
+    <!-- 一次导入多份试卷：文件 → 标题 → 试卷 → 题目 -->
+    <string name="import_pick_hint">支持 Excel(.xlsx) 与试卷包(zip：Excel + 图片)，可一次选多个文件。每个文件在列表里成一个标题，文件里每个工作表成一份试卷（sheet 名即卷名），一张表里排了多套题时加一列「试卷」也能自动分开；导入前逐题勾选。</string>
+    <string name="import_title_hint">一次导入 = 一个标题。这组试卷会挂在这个标题下面，导入后还能改名。</string>
+    <string name="import_file_chip">%1$s · %2$d 份</string>
+    <string name="import_file_count">%1$d 个文件（每个文件一组）</string>
+    <string name="import_multi_title">本文件拆出 %1$d 份试卷 · 共 %2$d 题</string>
+    <string name="import_multi_hint">点上面的卷名切换预览，每份的勾选各自保存；导入后这几份卷都挂在同一个标题下，卷名取自工作表名（或「试卷」列）。</string>
     <string name="import_paper_chip">%1$s · %2$d 题</string>
     <string name="import_confirm_papers">导入全部 %1$d 份试卷</string>
+    <string name="import_confirm_sets">导入 %1$d 组 · %2$d 份试卷</string>
     <string name="import_done_paper">已生成试卷「%1$s」，共 %2$d 题</string>
     <string name="import_done_papers">已生成 %1$d 份试卷，共 %2$d 题</string>
-    <string name="import_done_skipped">；%1$d 份没有勾选任何题目，未建卷</string>
+    <string name="import_done_set">已导入「%1$s」：%2$d 份试卷 · %3$d 题</string>
+    <string name="import_done_sets">已导入 %1$d 组 · %2$d 份试卷 · %3$d 题</string>
+    <string name="import_done_skipped">；%1$d 组没有勾选任何题目，未建卷</string>
     <string name="import_pick_none">请至少勾选一道题</string>
     <string name="import_overwrite_multi">已存在同名试卷（%1$s 等 %2$d 份），继续导入会覆盖原有题目和作答记录。</string>
 

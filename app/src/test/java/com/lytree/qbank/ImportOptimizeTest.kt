@@ -55,7 +55,7 @@ class ImportOptimizeTest {
         return s
     }
 
-    /** 生成一个最小可读的 xlsx（表名固定「题库」，inlineStr 单元格） */
+    /** 生成一个最小可读的 xlsx（表名固定「试卷」，inlineStr 单元格） */
     private fun xlsx(vararg rows: List<String>): ByteArray {
         val sheet = rows.mapIndexed { ri, r ->
             "<row r=\"${ri + 1}\">" + r.mapIndexed { ci, c ->
@@ -66,7 +66,7 @@ class ImportOptimizeTest {
         val entries = mapOf(
             "[Content_Types].xml" to """<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>""",
             "_rels/.rels" to """<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>""",
-            "xl/workbook.xml" to """<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="题库" sheetId="1" r:id="rId1"/></sheets></workbook>""",
+            "xl/workbook.xml" to """<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="试卷" sheetId="1" r:id="rId1"/></sheets></workbook>""",
             "xl/_rels/workbook.xml.rels" to """<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>""",
             "xl/worksheets/sheet1.xml" to """<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>$sheet</sheetData></worksheet>""",
         )
@@ -83,7 +83,7 @@ class ImportOptimizeTest {
     fun non_zip_bytes_are_treated_as_xlsx_and_fail_loudly() {
         // 老格式的 JSON / CSV / TXT 不再解析：一律按 Excel 走，解析失败时明说
         val json = """[{"stem":"题","answer":"A"}]""".toByteArray()
-        val out = Importer.build(Importer.detect("题库.json", json), json)
+        val out = Importer.build(Importer.detect("试卷.json", json), json)
         assertEquals(0, out.imported)
         assertTrue(out.errorCount > 0)
         assertTrue(out.issues.any { it.message.contains("Excel") })
@@ -138,8 +138,8 @@ class ImportOptimizeTest {
     @Test
     fun package_picks_the_file_that_actually_yields_questions() {
         val bytes = zip { put ->
-            put("题库-坏.xlsx", "这不是一个 xlsx".toByteArray())
-            put("题库.xlsx", xlsx(*bankRows("第一题：甲乙谁对？", "第二题：丙丁谁对？").toTypedArray()))
+            put("试卷-坏.xlsx", "这不是一个 xlsx".toByteArray())
+            put("试卷.xlsx", xlsx(*bankRows("第一题：甲乙谁对？", "第二题：丙丁谁对？").toTypedArray()))
             put("images/s01_q01.png", ByteArray(32) { 0x1 })
         }
         val out = Importer.build(ImportFormat.ZIP, bytes, pkgDir = pkgDir())
@@ -147,24 +147,24 @@ class ImportOptimizeTest {
         assertEquals(2, out.imported)
         assertEquals(0, out.errorCount)
         val note = out.issues.first { it.message.contains("个数据文件") }
-        assertTrue(note.message, note.message.contains("题库.xlsx"))
+        assertTrue(note.message, note.message.contains("试卷.xlsx"))
     }
 
     @Test
     fun package_reports_every_candidate_when_none_works() {
         val bytes = zip { put ->
-            put("题库-坏1.xlsx", "乱七八糟".toByteArray())
-            put("题库-坏2.xlsx", "同样不是 xlsx".toByteArray())
+            put("试卷-坏1.xlsx", "乱七八糟".toByteArray())
+            put("试卷-坏2.xlsx", "同样不是 xlsx".toByteArray())
         }
         val out = Importer.build(ImportFormat.ZIP, bytes, pkgDir = pkgDir())
 
         assertEquals(0, out.imported)
         assertTrue(out.errorCount > 0)
-        assertTrue(out.issues.any { it.message.contains("题库-坏1.xlsx") })
-        assertTrue(out.issues.any { it.message.contains("题库-坏2.xlsx") })
+        assertTrue(out.issues.any { it.message.contains("试卷-坏1.xlsx") })
+        assertTrue(out.issues.any { it.message.contains("试卷-坏2.xlsx") })
     }
 
-    /** 纯媒体包（只有图片没有 Excel）要明确报错，提示包里缺 题库.xlsx */
+    /** 纯媒体包（只有图片没有 Excel）要明确报错，提示包里缺 试卷.xlsx */
     @Test
     fun media_only_zip_fails_with_helpful_message() {
         val bytes = zip { put ->
@@ -175,7 +175,7 @@ class ImportOptimizeTest {
 
         assertEquals(0, out.imported)
         assertTrue(out.errorCount > 0)
-        assertTrue(out.issues.any { it.message.contains("题库.xlsx") || it.message.contains("Excel") })
+        assertTrue(out.issues.any { it.message.contains("试卷.xlsx") || it.message.contains("Excel") })
     }
 
     // ---------------- 去重 ----------------
@@ -183,7 +183,7 @@ class ImportOptimizeTest {
     @Test
     fun duplicated_questions_are_skipped_and_counted() {
         val bytes = xlsx(*bankRows("同一道题", "同一道题", "另一道题").toTypedArray())
-        val out = Importer.build(Importer.detect("题库.xlsx", bytes), bytes)
+        val out = Importer.build(Importer.detect("试卷.xlsx", bytes), bytes)
 
         assertEquals(2, out.imported)
         assertEquals(1, out.duplicateSkipped)
@@ -197,7 +197,7 @@ class ImportOptimizeTest {
             listOf("单选", "same  question", "", "", "甲", "乙", "A"),
             listOf("单选", "same question", "", "", "甲", "乙", "A")
         )
-        val out = Importer.build(Importer.detect("题库.xlsx", bytes), bytes)
+        val out = Importer.build(Importer.detect("试卷.xlsx", bytes), bytes)
 
         assertEquals(1, out.imported)
         assertEquals(1, out.duplicateSkipped)
@@ -213,7 +213,7 @@ class ImportOptimizeTest {
             listOf("单选", "第1题", "<img src=\"%E5%9B%BE%E6%8E%A8%2001.png\">", "", "甲", "乙", "A")
         )
         val bytes = zip { put ->
-            put("题库.xlsx", xlsx(*rows.toTypedArray()))
+            put("试卷.xlsx", xlsx(*rows.toTypedArray()))
             put("images/图推 01.png", ByteArray(32) { 0x1 })
         }
         val out = Importer.build(ImportFormat.ZIP, bytes, pkgDir = pkgDir())
@@ -233,7 +233,7 @@ class ImportOptimizeTest {
             listOf("单选", "第1题", "<img src=\"S01_Q01.PNG\">", "", "甲", "乙", "A")
         )
         val bytes = zip { put ->
-            put("题库.xlsx", xlsx(*rows.toTypedArray()))
+            put("试卷.xlsx", xlsx(*rows.toTypedArray()))
             put("images/s01_q01.png", ByteArray(32) { 0x1 })
         }
         val out = Importer.build(ImportFormat.ZIP, bytes, pkgDir = pkgDir())

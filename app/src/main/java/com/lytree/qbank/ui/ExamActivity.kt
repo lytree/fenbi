@@ -1495,7 +1495,7 @@ class ExamActivity : AppCompatActivity() {
     private fun groupLabels(): ArrayList<String> {
         val out = ArrayList<String>(questions.size)
         questions.forEachIndexed { index, q ->
-            // 大类名为空（多数手打题库不填 subject）时退回知识点，都没有就归「未分类」
+            // 大类名为空（多数手打试题不填 subject）时退回知识点，都没有就归「未分类」
             out.add(structure.sectionAt(index)?.name ?: q.knowledge.ifBlank { "未分类" })
         }
         return out
