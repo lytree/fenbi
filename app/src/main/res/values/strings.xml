@@ -152,7 +152,7 @@
     <!-- 补录答案：不用答案文件，做完直接在 App 里逐题填标准答案 -->
     <string name="action_answer_fix">补答案</string>
     <string name="answer_fix_manual">逐题补录（不用答案文件）</string>
-    <string name="answer_fix_file">导入答案文件（表格 / TXT）</string>
+    <string name="answer_fix_file">导入文件（自动识别答案 / 解析）</string>
     <string name="action_fill_answer">补录答案</string>
     <string name="fill_answer_title">补录答案</string>
     <string name="fill_answer_hint">共 %1$d 题 · 已填 %2$d 题\n逐题填标准答案：选择题填字母（多选写 A,C 或 ABC），判断题填「对 / 错」。留空的题保持「待补答案」，不计入判分。</string>
@@ -174,9 +174,9 @@
     <!-- 弹出材料半屏浮层 -->
     <string name="material_sheet_scale">字号 %1$d%%</string>
 
-    <string name="empty_banks">还没有题库，导入一份 JSON / CSV / Excel / TXT / 题库包(zip) 就能开始刷题</string>
+    <string name="empty_banks">还没有题库，导入一份 Excel（.xlsx）或题库包（zip）就能开始刷题</string>
     <string name="empty_bank_questions">该题库暂无题目</string>
-    <string name="empty_papers">还没有试卷，导入一份 JSON / CSV / Excel / TXT 就会生成一份试卷</string>
+    <string name="empty_papers">还没有试卷，导入一份 Excel（.xlsx）就会生成一份试卷</string>
     <string name="empty_records">还没有考试记录</string>
 
     <string name="title_import">导入</string>
@@ -185,13 +185,13 @@
     <string name="import_word_hint">背单词用的词库走另一套流程：Word(.docx) / Excel(.xlsx) / CSV / TXT 里按表头取「词条 / 拼音 / 释义 / 分类」，解析后逐条勾选再入库。</string>
     <string name="import_link_action">从链接导入</string>
     <string name="import_link_title">从链接导入</string>
-    <string name="import_link_hint">粘贴题库文件的下载链接（http/https），下载完成后直接进入预览。支持 JSON / CSV / Excel / TXT / 题库包。</string>
+    <string name="import_link_hint">粘贴题库文件的下载链接（http/https），下载完成后直接进入预览。支持 Excel（.xlsx）与题库包（zip）。</string>
     <string name="import_link_placeholder">题库文件链接</string>
     <string name="import_link_download">下载并预览</string>
     <string name="import_link_downloading">正在下载…</string>
     <string name="import_link_invalid">请填写 http/https 开头的链接</string>
     <string name="import_link_failed">下载失败：%1$s</string>
-    <string name="import_supported">支持 JSON / CSV / Excel(xlsx) / TXT / 题库包(zip)</string>
+    <string name="import_supported">支持 Excel(.xlsx) / 题库包(zip：Excel + 图片)</string>
     <string name="import_preview">解析预览</string>
     <string name="import_confirm">确认导入</string>
     <string name="import_confirm_paper">导入并生成试卷</string>

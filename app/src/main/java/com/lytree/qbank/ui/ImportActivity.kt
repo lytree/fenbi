@@ -51,7 +51,7 @@ class ImportActivity : AppCompatActivity() {
     private val issueAdapter = IssueAdapter()
 
     private var fileName: String = ""
-    private var format: ImportFormat = ImportFormat.JSON
+    private var format: ImportFormat = ImportFormat.XLSX
     private var bytes: ByteArray = ByteArray(0)
 
     /** 题库包（zip）的解压根目录：图片落到应用私有目录，清缓存也不影响已有题目 */
@@ -145,10 +145,6 @@ class ImportActivity : AppCompatActivity() {
         try {
             picker.launch(
                 arrayOf(
-                    "application/json",
-                    "text/csv",
-                    "text/comma-separated-values",
-                    "text/plain",
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     "application/zip",
                     "application/x-zip-compressed",
@@ -237,9 +233,9 @@ class ImportActivity : AppCompatActivity() {
     /** 「载入示例」：内置样例，普通题库 / 带图材料 / zip 题库包 */
     private fun loadSample() {
         val samples = arrayOf(
-            "行测基础示例.json" to "行测基础示例（11 题 · 覆盖全部选择题型）",
-            "资料分析示例.json" to "资料分析示例（含折线图材料）",
-            "资料分析题库包.zip" to "资料分析题库包（zip 标准结构 · 图片随包）"
+            "行测基础示例.xlsx" to "行测基础示例（11 题 · 覆盖全部选择题型）",
+            "资料分析示例.xlsx" to "资料分析示例（含图表材料）",
+            "资料分析题库包.zip" to "资料分析题库包（Excel + 图片 · 图片随包）"
         )
         FbDialog.list(
             context = this,

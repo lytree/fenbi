@@ -1,13 +1,16 @@
-// 由「题库模板.json」这一份数据源生成其余全部模板，并在末尾回读校验。
+// 由「题库模板.json」这一份数据源生成全部模板，并在末尾回读校验。
 //
 // 用法：node templates/make_templates.js
 //
-// 产物（都在 templates/ 下）：
-//   题库模板.csv / 题库模板.txt / 题库模板.xlsx
-//   答案模板.csv / 答案模板.txt
-//   题库包模板/qbank.json + 题库包模板/images/chart-01.png + 题库包模板.zip
+// 产物（都在 templates/ 下，**统一只有 Excel 一种格式**）：
+//   题库模板.xlsx            两张表：「题库」填数据 +「使用说明」内置指南
+//   答案模板.xlsx            补答案：题号 / 答案 / 解析
+//   解析模板.xlsx            只补解析：题号 / 解析（不动答案）
+//   题库包模板.zip            题库包：题库.xlsx + images/chart-01.png + README.txt
+//   题库包模板/               上面 zip 的目录形态
 //
-// 回读校验按 App 导入器的规则做（表头别名、TXT 题号切块、XLSX sharedStrings、zip 条目），
+// 题库模板.json 只是生成脚本的数据源，不再是可导入格式（导入只认 Excel）。
+// 回读校验按 App 导入器的规则做（xlsx sharedStrings、zip 条目），
 // 任何一条不通过都会以非零码退出，避免模板悄悄坏掉。
 const fs = require('fs');
 const path = require('path');
@@ -15,8 +18,7 @@ const zlib = require('zlib');
 
 const DIR = __dirname;
 const SOURCE = path.join(DIR, '题库模板.json');
-const HEADERS = ['题型', '题干', '材料', '选项A', '选项B', '选项C', '选项D', '答案', '解析', '知识点', '难度', '地区', '科目', '来源', '年份', '分值'];
-const OPT_KEYS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+const HEADERS = ['题型', '题干', '材料', '图片', '选项A', '选项B', '选项C', '选项D', '答案', '解析', '知识点', '难度', '地区', '科目', '来源', '年份', '分值'];
 
 /* ============================ 基础工具 ============================ */
 
@@ -36,7 +38,7 @@ function crc32(buf) {
 }
 
 /** 最小 ZIP 写入器（store 模式，不压缩；文件名按 UTF-8 标记） */
-function writeZip(entries, outFile) {
+function zipChunks(entries) {
   const chunks = [];
   const central = [];
   let offset = 0;
@@ -88,8 +90,10 @@ function writeZip(entries, outFile) {
   eocd.writeUInt32LE(cdBuf.length, 12);
   eocd.writeUInt32LE(offset, 16);
   eocd.writeUInt16LE(0, 20);
-  fs.writeFileSync(outFile, Buffer.concat([...chunks, cdBuf, eocd]));
+  return Buffer.concat([...chunks, cdBuf, eocd]);
 }
+const writeZip = (data, outFile) =>
+  fs.writeFileSync(outFile, Buffer.isBuffer(data) ? data : zipChunks(data));
 
 /** 只读 store 模式 zip（自己写出来的包就是这种） */
 function readZipStore(buf) {
@@ -176,6 +180,62 @@ function makeChartPng(w, h) {
   ]);
 }
 
+/* ============================ xlsx 构建 ============================ */
+
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const colName = i => {
+  let s = '';
+  i++;
+  while (i > 0) {
+    const m = (i - 1) % 26;
+    s = String.fromCharCode(65 + m) + s;
+    i = Math.floor((i - 1) / 26);
+  }
+  return s;
+};
+
+/** 多表 xlsx：sheets = [{ name, rows }]，返回 zip 字节 */
+function buildXlsx(sheets) {
+  const uniq = [];
+  const idx = new Map();
+  sheets.forEach(s => s.rows.forEach(r => r.forEach(c => {
+    if (!idx.has(c)) { idx.set(c, uniq.length); uniq.push(c); }
+  })));
+  const shared = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${uniq.length}" uniqueCount="${uniq.length}">${uniq.map(s => `<si><t xml:space="preserve">${esc(s)}</t></si>`).join('')}</sst>`;
+  const sheetEntries = [];
+  const sheetOverrides = sheets.map((s, i) => {
+    const sheetRows = s.rows.map((r, ri) => {
+      const cells = r.map((c, ci) => {
+        const ref = `${colName(ci)}${ri + 1}`;
+        if (c === '' || c === undefined || c === null) return `<c r="${ref}"/>`;
+        return `<c r="${ref}" t="s"><v>${idx.get(c)}</v></c>`;
+      }).join('');
+      return `<row r="${ri + 1}">${cells}</row>`;
+    }).join('');
+    sheetEntries.push([`xl/worksheets/sheet${i + 1}.xml`, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${sheetRows}</sheetData></worksheet>`]);
+    return `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`;
+  }).join('');
+  const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${sheetOverrides}<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/></Types>`;
+  const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`;
+  const wb = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${sheets.map((s, i) => `<sheet name="${esc(s.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('')}</sheets></workbook>`;
+  const n = sheets.length;
+  const wbRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('')}<Relationship Id="rId${n + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="xl/sharedStrings.xml"/></Relationships>`;
+  return zipChunks([
+    ['[Content_Types].xml', contentTypes],
+    ['_rels/.rels', rels],
+    ['xl/workbook.xml', wb],
+    ['xl/_rels/workbook.xml.rels', wbRels],
+    ['xl/sharedStrings.xml', shared],
+    ...sheetEntries,
+  ]);
+}
+
 /* ============================ 读取数据源 ============================ */
 
 const src = JSON.parse(fs.readFileSync(SOURCE, 'utf8'));
@@ -188,6 +248,7 @@ function toRow(q) {
     q.type || '单选',
     q.stem || '',
     q.material || '',
+    q.images || '',
     o.A || '', o.B || '', o.C || '', o.D || '',
     q.answer || '',
     q.analysis || '',
@@ -202,122 +263,56 @@ function toRow(q) {
 }
 const rows = questions.map(toRow);
 
-/* ============================ CSV ============================ */
+/** 「使用说明」表内容：两列（条目 / 说明），跟「题库」表一起打进 xlsx */
+const GUIDE_ROWS = [
+  ['题库模板 · 使用说明', '（本表只是说明，导入时会被自动跳过）'],
+  ['怎么导入', '在「题库」表里填题（一行一题，表头别改），App 里点「导入」选这个文件。统一只支持 Excel（.xlsx）'],
+  ['带图片怎么导', '图片多时做成题库包：把 题库.xlsx 和图片文件夹（如 images/）一起压成 zip 再导入（见 题库包模板.zip）；材料 / 图片列里写 images/xxx.png 这样的包内相对路径'],
+  ['必填列', '只有「题干」必填，其余列全部可以留空'],
+  ['题型', '留空按单选；多选 / 判断 / 不定项要写清楚；多选答案用逗号分隔（如 A,C,D）'],
+  ['答案', '可以整列先空着 = 待补答案。导完先做题，之后在成绩报告页「补答案」：逐题填，或导入文件（答案模板.xlsx），会按你的作答自动重判'],
+  ['解析', '可以整列先空着。之后导入「解析模板.xlsx」（题号 + 解析两列），App 自动识别、只补解析不动答案'],
+  ['图片', '填图片地址，多张用 | 分隔；支持手机本地路径、content://、base64；题库包里写包内相对路径（见 题库包模板.zip）。图片会显示在材料顶部'],
+  ['材料', '大段文字（含表格）放这里；支持 Markdown 表格、内嵌图片 ![](路径)、自绘图 :::chart。同一道题的材料和图片都写在它自己的行里'],
+  ['选项', '最多到 H 列，用不到的留空即可'],
+  ['更多帮助', '格式细节见 docs/02-题库格式规范.md；答案 / 解析后补见 docs/04-答案后补.md；题库包见 docs/03-题库包.md'],
+];
 
-function csvCell(v) {
-  const s = String(v ?? '');
-  return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-}
-const csvText = '\uFEFF' + [HEADERS, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n') + '\r\n';
-const csvPath = path.join(DIR, '题库模板.csv');
-fs.writeFileSync(csvPath, csvText, 'utf8');
+/* ============================ 产物 ============================ */
 
-/* ============================ TXT ============================ */
-
-let txt = '';
-questions.forEach((q, i) => {
-  txt += `${i + 1}. ${q.stem || ''}\n`;
-  if (q.material) txt += `材料：\n${q.material}\n\n`;
-  const o = q.options || {};
-  OPT_KEYS.forEach(k => { if (o[k]) txt += `${k}. ${o[k]}\n`; });
-  txt += `答案：${q.answer || ''}\n`;
-  if (q.analysis) txt += `解析：${q.analysis}\n`;
-  if (q.knowledge) txt += `知识点：${q.knowledge}\n`;
-  if (q.difficulty) txt += `难度：${q.difficulty}\n`;
-  if (q.subject) txt += `科目：${q.subject}\n`;
-  if (q.source) txt += `来源：${q.source}\n`;
-  if (q.year) txt += `年份：${q.year}\n`;
-  if (q.score) txt += `分值：${q.score}\n`;
-  txt += '\n';
-});
-const txtPath = path.join(DIR, '题库模板.txt');
-fs.writeFileSync(txtPath, txt, 'utf8');
-
-/* ============================ XLSX ============================ */
-
-const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-const colName = i => {
-  let s = '';
-  i++;
-  while (i > 0) {
-    const m = (i - 1) % 26;
-    s = String.fromCharCode(65 + m) + s;
-    i = Math.floor((i - 1) / 26);
-  }
-  return s;
-};
-
-function buildXlsx(allRows) {
-  const uniq = [];
-  const idx = new Map();
-  allRows.forEach(r => r.forEach(c => {
-    if (!idx.has(c)) { idx.set(c, uniq.length); uniq.push(c); }
-  }));
-  const shared = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${uniq.length}" uniqueCount="${uniq.length}">${uniq.map(s => `<si><t xml:space="preserve">${esc(s)}</t></si>`).join('')}</sst>`;
-  const sheetRows = allRows.map((r, ri) => {
-    const cells = r.map((c, ci) => {
-      const ref = `${colName(ci)}${ri + 1}`;
-      if (c === '' || c === undefined || c === null) return `<c r="${ref}"/>`;
-      return `<c r="${ref}" t="s"><v>${idx.get(c)}</v></c>`;
-    }).join('');
-    return `<row r="${ri + 1}">${cells}</row>`;
-  }).join('');
-  const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${sheetRows}</sheetData></worksheet>`;
-  const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/></Types>`;
-  const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`;
-  const wb = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="题库" sheetId="1" r:id="rId1"/></sheets></workbook>`;
-  const wbRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="xl/sharedStrings.xml"/></Relationships>`;
-  return [
-    ['[Content_Types].xml', contentTypes],
-    ['_rels/.rels', rels],
-    ['xl/workbook.xml', wb],
-    ['xl/_rels/workbook.xml.rels', wbRels],
-    ['xl/sharedStrings.xml', shared],
-    ['xl/worksheets/sheet1.xml', sheet],
-  ];
-}
-
+// 1) 题库模板.xlsx：题库 + 使用说明
 const xlsxPath = path.join(DIR, '题库模板.xlsx');
-writeZip(buildXlsx([HEADERS, ...rows]), xlsxPath);
+writeZip(buildXlsx([
+  { name: '题库', rows: [HEADERS, ...rows] },
+  { name: '使用说明', rows: GUIDE_ROWS },
+]), xlsxPath);
 
-/* ============================ 答案模板 ============================ */
-
+// 2) 答案模板.xlsx：题号 / 答案 / 解析
 const answerRows = questions.map((q, i) => [String(i + 1), q.answer || '', q.analysis || '']);
-const answerCsv = '\uFEFF' + [['题号', '答案', '解析'], ...answerRows]
-  .map(r => r.map(csvCell).join(',')).join('\r\n') + '\r\n';
-fs.writeFileSync(path.join(DIR, '答案模板.csv'), answerCsv, 'utf8');
+writeZip(buildXlsx([{ name: '答案', rows: [['题号', '答案', '解析'], ...answerRows] }]),
+  path.join(DIR, '答案模板.xlsx'));
 
-const answerTxt = questions.map((q, i) => `${i + 1}.${q.answer || ''}`).join('\n') + '\n';
-fs.writeFileSync(path.join(DIR, '答案模板.txt'), answerTxt, 'utf8');
+// 3) 解析模板.xlsx：题号 / 解析（只补解析，不改答案）
+const analysisRows = questions.map((q, i) => [String(i + 1), q.analysis || '']);
+writeZip(buildXlsx([{ name: '解析', rows: [['题号', '解析'], ...analysisRows] }]),
+  path.join(DIR, '解析模板.xlsx'));
 
-/* ============================ 题库包 ============================ */
-
+// 4) 题库包：题库.xlsx + images/ + README.txt
 const PKG_DIR = path.join(DIR, '题库包模板');
 const PKG_NAME = '题库包模板';
 fs.mkdirSync(path.join(PKG_DIR, 'images'), { recursive: true });
 
-const pkgQuestions = [
-  {
-    ...questions[0],
-  },
-  {
-    ...questions[questions.length - 1],
-    material: `${questions[questions.length - 1].material}\n\n![示例图：替换成你自己的图](images/chart-01.png)`,
-  },
-];
-const pkgJson = {
-  bank: PKG_NAME,
-  description: '题库包模板：qbank.json + images/，材料里的图片写包内相对路径，导入时自动换成绝对路径',
-  questions: pkgQuestions,
-};
-const pkgJsonText = JSON.stringify(pkgJson, null, 2) + '\n';
-fs.writeFileSync(path.join(PKG_DIR, 'qbank.json'), pkgJsonText, 'utf8');
+const PKG_XLSX_NAME = '题库.xlsx';
+const pkgQuestions = questions.map((q, i) => {
+  const r = toRow(q);
+  if (i === 0) r[3] = 'images/chart-01.png';                       // 图片列示范
+  if (i === questions.length - 1) {
+    r[2] = `${q.material || ''}\n\n![示例图：替换成你自己的图](images/chart-01.png)`; // 材料内嵌示范
+  }
+  return r;
+});
+const pkgXlsx = buildXlsx([{ name: '题库', rows: [HEADERS, ...pkgQuestions] }]);
+fs.writeFileSync(path.join(PKG_DIR, PKG_XLSX_NAME), pkgXlsx);
 
 const pngBuf = makeChartPng(720, 360);
 fs.writeFileSync(path.join(PKG_DIR, 'images', 'chart-01.png'), pngBuf);
@@ -325,13 +320,13 @@ fs.writeFileSync(path.join(PKG_DIR, 'images', 'chart-01.png'), pngBuf);
 const pkgReadme = `题库包模板
 
 结构：
-  qbank.json          题库主数据（题目、答案都在里面）
-  images/             材料配图，qbank.json 里写 images/xxx.png 这样的相对路径
-  README.txt          这个文件，不参与导入（也可以删）
+  题库.xlsx            题库主数据（统一 Excel 模板，「材料 / 图片」列里引用 images/xxx.png）
+  images/              图片等媒体资源
+  README.txt           这个文件，不参与导入（也可以删）
 
 怎么用：
-  1. 把 qbank.json 里的题目换成你自己的；
-  2. 把 images/chart-01.png 换成你自己的图（文件名任意，记得同步改 qbank.json 里的引用）；
+  1. 把 题库.xlsx 换成你自己的（直接改这份，或从 题库模板.xlsx 复制表头）；
+  2. 把 images/chart-01.png 换成你自己的图（文件名任意，记得同步改 Excel 里的引用）；
   3. 整个文件夹压成 zip（外层多包一层文件夹也没关系）；
   4. App 里「导入」选这个 zip。
 
@@ -341,18 +336,19 @@ fs.writeFileSync(path.join(PKG_DIR, 'README.txt'), pkgReadme, 'utf8');
 
 const pkgZipPath = path.join(DIR, '题库包模板.zip');
 writeZip([
-  [`${PKG_NAME}/qbank.json`, pkgJsonText],
+  [`${PKG_NAME}/${PKG_XLSX_NAME}`, pkgXlsx],
   [`${PKG_NAME}/images/chart-01.png`, pngBuf],
   [`${PKG_NAME}/README.txt`, pkgReadme],
 ], pkgZipPath);
 
 /* ============================ 回读校验 ============================ */
-// 规则对齐 App 的导入器：CSV 表头别名、TXT 题号切块、XLSX sharedStrings、zip 条目。
+// 规则对齐 App 的导入器：xlsx sharedStrings 解析、zip 条目。
 
 const ALIASES = {
   type: ['题型', '类型', '题目类型', 'type', 'questiontype', 'qtype', 'category'],
   stem: ['题干', '题目', '试题', '问题', 'stem', 'question', 'title', 'content', 'problem', 'q'],
   material: ['材料', '材料内容', '背景', '背景材料', '资料', 'material', 'passage', 'context'],
+  images: ['图片', '图片地址', '配图', '插图', '题图', 'image', 'images', 'img', 'pic'],
   options: ['选项', '选项列表', 'options', 'choices'],
   answer: ['答案', '正确答案', '标准答案', '参考答案', 'answer', 'correctanswer', 'key', 'ans'],
   analysis: ['解析', '答案解析', '说明', 'analysis', 'explanation', 'remark'],
@@ -379,108 +375,11 @@ function resolveField(h) {
   return null;
 }
 
-function parseTable(text) {
-  const rows = [];
-  let row = [], cell = '', inQuote = false;
-  const t = text.replace(/^\uFEFF/, '');
-  for (let i = 0; i < t.length; i++) {
-    const c = t[i];
-    if (inQuote) {
-      if (c === '"') {
-        if (t[i + 1] === '"') { cell += '"'; i++; } else inQuote = false;
-      } else cell += c;
-    } else if (c === '"') inQuote = true;
-    else if (c === ',') { row.push(cell); cell = ''; }
-    else if (c === '\r') { /* skip */ }
-    else if (c === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; }
-    else cell += c;
-  }
-  if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
-  return rows.filter(r => r.some(c => c !== ''));
-}
-
-const checks = [];
-const check = (name, ok, detail = '') => checks.push({ name, ok: !!ok, detail });
-
-// 题数以数据源为准，脚本不再写死——加减示例题后校验跟着走
-const N = questions.length;
-
-// 1) JSON 模板自身
-check('题库模板.json 可解析', N >= 3, `${N} 题`);
-for (const [i, q] of questions.entries()) {
-  const keys = Object.keys(q.options || {});
-  const ansKeys = String(q.answer || '').split(/[,，、\s]+/).filter(Boolean).map(s => s.toUpperCase()).sort();
-  const ok = q.stem && keys.length >= 2 && ansKeys.length > 0 && ansKeys.every(k => keys.map(x => x.toUpperCase()).includes(k));
-  check(`第 ${i + 1} 题字段自洽（题干/选项/答案在选项内）`, ok);
-}
-
-// 2) CSV
-const csvRows = parseTable(fs.readFileSync(csvPath, 'utf8'));
-const headerFields = csvRows[0].map(resolveField);
-check('CSV 表头全部被识别', headerFields.every(f => f !== null), headerFields.join(','));
-check('CSV 只有一份题干列', headerFields.filter(f => f === 'stem').length === 1);
-check(`CSV 行数 = 表头 + ${N}`, csvRows.length === N + 1, `${csvRows.length} 行`);
-const csvStemIdx = headerFields.indexOf('stem');
-const csvAnsIdx = headerFields.indexOf('answer');
-check('CSV 第 2 行题干与源一致', csvRows[1][csvStemIdx] === questions[0].stem);
-check('CSV 多选答案带引号后完整', csvRows[2][csvAnsIdx] === 'A,B,C,D', csvRows[2][csvAnsIdx]);
-check('CSV 材料单元格含换行', csvRows[3][headerFields.indexOf('material')].includes('\n'));
-
-// 3) TXT
-const TXT_HEAD = /^(?:\(?\d+\s*[.、．)）]|第\s*\d+\s*题\s*[.、．:：]?)\s*.+$/;
-const blocks = [];
-{
-  let cur = null;
-  for (const line of fs.readFileSync(txtPath, 'utf8').split('\n')) {
-    const t = line.trim();
-    if (t && TXT_HEAD.test(t)) { cur = []; blocks.push(cur); }
-    if (!cur) { cur = []; blocks.push(cur); }
-    cur.push(line);
-  }
-}
-const blocksTrim = blocks.map(b => b.join('\n').trim()).filter(Boolean);
-check(`TXT 切出 ${N} 个题块`, blocksTrim.length === N, `${blocksTrim.length} 块`);
-
-const parsedTxt = blocksTrim.map((block) => {
-  const q = { stem: '', options: {}, fields: {} };
-  let stemDone = false, inMaterial = false;
-  const matBuf = [];
-  const PREFIX = { 答案: 'answer', 解析: 'analysis', 知识点: 'knowledge', 难度: 'difficulty', 科目: 'subject', 来源: 'source', 年份: 'year', 分值: 'score', 题型: 'type', 材料: 'material' };
-  const flush = () => { if (inMaterial) { q.fields.material = matBuf.join('\n').trim(); inMaterial = false; } };
-  for (const rawLine of block.split('\n')) {
-    const line = rawLine.trim();
-    if (!line) continue;
-    let content = line
-      .replace(/^\(?\d+\s*[.、．)）]\s*/, '')
-      .replace(/^第\s*\d+\s*题\s*[.、．:：]?\s*/, '');
-    const opt = /^([A-Ha-h])\s*[.、．:：)）]\s*(.*)$/.exec(content);
-    if (opt) { flush(); q.options[opt[1].toUpperCase()] = opt[2].trim(); continue; }
-    const pre = /^([\u4e00-\u9fa5A-Za-z]{1,6})\s*[:：]\s*(.*)$/.exec(content);
-    if (pre && PREFIX[pre[1]]) {
-      flush();
-      if (PREFIX[pre[1]] === 'material') { inMaterial = true; if (pre[2]) matBuf.push(pre[2]); continue; }
-      q.fields[PREFIX[pre[1]]] = pre[2];
-      continue;
-    }
-    if (inMaterial) { matBuf.push(content); continue; }
-    if (!stemDone) { q.stem = content; stemDone = true; } else { q.stem += '\n' + content; }
-  }
-  flush();
-  return q;
-});
-check('TXT 每题都解析出题干', parsedTxt.every(q => q.stem.length > 0));
-check('TXT 每题都有 4 个选项', parsedTxt.every(q => Object.keys(q.options).length === 4),
-  parsedTxt.map(q => Object.keys(q.options).length).join('/'));
-check('TXT 多选答案原样保留', parsedTxt[1].fields.answer === 'A,B,C,D', parsedTxt[1].fields.answer);
-check('TXT 材料块完整（含表格行）', (parsedTxt[2].fields.material || '').includes('| 总收入（亿元） | 4990.5 | 5280.0 |'));
-
-// 4) XLSX
-function readXlsx(file) {
-  const entries = readZipStore(fs.readFileSync(file));
+function readSheet(entries, sheetFile) {
   const sstXml = entries.get('xl/sharedStrings.xml').toString('utf8');
   const shared = [...sstXml.matchAll(/<si>([\s\S]*?)<\/si>/g)]
     .map(m => [...m[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map(x => x[1]).join(''));
-  const sheetXml = entries.get('xl/worksheets/sheet1.xml').toString('utf8');
+  const sheetXml = entries.get(`xl/worksheets/${sheetFile}`).toString('utf8');
   const rows = [...sheetXml.matchAll(/<row[^>]*>([\s\S]*?)<\/row>/g)].map(m => {
     const cells = [];
     // 空单元格是自闭合的 <c r="C2"/>，必须单独处理，否则会把后一个单元格吞掉
@@ -488,7 +387,7 @@ function readXlsx(file) {
       const attr = c[1];
       const ref = /r="([A-Z]+)\d+"/.exec(attr);
       if (!ref) continue;
-      const col = ref[1].charCodeAt(0) - 65; // 模板只用 A–P，单字母足够
+      const col = ref[1].charCodeAt(0) - 65; // 模板只用 A–Q，单字母足够
       const body = c[3] || '';
       const v = /<v>([\s\S]*?)<\/v>/.exec(body);
       cells[col] = v ? (attr.includes('t="s"') ? shared[Number(v[1])] : v[1]) : '';
@@ -497,39 +396,86 @@ function readXlsx(file) {
   });
   return rows;
 }
-const xlsxRows = readXlsx(xlsxPath);
-check(`XLSX 行数 = 表头 + ${N}`, xlsxRows.length === N + 1, `${xlsxRows.length} 行`);
-check('XLSX 表头与 CSV 一致', JSON.stringify(xlsxRows[0]) === JSON.stringify(HEADERS));
+
+const checks = [];
+const check = (name, ok, detail = '') => checks.push({ name, ok: !!ok, detail });
+
+// 题数以数据源为准，脚本不再写死——加减示例题后校验跟着走
+const N = questions.length;
+
+// 1) JSON 数据源自身
+check('题库模板.json 可解析', N >= 3, `${N} 题`);
+for (const [i, q] of questions.entries()) {
+  const keys = Object.keys(q.options || {});
+  const ansKeys = String(q.answer || '').split(/[,，、\s]+/).filter(Boolean).map(s => s.toUpperCase()).sort();
+  const ok = q.stem && keys.length >= 2 && ansKeys.length > 0 && ansKeys.every(k => keys.map(x => x.toUpperCase()).includes(k));
+  check(`第 ${i + 1} 题字段自洽（题干/选项/答案在选项内）`, ok);
+}
+
+// 2) 题库模板.xlsx
+const xlsxEntries = readZipStore(fs.readFileSync(xlsxPath));
+const xlsxRows = readSheet(xlsxEntries, 'sheet1.xml');
+check(`题库模板.xlsx 行数 = 表头 + ${N}`, xlsxRows.length === N + 1, `${xlsxRows.length} 行`);
+check('题库模板.xlsx 表头正确', JSON.stringify(xlsxRows[0]) === JSON.stringify(HEADERS));
 const xlsxFlatSame = xlsxRows.slice(1).every((r, i) => r.slice(1).every((c, j) => c === rows[i][j + 1]));
-check('XLSX 单元格内容与源数据一致', xlsxFlatSame);
+check('题库模板.xlsx 单元格内容与源数据一致', xlsxFlatSame);
 
-// 5) 答案模板
-const ansRows = parseTable(fs.readFileSync(path.join(DIR, '答案模板.csv'), 'utf8'));
-const ansFields = ansRows[0].map(resolveField);
-check('答案模板.csv 表头识别（题号/答案/解析）',
-  ansFields[0] === 'no' && ansFields[1] === 'answer' && ansFields[2] === 'analysis', ansFields.join(','));
-check(`答案模板.csv ${N} 条答案`, ansRows.length === N + 1 && ansRows.slice(1).every((r, i) => Number(r[0]) === i + 1));
-const ansTxtLines = fs.readFileSync(path.join(DIR, '答案模板.txt'), 'utf8').split('\n').filter(Boolean);
-check('答案模板.txt 每行「题号.答案」', ansTxtLines.length === N &&
-  ansTxtLines.every((l, i) => new RegExp(`^${i + 1}\\.`).test(l)), ansTxtLines.join(' | '));
+// 「使用说明」表：必须排在题库表后面——App 的 XlsxReader 取第一个有数据的 sheet
+const wbXml = xlsxEntries.get('xl/workbook.xml').toString('utf8');
+check('XLSX 双表：题库在前、使用说明在后',
+  wbXml.includes('name="题库"') && wbXml.includes('name="使用说明"') &&
+  wbXml.indexOf('name="题库"') < wbXml.indexOf('name="使用说明"'));
+const guideRows = readSheet(xlsxEntries, 'sheet2.xml');
+check(`使用说明表有 ${GUIDE_ROWS.length} 行说明`,
+  guideRows.length === GUIDE_ROWS.length &&
+  guideRows[0][0] === GUIDE_ROWS[0][0] &&
+  guideRows.every(r => (r[0] || '').length > 0 && (r[1] || '').length > 0),
+  `${guideRows.length} 行`);
+check('使用说明不残留其他格式说法',
+  guideRows.every(r => !/CSV|TXT|JSON/.test((r[1] || ''))), guideRows.map(r => r[1]).find(t => /CSV|TXT|JSON/.test(t || '')) || '');
 
-// 6) 题库包
+// 3) 答案模板.xlsx（题号 / 答案 / 解析）
+{
+  const e = readZipStore(fs.readFileSync(path.join(DIR, '答案模板.xlsx')));
+  const rs = readSheet(e, 'sheet1.xml');
+  const fields = rs[0].map(resolveField);
+  check('答案模板.xlsx 表头识别（题号/答案/解析）',
+    fields[0] === 'no' && fields[1] === 'answer' && fields[2] === 'analysis', fields.join(','));
+  check(`答案模板.xlsx ${N} 行答案`,
+    rs.length === N + 1 && rs.slice(1).every((r, i) => Number(r[0]) === i + 1 && r[1].length > 0));
+}
+
+// 4) 解析模板.xlsx（题号 / 解析，没有答案列——App 按解析导入，只更新解析）
+{
+  const e = readZipStore(fs.readFileSync(path.join(DIR, '解析模板.xlsx')));
+  const rs = readSheet(e, 'sheet1.xml');
+  const fields = rs[0].map(resolveField);
+  check('解析模板.xlsx 表头识别（题号/解析，无答案列）',
+    fields[0] === 'no' && fields[1] === 'analysis' && !fields.includes('answer'), fields.join(','));
+  check(`解析模板.xlsx ${N} 行解析`,
+    rs.length === N + 1 && rs.slice(1).every((r, i) => Number(r[0]) === i + 1 && (r[1] || '').length > 0));
+}
+
+// 5) 题库包
 const pkgEntries = readZipStore(fs.readFileSync(pkgZipPath));
 const pkgNames = [...pkgEntries.keys()];
-check('题库包内有 qbank.json', pkgNames.includes(`${PKG_NAME}/qbank.json`), pkgNames.join(','));
+check('题库包内有 题库.xlsx', pkgNames.includes(`${PKG_NAME}/${PKG_XLSX_NAME}`), pkgNames.join(','));
 check('题库包内有 images/chart-01.png', pkgNames.includes(`${PKG_NAME}/images/chart-01.png`));
 const png = pkgEntries.get(`${PKG_NAME}/images/chart-01.png`);
 check('占位图是合法 PNG', png.slice(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])), `${png.length} bytes`);
-const pkgData = JSON.parse(pkgEntries.get(`${PKG_NAME}/qbank.json`).toString('utf8'));
-check('题库包主数据 2 题', pkgData.questions.length === 2);
-check('题库包材料引用相对路径', /!\[[^\]]*\]\(images\/chart-01\.png\)/.test(pkgData.questions[1].material));
+const pkgXlsxEntries = readZipStore(pkgEntries.get(`${PKG_NAME}/${PKG_XLSX_NAME}`));
+const pkgRows = readSheet(pkgXlsxEntries, 'sheet1.xml');
+check('题库包 题库.xlsx 行数正确', pkgRows.length === N + 1, `${pkgRows.length} 行`);
+check('题库包第 1 题图片列引用相对路径', pkgRows[1][3] === 'images/chart-01.png', pkgRows[1][3]);
+check('题库包末题材料内嵌图片引用相对路径',
+  /!\[[^\]]*\]\(images\/chart-01\.png\)/.test(pkgRows[N][2] || ''));
 check('题库包外层目录单一（可被自动剥掉）',
   new Set(pkgNames.map(n => n.split('/')[0])).size === 1);
 
 /* ============================ 输出 ============================ */
 
 const failed = checks.filter(c => !c.ok);
-console.log(`模板已生成：${questions.length} 题 → CSV / TXT / XLSX / 答案 ×2 / 题库包\n`);
+console.log(`模板已生成：${questions.length} 题 → 题库.xlsx（含使用说明）/ 答案.xlsx / 解析.xlsx / 题库包\n`);
 for (const c of checks) {
   if (!c.ok) console.log(`  ✗ ${c.name}${c.detail ? ' — ' + c.detail : ''}`);
 }

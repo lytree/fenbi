@@ -665,10 +665,12 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
     }
 
     /**
-     * 批量补充标准答案。
+     * 批量补充标准答案和/或解析。
      *
-     * 用于「试卷先导入、答案后补」：只写非空答案；解析为空时保留题目原有解析，
-     * 避免一份纯「题号 + 答案」的表把已有解析冲掉。
+     * 用于「试卷先导入、答案后补」：
+     * - 答案非空时写入答案；解析非空时写入解析——两个开关相互独立，
+     *   避免「题号 + 答案」表冲掉已有解析，也支持「题号 + 解析」的解析文件只更新解析；
+     * - 两个都为空的条目跳过。
      */
     fun updateAnswers(updates: List<AnswerUpdate>): Int {
         if (updates.isEmpty()) return 0
@@ -677,9 +679,10 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         try {
             var n = 0
             for (u in updates) {
-                if (u.answer.isBlank()) continue
-                val cv = ContentValues().apply { put("answer", u.answer) }
+                val cv = ContentValues()
+                if (u.answer.isNotBlank()) cv.put("answer", u.answer)
                 if (u.analysis.isNotBlank()) cv.put("analysis", u.analysis)
+                if (cv.size() == 0) continue
                 n += db.update("questions", cv, "id = ?", arrayOf(u.questionId.toString()))
             }
             db.setTransactionSuccessful()

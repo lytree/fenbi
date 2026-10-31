@@ -1,7 +1,7 @@
 package com.lytree.qbank.data.importer
 
-import android.util.Xml
 import org.xmlpull.v1.XmlPullParser
+import org.xmlpull.v1.XmlPullParserFactory
 import java.io.InputStream
 import java.util.zip.ZipInputStream
 
@@ -10,8 +10,13 @@ import java.util.zip.ZipInputStream
  * 不引入 Apache POI（体积大、Android 兼容差），直接按 OOXML 规范解 zip + 拉式解析 XML。
  *
  * 支持：sharedStrings、inlineStr、数字、布尔、公式缓存值；多 sheet 时取第一个有数据的 sheet。
+ * 用 XmlPullParserFactory（而非 android.util.Xml）取解析器，JVM 单元测试加 kxml2 即可复用。
  */
 object XlsxReader {
+
+    private val parserFactory = XmlPullParserFactory.newInstance()
+
+    private fun newParser(): XmlPullParser = parserFactory.newPullParser()
 
     data class Sheet(val name: String, val rows: List<List<String>>)
 
@@ -57,7 +62,7 @@ object XlsxReader {
     private fun parseWorkbookSheets(xml: ByteArray?): Map<Int, String> {
         if (xml == null) return emptyMap()
         val out = HashMap<Int, String>()
-        val parser = Xml.newPullParser()
+        val parser = newParser()
         parser.setInput(xml.inputStream(), null)
         var event = parser.eventType
         var order = 0
@@ -73,7 +78,7 @@ object XlsxReader {
     private fun parseSharedStrings(xml: ByteArray?): List<String> {
         if (xml == null) return emptyList()
         val out = ArrayList<String>()
-        val parser = Xml.newPullParser()
+        val parser = newParser()
         parser.setInput(xml.inputStream(), null)
         var event = parser.eventType
         var cur = StringBuilder()
@@ -99,7 +104,7 @@ object XlsxReader {
 
     private fun parseSheet(xml: ByteArray, shared: List<String>): List<List<String>> {
         val rows = ArrayList<List<String>>()
-        val parser = Xml.newPullParser()
+        val parser = newParser()
         parser.setInput(xml.inputStream(), null)
 
         var event = parser.eventType

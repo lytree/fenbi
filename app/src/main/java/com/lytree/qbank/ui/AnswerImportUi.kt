@@ -14,19 +14,20 @@ import com.lytree.qbank.data.model.Question
 import java.io.ByteArrayOutputStream
 
 /**
- * 「导入答案」的公共流程：读文件 → 解析 → 与本卷题目匹配 → 确认 → 写库。
+ * 「导入答案 / 解析」的公共流程：读文件 → 解析 → 与本卷题目匹配 → 确认 → 写库。
  *
  * 答题页（交卷前补充）与成绩报告页（做完后补答案重判）共用同一套逻辑，
  * 避免两边各写一份匹配/提示文案而出现口径差异。
+ *
+ * 只有一种方式：**选文件，剩下的 App 自动判断**——
+ * - 文件里有答案列（`题号,答案[,解析]`）→ 按答案导入，带了解析的顺带写入；
+ * - 文件只有解析没有答案（`题号,解析`）→ 按解析导入，**只更新解析、答案一个字不动**。
+ * 用户不用先想清楚手里的文件是「答案」还是「解析」，确认弹窗里会写明这次导入什么。
  */
 object AnswerImportUi {
 
-    /** 系统文件选择器的 MIME 集合，与题库导入保持一致 */
+    /** 系统文件选择器的 MIME 集合：只收 Excel */
     val MIME = arrayOf(
-        "application/json",
-        "text/csv",
-        "text/comma-separated-values",
-        "text/plain",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "application/octet-stream"
     )
@@ -59,50 +60,87 @@ object AnswerImportUi {
         val sheet = AnswerSheetImporter.parse(fileName, bytes)
         if (sheet.entries.isEmpty()) {
             val reason = sheet.issues.firstOrNull { it.level == ImportIssue.Level.ERROR }?.message
-                ?: "文件里没有可用的答案"
+                ?: "文件里没有可用的答案或解析"
             error(activity, reason)
             return
         }
 
-        val matched = AnswerMatcher.match(questions, sheet)
-        if (matched.hits.isEmpty()) {
+        // 答案列整列缺失（所有条目都没有答案）→ 按解析文件导入
+        val analysisOnly = sheet.analysisOnly
+        val what = if (analysisOnly) "解析" else "答案"
+        // 解析文件只留带解析的条目（理论上不会有答案，过滤只是兜底）
+        val entries = if (analysisOnly) {
+            sheet.entries.filter { it.analysis.isNotBlank() }
+        } else {
+            sheet.entries
+        }
+        if (entries.isEmpty()) {
             error(
                 activity,
-                "识别到 ${sheet.entries.size} 条答案，但对不上本卷任何题目。\n\n" +
-                        "答案文件格式：Excel / CSV 用「题号, 答案」两列，或带「题干」的答案表；" +
-                        "TXT 用「1.A、2.B」逐行。"
+                "文件里没有可用的$what。\n\n" +
+                        if (analysisOnly) "解析文件请用 Excel（.xlsx）：「题号, 解析」两列。"
+                        else "答案文件请用 Excel（.xlsx）：「题号, 答案」两列。",
+                title = "${what}导入失败"
+            )
+            return
+        }
+        val trimmed = sheet.copy(entries = entries)
+
+        val matched = AnswerMatcher.match(questions, trimmed, what)
+        if (matched.hits.isEmpty()) {
+            val fmtHint = if (analysisOnly) {
+                "解析文件请用 Excel（.xlsx）：「题号, 解析」两列。"
+            } else {
+                "答案文件请用 Excel（.xlsx）：「题号, 答案」两列，或带「题干」的完整答案表。"
+            }
+            error(
+                activity,
+                "识别到 ${entries.size} 条$what，但对不上本卷任何题目。\n\n$fmtHint",
+                title = "${what}导入失败"
             )
             return
         }
 
-        val existing = questions.count { it.answer.isNotBlank() }
+        val existing = if (analysisOnly) {
+            questions.count { it.analysis.isNotBlank() }
+        } else {
+            questions.count { it.answer.isNotBlank() }
+        }
         val missingAfter = questions.size - matched.hits.size
         val message = buildString {
             append("文件：").append(fileName).append('\n')
-            append("识别答案：").append(sheet.entries.size).append(" 条\n")
+            if (analysisOnly) {
+                append("本次只导入解析，答案保持不变\n")
+            }
+            append("识别$what：").append(entries.size).append(" 条\n")
             append("匹配本题：").append(matched.hits.size).append('/').append(questions.size).append(" 题")
-            if (existing > 0) append("（其中 ").append(existing).append(" 题原有答案将被覆盖）")
+            if (existing > 0) append("（其中 ").append(existing).append(" 题原有${what}将被覆盖）")
             if (missingAfter > 0) append("\n未匹配：").append(missingAfter).append(" 题，保持原样")
             matched.notes.take(3).forEach { append("\n· ").append(it) }
         }
 
         FbDialog.confirm(
             activity, message,
-            okText = "写入答案",
+            okText = "写入$what",
             onOk = {
-                val n = db.updateAnswers(
-                    matched.hits.map { AnswerUpdate(it.question.id, it.answer, it.analysis) }
-                )
-                Toast.makeText(activity, "已补充 $n 题答案", Toast.LENGTH_SHORT).show()
+                val updates = matched.hits.map { hit ->
+                    if (analysisOnly) {
+                        AnswerUpdate(hit.question.id, "", hit.analysis)
+                    } else {
+                        AnswerUpdate(hit.question.id, hit.answer, hit.analysis)
+                    }
+                }
+                val n = db.updateAnswers(updates)
+                Toast.makeText(activity, "已补充 $n 题$what", Toast.LENGTH_SHORT).show()
                 onDone(n)
             }
         )
     }
 
-    private fun error(activity: AppCompatActivity, message: String) {
+    private fun error(activity: AppCompatActivity, message: String, title: String = "答案导入失败") {
         com.lytree.qbank.ui.FbDialog.alert(
             context = activity,
-            title = "答案导入失败",
+            title = title,
             message = message
         )
     }

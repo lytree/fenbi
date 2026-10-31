@@ -36,7 +36,7 @@ class ReportActivity : AppCompatActivity() {
     private lateinit var db: QBankDb
     private var recordId = 0L
 
-    /** 补答案：选文件 → 匹配 → 写库 → 重判本记录 */
+    /** 补答案 / 补解析：选文件 → 匹配 → 写库 → 重判本记录 */
     private val answerPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) importAnswers(uri)
     }
@@ -63,8 +63,8 @@ class ReportActivity : AppCompatActivity() {
             finish(); return
         }
 
-        // 补答案入口：标题栏只留一个「补答案」，点开再选「逐题补录 / 导入答案文件」——
-        // 三个文字动作挤在一行会压住标题，而缺答案的卷子两个入口都得给。
+        // 补答案入口：标题栏只留一个「补答案」，点开再选「逐题补录 / 导入文件」——
+        // 文字动作挤在一行会压住标题，而缺答案的卷子两个入口都得给。
         binding.titleBar.addTextAction(getString(R.string.action_answer_fix)) {
             pickAnswerEntry(record)
         }
@@ -180,9 +180,10 @@ class ReportActivity : AppCompatActivity() {
     }
 
     /**
-     * 补答案的两种方式：
+     * 补答案 / 补解析只有两种方式，不用先想清楚手里的文件是答案还是解析：
      * - **逐题补录**：不用准备文件，进补录页把答案填进去（最省事）；
-     * - **导入答案文件**：手上已有 `题号,答案` 的表格 / TXT 时用，按题干 / 题号自动匹配。
+     * - **导入文件**：选一个 Excel，App 自动识别是答案（`题号,答案`）还是解析
+     *   （`题号,解析`——只更新解析、不动答案），确认弹窗里会写明。
      */
     private fun pickAnswerEntry(record: ExamRecord) {
         FbDialog.list(

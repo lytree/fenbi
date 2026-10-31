@@ -2,8 +2,6 @@ package com.lytree.qbank.data.importer
 
 import com.lytree.qbank.data.model.Question
 import com.lytree.qbank.engine.Judge
-import org.json.JSONArray
-import org.json.JSONObject
 import java.io.ByteArrayInputStream
 
 /**
@@ -30,50 +28,42 @@ data class AnswerSheet(
 ) {
     val errorCount get() = issues.count { it.level == ImportIssue.Level.ERROR }
     val warnCount get() = issues.count { it.level == ImportIssue.Level.WARN }
+
+    /**
+     * 整份文件只有解析没有答案 → 按「解析文件」处理：只更新解析，不动答案。
+     * 混合文件（答案 + 解析两列都有）不算解析文件，走答案导入并顺带写入解析。
+     */
+    val analysisOnly: Boolean
+        get() = entries.isNotEmpty() && entries.all { it.answer.isBlank() }
 }
 
 /**
  * 答案文件解析器。
  *
- * 支持四种格式：
- * - **CSV / Excel**：`题号,答案` 两列；也支持 `题号,答案,解析` 与带「题干」列的完整答案表。
- *   表头能识别就按表头走，识别不到就按位置约定（第一列题号、第二列答案）。
- * - **JSON**：`[{"no":1,"answer":"A"}]`、`{"1":"A","2":"B"}`、带题干的对象数组都认。
- * - **TXT**：`1.A` / `1、A` / `第1题 A` 逐行；一行多条（`1.A 2.B`）也认；
- *   如果整份是带 `答案：` 前缀的题库文本，则复用题库解析器。
+ * 统一只认 **Excel（.xlsx）** 一种文件：
+ * - `题号,答案` 两列；也支持 `题号,答案,解析` 与带「题干」列的完整答案表；
+ * - 表头能识别就按表头走，识别不到就按位置约定（第一列题号、第二列答案）。
+ *
+ * 手动粘贴的答案文本（逐题补录页）不走文件解析，见 [parsePasted]。
  */
 object AnswerSheetImporter {
 
     fun parse(fileName: String, bytes: ByteArray): AnswerSheet {
-        val format = Importer.detect(fileName, bytes)
         val issues = ArrayList<ImportIssue>()
-        val entries = when (format) {
-            ImportFormat.JSON -> parseJson(bytes, issues)
-            // TSV 也是表格：分隔符由 detectDelimiter 认（Tab 在候选里），与 CSV 同一条路
-            ImportFormat.CSV, ImportFormat.TSV -> {
-                val text = CsvImporter.decode(bytes)
-                parseTable(CsvImporter.parseTable(text, CsvImporter.detectDelimiter(text)), issues)
-            }
-            ImportFormat.XLSX -> try {
-                parseTable(XlsxReader.read(ByteArrayInputStream(bytes)).rows, issues)
-            } catch (e: Exception) {
-                issues.add(ImportIssue(0, ImportIssue.Level.ERROR, "Excel 解析失败：${e.message}"))
-                emptyList()
-            }
-            ImportFormat.TXT -> parseTxt(bytes, issues)
-            ImportFormat.ZIP -> {
-                issues.add(
-                    ImportIssue(0, ImportIssue.Level.ERROR, "答案文件不支持压缩包，请单独选择 txt / csv / xlsx")
-                )
-                emptyList()
-            }
-        }
-        if (entries.isEmpty()) {
+        val entries = try {
+            parseTable(XlsxReader.read(ByteArrayInputStream(bytes)).rows, issues)
+        } catch (e: Exception) {
             issues.add(
-                ImportIssue(0, ImportIssue.Level.ERROR, "没有从文件里解析出任何答案，请检查格式")
+                ImportIssue(0, ImportIssue.Level.ERROR, "只支持 Excel（.xlsx）文件：${e.message}")
+            )
+            emptyList()
+        }
+        if (entries.isEmpty() && issues.none { it.level == ImportIssue.Level.ERROR }) {
+            issues.add(
+                ImportIssue(0, ImportIssue.Level.ERROR, "没有从文件里解析出任何答案或解析，请检查表头（题号 / 答案 / 解析）")
             )
         }
-        return AnswerSheet(entries, issues, format.label)
+        return AnswerSheet(entries, issues, "Excel")
     }
 
     /**
@@ -119,6 +109,14 @@ object AnswerSheetImporter {
         return out
     }
 
+    /** `1.A` / `1、A` / `第1题 A` / `(1) A`（粘贴文本用） */
+    private val LINE_RE = Regex("""^\s*[(（]?\s*(?:第)?\s*(\d{1,4})\s*(?:题)?\s*[.、．,，:：)）\-—]?\s*(.+?)\s*$""")
+
+    /** 一行多条：`1.A 2.B 3.C`（粘贴文本用） */
+    private val INLINE_RE = Regex(
+        """(?:^|[\s　,，;；、])(\d{1,4})\s*[.、．:：)）]?\s*([A-Ha-h]{1,6}|对|错|正确|错误|√|×|TRUE|FALSE|T|F)(?=\s|$|[.、．,，;；])"""
+    )
+
     /** 一段文本里还夹着「题号 + 答案」的另一条（说明这一行不止一题） */
     private val MORE_NO_RE = Regex("""(?:^|[\s　,，;；、])\d{1,4}\s*[.、．:：)）]\s*\S""")
 
@@ -142,7 +140,23 @@ object AnswerSheetImporter {
         }
 
         val hasAnswerHeader = ansCol >= 0
-        if (!hasAnswerHeader) {
+        val hasAnyHeader = hasAnswerHeader || anaCol >= 0 || noCol >= 0 || stemCol >= 0
+        if (!hasAnyHeader) {
+            issues.add(
+                ImportIssue(
+                    1, ImportIssue.Level.WARN,
+                    "未识别到表头，已按「第一列题号、第二列答案」解析"
+                )
+            )
+        } else if (!hasAnswerHeader && anaCol >= 0) {
+            // 只有「题号 + 解析」两列的解析文件：答案列整个缺失是它的正常形态
+            issues.add(
+                ImportIssue(
+                    1, ImportIssue.Level.WARN,
+                    "未识别到「答案」列，已按解析文件导入（只更新解析，不改答案）"
+                )
+            )
+        } else if (!hasAnswerHeader) {
             issues.add(
                 ImportIssue(
                     1, ImportIssue.Level.WARN,
@@ -152,16 +166,16 @@ object AnswerSheetImporter {
         }
 
         val out = ArrayList<AnswerEntry>()
-        for (r in (if (hasAnswerHeader) 1 else 0) until rows.size) {
+        for (r in (if (hasAnyHeader) 1 else 0) until rows.size) {
             val row = rows[r]
             if (row.all { it.isBlank() }) continue
             val rowNo = r + 1
 
-            val entry = if (hasAnswerHeader) {
+            val entry = if (hasAnyHeader) {
                 AnswerEntry(
                     no = row.getOrNull(noCol)?.trim()?.toIntOrNull(),
                     stem = row.getOrNull(stemCol)?.trim().orEmpty(),
-                    answer = clean(row.getOrNull(ansCol)),
+                    answer = if (ansCol >= 0) clean(row.getOrNull(ansCol)) else "",
                     analysis = row.getOrNull(anaCol)?.trim().orEmpty()
                 )
             } else if (row.size >= 2) {
@@ -174,155 +188,14 @@ object AnswerSheetImporter {
                 AnswerEntry(answer = clean(row[0]))
             }
 
-            if (entry.answer.isBlank()) {
-                issues.add(ImportIssue(rowNo, ImportIssue.Level.WARN, "第 $rowNo 行答案为空，已跳过"))
+            if (entry.answer.isBlank() && entry.analysis.isBlank()) {
+                issues.add(ImportIssue(rowNo, ImportIssue.Level.WARN, "第 $rowNo 行答案与解析都为空，已跳过"))
                 continue
             }
             out.add(entry)
         }
         return out
     }
-
-    // ---------------- JSON ----------------
-
-    private fun parseJson(bytes: ByteArray, issues: MutableList<ImportIssue>): List<AnswerEntry> {
-        val text = CsvImporter.decode(bytes).trim()
-        val root = try {
-            JSONTokenerCompat.parse(text)
-        } catch (e: Exception) {
-            issues.add(ImportIssue(0, ImportIssue.Level.ERROR, "JSON 解析失败：${e.message}"))
-            return emptyList()
-        }
-
-        val out = ArrayList<AnswerEntry>()
-        when (root) {
-            is JSONArray -> for (i in 0 until root.length()) {
-                (root.opt(i) as? JSONObject)?.let { out.add(entryFromJson(it)) }
-            }
-
-            is JSONObject -> {
-                val arr = listOf("answers", "answerList", "data", "list", "items", "答案")
-                    .firstNotNullOfOrNull { k -> root.opt(k) as? JSONArray }
-                if (arr != null) {
-                    for (i in 0 until arr.length()) {
-                        (arr.opt(i) as? JSONObject)?.let { out.add(entryFromJson(it)) }
-                    }
-                } else {
-                    // {"1":"A","2":"B"} —— key 就是题号
-                    var mapped = 0
-                    val keys = root.keys()
-                    while (keys.hasNext()) {
-                        val k = keys.next()
-                        val v = root.opt(k)
-                        val no = k.trim().toIntOrNull()
-                        if (no != null && (v is String || v is Number)) {
-                            out.add(AnswerEntry(no = no, answer = clean(v.toString())))
-                            mapped++
-                        }
-                    }
-                    if (mapped == 0) out.add(entryFromJson(root))
-                }
-            }
-        }
-        return out.filter { it.answer.isNotBlank() }
-    }
-
-    private fun entryFromJson(o: JSONObject): AnswerEntry {
-        var no: Int? = null
-        var stem = ""
-        var answer = ""
-        var analysis = ""
-        val keys = o.keys()
-        while (keys.hasNext()) {
-            val k = keys.next()
-            val v = o.opt(k)
-            if (v is JSONArray || v is JSONObject || v == null) continue
-            val s = v.toString().trim()
-            when (FieldAliases.resolve(k)) {
-                Field.NO -> if (no == null) no = s.toIntOrNull()
-                Field.STEM -> if (stem.isEmpty()) stem = s
-                Field.ANSWER -> if (answer.isEmpty()) answer = clean(s)
-                Field.ANALYSIS -> if (analysis.isEmpty()) analysis = s
-                else -> Unit
-            }
-        }
-        return AnswerEntry(no, stem, answer, analysis)
-    }
-
-    // ---------------- TXT ----------------
-
-    /** `1.A` / `1、A` / `第1题 A` / `(1) A` */
-    private val LINE_RE = Regex("""^\s*[(（]?\s*(?:第)?\s*(\d{1,4})\s*(?:题)?\s*[.、．,，:：)）\-—]?\s*(.+?)\s*$""")
-
-    /** 一行多条：`1.A 2.B 3.C` */
-    private val INLINE_RE = Regex(
-        """(?:^|[\s　,，;；、])(\d{1,4})\s*[.、．:：)）]?\s*([A-Ha-h]{1,6}|对|错|正确|错误|√|×|TRUE|FALSE|T|F)(?=\s|$|[.、．,，;；])"""
-    )
-
-    private fun parseTxt(bytes: ByteArray, issues: MutableList<ImportIssue>): List<AnswerEntry> {
-        // 先按「完整题库」试一次：带 `答案：` 前缀的文本走这条路最准
-        val structured = TxtImporter.parse(ByteArrayInputStream(bytes), ArrayList())
-        val answered = structured.questions.filter { it.get(Field.ANSWER).isNotBlank() }
-        if (answered.isNotEmpty() && answered.size * 2 >= structured.questions.size) {
-            return answered.map {
-                AnswerEntry(
-                    no = it.rowNo,
-                    stem = it.get(Field.STEM),
-                    answer = clean(it.get(Field.ANSWER)),
-                    analysis = it.get(Field.ANALYSIS)
-                )
-            }
-        }
-
-        val text = CsvImporter.decode(bytes).replace("\r\n", "\n").replace('\r', '\n')
-        val lines = text.split('\n')
-
-        // 整份文本像「题库」时（长题干行多），只接受严格答案，避免把题干当答案
-        val looksLikeBank = lines.count { it.trim().length > 30 && QUESTION_HEAD.containsMatchIn(it.trim()) } >= 2
-
-        val out = ArrayList<AnswerEntry>()
-        lines.forEachIndexed { idx, raw ->
-            val line = raw.trim()
-            if (line.isEmpty()) return@forEachIndexed
-
-            val m = LINE_RE.matchEntire(line)
-            if (m != null) {
-                val no = m.groupValues[1].toIntOrNull()
-                val ans = clean(m.groupValues[2])
-                if (looksLikeAnswer(ans) || (!looksLikeBank && acceptLoose(ans))) {
-                    out.add(AnswerEntry(no = no, answer = ans))
-                    return@forEachIndexed
-                }
-            }
-
-            // 一行多条
-            var hits = 0
-            INLINE_RE.findAll(line).forEach { mm ->
-                out.add(AnswerEntry(no = mm.groupValues[1].toIntOrNull(), answer = mm.groupValues[2]))
-                hits++
-            }
-            if (hits == 0) {
-                issues.add(
-                    ImportIssue(idx + 1, ImportIssue.Level.WARN, "无法识别这一行：${line.take(20)}")
-                )
-            }
-        }
-        return out
-    }
-
-    private val QUESTION_HEAD = Regex("""^\s*[(（]?\s*\d{1,4}\s*[.、．)）]""")
-
-    /** 答案形态：A / A,C / BCD / 对 / 正确 / T … */
-    private fun looksLikeAnswer(s: String): Boolean {
-        val t = s.trim().uppercase()
-        if (t.isEmpty() || t.length > 30) return false
-        if (t.matches(Regex("^[A-H]((\\s*[,，、/]\\s*|\\s+)?[A-H])*$"))) return true
-        return t in setOf("对", "错", "正确", "错误", "√", "×", "T", "F", "Y", "N", "TRUE", "FALSE")
-    }
-
-    /** 宽松形态：填空题答案这种短词也收，但排除带问号/句号的题干片段 */
-    private fun acceptLoose(s: String): Boolean =
-        s.isNotEmpty() && s.length <= 20 && !s.contains('？') && !s.contains('?') && !s.contains('。')
 
     /** 去掉「答案：」前缀与首尾空白 */
     internal fun clean(s: String?): String =
@@ -355,7 +228,10 @@ object AnswerMatcher {
         val notes: List<String>
     )
 
-    fun match(questions: List<Question>, sheet: AnswerSheet): Result {
+    /**
+     * @param what 匹配提示里的说法（「答案」/「解析」），随导入模式切换
+     */
+    fun match(questions: List<Question>, sheet: AnswerSheet, what: String = "答案"): Result {
         val used = HashSet<Int>()
         val hits = ArrayList<Hit>()
         val notes = ArrayList<String>()
@@ -391,7 +267,7 @@ object AnswerMatcher {
                     hits.add(hit(questions[idx], idx, e))
                     used.add(idx)
                 } else {
-                    notes.add("第 $no 题的答案重复出现，已保留先匹配到的一条")
+                    notes.add("第 $no 题的$what 重复出现，已保留先匹配到的一条")
                 }
             } else {
                 byOrder.add(e)
@@ -416,7 +292,7 @@ object AnswerMatcher {
         }
 
         if (used.size < questions.size) {
-            notes.add("本卷还有 ${questions.size - used.size} 题没有匹配到答案")
+            notes.add("本卷还有 ${questions.size - used.size} 题没有匹配到$what")
         }
         return Result(hits.sortedBy { it.index }, unmatched, notes)
     }
@@ -424,7 +300,8 @@ object AnswerMatcher {
     private fun hit(q: Question, index: Int, e: AnswerEntry) = Hit(
         index = index,
         question = q,
-        answer = Normalizer.normalizeAnswer(e.answer, q.type, q.options),
+        // 解析文件的条目没有答案：保持空串，写入时只更新解析
+        answer = if (e.answer.isBlank()) "" else Normalizer.normalizeAnswer(e.answer, q.type, q.options),
         analysis = e.analysis
     )
 

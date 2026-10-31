@@ -23,7 +23,7 @@ import org.junit.runner.RunWith
  *
  * 覆盖三件事：
  * 1. 缺答案的题库不再被拒绝，按「待补答案」入库；
- * 2. 答案文件（题号表 / 题干表）能与题目正确匹配，并归一化成可判分的形式；
+ * 2. 答案 Excel（题号表 / 题干表）能与题目正确匹配，并归一化成可判分的形式；
  * 3. 补完答案后重判历史记录，得分与正确率按已有作答重算。
  */
 @RunWith(AndroidJUnit4::class)
@@ -32,14 +32,12 @@ class AnswerBackfillTest {
     private val ctx = InstrumentationRegistry.getInstrumentation().targetContext
     private val db = QBankDb(ctx)
 
-    /** 一份没有答案的三题试卷：单选 / 多选 / 判断 */
-    private val noAnswerJson = """
-    [
-      {"type":"单选","stem":"下列说法正确的是","options":{"A":"甲","B":"乙","C":"丙","D":"丁"}},
-      {"type":"多选","stem":"下列属于行政处罚的有","options":{"A":"警告","B":"罚款","C":"拘役","D":"没收"}},
-      {"type":"判断","stem":"行政复议不收费","options":{"A":"正确","B":"错误"}}
-    ]
-    """.trimIndent()
+    /** 一份没有答案的三题试卷：单选 / 多选 / 判断（统一 Excel 格式） */
+    private val noAnswerBank = TestXlsx.bank(
+        TestXlsx.QuestionRow("单选", "下列说法正确的是", listOf("甲", "乙", "丙", "丁")),
+        TestXlsx.QuestionRow("多选", "下列属于行政处罚的有", listOf("警告", "罚款", "拘役", "没收")),
+        TestXlsx.QuestionRow("判断", "行政复议不收费", listOf("正确", "错误"))
+    )
 
     private var bankId = 0L
     private var recordId = 0L
@@ -53,9 +51,12 @@ class AnswerBackfillTest {
         if (bankId > 0) db.deleteBank(bankId)
     }
 
+    private fun importNoAnswerBank() =
+        Importer.build(ImportFormat.XLSX, noAnswerBank).questions
+
     @Test
     fun paper_without_answers_is_importable() {
-        val r = Importer.build(ImportFormat.JSON, noAnswerJson.toByteArray())
+        val r = Importer.build(ImportFormat.XLSX, noAnswerBank)
         assertEquals("三题都应导入", 3, r.imported)
         assertEquals("缺答案只算警告，不算错误", 0, r.errorCount)
         assertTrue("答案应为空", r.questions.all { it.answer.isBlank() })
@@ -63,9 +64,15 @@ class AnswerBackfillTest {
     }
 
     @Test
-    fun answer_txt_matches_by_number() {
-        val questions = Importer.build(ImportFormat.JSON, noAnswerJson.toByteArray()).questions
-        val sheet = AnswerSheetImporter.parse("答案.txt", "1.B\n2.A,C\n3.对\n".toByteArray())
+    fun answer_xlsx_matches_by_number() {
+        val questions = importNoAnswerBank()
+        val sheet = AnswerSheetImporter.parse(
+            "答案.xlsx",
+            TestXlsx.answerSheet(
+                listOf("题号", "答案"),
+                listOf(listOf("1", "B"), listOf("2", "A,C"), listOf("3", "对"))
+            )
+        )
         assertEquals("应解析出三条答案", 3, sheet.entries.size)
 
         val m = AnswerMatcher.match(questions, sheet)
@@ -76,17 +83,20 @@ class AnswerBackfillTest {
     }
 
     @Test
-    fun answer_csv_matches_by_stem_when_order_differs() {
-        val questions = Importer.build(ImportFormat.JSON, noAnswerJson.toByteArray()).questions
+    fun answer_xlsx_matches_by_stem_when_order_differs() {
+        val questions = importNoAnswerBank()
         // 顺序与卷内相反，且不带题号：靠题干匹配
-        val csv = """
-            题干,答案,解析
-            行政复议不收费,正确,行政复议法明确规定不收费
-            下列属于行政处罚的有,"A,B,D",
-            下列说法正确的是,B,乙项符合题意
-        """.trimIndent().replace("\n", "\r\n")
-
-        val sheet = AnswerSheetImporter.parse("答案.csv", csv.toByteArray())
+        val sheet = AnswerSheetImporter.parse(
+            "答案.xlsx",
+            TestXlsx.answerSheet(
+                listOf("题干", "答案", "解析"),
+                listOf(
+                    listOf("行政复议不收费", "正确", "行政复议法明确规定不收费"),
+                    listOf("下列属于行政处罚的有", "A,B,D", ""),
+                    listOf("下列说法正确的是", "B", "乙项符合题意")
+                )
+            )
+        )
         assertEquals("应解析出三条答案", 3, sheet.entries.size)
 
         val m = AnswerMatcher.match(questions, sheet)
@@ -95,6 +105,25 @@ class AnswerBackfillTest {
         assertEquals("第 2 题取到自己的答案", "A,B,D", m.hits[1].answer)
         assertEquals("第 3 题取到自己的答案", "T", m.hits[2].answer)
         assertEquals("解析随答案一起补进来", "乙项符合题意", m.hits[0].analysis)
+    }
+
+    @Test
+    fun analysis_only_xlsx_leaves_answers_alone() {
+        val questions = importNoAnswerBank()
+        // 只有「题号 + 解析」两列：按解析文件导入，答案保持为空
+        val sheet = AnswerSheetImporter.parse(
+            "解析.xlsx",
+            TestXlsx.answerSheet(
+                listOf("题号", "解析"),
+                listOf(listOf("1", "乙项符合题意"), listOf("2", "拘役是刑罚"), listOf("3", "行政复议不收费"))
+            )
+        )
+        assertTrue("应识别为解析文件", sheet.analysisOnly)
+
+        val m = AnswerMatcher.match(questions, sheet)
+        assertEquals(3, m.hits.size)
+        assertTrue("答案不应被写入", m.hits.all { it.answer.isBlank() })
+        assertEquals("解析应取到", "乙项符合题意", m.hits[0].analysis)
     }
 
     @Test
@@ -122,7 +151,7 @@ class AnswerBackfillTest {
 
     @Test
     fun backfill_then_rejudge_uses_existing_answers() {
-        val questions = Importer.build(ImportFormat.JSON, noAnswerJson.toByteArray()).questions
+        val questions = importNoAnswerBank()
         val name = "回归测试卷-${System.currentTimeMillis()}"
         val imported = db.importAsPaper(name, "", "", name, 0, questions)
         bankId = imported.bankId

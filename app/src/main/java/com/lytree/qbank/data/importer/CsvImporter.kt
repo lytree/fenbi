@@ -8,7 +8,9 @@ import java.nio.charset.Charset
  * - 自动识别分隔符（, ; Tab |）
  * - 自动识别编码（UTF-8 / UTF-8-BOM / GBK）
  * - 支持带引号字段、字段内换行、"" 转义
- * - 文件头是 Anki 的 `#separator:` 指令时，转 [AnkiImporter] 处理（Anki 导出没有表头）
+ *
+ * 现在不再作为独立导入格式对外开放——它是 **Excel 导入的内部引擎**
+ * （XlsxReader 读出单元格后，转成表格文本走这里），以及包内候选的表格式解析器。
  */
 object CsvImporter {
 
@@ -17,9 +19,6 @@ object CsvImporter {
     fun parse(input: InputStream, issues: MutableList<ImportIssue>): ImportResult {
         val bytes = input.readBytes()
         val text = decode(bytes)
-
-        // Anki 导出的 TSV 没有表头，列含义靠笔记类型的字段顺序，按表头硬解会全军覆没
-        AnkiImporter.parse(text, issues)?.let { return it }
 
         val delimiter = detectDelimiter(text)
 
@@ -83,7 +82,7 @@ object CsvImporter {
             // 名为"选项"的整列 → 尝试按内联格式拆
             fieldByCol.forEach { (col, field) ->
                 if (field == Field.OPTIONS && col < row.size && row[col].isNotBlank()) {
-                    JsonImporter.parseInlineOptions(raw, row[col])
+                    parseInlineOptions(raw, row[col])
                 }
             }
             raws.add(raw)
@@ -167,5 +166,31 @@ object CsvImporter {
             rows.add(row)
         }
         return rows.filter { r -> r.any { it.isNotBlank() } }
+    }
+
+    /** "A. 文本" -> ("A", "文本")；"A、文本" 同理；无前缀则返回 null */
+    private fun parseInlineOption(s: String): Pair<String, String>? {
+        val t = s.trim()
+        if (t.isEmpty()) return null
+        val m = Regex("^([A-Ha-h])\\s*[.、．:：)）]\\s*(.*)$", RegexOption.DOT_MATCHES_ALL).find(t)
+        if (m != null) return m.groupValues[1].uppercase() to m.groupValues[2].trim()
+        return null
+    }
+
+    /** 解析一整块选项文本，支持换行 / 竖线 / 分号分隔 */
+    private fun parseInlineOptions(raw: RawQuestion, text: String) {
+        val parts = text.split('\n', '|', '；', ';')
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+        for (p in parts) {
+            val parsed = parseInlineOption(p)
+            if (parsed != null) {
+                raw.options[parsed.first] = parsed.second
+            } else {
+                // 无前缀：按出现顺序分配字母
+                val idx = raw.options.size
+                if (idx < 8) raw.options[('A'.code + idx).toChar().toString()] = p
+            }
+        }
     }
 }

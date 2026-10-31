@@ -13,15 +13,15 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * 导入 + 判题的端到端仪器化测试：四种格式都必须解析出全部题目、题型齐全，
- * 且关键题目的答案与判题结果符合预期。
+ * 导入 + 判题的端到端仪器化测试：统一 Excel 格式必须解析出全部题目、题型齐全，
+ * 且关键题目的答案与判题结果符合预期；老格式（json / csv / txt）一律不再解析。
  *
  * 当前版本只支持选择题（单选 / 多选 / 不定项 / 判断），填空与主观题不再进入题库。
  */
 @RunWith(AndroidJUnit4::class)
 class ImportInstrumentedTest {
 
-    /** 示例题库总题数（以 sample/行测基础示例.json 为准） */
+    /** 示例题库总题数（以 app 内置 samples/行测基础示例.xlsx 为准） */
     private val total = 11
 
     private fun asset(name: String): ByteArray {
@@ -29,13 +29,13 @@ class ImportInstrumentedTest {
         return ctx.assets.open(name).use { it.readBytes() }
     }
 
-    private fun importOf(name: String, format: ImportFormat) =
+    private fun importOf(name: String, format: ImportFormat = ImportFormat.XLSX) =
         Importer.build(format, asset(name))
 
     @Test
-    fun json_imports_all_questions_and_types() {
-        val r = importOf("行测基础示例.json", ImportFormat.JSON)
-        assertEquals("JSON 应解析出 $total 题", total, r.imported)
+    fun xlsx_imports_all_questions_and_types() {
+        val r = importOf("行测基础示例.xlsx")
+        assertEquals("XLSX 应解析出 $total 题", total, r.imported)
         assertEquals("不应有错误", 0, r.errorCount)
         val types = r.questions.map { it.type }.toSet()
         assertTrue(
@@ -57,39 +57,8 @@ class ImportInstrumentedTest {
     }
 
     @Test
-    fun csv_imports_all_questions() {
-        val r = importOf("行测基础示例.csv", ImportFormat.CSV)
-        assertEquals("CSV 应解析出 $total 题", total, r.imported)
-        assertEquals("不应有错误", 0, r.errorCount)
-        val q2 = r.questions[1]
-        assertEquals(QuestionType.MULTI, q2.type)
-        assertEquals("A,B,D", q2.answer)
-        assertEquals(4, q2.options.size)
-    }
-
-    @Test
-    fun xlsx_imports_all_questions() {
-        val r = importOf("行测基础示例.xlsx", ImportFormat.XLSX)
-        assertEquals("XLSX 应解析出 $total 题", total, r.imported)
-        assertEquals("不应有错误", 0, r.errorCount)
-        assertEquals(QuestionType.SINGLE, r.questions[0].type)
-        assertEquals("A", r.questions[0].answer)
-    }
-
-    @Test
-    fun txt_imports_all_questions() {
-        val r = importOf("行测基础示例.txt", ImportFormat.TXT)
-        assertEquals("TXT 应解析出 $total 题", total, r.imported)
-        assertEquals("不应有错误", 0, r.errorCount)
-        assertEquals(QuestionType.SINGLE, r.questions[0].type)
-        assertEquals("A", r.questions[0].answer)
-        assertEquals(4, r.questions[0].options.size)
-        assertEquals("宪法·国家机构", r.questions[0].knowledge)
-    }
-
-    @Test
     fun material_with_table_is_parsed() {
-        val r = importOf("行测基础示例.json", ImportFormat.JSON)
+        val r = importOf("行测基础示例.xlsx")
         // 资料分析题：材料应完整保留，且含 Markdown 表格
         val material = r.questions.first { it.material.isNotBlank() }
         assertTrue("材料应包含表格分隔行", material.material.contains("| --- |"))
@@ -98,24 +67,29 @@ class ImportInstrumentedTest {
     }
 
     @Test
-    fun txt_material_is_kept_whole() {
-        val r = importOf("行测基础示例.txt", ImportFormat.TXT)
-        val material = r.questions.first { it.material.isNotBlank() }
-        assertTrue("TXT 材料应包含表格行", material.material.contains("| 序号 |"))
-        assertTrue("TXT 材料应包含分隔行", material.material.contains("| --- |"))
+    fun format_detection_works() {
+        // 普通 Excel 仍是 Excel
+        assertEquals(ImportFormat.XLSX, Importer.detect("a.xlsx", asset("行测基础示例.xlsx")))
+        assertEquals(ImportFormat.XLSX, Importer.detect("a", asset("行测基础示例.xlsx")))
+        // 老格式一律按 Excel 处理（解析时明说只支持 Excel）
+        assertEquals(ImportFormat.XLSX, Importer.detect("a.json", "{}".toByteArray()))
+        assertEquals(ImportFormat.XLSX, Importer.detect("a.csv", "a,b".toByteArray()))
+        assertEquals(ImportFormat.XLSX, Importer.detect("a.txt", "1.A".toByteArray()))
     }
 
     @Test
-    fun format_detection_works() {
-        assertEquals(ImportFormat.JSON, Importer.detect("a.json", asset("行测基础示例.json")))
-        assertEquals(ImportFormat.CSV, Importer.detect("a.csv", asset("行测基础示例.csv")))
-        assertEquals(ImportFormat.XLSX, Importer.detect("a.xlsx", asset("行测基础示例.xlsx")))
-        assertEquals(ImportFormat.TXT, Importer.detect("a.txt", asset("行测基础示例.txt")))
+    fun legacy_formats_fail_loudly() {
+        listOf("题库.json" to "{}", "题库.csv" to "题干,答案", "题库.txt" to "1.A")
+            .forEach { (name, content) ->
+                val r = importOf(name, Importer.detect(name, content.toByteArray()))
+                assertEquals("$name 应导入 0 题", 0, r.imported)
+                assertTrue("$name 应报「只支持 Excel」", r.issues.any { it.message.contains("Excel") })
+            }
     }
 
     @Test
     fun judging_rules_work() {
-        val r = importOf("行测基础示例.json", ImportFormat.JSON)
+        val r = importOf("行测基础示例.xlsx")
         val p = Policy.DEFAULT
 
         val single = r.questions[0]
@@ -146,18 +120,9 @@ class ImportInstrumentedTest {
     @Test
     fun all_imported_questions_are_answerable() {
         // 当前版本只支持选择题：导入结果里不应再有填空/主观题
-        listOf("行测基础示例.json", "行测基础示例.csv", "行测基础示例.xlsx", "行测基础示例.txt")
-            .forEach { name ->
-                val format = ImportFormat.valueOf(
-                    name.substringAfterLast('.').uppercase()
-                )
-                val r = importOf(name, format)
-                r.questions.forEach { q ->
-                    assertTrue(
-                        "$name 中的题目应为选择题，实际=${q.type}",
-                        q.type.answerable
-                    )
-                }
-            }
+        val r = importOf("行测基础示例.xlsx")
+        r.questions.forEach { q ->
+            assertTrue("题目应为选择题，实际=${q.type}", q.type.answerable)
+        }
     }
 }

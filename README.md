@@ -3,8 +3,8 @@
 [![CI](https://github.com/lytree/fenbi/actions/workflows/ci.yml/badge.svg)](https://github.com/lytree/fenbi/actions/workflows/ci.yml)
 [![Release](https://github.com/lytree/fenbi/actions/workflows/release.yml/badge.svg)](https://github.com/lytree/fenbi/actions/workflows/release.yml)
 
-一个可以**导入自己的题库**并刷题的 Android 应用。支持 `JSON` / `CSV` / `Excel(.xlsx)` / `TXT` / `ZIP 题库包`
-五种导入格式，自动探测格式与编码。**一个导入文件就是一份试卷**，导入后直接开练：限时答题、手写标注、查看成绩报告。
+一个可以**导入自己的题库**并刷题的 Android 应用。导入统一只认 **Excel（.xlsx）** 一种格式；
+图片等媒体资源随**题库包（zip：题库.xlsx + images/）**一起导入。**一个导入文件就是一份试卷**，导入后直接开练：限时答题、手写标注、查看成绩报告。
 
 ![导入预览](docs/images/screenshots/01-导入预览.png)
 ![答题页](docs/images/screenshots/02-答题页.png)
@@ -15,13 +15,13 @@
 
 **导入**
 
-* 五种格式：`JSON` / `CSV` / `Excel(.xlsx)` / `TXT` / `ZIP 题库包`，自动探测格式、自动识别编码（UTF-8 / GBK）
+* 统一 Excel：只认 `.xlsx`，表头别名自动识别；不带图的单文件即导即用
 * **从链接导入**：粘贴 `http/https` 下载链接，App 内下载后直接进预览，解析、勾选、建卷与本地文件完全一致（支持跳转与 `Content-Disposition` 文件名）
 * 表头别名自动映射（`题干` / `题目` / `stem` / `question` … 都认），全半角、空格、下划线一并归一
 * 导入校验：逐行规范化 + 错误/警告清单，定位到行号，勾选后再生成试卷
 * **答案可选**：导入时一个开关决定「同时导入答案」还是「只要题目」——题库里那份答案不想要也能直接关掉
 * **答案可后补**：缺答案的题按「待补答案」正常导入，做完再补——**逐题手填**（不用准备文件，支持批量粘贴）或导入一份答案文件，按已有作答直接重判
-* **题库包**：`qbank.json` + `images/` 打成 zip，材料配图随包走，换设备不丢图
+* **题库包**：`题库.xlsx` + `images/` 打成 zip，图片等媒体资源随包走，换设备不丢图
 
 **背诵（词库 / 政治 / 常识）**
 
@@ -101,7 +101,7 @@
 
 ## 三步导入
 
-* **题库导入**：`JSON` / `CSV` / `Excel(.xlsx)` / `TXT` 四种格式，自动探测格式、自动识别编码（UTF-8 / GBK）、表头别名自动映射；也可以「从链接导入」，粘贴下载链接直接下载预览
+* **题库导入**：统一 Excel（.xlsx），表头别名自动映射；带图做成题库包（zip）；也可以「从链接导入」，粘贴下载链接直接下载预览
 * **答案可后补**：试卷常常只有题目没有答案。缺答案的题按「待补答案」正常导入、正常答题，做完之后再补：成绩报告里「补答案 → 逐题补录」直接在 App 里一道道填（支持批量粘贴 `1.A 2.B`），或者导一份答案文件（`题号,答案` 表格或题库答案版），按题号 / 题干自动匹配，**按已有作答直接重判**，不用重做一遍
 * **导入校验**：逐行规范化 + 错误/警告清单（定位到行号），可勾选后再生成试卷
 * **题库管理**：多题库、题目列表、知识点/地区/难度/来源标签
@@ -129,13 +129,17 @@
 
 手边没有现成题库：下载 [templates/](templates/) 里的模板照着填。
 
-| 格式 | 适合 | 模板 |
-|---|---|---|
-| `.xlsx` | 已经在 Excel / WPS 里整理 | [题库模板.xlsx](templates/题库模板.xlsx) |
-| `.csv` | 脚本生成、要 diff | [题库模板.csv](templates/题库模板.csv) |
-| `.json` | 字段最多、程序生成 | [题库模板.json](templates/题库模板.json) |
-| `.txt` | 纸质卷子手打 | [题库模板.txt](templates/题库模板.txt) |
-| `.zip` | 材料带图 | [题库包模板.zip](templates/题库包模板.zip) |
+| 用途 | 模板 |
+|---|---|
+| 填题库（唯一格式） | [题库模板.xlsx](templates/题库模板.xlsx)（内置「使用说明」表） |
+| 材料带图，打包导入 | [题库包模板.zip](templates/题库包模板.zip)（题库.xlsx + images/） |
+| 补答案 | [答案模板.xlsx](templates/答案模板.xlsx) |
+| 单独补解析（不改答案） | [解析模板.xlsx](templates/解析模板.xlsx) |
+
+统一模板的思路：**一张表 17 列，题干必填，其余按需**——`材料` 放大段文本（支持表格 / `:::chart`），
+`图片` 列放题图地址（本地路径 / base64 / 题库包内相对路径，导入时前置到材料顶部），
+`答案`、`解析` 两列都可以整列留空：先导题开练，之后用 [答案模板](templates/答案模板.xlsx) 补答案、
+[解析模板](templates/解析模板.xlsx) 单独补解析（不动答案），做完按已有作答重判。
 
 ---
 
@@ -145,8 +149,8 @@
 |---|---|
 | [docs/README](docs/README.md) | 文档索引与三条阅读路径 |
 | [01 快速开始](docs/01-快速开始.md) | 安装、导入、答题、交卷、看成绩 |
-| [02 题库格式规范](docs/02-题库格式规范.md) | 字段别名、题型、答案写法、四种格式写法、材料/图片/图表、校验提示对照 |
-| [03 题库包](docs/03-题库包.md) | zip 结构、主数据命名、图片相对路径、打包 |
+| [02 题库格式规范](docs/02-题库格式规范.md) | 字段别名、题型、答案写法、Excel 写法、材料/图片/图表、校验提示对照 |
+| [03 题库包](docs/03-题库包.md) | zip 结构（题库.xlsx + images/）、图片相对路径、打包 |
 | [04 答案后补](docs/04-答案后补.md) | 先导入没答案的卷子，做完再补答案重判 |
 | [05 界面与交互](docs/05-界面与交互.md) | 版式令牌、答题页、夜间、遮盖层写画、分屏 |
 | [06 构建与测试](docs/06-构建与测试.md) | JDK/SDK、打包命令、仪器测试用例 |
@@ -160,16 +164,16 @@
 ```
 app/            Android 工程（Kotlin + 原生 View + ViewBinding）
 docs/           文档与配图（images/）
-sample/         有内容的完整示例（11 题四种同源格式、资料分析题库包）
+sample/         有内容的完整示例（行测 11 题、资料分析示例与题库包）
 templates/      可直接导入的空模板 + 生成脚本
+tools/          示例资产生成脚本
 ```
 
-`sample/` 与 `templates/` 都由一份 JSON 单一数据源生成：
+示例与模板都由 JSON 数据源生成（产物统一为 xlsx / zip）：
 
 ```bash
-node sample/make_xlsx.js        # 改 sample/行测基础示例.json 后重跑，生成 csv / txt / xlsx
-node templates/make_templates.js # 重新生成模板并回读校验
-python sample/make_package.py   # 生成题库包目录与 zip
+node tools/make_samples.js        # 重新生成 app 内置示例（samples/ 行测基础示例.xlsx 等）
+node templates/make_templates.js  # 重新生成模板并回读校验
 ```
 
 ---

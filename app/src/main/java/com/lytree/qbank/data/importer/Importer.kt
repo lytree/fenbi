@@ -5,17 +5,11 @@ import com.lytree.qbank.data.model.Question
 import java.io.ByteArrayInputStream
 import java.io.File
 
-/** 支持的题库文件格式 */
+/** 支持的题库文件格式：统一只认 Excel；图片等媒体资源放 zip 包里随 Excel 一起导入 */
 enum class ImportFormat(val ext: String, val label: String, val mime: String) {
-    JSON("json", "JSON", "application/json"),
-    CSV("csv", "CSV", "text/csv"),
     XLSX("xlsx", "Excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
-    TXT("txt", "TXT", "text/plain"),
 
-    /** 制表符分隔：Anki 导出的纯文本走这里（`.tsv` 或带 `#separator:` 头的 `.txt`） */
-    TSV("tsv", "TSV / Anki", "text/tab-separated-values"),
-
-    /** 题库包：zip 里放主数据 + images 素材目录 */
+    /** 题库包：zip 里放 题库.xlsx + images/ 等媒体文件 */
     ZIP("zip", "题库包", "application/zip");
 
     companion object {
@@ -30,70 +24,28 @@ enum class ImportFormat(val ext: String, val label: String, val mime: String) {
  * 导入调度：格式探测 + 分发 + 规范化 + 校验。
  *
  * 三条贯穿全程的原则（借自 Anki 导入器的实用做法）：
- * 1. **按结果取舍，不按文件名取舍**：题库包里有几份数据文件就都试一遍，谁真能解析出题用谁；
+ * 1. **按结果取舍，不按文件名取舍**：题库包里有几份 Excel 就都试一遍，谁真能解析出题用谁；
  * 2. **先报数再入库**：去重、跳过、警告都在预览页一次说清，别让用户点完「导入」才发现少了一半；
- * 3. **宽容解析**：编码、分隔符、表头别名、图片路径写法、答案写法都尽量认，认不出来才报错。
+ * 3. **宽容解析**：表头别名、图片路径写法、答案写法都尽量认，认不出来才报错。
  */
 object Importer {
 
-    /** 根据文件名与内容探测格式 */
+    /** 根据文件名与内容探测格式：zip 壳里认得出题库包就是 ZIP，其余一律按 Excel 走解析（失败时报「只支持 Excel」） */
     fun detect(fileName: String, bytes: ByteArray): ImportFormat {
-        val byExt = ImportFormat.of(fileName)
-
         val head = bytes.take(4)
-        // PK\x03\x04 → zip：里面是题库包（有数据文件）还是 Excel（有 xl/workbook.xml）
+        // PK\x03\x04 → zip：里面是题库包（有 Excel 数据文件）还是普通 Excel
         if (head.size >= 4 && head[0] == 0x50.toByte() && head[1] == 0x4B.toByte() &&
             head[2] == 0x03.toByte() && head[3] == 0x04.toByte()
         ) {
             return if (QbankPackage.looksLikePackage(bytes)) ImportFormat.ZIP else ImportFormat.XLSX
         }
-        val text = headText(bytes).trimStart('\uFEFF', ' ', '\t', '\n', '\r')
-        // Anki 导出可能是 .tsv 也可能是老版本的 .txt，靠文件头的 # 指令认
-        if (AnkiImporter.looksLikeAnki(text)) return ImportFormat.TSV
-        // json / csv / xlsx / tsv 这类明确扩展名直接信；`.txt` 最含糊，让内容说了算
-        if (byExt != null && byExt != ImportFormat.TXT) return byExt
-        if (text.startsWith("{") || text.startsWith("[")) return ImportFormat.JSON
-        // 出现列分隔且有中文表头特征 → CSV
-        if (text.contains(',') && Regex("(?m)^.*(题干|题目|答案).*$").containsMatchIn(text)) {
-            return ImportFormat.CSV
-        }
-        return ImportFormat.TXT
-    }
-
-    /**
-     * 取文件头做格式嗅探。
-     *
-     * 只读前 64 KB —— 格式特征都在开头，没必要为探测把整份文件解一遍。
-     * 截断可能切在多字节字符中间，所以先严格按 UTF-8 试，失败就回退最多 3 个字节再试，
-     * 全不行才按 GBK 解（Windows 导出的老文件多是 GBK）。
-     */
-    private fun headText(bytes: ByteArray): String {
-        val n = minOf(bytes.size, 64 * 1024)
-        if (n == 0) return ""
-        val head = bytes.copyOf(n)
-        for (cut in 0..3) {
-            val len = n - cut
-            if (len <= 0) break
-            try {
-                val cs = Charsets.UTF_8.newDecoder()
-                    .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
-                return cs.decode(java.nio.ByteBuffer.wrap(head, 0, len)).toString()
-            } catch (_: Exception) {
-                // 可能是末尾截断，缩一个字节再试
-            }
-        }
-        return runCatching { String(head, java.nio.charset.Charset.forName("GBK")) }
-            .getOrDefault(String(head, Charsets.UTF_8))
+        return ImportFormat.XLSX
     }
 
     fun parse(format: ImportFormat, bytes: ByteArray): ImportResult {
         val issues = ArrayList<ImportIssue>()
         val raw = when (format) {
-            ImportFormat.JSON -> JsonImporter.parse(ByteArrayInputStream(bytes), issues)
-            ImportFormat.CSV, ImportFormat.TSV -> CsvImporter.parse(ByteArrayInputStream(bytes), issues)
             ImportFormat.XLSX -> parseXlsx(bytes, issues)
-            ImportFormat.TXT -> TxtImporter.parse(ByteArrayInputStream(bytes), issues)
             ImportFormat.ZIP -> {
                 // 题库包必须先解压（见 build），走到这里说明调用方漏传了解压目录
                 issues.add(
@@ -123,7 +75,7 @@ object Importer {
                 r.copy(format = "XLSX")
             }
         } catch (e: Exception) {
-            issues.add(ImportIssue(0, ImportIssue.Level.ERROR, "Excel 解析失败：${e.message}"))
+            issues.add(ImportIssue(0, ImportIssue.Level.ERROR, "只支持 Excel（.xlsx）文件：${e.message}"))
             ImportResult(emptyList(), issues, "XLSX", 0)
         }
     }

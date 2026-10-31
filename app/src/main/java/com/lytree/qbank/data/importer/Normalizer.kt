@@ -11,6 +11,8 @@ object Field {
     const val NO = "no"
     const val STEM = "stem"
     const val MATERIAL = "material"
+    /** 题图 / 配图列：一个或多个图片地址，导入时转成 Markdown 图片并前置到材料 */
+    const val IMAGES = "images"
     const val OPTIONS = "options"
     const val ANSWER = "answer"
     const val ANALYSIS = "analysis"
@@ -44,6 +46,10 @@ object FieldAliases {
         ),
         Field.MATERIAL to setOf(
             "材料", "材料内容", "背景", "背景材料", "资料", "material", "passage", "context", "stem2"
+        ),
+        Field.IMAGES to setOf(
+            "图片", "图片地址", "配图", "插图", "题图", "图", "image", "images", "img",
+            "pic", "picture", "figure", "photo"
         ),
         Field.OPTIONS to setOf(
             "选项", "选项列表", "options", "choices", "optionlist"
@@ -283,7 +289,7 @@ object Normalizer {
         return Question(
             type = effectiveType,
             stem = stem,
-            material = raw.get(Field.MATERIAL),
+            material = mergeImages(raw.get(Field.MATERIAL), raw.get(Field.IMAGES)),
             options = options,
             answer = answer,
             analysis = raw.get(Field.ANALYSIS),
@@ -303,6 +309,27 @@ object Normalizer {
         QuestionType.MULTI, QuestionType.UNCERTAIN -> 2.0
         QuestionType.FILL -> 1.0
         QuestionType.SUBJECTIVE -> 10.0
+    }
+
+    /**
+     * 把「图片」列的内容转成 Markdown 图片引用，**前置**到材料前面（无材料则整段作为材料）。
+     *
+     * 图片列支持一个或多个地址（换行 / 竖线 / 分号分隔），兼容五类来源（与材料内嵌图片一致）：
+     * 本地路径、`file://`、`content://`、题库包内相对路径（`images/x.png`，由导入链路统一改写）、
+     * `data:image/...;base64`。已经是 `![..](..)` / `<img` / `[..](..)` 写法的原样保留。
+     */
+    fun mergeImages(material: String, images: String): String {
+        val refs = images.split('\n', '|', '；', ';')
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+        if (refs.isEmpty()) return material
+        val md = refs.mapIndexed { i, s ->
+            when {
+                s.startsWith("![") || s.startsWith("<img") || s.startsWith("[") -> s
+                else -> "![题图${if (refs.size > 1) i + 1 else ""}]($s)"
+            }
+        }
+        return (md + listOf(material)).filter { it.isNotBlank() }.joinToString("\n\n")
     }
 
     private fun parseDifficulty(s: String): Int {

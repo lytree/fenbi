@@ -1,49 +1,46 @@
 package com.lytree.qbank.data.importer
 
-import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.util.zip.ZipInputStream
 
 /**
- * 题库包（zip）。
+ * 题库包（zip）：**题库 Excel + 媒体文件**。
  *
  * 标准目录结构：
  * ```
  * 资料分析题库包.zip
  * └── 资料分析题库包/
- *     ├── qbank.json          # 题库主数据
- *     ├── images/             # 可选：材料配图
+ *     ├── 题库.xlsx            # 题库主数据（统一 Excel 模板）
+ *     ├── images/              # 图片等媒体资源
  *     │   └── chart-01.png
- *     └── README.txt          # 可选：说明（不会导入）
+ *     └── README.txt           # 可选：说明（不会导入）
  * ```
  *
  * 规则：
- * 1. **主数据不再靠文件名钦定**：包根目录（或一层子目录）下所有数据文件（json / csv / tsv / xlsx）
- *    都作为候选收下来，交给 [Importer] 逐个试解析，最后按「真正能导入多少题」择优。
- *    现实里的包经常同时带好几份数据——`questions.json` 是 PDF 坐标、`anki_import.tsv` 才是题目——
- *    按名字取舍必然踩雷，按结果取舍才稳。
- * 2. 允许整个包多包一层目录（压缩软件默认行为），这层目录会被剥掉；
- * 3. 图片在题库里写**相对路径**（`images/chart-01.png`）或**纯文件名**（Anki 卡片的 `src="x.png"`），
+ * 1. **主数据不再靠文件名钦定**：包根目录（或一层子目录）下所有 xlsx 都作为候选收下来，
+ *    交给 [Importer] 逐个试解析，最后按「真正能导入多少题」择优。
+ * 2. 允许整个包多包一层目录（压缩软件默认行为），这层目录会被剥掉；题库名取这层目录名；
+ * 3. 图片在题库里写**相对路径**（`images/chart-01.png`）或**纯文件名**（`src="x.png"`），
  *    导入时解压到应用私有目录并替换成绝对路径，之后换手机、清缓存都不影响已有题目；
  * 4. 解压只取普通文件，`..`、绝对路径、`__MACOSX/` 这类条目一律跳过；
  * 5. 素材**边读边写**，不在内存里攒，避免几百张图的包把低端机顶到 OOM。
  */
 object QbankPackage {
 
-    /** 主数据文件名，按优先级排列（内容探测不可用时才用得上） */
-    private val MAIN_NAMES = listOf("qbank.json", "questions.json", "bank.json", "题库.json")
+    /** 主数据文件名，按优先级排列（同包多份 xlsx 时先试标准命名的） */
+    private val MAIN_NAMES = listOf("题库.xlsx", "qbank.xlsx", "questions.xlsx", "bank.xlsx")
 
     /** 不是数据的文件：不参与候选推断 */
     private val META_NAMES = setOf(
         "manifest.json", "readme.txt", "readme.md", "说明.txt", "说明.md"
     )
 
-    /** 候选主数据只认这几种扩展名（txt 容易和说明文件混淆，Anki 的 `.txt` 导出需改名成 `.tsv`） */
-    private val DATA_EXTS = setOf("json", "csv", "tsv", "xlsx")
+    /** 候选主数据只认 xlsx：统一 Excel 格式，其他文件都是媒体资源 */
+    private val DATA_EXTS = setOf("xlsx")
 
-    /** 候选优先级：同名优先级之后再按这个排，结构化数据优先试 */
-    private val EXT_ORDER = listOf("json", "csv", "tsv", "xlsx")
+    /** 候选优先级：同名优先级之后再按这个排 */
+    private val EXT_ORDER = listOf("xlsx")
 
     /** 最多留几个候选：正常包不会超过两三份，多的是垃圾文件 */
     private const val MAX_CANDIDATES = 6
@@ -101,8 +98,7 @@ object QbankPackage {
         val candidatePaths = candidateNames(names)
         if (candidatePaths.isEmpty()) {
             throw IllegalArgumentException(
-                "压缩包里没有找到题库文件（json / csv / tsv / xlsx），" +
-                    "请把主数据命名为 qbank.json 放在包根目录"
+                "压缩包里没有找到题库 Excel（.xlsx），请把「题库.xlsx」放在包根目录（或只包一层文件夹）"
             )
         }
         val candidateSet = candidatePaths.toHashSet()
@@ -153,10 +149,11 @@ object QbankPackage {
             throw IllegalArgumentException("主数据文件为空或超过 ${MAX_CANDIDATE_BYTES / 1024 / 1024} MB")
         }
 
-        val meta = readMeta(candidates.first())
+        // 题库名取包根目录名（压缩软件多包的那层），没有外层目录就留空交给文件名兜底
+        val name = root.substringAfterLast('/').trim()
         return Pack(
-            name = meta.first,
-            description = meta.second,
+            name = name,
+            description = "",
             candidates = candidates,
             assets = assets
         )
@@ -211,32 +208,6 @@ object QbankPackage {
         val safe = label.replace(Regex("[^\\w\\u4e00-\\u9fa5.-]"), "_").take(40)
         val crc = java.util.zip.CRC32().apply { update(bytes) }.value
         return "%s-%08x".format(safe, crc)
-    }
-
-    /**
-     * 读题库名与说明：JSON 取 `bank` / `name` / `description`，
-     * 纯文本（Anki 导出）取 `#deck:` 指令——导出时填的牌组名就是最合适的试卷名。
-     */
-    private fun readMeta(candidate: Candidate): Pair<String, String> {
-        val text = runCatching { CsvImporter.decode(candidate.bytes).trimStart() }.getOrNull()
-            ?: return "" to ""
-        if (!text.startsWith("{")) {
-            val deck = text.lineSequence().take(12)
-                .firstOrNull { it.trimStart().startsWith("#deck:", ignoreCase = true) }
-                ?.substringAfter(':')?.trim()
-                .orEmpty()
-            return deck to ""
-        }
-        return runCatching {
-            val o = JSONObject(text)
-            val name = listOf("bank", "name", "title", "名称", "题库")
-                .firstNotNullOfOrNull { k -> o.optString(k).trim().takeIf { it.isNotEmpty() } }
-                .orEmpty()
-            val desc = listOf("description", "desc", "说明")
-                .firstNotNullOfOrNull { k -> o.optString(k).trim().takeIf { it.isNotEmpty() } }
-                .orEmpty()
-            name to desc
-        }.getOrDefault("" to "")
     }
 
     /**

@@ -327,39 +327,19 @@ class ExamActivity : AppCompatActivity() {
     }
 
     /**
-     * 顶栏「下载」：把当前试卷导出成 JSON 到应用外部目录（Download/qbank/）。
-     * 对应参考应用顶栏的下载图标，让题目可以离线带走 / 再导入。
+     * 顶栏「下载」：把当前试卷导出成 Excel（.xlsx）到应用外部目录（Android/data/.../files/paper/）。
+     * 表头与统一模板一致，导出的文件可以直接再导入（下载 → 换手机 → 再导入的闭环）。
      */
     private fun exportPaper() {
         try {
             val paper = db.getPaper(intent.getLongExtra(EXTRA_PAPER_ID, 0L)) ?: return
-            val json = buildString {
-                append("[\n")
-                paper.questions.forEachIndexed { i, q ->
-                    if (i > 0) append(",\n")
-                    append("  {")
-                    append("\"type\":\"").append(q.type.name).append("\",")
-                    append("\"stem\":").append(org.json.JSONObject.quote(q.stem)).append(",")
-                    append("\"options\":[")
-                    q.options.forEachIndexed { j, o ->
-                        if (j > 0) append(",")
-                        append("{\"key\":").append(org.json.JSONObject.quote(o.key))
-                        append(",\"text\":").append(org.json.JSONObject.quote(o.text)).append("}")
-                    }
-                    append("],")
-                    append("\"answer\":").append(org.json.JSONObject.quote(q.displayAnswer())).append(",")
-                    append("\"analysis\":").append(org.json.JSONObject.quote(q.analysis))
-                    append("}")
-                }
-                append("\n]\n")
-            }
             val dir = java.io.File(
                 getExternalFilesDir(null) ?: filesDir, "paper"
             ).apply { mkdirs() }
             val name = (intent.getStringExtra(EXTRA_PAPER_NAME) ?: "试卷")
                 .replace(Regex("[\\\\/:*?\"<>|]"), "_")
-            val f = java.io.File(dir, "$name.json")
-            f.writeText(json, Charsets.UTF_8)
+            val f = java.io.File(dir, "$name.xlsx")
+            com.lytree.qbank.data.importer.XlsxWriter.writeToFile(paper.questions, f)
             android.widget.Toast.makeText(
                 this, "已导出：${f.absolutePath}", android.widget.Toast.LENGTH_LONG
             ).show()

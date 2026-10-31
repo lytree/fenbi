@@ -1,12 +1,8 @@
-资料分析题库包 · 标准结构示例
+资料分析题库包（示例）
 
-目录：
-  qbank.json          题库主数据（必需，也可叫 questions.json / bank.json）
-  images/             材料配图目录（可选，名字随意，只要和 qbank.json 里引用的相对路径一致）
-  README.txt          说明文件（可选，不会导入）
+结构：
+  题库.xlsx                    题库主数据（统一 Excel 模板，材料里引用 images/资料分析折线图.png）
+  images/资料分析折线图.png    材料配图
+  README.txt                   这个文件，不参与导入（也可以删）
 
-材料里引用图片写相对路径：
-  ![图注](images/chart-01.png)
-导入后 App 会把包解压到应用私有目录，并把相对路径换成本机绝对路径。
-
-打包：把整个「资料分析题库包」文件夹压缩为 zip 即可，外层文件夹会被自动剥掉。
+App 导入页「载入示例题库」用的就是这个包的打包版（app/src/main/assets/samples/）。
