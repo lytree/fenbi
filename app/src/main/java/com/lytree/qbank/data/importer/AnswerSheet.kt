@@ -49,7 +49,8 @@ object AnswerSheetImporter {
         val issues = ArrayList<ImportIssue>()
         val entries = when (format) {
             ImportFormat.JSON -> parseJson(bytes, issues)
-            ImportFormat.CSV -> {
+            // TSV 也是表格：分隔符由 detectDelimiter 认（Tab 在候选里），与 CSV 同一条路
+            ImportFormat.CSV, ImportFormat.TSV -> {
                 val text = CsvImporter.decode(bytes)
                 parseTable(CsvImporter.parseTable(text, CsvImporter.detectDelimiter(text)), issues)
             }

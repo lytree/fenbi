@@ -219,6 +219,33 @@
                     android:visibility="gone" />
             </LinearLayout>
         </androidx.core.widget.NestedScrollView>
+
+        <!--
+          解析遮罩：题库包要解压几百张图再逐题解析，普通文件也要读几 MB 文本。
+          这活儿放在 IO 线程做，期间挡住交互，避免连点选择按钮起重复任务。
+        -->
+        <LinearLayout
+            android:id="@+id/loadingPanel"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@color/fb_page_bg"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <ProgressBar
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:indeterminateTint="@color/fb_primary" />
+
+            <TextView
+                android:id="@+id/tvLoading"
+                style="@style/FbBodySm"
+                android:layout_marginTop="@dimen/fb_space_12"
+                android:text="正在解析…" />
+        </LinearLayout>
     </FrameLayout>
 
     <View

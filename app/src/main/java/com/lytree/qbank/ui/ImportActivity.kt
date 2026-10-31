@@ -66,12 +66,20 @@ class ImportActivity : AppCompatActivity() {
     private var outcomeTotal: Int = 0
     private var outcomeWarn: Int = 0
     private var outcomeError: Int = 0
+    /** 批次内判定为重复而跳过的题数 */
+    private var outcomeDuplicated: Int = 0
 
     /** 是否把答案一起导入（关掉 = 只导题目，做完在成绩报告里补录） */
     private var importAnswers = true
 
     /** 链接下载任务：弹窗关掉时一起取消，避免下载完还闯进预览页 */
     private var downloadJob: Job? = null
+
+    /** 解析任务：换文件 / 退出页面时取消，避免旧结果覆盖新预览 */
+    private var parseJob: Job? = null
+
+    /** 上一次自动填的试卷名：用户没改过才跟着新文件变，改过就尊重用户的输入 */
+    private var lastAutoName: String = ""
 
     private val picker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) loadFile(uri)
@@ -216,8 +224,7 @@ class ImportActivity : AppCompatActivity() {
     private fun applyDownloaded(result: UrlDownloader.Result) {
         format = Importer.detect(result.fileName, result.bytes)
         fileName = ensureExtension(result.fileName, format)
-        bytes = result.bytes
-        applyParsed(Importer.build(format, bytes, pkgDir = pkgDir))
+        parseAsync("正在解析「$fileName」…") { fileName to result.bytes }
     }
 
     /** 链接常以 download?id=1 结尾、拿不到扩展名，按内容探测结果补一个，卷名才好取 */
@@ -243,18 +250,13 @@ class ImportActivity : AppCompatActivity() {
     }
 
     private fun loadSample(name: String) {
-        try {
-            bytes = assets.open("samples/$name").use { it.readBytes() }
+        val data = try {
+            assets.open("samples/$name").use { it.readBytes() }
         } catch (e: Exception) {
             toast("示例文件读取失败：${e.message}")
             return
         }
-        fileName = name
-        format = Importer.detect(fileName, bytes)
-        applyParsed(Importer.build(format, bytes, pkgDir = pkgDir))
-        if (format != ImportFormat.ZIP) {
-            binding.inputName.setText(name.substringBeforeLast('.'))
-        }
+        parseAsync("正在解析「$name」…") { name to data }
     }
 
     private fun applyParsed(outcome: com.lytree.qbank.data.importer.ImportOutcome) {
@@ -264,6 +266,7 @@ class ImportActivity : AppCompatActivity() {
         outcomeTotal = outcome.total
         outcomeWarn = outcome.warnCount
         outcomeError = outcome.errorCount
+        outcomeDuplicated = outcome.duplicateSkipped
 
         if (rawParsed.isEmpty()) {
             toast("没有解析出任何题目，请检查文件格式")
@@ -275,10 +278,12 @@ class ImportActivity : AppCompatActivity() {
         binding.bottomBar.visibility = View.VISIBLE
         binding.bottomDivider.visibility = View.VISIBLE
         binding.tvFile.text = fileName
-        if (binding.inputName.text.isNullOrBlank()) {
-            binding.inputName.setText(
-                outcome.suggestedName ?: fileName.substringBeforeLast('.')
-            )
+        // 卷名跟着文件走，但用户手动改过就不再覆盖
+        val autoName = outcome.suggestedName ?: fileName.substringBeforeLast('.')
+        val current = binding.inputName.text?.toString()?.trim().orEmpty()
+        if (current.isEmpty() || current == lastAutoName) {
+            binding.inputName.setText(autoName)
+            lastAutoName = autoName
         }
         refreshPreview(keepSelection = false)
 
@@ -305,6 +310,7 @@ class ImportActivity : AppCompatActivity() {
             append("格式：$outcomeFormat")
             append("　总行数：$outcomeTotal")
             append("　可导入：${parsed.size}")
+            if (outcomeDuplicated > 0) append("　重复跳过：$outcomeDuplicated")
             if (importAnswers) {
                 if (missing > 0) append("　缺答案：$missing")
             } else {
@@ -316,20 +322,72 @@ class ImportActivity : AppCompatActivity() {
         qAdapter.submit(parsed, keepSelection)
     }
 
+    /**
+     * 读文件 + 解析全在后台线程做。
+     *
+     * 题库包要解压几百张图、再把主数据逐份试解析，主线程做完必然卡白屏（甚至 ANR）；
+     * 普通文件也可能几 MB。这里统一走 [parseAsync]，期间用遮罩挡住交互。
+     */
     private fun loadFile(uri: Uri) {
-        try {
-            contentResolver.openInputStream(uri)?.use { input ->
-                val bos = ByteArrayOutputStream()
-                input.copyTo(bos)
-                bytes = bos.toByteArray()
-            } ?: return toast("无法读取所选文件")
+        val name = displayName(uri)
+        parseAsync("正在读取「$name」…") { readBytes(uri)?.let { name to it } }
+    }
 
-            fileName = displayName(uri)
-            format = Importer.detect(fileName, bytes)
-            applyParsed(Importer.build(format, bytes, pkgDir = pkgDir))
-        } catch (e: Exception) {
-            toast("解析失败：${e.message}")
+    private fun readBytes(uri: Uri): ByteArray? =
+        contentResolver.openInputStream(uri)?.use { input ->
+            val bos = ByteArrayOutputStream()
+            input.copyTo(bos)
+            bos.toByteArray()
         }
+
+    /**
+     * 后台读字节 → 探测格式 → 解析 → 刷新预览。
+     *
+     * 同一个 `parseJob` 统一管：新任务取消旧任务，避免用户连点选择时旧结果盖掉新预览。
+     *
+     * @param load 在 IO 线程执行，返回「文件名 + 字节」；返回 null 表示读取失败
+     */
+    private fun parseAsync(loadingText: String, load: () -> Pair<String, ByteArray>?) {
+        parseJob?.cancel()
+        showLoading(loadingText)
+        parseJob = lifecycleScope.launch {
+            try {
+                val loaded = withContext(Dispatchers.IO) { load() }
+                if (loaded == null) {
+                    hideLoading()
+                    toast("无法读取所选文件")
+                    return@launch
+                }
+                val (name, data) = loaded
+                val fmt = withContext(Dispatchers.Default) { Importer.detect(name, data) }
+                binding.tvLoading.text = "正在解析「$name」…"
+                val outcome = withContext(Dispatchers.IO) { Importer.build(fmt, data, pkgDir = pkgDir) }
+                fileName = name
+                bytes = data
+                format = fmt
+                hideLoading()
+                applyParsed(outcome)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                hideLoading()
+                toast("解析失败：${e.message}")
+            }
+        }
+    }
+
+    private fun showLoading(text: String) {
+        if (isFinishing || isDestroyed) return
+        binding.tvLoading.text = text
+        binding.loadingPanel.visibility = View.VISIBLE
+        // 遮罩只盖内容区，底部主按钮露在外面：解析期间禁掉，避免把上一份的预览导进去
+        binding.btnImport.isEnabled = false
+    }
+
+    private fun hideLoading() {
+        if (isFinishing || isDestroyed) return
+        binding.loadingPanel.visibility = View.GONE
+        binding.btnImport.isEnabled = true
     }
 
     /**
@@ -366,22 +424,36 @@ class ImportActivity : AppCompatActivity() {
         durationMin: Int,
         replace: Boolean
     ) {
-        // 覆盖导入：把同名的旧卷子/旧题库全部清掉，保证「一个文件 = 一份试卷」
-        if (replace) {
-            db.listPapers().filter { it.name == name }.forEach { db.deletePaper(it.id) }
-            db.listBanks().filter { it.name == name }.forEach { db.deleteBank(it.id) }
+        // 写库也在后台做：几百题 + 覆盖导入要删旧卷，主线程写会让页面僵住
+        showLoading("正在写入题库…")
+        lifecycleScope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    // 覆盖导入：把同名的旧卷子/旧题库全部清掉，保证「一个文件 = 一份试卷」
+                    if (replace) {
+                        db.listPapers().filter { it.name == name }.forEach { db.deletePaper(it.id) }
+                        db.listBanks().filter { it.name == name }.forEach { db.deleteBank(it.id) }
+                    }
+                    db.importAsPaper(
+                        bankName = name,
+                        description = "导入自 $fileName",
+                        subject = "",
+                        paperName = name,
+                        durationMin = durationMin,
+                        questions = questions
+                    )
+                }
+                hideLoading()
+                toast("已生成试卷「${result.paperName}」，共 ${result.questionCount} 题")
+                setResult(Activity.RESULT_OK)
+                finish()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                hideLoading()
+                toast("导入失败：${e.message}")
+            }
         }
-        val result = db.importAsPaper(
-            bankName = name,
-            description = "导入自 $fileName",
-            subject = "",
-            paperName = name,
-            durationMin = durationMin,
-            questions = questions
-        )
-        toast("已生成试卷「${result.paperName}」，共 ${result.questionCount} 题")
-        setResult(Activity.RESULT_OK)
-        finish()
     }
 
     private fun displayName(uri: Uri): String {

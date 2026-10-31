@@ -120,6 +120,9 @@ dependencies {
     // 调 PROPFIND 会直接抛 ProtocolException，所以这里破例引一个 OkHttp。
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
+    // 纯文本格式（CSV / TSV / Anki / TXT）的解析逻辑不碰 Android API，用 JVM 单元测试跑最快
+    testImplementation("junit:junit:4.13.2")
+
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test:rules:1.6.1")

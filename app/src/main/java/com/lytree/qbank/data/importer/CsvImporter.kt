@@ -8,6 +8,7 @@ import java.nio.charset.Charset
  * - 自动识别分隔符（, ; Tab |）
  * - 自动识别编码（UTF-8 / UTF-8-BOM / GBK）
  * - 支持带引号字段、字段内换行、"" 转义
+ * - 文件头是 Anki 的 `#separator:` 指令时，转 [AnkiImporter] 处理（Anki 导出没有表头）
  */
 object CsvImporter {
 
@@ -16,6 +17,10 @@ object CsvImporter {
     fun parse(input: InputStream, issues: MutableList<ImportIssue>): ImportResult {
         val bytes = input.readBytes()
         val text = decode(bytes)
+
+        // Anki 导出的 TSV 没有表头，列含义靠笔记类型的字段顺序，按表头硬解会全军覆没
+        AnkiImporter.parse(text, issues)?.let { return it }
+
         val delimiter = detectDelimiter(text)
 
         val table = parseTable(text, delimiter)
@@ -40,15 +45,31 @@ object CsvImporter {
             if (f != null && !fieldByCol.containsValue(f)) fieldByCol[i] = f
         }
 
+        // 表头认不出来时按内容形状兜底：没有表头的导出（爬虫、PDF 转表、手工整理）也能进
+        var dataStart = 1
         if (!fieldByCol.containsValue(Field.STEM)) {
+            val layout = ColumnSniffer.detect(table)
+            if (layout == null) {
+                issues.add(
+                    ImportIssue(1, ImportIssue.Level.ERROR, "未找到「题干/题目/stem」列，无法识别表头")
+                )
+                return ImportResult(emptyList(), issues, "CSV", table.size)
+            }
+            fieldByCol.clear()
+            fieldByCol.putAll(layout.fields)
+            optionByCol.clear()
+            optionByCol.putAll(layout.options)
+            dataStart = layout.dataStart
             issues.add(
-                ImportIssue(1, ImportIssue.Level.ERROR, "未找到「题干/题目/stem」列，无法识别表头")
+                ImportIssue(
+                    1, ImportIssue.Level.WARN,
+                    "没有表头，已按内容推断列含义：${layout.describe()}。请核对下面的预览，不对就补上表头再导入"
+                )
             )
-            return ImportResult(emptyList(), issues, "CSV", table.size)
         }
 
         val raws = ArrayList<RawQuestion>()
-        for (r in 1 until table.size) {
+        for (r in dataStart until table.size) {
             val row = table[r]
             if (row.all { it.isBlank() }) continue
             val rowNo = r + 1
@@ -67,7 +88,7 @@ object CsvImporter {
             }
             raws.add(raw)
         }
-        return ImportResult(raws, issues, "CSV", table.size - 1)
+        return ImportResult(raws, issues, "CSV", table.size - dataStart)
     }
 
     /** 编码识别：优先 UTF-8 BOM，其次严格 UTF-8 校验，失败回落 GBK */
