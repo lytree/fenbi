@@ -5,30 +5,36 @@ import com.lytree.qbank.data.db.QBankDb
 import com.lytree.qbank.data.model.ReciteCard
 import com.lytree.qbank.data.model.ReciteCatalog
 import com.lytree.qbank.data.model.ReciteCategory
+import com.lytree.qbank.data.model.ReciteSubject
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.concurrent.ConcurrentHashMap
 
 /**
- * 考点背诵数据。正文与分类随 App 内置在 assets/recite_politics.json，
- * 掌握状态 / 重点收藏走 settings 表，换设备升级后仍然保留。
+ * 背诵数据。政治、常识各有一份随 App 内置的资产
+ * （assets/recite_politics.json、assets/recite_common.json），
+ * 掌握状态 / 重点收藏 / 分组编排走 settings 表，换设备升级后仍然保留。
+ *
+ * 两套内容的收藏、范围、上次卡片分开存（key 里带模块 id），字号与背诵模式共用。
+ * 政治模块沿用老版本的 key，升级上来原有的收藏和进度不会丢。
  */
 object ReciteRepository {
 
-    @Volatile
-    private var cached: ReciteCatalog? = null
+    private val cache = ConcurrentHashMap<String, ReciteCatalog>()
 
-    fun catalog(context: Context): ReciteCatalog {
-        cached?.let { return it }
+    fun catalog(context: Context, subject: ReciteSubject): ReciteCatalog {
+        cache[subject.id]?.let { return it }
         synchronized(this) {
-            cached?.let { return it }
-            val loaded = runCatching { parse(context.applicationContext) }.getOrElse { ReciteCatalog.EMPTY }
-            cached = loaded
+            cache[subject.id]?.let { return it }
+            val loaded = runCatching { parse(context.applicationContext, subject) }
+                .getOrElse { ReciteCatalog.EMPTY }
+            cache[subject.id] = loaded
             return loaded
         }
     }
 
-    private fun parse(context: Context): ReciteCatalog {
-        val text = context.assets.open(ASSET_NAME).bufferedReader(Charsets.UTF_8).use { it.readText() }
+    private fun parse(context: Context, subject: ReciteSubject): ReciteCatalog {
+        val text = context.assets.open(subject.asset).bufferedReader(Charsets.UTF_8).use { it.readText() }
         val root = JSONObject(text)
 
         val categoriesJson = root.getJSONArray("categories")
@@ -73,7 +79,7 @@ object ReciteRepository {
         }
 
         return ReciteCatalog(
-            title = root.optString("title", "考点背诵"),
+            title = root.optString("title", context.getString(subject.titleRes)),
             updated = root.optString("updated"),
             intro = root.optString("intro"),
             categories = categories,
@@ -87,8 +93,8 @@ object ReciteRepository {
      * 用户对分组的编排：返回（自定义分组名列表, 分类 id -> 分组名 覆盖）。
      * 资产里的 group 只是默认值，用户改过的以这里为准。
      */
-    fun groupLayout(context: Context): Pair<List<String>, Map<String, String>> {
-        val raw = QBankDb.get(context).getSetting(KEY_GROUP_LAYOUT).orEmpty()
+    fun groupLayout(context: Context, subject: ReciteSubject): Pair<List<String>, Map<String, String>> {
+        val raw = QBankDb.get(context).getSetting(key(subject, KEY_GROUP_LAYOUT)).orEmpty()
         if (raw.isBlank()) return emptyList<String>() to emptyMap()
         return runCatching {
             val root = JSONObject(raw)
@@ -106,27 +112,34 @@ object ReciteRepository {
         }.getOrElse { emptyList<String>() to emptyMap() }
     }
 
-    fun saveGroupLayout(context: Context, groups: List<String>, overrides: Map<String, String>) {
+    fun saveGroupLayout(
+        context: Context,
+        subject: ReciteSubject,
+        groups: List<String>,
+        overrides: Map<String, String>
+    ) {
         val root = JSONObject()
         root.put("groups", JSONArray(groups))
         val map = JSONObject()
         overrides.forEach { (k, v) -> map.put(k, v) }
         root.put("map", map)
-        QBankDb.get(context).setSetting(KEY_GROUP_LAYOUT, root.toString())
+        QBankDb.get(context).setSetting(key(subject, KEY_GROUP_LAYOUT), root.toString())
     }
 
     // ---------------------------------------------------------------- 掌握 / 重点
 
-    fun masteredIds(context: Context): Set<String> = readIds(context, KEY_MASTERED)
+    fun masteredIds(context: Context, subject: ReciteSubject): Set<String> =
+        readIds(context, key(subject, KEY_MASTERED))
 
-    fun setMastered(context: Context, cardId: String, mastered: Boolean) {
-        writeIds(context, KEY_MASTERED, masteredIds(context), cardId, mastered)
+    fun setMastered(context: Context, subject: ReciteSubject, cardId: String, mastered: Boolean) {
+        writeIds(context, key(subject, KEY_MASTERED), masteredIds(context, subject), cardId, mastered)
     }
 
-    fun favoriteIds(context: Context): Set<String> = readIds(context, KEY_FAVORITE)
+    fun favoriteIds(context: Context, subject: ReciteSubject): Set<String> =
+        readIds(context, key(subject, KEY_FAVORITE))
 
-    fun setFavorite(context: Context, cardId: String, favorite: Boolean) {
-        writeIds(context, KEY_FAVORITE, favoriteIds(context), cardId, favorite)
+    fun setFavorite(context: Context, subject: ReciteSubject, cardId: String, favorite: Boolean) {
+        writeIds(context, key(subject, KEY_FAVORITE), favoriteIds(context, subject), cardId, favorite)
     }
 
     private fun readIds(context: Context, key: String): Set<String> {
@@ -143,6 +156,7 @@ object ReciteRepository {
 
     // ---------------------------------------------------------------- 字号 / 范围
 
+    /** 字号与背诵模式是使用习惯，政治 / 常识共用 */
     fun fontLevel(context: Context): Int =
         QBankDb.get(context).getSetting(KEY_FONT)?.toIntOrNull()?.coerceIn(0, 2) ?: 0
 
@@ -150,19 +164,19 @@ object ReciteRepository {
         QBankDb.get(context).setSetting(KEY_FONT, level.coerceIn(0, 2).toString())
     }
 
-    fun rememberedCategory(context: Context): String? =
-        QBankDb.get(context).getSetting(KEY_CATEGORY)?.takeIf { it.isNotBlank() }
+    fun rememberedCategory(context: Context, subject: ReciteSubject): String? =
+        QBankDb.get(context).getSetting(key(subject, KEY_CATEGORY))?.takeIf { it.isNotBlank() }
 
-    fun rememberCategory(context: Context, categoryId: String?) {
-        QBankDb.get(context).setSetting(KEY_CATEGORY, categoryId.orEmpty())
+    fun rememberCategory(context: Context, subject: ReciteSubject, categoryId: String?) {
+        QBankDb.get(context).setSetting(key(subject, KEY_CATEGORY), categoryId.orEmpty())
     }
 
-    /** 上次背到哪张卡：切到词库 / 成语再切回来，接着上一张背 */
-    fun lastCard(context: Context): String? =
-        QBankDb.get(context).getSetting(KEY_LAST_CARD)?.takeIf { it.isNotBlank() }
+    /** 上次背到哪张卡：切到词库 / 另一块背诵再切回来，接着上一张背 */
+    fun lastCard(context: Context, subject: ReciteSubject): String? =
+        QBankDb.get(context).getSetting(key(subject, KEY_LAST_CARD))?.takeIf { it.isNotBlank() }
 
-    fun rememberCard(context: Context, cardId: String) {
-        QBankDb.get(context).setSetting(KEY_LAST_CARD, cardId)
+    fun rememberCard(context: Context, subject: ReciteSubject, cardId: String) {
+        QBankDb.get(context).setSetting(key(subject, KEY_LAST_CARD), cardId)
     }
 
     /** 背诵模式：开着就直接显示答案（通读 / 朗读），关着就长按看答案（自测） */
@@ -173,12 +187,20 @@ object ReciteRepository {
         QBankDb.get(context).setSetting(KEY_RECITE_MODE, if (on) "1" else "0")
     }
 
-    private const val KEY_GROUP_LAYOUT = "recite_group_layout"
-    private const val ASSET_NAME = "recite_politics.json"
-    private const val KEY_MASTERED = "recite_mastered"
-    private const val KEY_FAVORITE = "recite_favorites"
+    /**
+     * 按模块拼存库 key：政治是老模块，沿用 `recite_xxx` 这一批 key——
+     * 之前存的收藏 / 范围 / 上次卡片升级后仍能读到；常识则是 `recite_common_xxx`。
+     */
+    private fun key(subject: ReciteSubject, base: String): String =
+        if (subject == ReciteSubject.POLITICS) "recite_$base" else "recite_${subject.id}_$base"
+
+    private const val KEY_GROUP_LAYOUT = "group_layout"
+    private const val KEY_MASTERED = "mastered"
+    private const val KEY_FAVORITE = "favorites"
+    private const val KEY_CATEGORY = "category"
+    private const val KEY_LAST_CARD = "last_card"
+
+    /** 字号与背诵模式是使用习惯，政治 / 常识共用同一份，不带模块前缀 */
     private const val KEY_FONT = "recite_font_level"
-    private const val KEY_CATEGORY = "recite_category"
-    private const val KEY_LAST_CARD = "recite_last_card"
     private const val KEY_RECITE_MODE = "recite_mode"
 }

@@ -2,16 +2,18 @@
 <resources>
     <string name="app_name">自定义题库</string>
     <string name="tab_banks">题库</string>
+    <!-- 底部导航这一项叫「背诵」，里面分 词库 / 政治 / 常识 三块 -->
+    <string name="tab_recite">背诵</string>
     <string name="tab_words">词库</string>
+    <string name="switch_politics">政治</string>
+    <string name="switch_common">常识</string>
     <string name="tab_papers">试卷</string>
-    <string name="tab_idioms">成语</string>
     <string name="tab_records">记录</string>
 
     <!-- 页面大标题 -->
     <string name="page_banks">我的题库</string>
     <string name="page_words">我的词库</string>
     <string name="page_papers">我的试卷</string>
-    <string name="page_idioms">成语汇总</string>
     <string name="page_records">练习记录</string>
     <string name="page_settings">设置</string>
 
@@ -34,6 +36,7 @@
     <string name="word_source_label">出处：%1$s</string>
     <string name="word_group_other">#</string>
     <string name="word_total_fmt">共 %1$d 条</string>
+    <string name="word_search_count_fmt">找到 %1$d 条</string>
     <string name="word_filter_tag">标签</string>
     <string name="word_filter_tag_count">标签 %1$d</string>
     <string name="word_tag_title">按标签筛选</string>
@@ -54,14 +57,7 @@
     <string name="word_sample_builtin">内置词库（成语 + 实词，装上就有）</string>
     <string name="word_sample_csv">CSV 词表（成语 + 实词，带分类列）</string>
     <string name="word_sample_docx">Word 文档（表格词表，含一条没填分类）</string>
-    <!-- 成语汇总 -->
-    <string name="idiom_search_hint">搜索成语、释义或归类</string>
-    <string name="idiom_all">全部</string>
-    <string name="idiom_empty">没有找到匹配的成语</string>
-    <string name="idiom_load_failed">成语数据加载失败</string>
-    <string name="idiom_count_all">共 %1$d 条 · 按拼音首字母排序</string>
-    <string name="idiom_count_filtered">找到 %1$d 条</string>
-    <string name="idiom_count_group">归类：%1$s · %2$d 条</string>
+    <string name="word_search_hint">搜索词条 / 拼音 / 释义 / 标签</string>
     <string name="action_reset">重置</string>
 
     <string name="action_import">导入</string>
@@ -222,8 +218,9 @@
     <string name="card_legend">共 %1$d 题　已答 %2$d 题　未答 %3$d 题　已标记 %4$d 题</string>
     <string name="paper_title">%1$s（%2$d题）</string>
 
-    <!-- ===== 考点背诵 ===== -->
-    <string name="title_recite">考点背诵</string>
+    <!-- ===== 背诵（政治 / 常识，两套独立内容） ===== -->
+    <string name="title_recite_politics">政治背诵</string>
+    <string name="title_recite_common">常识背诵</string>
     <string name="recite_favorite">标为重点</string>
     <string name="recite_font_fmt">A%1$s</string>
     <string name="recite_font_small">小</string>
@@ -258,6 +255,8 @@
     <string name="recite_catalog_favorite_count">%1$d 个</string>
     <string name="recite_catalog_title">选择考点范围</string>
     <string name="recite_empty_scope">这个范围还没有考点</string>
+    <string name="recite_empty_coming">这块内容还在整理，后续版本更新\n想先背别的，点上面的「词库」或「政治」</string>
     <string name="recite_empty_favorite">还没有标为重点的考点\n点卡片右上角的星，重点就会收在这里</string>
     <string name="recite_updated">更新于 %1$s · 共 %2$d 个考点</string>
+    <string name="recite_total_fmt">共 %1$d 个考点</string>
 </resources>

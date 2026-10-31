@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  词库页的页面切换：词库 / 成语 / 考点背诵。
-  底部导航只有 4 个入口，成语汇总和考点背诵都并进词库页，用这条切换在三页之间来回。
+  「背诵」Tab 的页面切换：词库 / 政治 / 常识。
+  底部导航只有 4 个入口，三块内容共用这一条切换互相跳转。
   选中态用主蓝文字 + 下划线，与下面的筛选胶囊区分开。
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -45,7 +45,7 @@
     </LinearLayout>
 
     <LinearLayout
-        android:id="@+id/switchIdioms"
+        android:id="@+id/switchPolitics"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:clickable="true"
@@ -57,16 +57,16 @@
         android:paddingBottom="2dp">
 
         <TextView
-            android:id="@+id/switchIdiomsText"
+            android:id="@+id/switchPoliticsText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:includeFontPadding="false"
-            android:text="@string/tab_idioms"
+            android:text="@string/switch_politics"
             android:textColor="@color/fb_text_secondary"
             android:textSize="15sp" />
 
         <View
-            android:id="@+id/switchIdiomsLine"
+            android:id="@+id/switchPoliticsLine"
             android:layout_width="18dp"
             android:layout_height="2dp"
             android:layout_marginTop="4dp"
@@ -75,7 +75,7 @@
     </LinearLayout>
 
     <LinearLayout
-        android:id="@+id/switchRecite"
+        android:id="@+id/switchCommon"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:clickable="true"
@@ -86,16 +86,16 @@
         android:paddingBottom="2dp">
 
         <TextView
-            android:id="@+id/switchReciteText"
+            android:id="@+id/switchCommonText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:includeFontPadding="false"
-            android:text="@string/title_recite"
+            android:text="@string/switch_common"
             android:textColor="@color/fb_text_secondary"
             android:textSize="15sp" />
 
         <View
-            android:id="@+id/switchReciteLine"
+            android:id="@+id/switchCommonLine"
             android:layout_width="18dp"
             android:layout_height="2dp"
             android:layout_marginTop="4dp"

@@ -1,0 +1,7 @@
+{
+  "title": "常识背诵",
+  "updated": "",
+  "intro": "常识背诵内容待补充。格式与政治一致：categories 定义分类（可带 group 分组），cards 里每张卡用 ____ 标出填空位置，answers 按顺序对应每个空。",
+  "categories": [],
+  "cards": []
+}

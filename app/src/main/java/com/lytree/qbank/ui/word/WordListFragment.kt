@@ -10,28 +10,30 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
+import androidx.core.widget.doAfterTextChanged
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.lytree.qbank.R
 import com.lytree.qbank.data.BuiltinWords
 import com.lytree.qbank.data.db.QBankDb
+import com.lytree.qbank.data.model.ReciteSubject
 import com.lytree.qbank.data.model.WordCategory
 import com.lytree.qbank.databinding.FragmentWordsBinding
 import com.lytree.qbank.ui.LibrarySwitch
 import com.lytree.qbank.ui.Refreshable
-import com.lytree.qbank.ui.idiom.IdiomListFragment
 import com.lytree.qbank.ui.recite.ReciteFragment
 
 /**
  * 词库页：成语和实词同表，按拼音首字母分组，右侧字母条直接跳组。
  *
- * 两维筛选，可叠加：
+ * 三组筛选，可叠加：
+ * - 搜索框：词条 / 拼音 / 释义 / 标签包含匹配（原「成语汇总」页的搜索并到这里）；
  * - 分类（全部 / 成语 / 实词）——固定三项；
  * - 标签（细分）——自由文本，个数随词表来源浮动，走弹窗多选，标签之间取并集。
  * 换分类会清空标签：标签清单本身是按分类统计的，留着旧标签多半一条都筛不出来。
  *
- * 成语汇总（[IdiomListFragment]）与考点背诵（[ReciteFragment]）都并进本页：底部导航只有
- * 4 个入口，用顶部的「词库 / 成语 / 考点背诵」切换在三个页面之间换，切换只是 replace，
+ * 政治背诵（原考点背诵）与常识背诵都并进「背诵」这个 Tab：底部导航只有 4 个入口，
+ * 用顶部的「词库 / 政治 / 常识」切换在三个页面之间换，切换只是 replace，
  * 不改底部导航的选中项。
  */
 class WordListFragment : Fragment(), Refreshable {
@@ -41,6 +43,9 @@ class WordListFragment : Fragment(), Refreshable {
 
     private val adapter = WordAdapter()
     private lateinit var db: QBankDb
+
+    /** 搜索关键词（已 trim），空串表示不搜 */
+    private var query = ""
 
     /** 当前分类筛选，null = 全部 */
     private var filter: String? = null
@@ -60,14 +65,22 @@ class WordListFragment : Fragment(), Refreshable {
         binding.titleBar.setTitle(getString(R.string.page_words))
         binding.titleBar.addTextAction(getString(R.string.action_import)) { openImport() }
 
-        // 词库 / 成语 / 考点背诵 三段切换：当前已在词库，点另外两段只是把本页换掉
+        // 词库 / 政治 / 常识 三段切换：当前已在词库，点另外两段只是把本页换掉
         LibrarySwitch.bind(
             binding.librarySwitch,
             LibrarySwitch.PAGE_WORDS,
             onWords = {},
-            onIdioms = { openIdioms() },
-            onRecite = { openRecite() }
+            onPolitics = { openRecite(ReciteSubject.POLITICS) },
+            onCommon = { openRecite(ReciteSubject.COMMON) }
         )
+
+        binding.search.doAfterTextChanged { text ->
+            val next = text?.toString()?.trim().orEmpty()
+            if (next == query) return@doAfterTextChanged
+            query = next
+            binding.list.scrollToPosition(0)
+            refresh()
+        }
 
         binding.list.layoutManager = LinearLayoutManager(requireContext())
         binding.list.adapter = adapter
@@ -97,17 +110,10 @@ class WordListFragment : Fragment(), Refreshable {
         startActivity(Intent(requireContext(), WordImportActivity::class.java))
     }
 
-    /** 换成成语汇总页：仍在「词库」这个底部 Tab 里，只是页面内容换了 */
-    private fun openIdioms() {
+    /** 换成背诵页（政治 / 常识）：同样留在「背诵」Tab 里，三块内容共用一条切换条 */
+    private fun openRecite(subject: ReciteSubject) {
         parentFragmentManager.beginTransaction()
-            .replace(R.id.container, IdiomListFragment())
-            .commit()
-    }
-
-    /** 换成考点背诵页：同样留在「词库」Tab 里，背诵与词库共用一条切换条 */
-    private fun openRecite() {
-        parentFragmentManager.beginTransaction()
-            .replace(R.id.container, ReciteFragment())
+            .replace(R.id.container, ReciteFragment.newInstance(subject))
             .commit()
     }
 
@@ -124,6 +130,8 @@ class WordListFragment : Fragment(), Refreshable {
     private fun clearFilters() {
         filter = null
         tagFilter.clear()
+        query = ""
+        binding.search.setText("")
         binding.list.scrollToPosition(0)
         refresh()
     }
@@ -151,11 +159,15 @@ class WordListFragment : Fragment(), Refreshable {
 
     override fun refresh() {
         val total = db.countWords()
-        val words = if (total == 0) emptyList() else db.listWords(filter, tagFilter)
+        val words = if (total == 0) emptyList() else db.listWords(filter, tagFilter, query)
         adapter.submit(words)
 
         val noResult = total > 0 && words.isEmpty()
-        binding.tvCount.text = if (total == 0) "" else getString(R.string.word_total_fmt, words.size)
+        binding.tvCount.text = when {
+            total == 0 -> ""
+            query.isNotEmpty() -> getString(R.string.word_search_count_fmt, words.size)
+            else -> getString(R.string.word_total_fmt, words.size)
+        }
         binding.emptyBox.visibility = if (total == 0) View.VISIBLE else View.GONE
         binding.noResultBox.visibility = if (noResult) View.VISIBLE else View.GONE
 

@@ -26,6 +26,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
+import androidx.core.os.bundleOf
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import com.google.android.material.bottomsheet.BottomSheetDialog
@@ -34,33 +35,37 @@ import com.lytree.qbank.data.ReciteRepository
 import com.lytree.qbank.data.model.ReciteCard
 import com.lytree.qbank.data.model.ReciteCatalog
 import com.lytree.qbank.data.model.ReciteCategory
+import com.lytree.qbank.data.model.ReciteSubject
 import com.lytree.qbank.databinding.FragmentReciteBinding
 import com.lytree.qbank.ui.LibrarySwitch
-import com.lytree.qbank.ui.idiom.IdiomListFragment
 import com.lytree.qbank.ui.word.WordListFragment
 import java.text.Collator
 import java.util.Locale
 import kotlin.math.abs
 
 /**
- * 考点背诵（对齐超格考点背诵），并进「词库」Tab，与词库 / 成语共用顶部三段切换。
+ * 背诵页（政治 / 常识共用一套界面，内容与进度各自独立）。
+ *
+ * 政治即原来的「考点背诵」，并进「背诵」Tab，与词库 / 常识共用顶部三段切换。
  *
  * · 不分「未掌握 / 已掌握」，当前范围就是一条卡片流，序号从 1 数到最后一张
  * · 填空式背诵卡：**左右滑动切题**，**长按显示答案**（松手仍在，轻点收起）
  * · **背诵模式**：顶栏的睁眼图标即开关，打开后答案直接显示、图标染主蓝，适合通读 / 朗读
  * · 卡片右上角星标：重点收藏，配合「只看重点」筛选
  * · 顶栏：背诵模式开关、考点范围（分类 / 只看重点）、字号 A小/A中/A大
- * · 范围面板不再有「全部考点」：分组与组内课程都按拼音重排、「未分组」垫底，
- *   首次进来默认落在第一个有考点的分组
+ * · 范围面板不再有「全部考点」以外的默认项：分组与组内课程都按拼音重排、「未分组」垫底
  * · 页面无底部按钮，切题全靠左右滑动，卡面留给正文
  *
- * 掌握、重点、背诵模式、字号、上次停在哪张卡都按考点 id / 设置项存库，退出重进仍在；
- * 分词正文与答案来自 assets。
+ * 掌握、重点、背诵模式、字号、上次停在哪张卡都按「模块 + 考点 id」存库，退出重进仍在；
+ * 分词正文与答案来自 assets（政治 recite_politics.json，常识 recite_common.json）。
  */
 class ReciteFragment : Fragment() {
 
     private var _binding: FragmentReciteBinding? = null
     private val binding get() = _binding!!
+
+    /** 本页背的是哪一块：政治（原考点背诵）还是常识 */
+    private lateinit var subject: ReciteSubject
 
     private lateinit var fontAction: TextView
 
@@ -95,18 +100,19 @@ class ReciteFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         val context = requireContext()
-        catalog = ReciteRepository.catalog(context)
-        favorites += ReciteRepository.favoriteIds(context)
+        subject = ReciteSubject.of(arguments?.getString(ARG_SUBJECT))
+        catalog = ReciteRepository.catalog(context, subject)
+        favorites += ReciteRepository.favoriteIds(context, subject)
         fontLevel = ReciteRepository.fontLevel(context)
         reciteMode = ReciteRepository.reciteMode(context)
         loadGroups()
         // 没记过范围就是「全部考点」（null），面板第一项也是它
-        categoryFilter = ReciteRepository.rememberedCategory(context)
+        categoryFilter = ReciteRepository.rememberedCategory(context, subject)
             ?.takeIf { id -> isValidScope(id) }
         restoreState(savedInstanceState)
 
         binding.titleBar.usePageTitleStyle()
-        binding.titleBar.setTitle(getString(R.string.title_recite))
+        binding.titleBar.setTitle(getString(subject.titleRes))
         // 顶栏第一颗图标就是「背诵模式」开关：睁眼=答案常显，一眼看得出当前是不是在背诵模式
         modeAction = binding.titleBar.addIconAction(
             R.drawable.ic_recite_mode,
@@ -119,13 +125,16 @@ class ReciteFragment : Fragment() {
         fontAction = binding.titleBar.addTextAction("") { cycleFont() }
         fontAction.setTextColor(ContextCompat.getColor(context, R.color.fb_text_secondary))
 
-        // 词库 / 成语 / 考点背诵 三段切换：当前已在背诵，点另外两段把本页换掉
+        // 词库 / 政治 / 常识 三段切换：当前已在这一段，点另外两段把本页换掉
         LibrarySwitch.bind(
             binding.librarySwitch,
-            LibrarySwitch.PAGE_RECITE,
+            when (subject) {
+                ReciteSubject.POLITICS -> LibrarySwitch.PAGE_POLITICS
+                ReciteSubject.COMMON -> LibrarySwitch.PAGE_COMMON
+            },
             onWords = { openWords() },
-            onIdioms = { openIdioms() },
-            onRecite = {}
+            onPolitics = { if (subject != ReciteSubject.POLITICS) openRecite(ReciteSubject.POLITICS) },
+            onCommon = { if (subject != ReciteSubject.COMMON) openRecite(ReciteSubject.COMMON) }
         )
 
         binding.btnStar.setOnClickListener { toggleFavorite() }
@@ -147,7 +156,7 @@ class ReciteFragment : Fragment() {
     private fun restoreState(state: Bundle?) {
         if (state == null) {
             // 切到别的段再回来：接着上次那张卡背，不用从第一条重来
-            currentId = ReciteRepository.lastCard(requireContext())
+            currentId = ReciteRepository.lastCard(requireContext(), subject)
             return
         }
         favoriteOnly = state.getBoolean(STATE_FAVORITE_ONLY, false)
@@ -162,7 +171,7 @@ class ReciteFragment : Fragment() {
     override fun onPause() {
         super.onPause()
         // 记住停在哪张卡：切段 / 退出重进都接着背
-        currentId?.let { ReciteRepository.rememberCard(requireContext(), it) }
+        currentId?.let { ReciteRepository.rememberCard(requireContext(), subject, it) }
     }
 
     override fun onDestroyView() {
@@ -172,17 +181,17 @@ class ReciteFragment : Fragment() {
 
     // ---------------------------------------------------------------- 页面切换
 
-    /** 换回词库页：仍在「词库」这个底部 Tab 里，只是页面内容换了 */
+    /** 换回词库页：仍在「背诵」这个底部 Tab 里，只是页面内容换了 */
     private fun openWords() {
         parentFragmentManager.beginTransaction()
             .replace(R.id.container, WordListFragment())
             .commit()
     }
 
-    /** 换到成语汇总页：同上，仍留在词库 Tab 里 */
-    private fun openIdioms() {
+    /** 换到另一块背诵内容（政治 / 常识）：同上，仍留在「背诵」Tab 里 */
+    private fun openRecite(target: ReciteSubject) {
         parentFragmentManager.beginTransaction()
-            .replace(R.id.container, IdiomListFragment())
+            .replace(R.id.container, newInstance(target))
             .commit()
     }
 
@@ -291,6 +300,8 @@ class ReciteFragment : Fragment() {
     }
 
     private fun emptyMessage(): CharSequence {
+        // 整块内容还没上线（比如常识刚建好骨架）：别让人以为是筛选筛空了
+        if (catalog.cards.isEmpty() && !favoriteOnly) return getString(R.string.recite_empty_coming)
         if (favoriteOnly) return getString(R.string.recite_empty_favorite)
         return getString(R.string.recite_empty_scope)
     }
@@ -441,7 +452,7 @@ class ReciteFragment : Fragment() {
     private fun toggleFavorite() {
         val card = currentCard() ?: return
         val add = card.id !in favorites
-        ReciteRepository.setFavorite(requireContext(), card.id, add)
+        ReciteRepository.setFavorite(requireContext(), subject, card.id, add)
         if (add) favorites.add(card.id) else favorites.remove(card.id)
 
         if (!add && favoriteOnly) {
@@ -457,7 +468,7 @@ class ReciteFragment : Fragment() {
     private fun applyFilter(categoryId: String?, onlyFavorite: Boolean) {
         categoryFilter = categoryId
         favoriteOnly = onlyFavorite
-        ReciteRepository.rememberCategory(requireContext(), categoryId)
+        ReciteRepository.rememberCategory(requireContext(), subject, categoryId)
         currentId = null
         revealed = false
         render(animate = true)
@@ -519,9 +530,14 @@ class ReciteFragment : Fragment() {
         val sheet = BottomSheetDialog(context)
         val view = LayoutInflater.from(context).inflate(R.layout.sheet_recite_catalog, null)
         val rows = view.findViewById<LinearLayout>(R.id.catalogRows)
+        // 还没填内容的模块没有更新日期，只报总数，别显示「更新于  · 共 0 个考点」
+        val summary = if (catalog.updated.isBlank()) {
+            getString(R.string.recite_total_fmt, catalog.cards.size)
+        } else {
+            getString(R.string.recite_updated, catalog.updated, catalog.cards.size)
+        }
         view.findViewById<TextView>(R.id.catalogMeta).text =
-            getString(R.string.recite_updated, catalog.updated, catalog.cards.size) +
-                " · " + getString(R.string.recite_group_hint)
+            summary + " · " + getString(R.string.recite_group_hint)
 
         addSheetRow(
             rows,
@@ -952,7 +968,7 @@ class ReciteFragment : Fragment() {
     }
 
     private fun loadGroups() {
-        val layout = ReciteRepository.groupLayout(requireContext())
+        val layout = ReciteRepository.groupLayout(requireContext(), subject)
         customGroups.clear()
         customGroups.addAll(layout.first)
         groupOverrides.clear()
@@ -970,7 +986,7 @@ class ReciteFragment : Fragment() {
     }
 
     private fun persistGroups() {
-        ReciteRepository.saveGroupLayout(requireContext(), customGroups, groupOverrides)
+        ReciteRepository.saveGroupLayout(requireContext(), subject, customGroups, groupOverrides)
         rebuildGroups()
     }
 
@@ -992,7 +1008,16 @@ class ReciteFragment : Fragment() {
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density + 0.5f).toInt()
 
-    private companion object {
+    companion object {
+
+        /**
+         * 建一个指定内容的背诵页。政治（原考点背诵）与常识共用同一套界面与交互，
+         * 区别只有资产文件、标题和各自存的收藏 / 进度。
+         */
+        fun newInstance(subject: ReciteSubject): ReciteFragment = ReciteFragment().apply {
+            arguments = bundleOf(ARG_SUBJECT to subject.id)
+        }
+
         /** 中文按拼音排：分组 / 分类都用它，面板顺序才稳定可预期 */
         val CHINESE_ORDER = Comparator<String> { a, b ->
             Collator.getInstance(Locale.CHINA).compare(a, b)
@@ -1012,5 +1037,8 @@ class ReciteFragment : Fragment() {
         const val STATE_FAVORITE_ONLY = "recite_favorite_only"
         const val STATE_CARD = "recite_card"
         const val STATE_REVEALED = "recite_revealed"
+
+        /** arguments 里的内容标识，对应 [ReciteSubject.id] */
+        const val ARG_SUBJECT = "recite_subject"
     }
 }

@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  词库页：统一标题栏 + 分类筛选胶囊 + 按拼音首字母分组的词条列表（右侧字母索引条）
+  词库页：统一标题栏 + 搜索框 + 分类筛选胶囊 + 按拼音首字母分组的词条列表（右侧字母索引条）
+  搜索与归类筛选都并进了本页（原「成语汇总」页已合并到这里）
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
@@ -13,12 +14,36 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content" />
 
-    <!-- 词库 / 成语 两页切换（成语汇总并入本页，不占底部导航） -->
+    <!-- 词库 / 政治 / 常识 三段切换 -->
     <include
         android:id="@+id/librarySwitch"
         layout="@layout/view_library_switch"
         android:layout_width="match_parent"
         android:layout_height="wrap_content" />
+
+    <!-- 搜索：词条 / 拼音 / 释义 / 标签都能命中（原成语页的搜索框挪到这里） -->
+    <EditText
+        android:id="@+id/search"
+        android:layout_width="match_parent"
+        android:layout_height="40dp"
+        android:layout_marginStart="@dimen/fb_page_pad"
+        android:layout_marginTop="2dp"
+        android:layout_marginEnd="@dimen/fb_page_pad"
+        android:layout_marginBottom="6dp"
+        android:background="@drawable/bg_fb_search"
+        android:drawableStart="@drawable/ic_search"
+        android:drawablePadding="@dimen/fb_space_8"
+        android:gravity="center_vertical"
+        android:hint="@string/word_search_hint"
+        android:imeOptions="actionSearch"
+        android:includeFontPadding="false"
+        android:inputType="text"
+        android:maxLines="1"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp"
+        android:textColor="@color/fb_text_body"
+        android:textColorHint="@color/fb_text_hint"
+        android:textSize="@dimen/fb_text_body_size" />
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -110,7 +135,7 @@
             android:layout_gravity="end|center_vertical"
             android:orientation="vertical" />
 
-        <!-- 筛选条件叠加后一条都不剩时的提示（词库本身有词，只是筛掉了） -->
+        <!-- 筛选 / 搜索叠加后一条都不剩时的提示（词库本身有词，只是筛掉了） -->
         <LinearLayout
             android:id="@+id/noResultBox"
             android:layout_width="match_parent"

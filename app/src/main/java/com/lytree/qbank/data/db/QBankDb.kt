@@ -271,10 +271,13 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
      * [category] 为空表示不限分类；[tags] 非空时只保留标签段命中其中之一的词条
      * （标签之间是「或」，与分类是「且」）。空字符串代表「未标注标签」。
      * 标签按段匹配：「对比辨析」既能命中只标了这个的词，也能命中「对比辨析·第十组」。
+     * [query] 非空时在词条 / 拼音 / 释义 / 标签上做包含匹配（成语汇总并进本页后，
+     * 搜索就在这一层做，列表页不必自己过滤）。
      */
     fun listWords(
         category: String? = null,
         tags: Set<String> = emptySet(),
+        query: String = "",
         limit: Int = 20000
     ): List<Word> {
         val out = ArrayList<Word>()
@@ -303,6 +306,12 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
                 }
             }
             clauses.add("(" + ors.joinToString(" OR ") + ")")
+        }
+        val keyword = query.trim()
+        if (keyword.isNotEmpty()) {
+            val like = "%" + keyword.replace("%", "").replace("_", "") + "%"
+            clauses.add("(text LIKE ? OR pinyin LIKE ? OR meaning LIKE ? OR tag LIKE ?)")
+            repeat(4) { args.add(like) }
         }
         val where = if (clauses.isEmpty()) "" else "WHERE " + clauses.joinToString(" AND ")
         readableDatabase.rawQuery(

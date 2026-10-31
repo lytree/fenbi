@@ -27,7 +27,7 @@ class MainActivity : AppCompatActivity() {
 
         binding.bottomNav.setOnItemSelectedListener { item ->
             val fragment: Fragment = when (item.itemId) {
-                R.id.nav_words -> WordListFragment()
+                R.id.nav_recite -> WordListFragment()
                 R.id.nav_papers -> PaperListFragment()
                 R.id.nav_records -> RecordListFragment()
                 else -> BankListFragment()
@@ -37,11 +37,11 @@ class MainActivity : AppCompatActivity() {
                 .commit()
             true
         }
-        // 成语汇总、考点背诵、设置都是不占底部导航的二级页：停在二级页时再点所属 Tab 应回到它的首页
+        // 政治背诵、常识背诵、设置都是不占底部导航的二级页：停在二级页时再点所属 Tab 应回到它的首页
         binding.bottomNav.setOnItemReselectedListener { item ->
             val current = supportFragmentManager.findFragmentById(R.id.container)
             val home = when (item.itemId) {
-                R.id.nav_words -> if (current is WordListFragment) null else WordListFragment()
+                R.id.nav_recite -> if (current is WordListFragment) null else WordListFragment()
                 R.id.nav_records -> if (current is RecordListFragment) null else RecordListFragment()
                 else -> null
             } ?: return@setOnItemReselectedListener

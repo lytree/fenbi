@@ -8,30 +8,31 @@ import com.lytree.qbank.R
 import com.lytree.qbank.databinding.ViewLibrarySwitchBinding
 
 /**
- * 词库页顶部的「词库 / 成语 / 考点背诵」切换条。
+ * 「背诵」Tab 顶部的「词库 / 政治 / 常识」切换条。
  *
- * 底部导航只有 4 个入口，成语汇总和考点背诵都并进词库页，三个页面各自带这一条切换互相跳转。
- * 样式在这里统一（主蓝 + 加粗 + 下划线），各页只负责把点击映射到自己的跳转。
+ * 底部导航只有 4 个入口，词库、政治背诵、常识背诵三块内容都并进这一个 Tab，
+ * 三个页面各自带这一条切换互相跳转。样式在这里统一（主蓝 + 加粗 + 下划线），
+ * 各页只负责把点击映射到自己的跳转。
  */
 object LibrarySwitch {
 
     const val PAGE_WORDS = 0
-    const val PAGE_IDIOMS = 1
-    const val PAGE_RECITE = 2
+    const val PAGE_POLITICS = 1
+    const val PAGE_COMMON = 2
 
     fun bind(
         binding: ViewLibrarySwitchBinding,
         selected: Int,
         onWords: () -> Unit,
-        onIdioms: () -> Unit,
-        onRecite: () -> Unit
+        onPolitics: () -> Unit,
+        onCommon: () -> Unit
     ) {
         binding.switchWords.setOnClickListener { onWords() }
-        binding.switchIdioms.setOnClickListener { onIdioms() }
-        binding.switchRecite.setOnClickListener { onRecite() }
+        binding.switchPolitics.setOnClickListener { onPolitics() }
+        binding.switchCommon.setOnClickListener { onCommon() }
         style(binding.switchWordsText, binding.switchWordsLine, selected == PAGE_WORDS)
-        style(binding.switchIdiomsText, binding.switchIdiomsLine, selected == PAGE_IDIOMS)
-        style(binding.switchReciteText, binding.switchReciteLine, selected == PAGE_RECITE)
+        style(binding.switchPoliticsText, binding.switchPoliticsLine, selected == PAGE_POLITICS)
+        style(binding.switchCommonText, binding.switchCommonLine, selected == PAGE_COMMON)
     }
 
     private fun style(text: TextView, line: View, selected: Boolean) {

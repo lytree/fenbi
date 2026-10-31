@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  考点背诵（并入「词库」Tab，与词库 / 成语共用顶部三段切换）
-  顶栏（含背诵模式开关）+ 三段切换 + 范围/进度 + 背诵卡（左右滑动切题，无底部按钮）
+  背诵页（政治 / 常识共用：资产与进度不同，界面一致）
+  顶栏（含背诵模式开关）+ 三段切换（词库 / 政治 / 常识）+ 范围/进度 + 背诵卡（左右滑动切题，无底部按钮）
   版式与全站一致：白底卡片 + 主蓝强调 + 底部白底操作条
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -13,7 +13,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content" />
 
-    <!-- 词库 / 成语 / 考点背诵 三段切换（背诵页不占底部导航） -->
+    <!-- 词库 / 政治 / 常识 三段切换（背诵页与词库共用这条，不占底部导航） -->
     <include
         android:id="@+id/librarySwitch"
         layout="@layout/view_library_switch"
