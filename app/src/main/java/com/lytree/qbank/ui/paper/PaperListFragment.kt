@@ -23,7 +23,8 @@ import com.lytree.qbank.ui.Refreshable
 
 /**
  * 试卷列表：一次导入 = 一份试卷，点进去直接开练。
- * 不再提供随机组卷入口，右上角换成「导入」。
+ * 不再提供随机组卷入口；顶栏也不放「导入」——全 App 的导入入口统一在题库页，
+ * 这里只有空态时留一个引导按钮，指向同一个导入页。
  */
 class PaperListFragment : Fragment(), Refreshable {
 
@@ -52,7 +53,7 @@ class PaperListFragment : Fragment(), Refreshable {
         db = QBankDb.get(requireContext())
         binding.titleBar.usePageTitleStyle()
         binding.titleBar.setTitle(getString(R.string.page_papers))
-        binding.titleBar.addTextAction(getString(R.string.action_import)) { openImport() }
+        // 顶栏不再放「导入」：全 App 只在题库页留一个导入入口（试卷 / 词表都在那一页分发）
 
         binding.list.layoutManager = LinearLayoutManager(requireContext())
         binding.list.adapter = adapter

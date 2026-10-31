@@ -179,8 +179,10 @@
     <string name="empty_papers">还没有试卷，导入一份 JSON / CSV / Excel / TXT 就会生成一份试卷</string>
     <string name="empty_records">还没有考试记录</string>
 
-    <string name="title_import">导入试卷</string>
+    <string name="title_import">导入</string>
     <string name="import_pick">选择题库文件</string>
+    <string name="import_word_title">导入词表</string>
+    <string name="import_word_hint">背单词用的词库走另一套流程：Word(.docx) / Excel(.xlsx) / CSV / TXT 里按表头取「词条 / 拼音 / 释义 / 分类」，解析后逐条勾选再入库。</string>
     <string name="import_link_action">从链接导入</string>
     <string name="import_link_title">从链接导入</string>
     <string name="import_link_hint">粘贴题库文件的下载链接（http/https），下载完成后直接进入预览。支持 JSON / CSV / Excel / TXT / 题库包。</string>

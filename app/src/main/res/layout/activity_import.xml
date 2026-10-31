@@ -59,6 +59,28 @@
                         android:layout_marginTop="@dimen/fb_space_4"
                         android:text="载入示例题库（体验用）" />
                 </LinearLayout>
+
+                <!-- 词表走另一个页面，但入口只留这一个：全 App 的「导入」都先落到这里 -->
+                <LinearLayout
+                    style="@style/FbCard"
+                    android:layout_marginTop="@dimen/fb_card_gap_v">
+
+                    <TextView
+                        style="@style/FbCardTitle"
+                        android:text="@string/import_word_title" />
+
+                    <TextView
+                        style="@style/FbBodySm"
+                        android:layout_marginTop="@dimen/fb_space_8"
+                        android:text="@string/import_word_hint" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnWordImport"
+                        style="@style/FbGhostButton"
+                        android:layout_width="match_parent"
+                        android:layout_marginTop="@dimen/fb_space_16"
+                        android:text="@string/title_word_import" />
+                </LinearLayout>
             </LinearLayout>
         </androidx.core.widget.NestedScrollView>
 

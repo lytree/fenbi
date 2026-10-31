@@ -38,6 +38,9 @@ import java.io.File
 
 /**
  * 题库导入：选文件 → 解析 → 校验预览 → 勾选 → 入库。
+ *
+ * 同时也是全 App 唯一的导入入口：词表不进这一页，由「导入词表」卡片分发到
+ * [com.lytree.qbank.ui.word.WordImportActivity]。
  */
 class ImportActivity : AppCompatActivity() {
 
@@ -86,6 +89,10 @@ class ImportActivity : AppCompatActivity() {
         binding.btnPick.setOnClickListener { pickFile() }
         binding.btnLink.setOnClickListener { showLinkDialog() }
         binding.btnSample.setOnClickListener { loadSample() }
+        // 词表导入是同一入口下的另一条分支：这里只做跳转，不在本页混排词条预览
+        binding.btnWordImport.setOnClickListener {
+            startActivity(Intent(this, com.lytree.qbank.ui.word.WordImportActivity::class.java))
+        }
         binding.btnAll.setOnClickListener { qAdapter.toggleAll() }
 
         binding.list.layoutManager = LinearLayoutManager(this)
