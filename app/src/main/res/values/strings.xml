@@ -84,12 +84,16 @@
     <string name="action_split">分屏</string>
     <string name="action_ink">手写标注</string>
     <string name="action_undo">撤销</string>
+    <string name="action_redo">重做</string>
+    <string name="action_ink_pen">笔</string>
+    <string name="action_ink_eraser">橡皮</string>
+    <string name="action_ink_shade">题目遮盖档位</string>
     <string name="action_clear_ink">清空</string>
     <string name="action_ink_color">笔迹颜色</string>
     <string name="action_done">完成</string>
     <string name="action_note_edit">编辑笔记</string>
     <string name="action_ink_edit">手写标注（长按写笔记）</string>
-    <string name="ink_enter_hint">手指或触控笔直接圈画，点「完成」退出，笔迹会留在题上</string>
+    <string name="ink_enter_hint">手指或触控笔直接圈画，点 ✓ 退出写画，笔迹会留在题上</string>
     <string name="more_ink_mode">手写标注·遮盖</string>
     <string name="note_saved">笔记已保存</string>
     <string name="tag_material">材料</string>

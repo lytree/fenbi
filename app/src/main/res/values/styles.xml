@@ -564,15 +564,23 @@
     </style>
 
     <!-- 遮盖层工具条里的动作文字 -->
-    <style name="FbInkAction">
-        <item name="android:layout_width">wrap_content</item>
-        <item name="android:layout_height">32dp</item>
+    <!-- 写画工具条图标按钮：44dp 高、等分占位，24dp 图标居中（选中 / 夜间由代码改 tint） -->
+    <style name="FbInkIcon">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">44dp</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:padding">10dp</item>
+        <item name="android:scaleType">fitCenter</item>
+        <item name="android:background">?attr/selectableItemBackgroundBorderless</item>
+    </style>
+
+    <!-- 工具条上的「色点」格：与图标按钮同宽同高，里面放一枚 22dp 圆点 -->
+    <style name="FbInkSlot">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">44dp</item>
+        <item name="android:layout_weight">1</item>
         <item name="android:gravity">center</item>
-        <item name="android:maxLines">1</item>
-        <item name="android:paddingStart">10dp</item>
-        <item name="android:paddingEnd">10dp</item>
-        <item name="android:textColor">@color/fb_text_primary</item>
-        <item name="android:textSize">@dimen/fb_text_item_sub</item>
+        <item name="android:background">?attr/selectableItemBackgroundBorderless</item>
     </style>
 
     <!-- 题面选项：圆形徽标 + 单列正文（答题页与分屏页共用） -->

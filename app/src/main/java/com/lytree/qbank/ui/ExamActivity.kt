@@ -773,23 +773,24 @@ class ExamActivity : AppCompatActivity() {
         inkToolbar = InkToolbarController(
             inkOverlay = binding.inkOverlay,
             inkBar = binding.inkBar,
-            btnInkShade = binding.btnInkShade,
-            btnInkMark = binding.btnInkMark,
-            btnInkDone = binding.btnInkDone,
-            styleInkButton = { on ->
-                binding.inkBar.alpha = if (on) 1f else 0.95f
-            },
-            onToggleMark = { currentQuestion()?.let { toggleMark(it) } },
-            btnInkColor = binding.btnInkColor
+            btnPen = binding.btnInkPen,
+            btnEraser = binding.btnInkEraser,
+            btnUndo = binding.btnInkUndo,
+            btnRedo = binding.btnInkRedo,
+            btnShade = binding.btnInkShade,
+            btnClear = binding.btnInkClear,
+            btnClose = binding.btnInkClose,
+            btnColor = binding.btnInkColor,
+            inkColorDot = binding.inkColorDot,
+            styleInkButton = { }
         )
         inkToolbar.onModeChanged = { on ->
             inkMode = on
-            // 面板里的开关与工具条是同一份状态：从顶栏「更多」进、从工具条「完成」出，两边都要对得上
+            // 面板里的开关与工具条是同一份状态：从顶栏「更多」进、从工具条 × 出，两边都要对得上
             binding.switchInkMode.setChecked(on, animate = true)
             if (on) syncInkQuestion()
         }
-        binding.btnInkUndo.setOnClickListener { binding.inkOverlay.undo() }
-        binding.btnInkClear.setOnClickListener { binding.inkOverlay.clear() }
+        // 工具条按钮（笔 / 橡皮 / 撤销 / 重做 / 遮盖 / 笔色 / 清空 / 退出）在控制器里统一绑好
 
         // 写画模式的滚动通道：分屏时左半屏滚材料、右半屏滚当前题；
         // 多题滚列表，单题滚当前页；材料组页上下分栏，按纵向落点分流（上滚材料 / 下滚题目）
@@ -801,8 +802,8 @@ class ExamActivity : AppCompatActivity() {
                 else -> currentPageScrollForInk(y)
             }
         }
-        // 工具条悬在右下角，轨道底部让开 76dp，别画到它背后
-        binding.inkOverlay.scrollBarBottomInset = (76 * resources.displayMetrics.density).toInt()
+        // 工具条整条顶在卷面上方，右侧滚动轨道可以用到底，不再给它让位
+        binding.inkOverlay.scrollBarBottomInset = 0
         // 竖屏答题页不画那条手柄：屏幕窄，轨道贴着题目文字太抢眼；
         // 热区收窄到屏幕最外沿 16dp，正文里写字不会被当成滚动，贴着边拖仍可滚动
         binding.inkOverlay.railVisible = false
@@ -1035,8 +1036,6 @@ class ExamActivity : AppCompatActivity() {
         val onModuleIntro = !multiBrowse && pagerAdapter.isModuleIntroPage(binding.pager.currentItem)
         val inkQ = if (onModuleIntro) null else currentQuestion()
         binding.inkOverlay.bindQuestion(inkQ?.id ?: 0L)
-        val markQ = if (onModuleIntro) null else currentQuestion()
-        inkToolbar.setMarked(markQ != null && markQ.id in marked)
         // 每题用时：换题就把表拨到当前题（说明页 / 无题时不计时），上一题的秒数同时落库
         if (::questionTimer.isInitialized) questionTimer.switchTo(inkQ?.id)
     }
@@ -1266,7 +1265,6 @@ class ExamActivity : AppCompatActivity() {
     private fun toggleMark(q: Question) {
         if (!marked.add(q.id)) marked.remove(q.id)
         refreshCard(q)
-        inkToolbar.setMarked(q.id in marked)
     }
 
     private fun toggleFavorite(q: Question) {
@@ -1451,15 +1449,10 @@ class ExamActivity : AppCompatActivity() {
         binding.icAnswerArrow.setColorFilter(metaColor)
         binding.switchAutoNext.setNightMode(night)
 
-        // 遮盖层工具条
-        binding.inkBar.setBackgroundResource(
-            if (night) R.drawable.bg_fb_action_night else R.drawable.bg_fb_action
-        )
-        binding.btnInkUndo.setTextColor(titleColor)
-        // 遮盖档位 / 标记 / 完成三个按钮的配色由控制器按状态算（标记态是橙色，不能一刀切换白）
+        // 写画工具条：底色跟着日夜走，图标（含笔/橡皮选中态）由控制器算
+        binding.inkBar.setBackgroundColor(color(if (night) R.color.fb_night_bar else R.color.fb_bar_bg))
         inkToolbar.applyNightMode(night)
         binding.inkOverlay.night = night
-        // btnInkClear 保持红字，深底上同样醒目，不另设夜间色
 
         // 系统栏跟着顶栏走，否则深色顶栏上会压一条白状态栏
         applySystemBars(night, barBg)

@@ -117,8 +117,6 @@ class SplitExamActivity : AppCompatActivity() {
         binding.btnCard.setOnClickListener { openAnswerCard() }
         binding.btnSubmit.setOnClickListener { confirmSubmit() }
         binding.btnInk.setOnClickListener { toggleInk() }
-        binding.btnInkUndo.setOnClickListener { binding.inkOverlay.undo() }
-        binding.btnInkClear.setOnClickListener { binding.inkOverlay.clear() }
         // 左栏只有半屏宽，图 / 表挤在一起时弹到独立页面看（不再用 Dialog 浮层）
         binding.btnMaterialExpand.setOnClickListener {
             val material = groupMaterial()
@@ -135,16 +133,20 @@ class SplitExamActivity : AppCompatActivity() {
         inkToolbar = InkToolbarController(
             inkOverlay = binding.inkOverlay,
             inkBar = binding.inkBar,
-            btnInkShade = binding.btnInkShade,
-            btnInkMark = binding.btnInkMark,
-            btnInkDone = binding.btnInkDone,
+            btnPen = binding.btnInkPen,
+            btnEraser = binding.btnInkEraser,
+            btnUndo = binding.btnInkUndo,
+            btnRedo = binding.btnInkRedo,
+            btnShade = binding.btnInkShade,
+            btnClear = binding.btnInkClear,
+            btnClose = binding.btnInkClose,
+            btnColor = binding.btnInkColor,
+            inkColorDot = binding.inkColorDot,
             styleInkButton = { on ->
                 binding.btnInk.setBackgroundResource(
                     if (on) R.drawable.bg_fb_mark_on else R.drawable.bg_fb_action
                 )
-            },
-            onToggleMark = { toggleMarkCurrent() },
-            btnInkColor = binding.btnInkColor
+            }
         )
         inkToolbar.onModeChanged = { on ->
             inkMode = on
@@ -157,8 +159,8 @@ class SplitExamActivity : AppCompatActivity() {
         }
         // 左边缘也放一条手柄，写画时材料还能翻
         binding.inkOverlay.leftRailEnabled = true
-        // 右栏滚动手柄让开工具条
-        binding.inkOverlay.scrollBarBottomInset = (60 * resources.displayMetrics.density).toInt()
+        // 工具条在顶上，右侧轨道可以用到底
+        binding.inkOverlay.scrollBarBottomInset = 0
 
         // 笔迹钉在题目卡上（右栏每张卡一道题），滚材料 / 滚题目都不再和圈画错位
         binding.inkOverlay.anchorSource = { inkAnchors() }
@@ -409,19 +411,11 @@ class SplitExamActivity : AppCompatActivity() {
         inkToolbar.toggle()
     }
 
-    /** 遮盖层跟着「当前题」走：翻题后笔迹与标记状态都要换 */
+    /** 遮盖层跟着「当前题」走：翻题后笔迹跟着换到新题 */
     private fun syncInkQuestion() {
         if (!::inkToolbar.isInitialized) return
         val q = questions.getOrNull(currentIndex)
         binding.inkOverlay.bindQuestion(q?.id ?: 0L)
-        inkToolbar.setMarked(q != null && q.id in marked)
-    }
-
-    /** 工具条上的「标记」：和答题卡里的已标记是同一份数据 */
-    private fun toggleMarkCurrent() {
-        val q = questions.getOrNull(currentIndex) ?: return
-        if (!marked.add(q.id)) marked.remove(q.id)
-        inkToolbar.setMarked(q.id in marked)
     }
 
     // ---------------- 答题卡 ----------------

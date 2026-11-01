@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 细线风格橡皮（斜置的橡皮块 + 底边线），与全站 24dp / 1.7 线宽一致 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:strokeColor="@color/fb_icon" android:strokeWidth="1.7" android:fillColor="#00000000"
+        android:strokeLineJoin="round" android:strokeLineCap="round"
+        android:pathData="M7,21 L2.7,16.7 C1.7,15.7 1.7,14.2 2.7,13.3 L12.3,3.7 C13.3,2.7 14.8,2.7 15.7,3.7 L21.3,9.3 C22.3,10.3 22.3,11.8 21.3,12.7 L13,21" />
+    <path android:strokeColor="@color/fb_icon" android:strokeWidth="1.7"
+        android:strokeLineCap="round"
+        android:pathData="M22,21 L7,21" />
+    <path android:strokeColor="@color/fb_icon" android:strokeWidth="1.7"
+        android:strokeLineCap="round"
+        android:pathData="M5,11 L14,20" />
+</vector>

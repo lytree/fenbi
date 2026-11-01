@@ -1,68 +1,80 @@
 package com.lytree.qbank.ui
 
+import android.content.res.ColorStateList
 import android.graphics.drawable.GradientDrawable
 import android.view.View
-import android.widget.TextView
+import android.widget.ImageView
+import android.widget.Toast
 import androidx.core.content.ContextCompat
 import com.lytree.qbank.R
 
 /**
- * 遮盖层工具条控制器（答题页 / 资料分析分屏页共用）。
+ * 写画工具条控制器（答题页 / 资料分析分屏页共用）。
  *
- * 悬浮工具条提供六个操作：
- * - **撤销**：去掉最后一笔笔迹
- * - **清空**：清掉当前题的全部笔迹
- * - **笔色**（那枚小色点）：循环切换这一笔用的颜色，红 → 蓝 → 绿 → 橙 → 黑；
- *   默认色在设置页「手写标注」里定，两边读写同一份偏好
- * - **遮盖**：切换遮盖纸档位（关 / 浅 / 中 / 深），写字时题目淡一层，一眼能看出在写画模式
- * - **标记**：给当前题打标记（和题目卡上的标记同一份数据）
- * - **完成**：退出写画模式——笔迹留在原处，但不再拦截触摸，可以继续选答案、翻页
+ * 形态对齐参考应用：**一条顶在卷面上方的图标栏**，不进文字，选中项用主色。
+ * 左起八格：
+ * - **退出**（×）：关掉写画模式，笔迹留在卷面上
+ * - **笔**：写画；与橡皮互斥高亮
+ * - **橡皮**：划过的笔迹整笔擦掉（见 [InkOverlay.Tool.ERASER]），落点画一枚圈
+ * - **撤销 / 重做**：撤销一笔、把撤销的那笔放回来；没得撤 / 没得重做时图标变淡
+ * - **遮盖**（两层纸）：循环切遮盖档位「关 → 浅 → 中 → 深」，写字时题目淡一层
+ * - **笔色**（圆点）：当前笔色就是那枚圆点的颜色，点一下换下一个色，顺手切回笔
+ * - **清空**（垃圾桶）：去掉当前题的全部笔迹
  *
- * 「手指绘制」开关已经删掉：遮盖层本身就是全拦截的，手指和触控笔都能直接写。
+ * 笔迹、工具、撤销栈、笔色与遮盖档位都在 [InkOverlay] 里，这里只管 UI 状态与点击。
  *
- * 笔迹、笔色与遮盖档位由 [InkOverlay] 负责，这里只管 UI 状态。
- *
- * @param styleInkButton 写画模式开关时对主按钮的样式回调。答题页是开关控件，
- *       分屏页底部是 TextView（用背景变色），由各页自己实现。
- * @param onToggleMark 点「标记」时的回调，由页面处理标记落库与刷新。
- * @param btnInkColor 工具条上那枚色点（可为空，空则不显示换色按钮）
+ * @param styleInkButton 写画开关按钮的样式回调（答题页 / 分屏页各自的入口按钮长的不一样）
+ * @param inkColorDot 笔色圆点（工具条里那枚 20dp 的小圆）；不传就退回给格子本身画背景
  */
 class InkToolbarController(
     private val inkOverlay: InkOverlay,
     private val inkBar: View,
-    private val btnInkShade: TextView,
-    private val btnInkMark: TextView,
-    private val btnInkDone: TextView,
+    private val btnPen: ImageView,
+    private val btnEraser: ImageView,
+    private val btnUndo: ImageView,
+    private val btnRedo: ImageView,
+    private val btnShade: ImageView,
+    private val btnClear: ImageView,
+    private val btnClose: ImageView,
+    private val btnColor: View,
     private val styleInkButton: (Boolean) -> Unit,
-    private val onToggleMark: (() -> Unit)? = null,
-    private val btnInkColor: View? = null
+    private val inkColorDot: View? = null
 ) {
 
     var onModeChanged: ((Boolean) -> Unit)? = null
 
     private var inkMode = false
-    private var marked = false
     private var night = false
 
     /** 当前是否处于写画模式 */
     val isInkMode: Boolean get() = inkMode
 
     init {
-        btnInkShade.setOnClickListener { inkOverlay.cycleShade() }
-        btnInkMark.setOnClickListener { onToggleMark?.invoke() }
-        btnInkDone.setOnClickListener { setInkMode(false) }
-        btnInkColor?.setOnClickListener {
-            inkOverlay.cycleColor()
-            val label = PenColors.labelOf(inkOverlay.penColor)
-            android.widget.Toast.makeText(
-                inkBar.context, "笔色：$label", android.widget.Toast.LENGTH_SHORT
-            ).show()
+        btnClose.setOnClickListener { setInkMode(false) }
+        btnPen.setOnClickListener { inkOverlay.tool = InkOverlay.Tool.PEN }
+        btnEraser.setOnClickListener { inkOverlay.tool = InkOverlay.Tool.ERASER }
+        btnUndo.setOnClickListener { inkOverlay.undo() }
+        btnRedo.setOnClickListener { inkOverlay.redo() }
+        btnClear.setOnClickListener { inkOverlay.clear() }
+
+        btnShade.setOnClickListener {
+            inkOverlay.cycleShade()
+            toast("遮盖：${inkOverlay.shade.label}")
         }
+        // 换色顺手切回笔：点色点的人下一步一定是要写字
+        btnColor.setOnClickListener {
+            inkOverlay.cycleColor()
+            inkOverlay.tool = InkOverlay.Tool.PEN
+            toast("笔色：${PenColors.labelOf(inkOverlay.penColor)}")
+        }
+
+        inkOverlay.onToolChanged = { renderTool() }
         inkOverlay.onShadeChanged = { renderShade() }
         inkOverlay.onColorChanged = { renderColor() }
-        renderShade()
-        renderMark()
-        renderColor()
+        // 抬笔 / 撤销 / 重做 / 擦除都会改笔数，撤销与重做的可用性跟着变
+        inkOverlay.onStrokeCountChanged = { renderHistory() }
+
+        render()
     }
 
     /** 切换写画模式 */
@@ -72,56 +84,52 @@ class InkToolbarController(
         inkMode = on
         inkOverlay.writeMode = on
         inkBar.visibility = if (on) View.VISIBLE else View.GONE
+        // 每次进来都是「笔」，不会上次留着橡皮、这次一写一片空白
+        if (on) inkOverlay.tool = InkOverlay.Tool.PEN
         styleInkButton(on)
-        renderShade()
-        renderMark()
-        renderColor()
+        render()
         onModeChanged?.invoke(on)
     }
 
-    /** 页面侧同步标记状态（切题 / 点击标记后调用） */
-    fun setMarked(value: Boolean) {
-        if (marked == value) return
-        marked = value
-        renderMark()
-    }
-
-    /** 夜间模式：工具条按钮文字跟着换色 */
+    /** 夜间模式：图标跟着换成深色卷面上看得清的那一档 */
     fun applyNightMode(on: Boolean) {
         night = on
+        render()
+    }
+
+    private fun render() {
+        renderTool()
+        renderHistory()
         renderShade()
-        renderMark()
         renderColor()
-        btnInkDone.setTextColor(ContextCompat.getColor(inkBar.context, R.color.fb_primary))
     }
 
+    /** 笔 / 橡皮互斥高亮：选中的那枚用主色 */
+    private fun renderTool() {
+        val pen = inkOverlay.tool == InkOverlay.Tool.PEN
+        tint(btnPen, if (pen) R.color.fb_primary else iconColor())
+        tint(btnEraser, if (pen) iconColor() else R.color.fb_primary)
+    }
+
+    /** 撤销 / 重做：没得操作时变淡，按了也不会有反应 */
+    private fun renderHistory() {
+        val dim = if (night) R.color.fb_night_text_meta else R.color.fb_text_hint
+        val canUndo = inkOverlay.canUndo
+        val canRedo = inkOverlay.canRedo
+        // 先定可用性再上色：tint 里按 isEnabled 决定透明度
+        btnUndo.isEnabled = canUndo
+        btnRedo.isEnabled = canRedo
+        btnClear.isEnabled = canUndo
+        tint(btnUndo, if (canUndo) iconColor() else dim)
+        tint(btnRedo, if (canRedo) iconColor() else dim)
+        tint(btnClear, if (canUndo) iconColor() else dim)
+    }
+
+    /** 遮盖：没铺纸时是灰的，铺了纸用主色 —— 一眼看出题目为什么变淡了 */
     private fun renderShade() {
-        btnInkShade.text = "遮盖·${inkOverlay.shade.label}"
-        val none = inkOverlay.shade == InkOverlay.Shade.NONE
-        btnInkShade.setTextColor(
-            ContextCompat.getColor(
-                btnInkShade.context,
-                when {
-                    !none -> R.color.fb_primary
-                    night -> R.color.fb_night_text_meta
-                    else -> R.color.fb_text_meta
-                }
-            )
-        )
-    }
-
-    private fun renderMark() {
-        btnInkMark.text = if (marked) "已标记" else "标记"
-        btnInkMark.setTextColor(
-            ContextCompat.getColor(
-                btnInkMark.context,
-                when {
-                    marked -> R.color.fb_card_num_marked
-                    night -> R.color.fb_night_text
-                    else -> R.color.fb_text_primary
-                }
-            )
-        )
+        val on = inkOverlay.shade != InkOverlay.Shade.NONE
+        tint(btnShade, if (on) R.color.fb_primary else iconColor())
+        btnShade.contentDescription = "题目遮盖：${inkOverlay.shade.label}"
     }
 
     /**
@@ -129,7 +137,7 @@ class InkToolbarController(
      * 用背景 drawable 现画，不额外引资源；夜间把描边换成半透明白，深底上也看得见。
      */
     private fun renderColor() {
-        val dot = btnInkColor ?: return
+        val dot = inkColorDot ?: btnColor
         val d = dot.resources.displayMetrics.density
         val ring = if (night) 0x99FFFFFF.toInt() else 0x33000000
         dot.background = GradientDrawable().apply {
@@ -138,5 +146,22 @@ class InkToolbarController(
             setStroke((1.5f * d).toInt().coerceAtLeast(1), ring)
         }
         dot.contentDescription = "笔迹颜色：${PenColors.labelOf(inkOverlay.penColor)}"
+    }
+
+    private fun iconColor() = if (night) R.color.fb_night_icon else R.color.fb_icon
+
+    /** 矢量图标换色：imageTintList 会盖掉 vector 里写死的 strokeColor */
+    private fun tint(v: ImageView, colorRes: Int) {
+        v.imageTintList = ColorStateList.valueOf(ContextCompat.getColor(v.context, colorRes))
+        v.alpha = if (v.isEnabled) 1f else ALPHA_DISABLED
+    }
+
+    private fun toast(msg: String) {
+        Toast.makeText(inkBar.context, msg, Toast.LENGTH_SHORT).show()
+    }
+
+    private companion object {
+        /** 不可用状态：淡到看得出「现在没得点」，又不至于像没画出来 */
+        const val ALPHA_DISABLED = 0.32f
     }
 }

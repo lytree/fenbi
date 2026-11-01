@@ -13,6 +13,8 @@
     <!-- ===== 顶栏 ===== -->
     <dimen name="fb_bar_h">56dp</dimen>
     <dimen name="fb_title_bar_h">56dp</dimen>
+    <!-- 写画工具条：平板上图标更疏，条也高一点 -->
+    <dimen name="fb_ink_bar_h">60dp</dimen>
     <dimen name="fb_bar_item_width">34dp</dimen>
     <dimen name="fb_bar_padding_left">20dp</dimen>
     <dimen name="fb_bar_pad_end">20dp</dimen>

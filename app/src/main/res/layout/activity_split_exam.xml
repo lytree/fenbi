@@ -24,6 +24,76 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/titleBar" />
 
+    <!-- ===== 写画工具条：与答题页同款八格图标条，顶在分屏内容上方 ===== -->
+    <LinearLayout
+        android:id="@+id/inkBar"
+        android:layout_width="0dp"
+        android:layout_height="@dimen/fb_ink_bar_h"
+        android:background="@color/fb_bar_bg"
+        android:elevation="2dp"
+        android:orientation="horizontal"
+        android:paddingStart="@dimen/fb_space_4"
+        android:paddingEnd="@dimen/fb_space_4"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/topDivider">
+
+        <ImageView
+            android:id="@+id/btnInkClose"
+            style="@style/FbInkIcon"
+            android:contentDescription="@string/action_done"
+            android:src="@drawable/ic_ink_done" />
+
+        <ImageView
+            android:id="@+id/btnInkPen"
+            style="@style/FbInkIcon"
+            android:contentDescription="@string/action_ink_pen"
+            android:src="@drawable/ic_fb_edit" />
+
+        <ImageView
+            android:id="@+id/btnInkEraser"
+            style="@style/FbInkIcon"
+            android:contentDescription="@string/action_ink_eraser"
+            android:src="@drawable/ic_ink_eraser" />
+
+        <ImageView
+            android:id="@+id/btnInkUndo"
+            style="@style/FbInkIcon"
+            android:contentDescription="@string/action_undo"
+            android:src="@drawable/ic_ink_undo" />
+
+        <ImageView
+            android:id="@+id/btnInkRedo"
+            style="@style/FbInkIcon"
+            android:contentDescription="@string/action_redo"
+            android:src="@drawable/ic_ink_redo" />
+
+        <ImageView
+            android:id="@+id/btnInkShade"
+            style="@style/FbInkIcon"
+            android:contentDescription="@string/action_ink_shade"
+            android:src="@drawable/ic_ink_shade" />
+
+        <FrameLayout
+            android:id="@+id/btnInkColor"
+            style="@style/FbInkSlot">
+
+            <View
+                android:id="@+id/inkColorDot"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_gravity="center"
+                android:background="@drawable/bg_fb_ink_color" />
+        </FrameLayout>
+
+        <ImageView
+            android:id="@+id/btnInkClear"
+            style="@style/FbInkIcon"
+            android:contentDescription="@string/action_clear_ink"
+            android:src="@drawable/ic_ink_trash" />
+    </LinearLayout>
+
     <!-- ===== 左栏：材料 ===== -->
     <LinearLayout
         android:id="@+id/leftPane"
@@ -35,7 +105,7 @@
         app:layout_constraintBottom_toTopOf="@id/bottomBar"
         app:layout_constraintEnd_toStartOf="@id/splitDivider"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/topDivider"
+        app:layout_constraintTop_toBottomOf="@id/inkBar"
         app:layout_constraintWidth_percent="0.5">
 
         <LinearLayout
@@ -103,7 +173,7 @@
         app:layout_constraintBottom_toTopOf="@id/bottomBar"
         app:layout_constraintEnd_toStartOf="@id/rightPane"
         app:layout_constraintStart_toEndOf="@id/leftPane"
-        app:layout_constraintTop_toBottomOf="@id/topDivider" />
+        app:layout_constraintTop_toBottomOf="@id/inkBar" />
 
     <View
         android:id="@+id/splitHandle"
@@ -113,7 +183,7 @@
         app:layout_constraintBottom_toTopOf="@id/bottomBar"
         app:layout_constraintEnd_toEndOf="@id/splitDivider"
         app:layout_constraintStart_toStartOf="@id/splitDivider"
-        app:layout_constraintTop_toBottomOf="@id/topDivider" />
+        app:layout_constraintTop_toBottomOf="@id/inkBar" />
 
     <!-- ===== 右栏：题目 ===== -->
     <androidx.core.widget.NestedScrollView
@@ -125,7 +195,7 @@
         app:layout_constraintBottom_toTopOf="@id/bottomBar"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toEndOf="@id/splitDivider"
-        app:layout_constraintTop_toBottomOf="@id/topDivider">
+        app:layout_constraintTop_toBottomOf="@id/inkBar">
 
         <LinearLayout
             android:id="@+id/questionList"
@@ -145,7 +215,7 @@
         app:layout_constraintBottom_toTopOf="@id/bottomBar"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/topDivider" />
+        app:layout_constraintTop_toBottomOf="@id/inkBar" />
 
     <!-- ===== 底部操作区（全站统一底栏：白底 + 上方 0.5dp 分割线 + 上下 10dp） ===== -->
     <View
@@ -202,58 +272,4 @@
             android:textSize="@dimen/fb_btn_text_size" />
     </LinearLayout>
 
-    <!-- 悬浮：遮盖层工具条（撤销 / 清空 / 遮盖档位 / 标记 / 完成） -->
-    <LinearLayout
-        android:id="@+id/inkBar"
-        android:layout_width="wrap_content"
-        android:layout_height="@dimen/fb_bar_h"
-        android:layout_marginEnd="@dimen/fb_space_16"
-        android:layout_marginBottom="70dp"
-        android:background="@drawable/bg_fb_action"
-        android:elevation="6dp"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingHorizontal="@dimen/fb_space_4"
-        android:visibility="gone"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
-
-        <TextView
-            android:id="@+id/btnInkUndo"
-            style="@style/FbInkAction"
-            android:text="@string/action_undo"
-            android:textColor="@color/fb_text_primary" />
-
-        <TextView
-            android:id="@+id/btnInkClear"
-            style="@style/FbInkAction"
-            android:text="@string/action_clear_ink"
-            android:textColor="@color/fb_danger" />
-
-        <!-- 笔色：实心圆就是当前笔色，点一下换下一色 -->
-        <View
-            android:id="@+id/btnInkColor"
-            android:layout_width="22dp"
-            android:layout_height="22dp"
-            android:layout_marginStart="2dp"
-            android:layout_marginEnd="@dimen/fb_space_8"
-            android:background="@drawable/bg_fb_ink_color"
-            android:contentDescription="@string/action_ink_color" />
-
-        <TextView
-            android:id="@+id/btnInkShade"
-            style="@style/FbInkAction"
-            tools:text="遮盖·浅" />
-
-        <TextView
-            android:id="@+id/btnInkMark"
-            style="@style/FbInkAction"
-            tools:text="标记" />
-
-        <TextView
-            android:id="@+id/btnInkDone"
-            style="@style/FbInkAction"
-            android:text="@string/action_done"
-            android:textColor="@color/fb_primary" />
-    </LinearLayout>
 </androidx.constraintlayout.widget.ConstraintLayout>

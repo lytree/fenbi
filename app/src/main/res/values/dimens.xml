@@ -65,6 +65,8 @@
 
     <!-- 顶栏：内容高 44dp，状态栏高度由 FbTitleBar 并入 padding -->
     <dimen name="fb_bar_h">44dp</dimen>
+    <!-- 写画工具条：比顶栏略高，图标等分排开，纯图标没有文字 -->
+    <dimen name="fb_ink_bar_h">52dp</dimen>
     <dimen name="fb_title_bar_h">44dp</dimen>
     <dimen name="fb_bar_item_width">28dp</dimen>
     <dimen name="fb_bar_padding_left">13dp</dimen>

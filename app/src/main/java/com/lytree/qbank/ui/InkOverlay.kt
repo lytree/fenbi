@@ -12,6 +12,7 @@ import android.view.View
 import com.lytree.qbank.data.db.QBankDb
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlin.math.hypot
 
 /**
  * 题目遮盖层（可写）。
@@ -55,6 +56,15 @@ class InkOverlay @JvmOverloads constructor(
 
         fun next(): Shade = entries[(ordinal + 1) % entries.size]
     }
+
+    /**
+     * 当前工具：笔 / 橡皮。
+     *
+     * 橡皮按「整笔擦除」实现——手指划过的笔迹整条清掉，不做像素级局部擦。
+     * 好处是数据模型不变（还是一条条笔迹），撤销 / 换色 / 落库都不用特殊照顾；
+     * 对圈画做题这种「一笔就是一道线」的场景，整笔擦反而更顺手。
+     */
+    enum class Tool { PEN, ERASER }
 
     /**
      * 笔迹归属的两类目标：题目 / 材料。
@@ -119,8 +129,12 @@ class InkOverlay @JvmOverloads constructor(
 
     /** 一笔：若干采样点 + 每点的压感 + 这一笔的颜色（内容坐标） */
     private class Stroke {
-        val points = ArrayList<FloatArray>()   // [x, y, pressure]
+        val points = ArrayList<FloatArray>()   // [x, y, width]  width = 压感 × 速度合成的粗细系数
         var color: Int = 0                     // 0 = 旧数据，按默认红笔渲染
+
+        /** 笔锋用：上一个采样点的时间与粗细系数（只活在本次书写期间，不落库） */
+        var lastTime: Long = 0L
+        var lastWidth: Float = 1f
     }
 
     /** 一份目标（题目或材料）的笔迹集合；从库里懒加载，读过（哪怕是空）都缓存着，滚动时不重复查库 */
@@ -131,6 +145,14 @@ class InkOverlay @JvmOverloads constructor(
     private val docs = HashMap<String, Doc>()
     private var current: Stroke? = null
     private var activePointerId = MotionEvent.INVALID_POINTER_ID
+
+    /** 撤销下来的笔迹：重做按逆序放回；一落新笔、一换目标就作废（标准撤销/重做语义） */
+    private val redoStack = ArrayList<Stroke>()
+
+    /** 橡皮正在擦：落点画一枚淡淡的圈，让人知道「现在是在擦，不是笔没水」 */
+    private var erasing = false
+    private var eraserX = -1f
+    private var eraserY = -1f
     /** 撤销 / 清空 / 落库的目标（最近一次落笔的题目或材料） */
     private var activeKind = TargetKind.QUESTION
     private var activeTargetId = 0L
@@ -146,6 +168,7 @@ class InkOverlay @JvmOverloads constructor(
             field = value
             docs.clear()
             current = null
+            redoStack.clear()
             invalidate()
             onStrokeCountChanged?.invoke(strokeCount)
         }
@@ -175,6 +198,17 @@ class InkOverlay @JvmOverloads constructor(
             onColorChanged?.invoke(value)
         }
 
+    /** 当前工具：笔 / 橡皮。工具条上两个图标互斥高亮 */
+    var tool: Tool = Tool.PEN
+        set(value) {
+            if (field == value) return
+            field = value
+            current = null
+            erasing = false
+            invalidate()
+            onToolChanged?.invoke(value)
+        }
+
     /** 是否处于写画模式：true = 铺遮盖纸 + 拦截全部触摸 */
     var writeMode: Boolean = false
         set(value) {
@@ -182,6 +216,7 @@ class InkOverlay @JvmOverloads constructor(
             field = value
             activePointerId = MotionEvent.INVALID_POINTER_ID
             current = null
+            erasing = false
             barDragging = false
             barTarget = null
             barLeftEdge = false
@@ -203,6 +238,8 @@ class InkOverlay @JvmOverloads constructor(
     var onShadeChanged: ((Shade) -> Unit)? = null
     /** 笔色切换回调（工具条上的色点跟着变） */
     var onColorChanged: ((Int) -> Unit)? = null
+    /** 工具切换回调（工具条换高亮） */
+    var onToolChanged: ((Tool) -> Unit)? = null
 
     /**
      * 内容锚点来源：返回当前屏幕上每一块可写内容（题目 / 材料）的归属、原点与命中区。
@@ -286,6 +323,12 @@ class InkOverlay @JvmOverloads constructor(
 
     private val shadePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
 
+    /** 橡皮落点圈 */
+    private val eraserPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+
+    /** 橡皮的作用半径：手指粗细，划过就把整笔带走 */
+    private val eraserRadius get() = 12f * resources.displayMetrics.density
+
     /** 右侧滚动轨道 / 滑块的画笔 */
     private val barPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val barRect = RectF()
@@ -305,6 +348,7 @@ class InkOverlay @JvmOverloads constructor(
         activeKind = kind
         activeTargetId = targetId
         current = null
+        redoStack.clear()
         invalidate()
         onStrokeCountChanged?.invoke(strokeCount)
     }
@@ -318,6 +362,7 @@ class InkOverlay @JvmOverloads constructor(
     fun reload() {
         docs.clear()
         current = null
+        redoStack.clear()
         invalidate()
         onStrokeCountChanged?.invoke(strokeCount)
     }
@@ -341,6 +386,8 @@ class InkOverlay @JvmOverloads constructor(
         }
         // 正在写的那一笔：点已经换算成内容坐标，画的时候抬回屏幕
         current?.let { drawStroke(canvas, it, strokeOriginX, strokeOriginY) }
+        // 橡皮落点：一枚空心圈跟着走，擦没擦到一眼看得出来
+        if (erasing) drawEraserRing(canvas)
         // 轨道最后画：始终压在纸和笔迹之上，写画时才看得见
         if (writeMode) drawScrollBar(canvas)
     }
@@ -373,9 +420,17 @@ class InkOverlay @JvmOverloads constructor(
         for (i in 1 until p.size) {
             val a = p[i - 1]
             val b = p[i]
-            strokePaint.strokeWidth = baseWidth * (0.4f + 0.6f * b[2])
+            // 取两端系数的均值：相邻两段不会突然一粗一细，笔锋是「渐变」出来的
+            strokePaint.strokeWidth = baseWidth * (0.4f + 0.6f * (a[2] + b[2]) * 0.5f)
             canvas.drawLine(a[0] + dx, a[1] + dy, b[0] + dx, b[1] + dy, strokePaint)
         }
+    }
+
+    /** 橡皮落点圈：只画轮廓，不挡下面的字 */
+    private fun drawEraserRing(canvas: Canvas) {
+        eraserPaint.strokeWidth = 1.5f * resources.displayMetrics.density
+        eraserPaint.color = if (night) 0x99FFFFFF.toInt() else 0x59000000
+        canvas.drawCircle(eraserX, eraserY, eraserRadius, eraserPaint)
     }
 
     private val baseWidth get() = 4f * resources.displayMetrics.density
@@ -643,6 +698,11 @@ class InkOverlay @JvmOverloads constructor(
                 if (event.pointerCount > 1) return true
                 // 右边缘轨道：不画线，交给滚动
                 if (isOnBar(event.x, event.y)) return beginBarDrag(event)
+                // 橡皮：整笔擦掉划过的笔迹，不产生新线
+                if (tool == Tool.ERASER) {
+                    beginErase(event)
+                    return true
+                }
                 parent?.requestDisallowInterceptTouchEvent(true)
                 activePointerId = event.getPointerId(0)
                 // 落点决定这一笔归属于题目还是材料：材料区写材料、题目区写题目，
@@ -656,14 +716,15 @@ class InkOverlay @JvmOverloads constructor(
                 }
                 strokeOriginX = origin[0]
                 strokeOriginY = origin[1]
+                redoStack.clear()          // 落了新笔，撤销掉的那些就不能再重做了
                 current = Stroke().apply {
                     color = penColor
-                    points.add(
-                        floatArrayOf(
-                            event.x - strokeOriginX,
-                            event.y - strokeOriginY,
-                            pressureOf(event, 0)
-                        )
+                    addSample(
+                        this,
+                        event.x - strokeOriginX,
+                        event.y - strokeOriginY,
+                        pressureOf(event, 0),
+                        event.eventTime
                     )
                 }
                 invalidate()
@@ -676,25 +737,29 @@ class InkOverlay @JvmOverloads constructor(
             }
 
             MotionEvent.ACTION_MOVE -> {
+                if (erasing) {
+                    dragErase(event)
+                    return true
+                }
                 val s = current ?: return true
                 val idx = event.findPointerIndex(activePointerId)
                 if (idx < 0) return true
                 // 只取当前笔那一根手指的轨迹，其余触点（掌托）不参与绘制
                 for (h in 0 until event.historySize) {
-                    s.points.add(
-                        floatArrayOf(
-                            event.getHistoricalX(idx, h) - strokeOriginX,
-                            event.getHistoricalY(idx, h) - strokeOriginY,
-                            pressureOf(event, idx, h)
-                        )
+                    addSample(
+                        s,
+                        event.getHistoricalX(idx, h) - strokeOriginX,
+                        event.getHistoricalY(idx, h) - strokeOriginY,
+                        pressureOf(event, idx, h),
+                        event.getHistoricalEventTime(h)
                     )
                 }
-                s.points.add(
-                    floatArrayOf(
-                        event.getX(idx) - strokeOriginX,
-                        event.getY(idx) - strokeOriginY,
-                        pressureOf(event, idx)
-                    )
+                addSample(
+                    s,
+                    event.getX(idx) - strokeOriginX,
+                    event.getY(idx) - strokeOriginY,
+                    pressureOf(event, idx),
+                    event.eventTime
                 )
                 invalidate()
                 return true
@@ -706,6 +771,10 @@ class InkOverlay @JvmOverloads constructor(
             }
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (erasing) {
+                    endErase()
+                    return true
+                }
                 val s = current
                 val doc = activeDoc()
                 if (s != null && doc != null &&
@@ -734,20 +803,134 @@ class InkOverlay @JvmOverloads constructor(
         return if (p <= 0f) 1f else p.coerceIn(0.1f, 1.5f)
     }
 
+    // ---------------- 笔锋 ----------------
+
+    /**
+     * 采样一个点，顺手算出这一点该多粗。
+     *
+     * 粗细 = 压感 × 速度：落笔重、走得慢就粗（顿笔），甩得快就细（出锋）。
+     * 手指没有压感（pressure 恒为 1）时靠速度也一样能写出笔锋 —— 这就是「像手写」的关键，
+     * 固定线宽写出来的字会像记号笔，一眼看不出是手写的。
+     *
+     * 系数做了一阶低通（新值占 45%），避免采样抖动让线条忽粗忽细。
+     */
+    private fun addSample(s: Stroke, x: Float, y: Float, pressure: Float, time: Long) {
+        val last = if (s.points.isEmpty()) null else s.points[s.points.size - 1]
+        val raw = if (last == null) {
+            // 起笔：重一点，像笔尖按下纸面
+            0.75f + 0.45f * pressure
+        } else {
+            val d = resources.displayMetrics.density
+            val distDp = hypot(x - last[0], y - last[1]) / d
+            val dt = (time - s.lastTime).coerceAtLeast(1L)
+            val speedDp = distDp / dt                       // dp/ms
+            val speed = (1.08f - speedDp * 0.42f).coerceIn(0.45f, 1.08f)
+            val target = speed * (0.72f + 0.42f * pressure)
+            s.lastWidth * 0.55f + target * 0.45f
+        }
+        val w = raw.coerceIn(0.40f, 1.35f)
+
+        s.lastTime = time
+        s.lastWidth = w
+        s.points.add(floatArrayOf(x, y, w))
+    }
+
+    // ---------------- 橡皮 ----------------
+
+    private fun beginErase(e: MotionEvent) {
+        parent?.requestDisallowInterceptTouchEvent(true)
+        erasing = true
+        eraserX = e.x
+        eraserY = e.y
+        eraseAt(e.x, e.y)
+        invalidate()
+    }
+
+    private fun dragErase(e: MotionEvent) {
+        eraserX = e.x
+        eraserY = e.y
+        // 补上历史点，快速划过去也不会漏掉中间的笔迹
+        for (h in 0 until e.historySize) {
+            eraseAt(e.getHistoricalX(0, h), e.getHistoricalY(0, h))
+        }
+        eraseAt(e.x, e.y)
+        invalidate()
+    }
+
+    private fun endErase() {
+        erasing = false
+        eraserX = -1f
+        eraserY = -1f
+        parent?.requestDisallowInterceptTouchEvent(false)
+        persist()          // 擦完立刻落库，切题 / 退出重进都还是擦干净的样子
+        invalidate()
+    }
+
+    /**
+     * 擦掉落点半径内碰到的笔迹（整笔带走）。
+     *
+     * 笔迹点存的是「相对命中内容原点」的坐标，落点要先减掉同一个原点才能比距离；
+     * 落点若不在任何内容上，就按当前绑定的目标擦。
+     */
+    private fun eraseAt(x: Float, y: Float) {
+        val hit = pickAnchor(x, y)
+        val kind = hit?.kind ?: activeKind
+        val targetId = if (hit != null) hit.targetId else activeTargetId
+        if (targetId == 0L) return
+        val doc = docOf(kind, targetId)
+        if (doc.strokes.isEmpty()) return
+
+        val origin = if (hit != null) floatArrayOf(hit.x, hit.y) else originOfActive()
+        val px = x - origin[0]
+        val py = y - origin[1]
+        val r2 = eraserRadius * eraserRadius
+
+        val before = doc.strokes.size
+        val it = doc.strokes.iterator()
+        while (it.hasNext()) {
+            if (strokeHits(it.next(), px, py, r2)) it.remove()
+        }
+        if (doc.strokes.size == before) return
+        redoStack.clear()   // 擦除也是一次编辑，旧的「重做」不再成立
+        onStrokeCountChanged?.invoke(doc.strokes.size)
+    }
+
+    private fun strokeHits(s: Stroke, px: Float, py: Float, r2: Float): Boolean {
+        for (p in s.points) {
+            val dx = p[0] - px
+            val dy = p[1] - py
+            if (dx * dx + dy * dy <= r2) return true
+        }
+        return false
+    }
+
     // ---------------- 撤销 / 清空 / 换档 / 换色 ----------------
 
     fun undo() {
         val doc = activeDoc() ?: return
         if (doc.strokes.isEmpty()) return
-        doc.strokes.removeAt(doc.strokes.size - 1)
+        redoStack.add(doc.strokes.removeAt(doc.strokes.size - 1))
         persist()
         invalidate()
         onStrokeCountChanged?.invoke(doc.strokes.size)
     }
 
+    /** 重做：把刚撤销的那一笔按原顺序放回去 */
+    fun redo() {
+        val doc = activeDoc() ?: return
+        val s = redoStack.removeLastOrNull() ?: return
+        doc.strokes.add(s)
+        persist()
+        invalidate()
+        onStrokeCountChanged?.invoke(doc.strokes.size)
+    }
+
+    /** 清空当前目标的全部笔迹（垃圾桶语义：清掉就是清掉，不进重做栈） */
     fun clear() {
         val doc = activeDoc() ?: return
+        if (doc.strokes.isEmpty()) return
         doc.strokes.clear()
+        redoStack.clear()
         current = null
         persist()
         invalidate()
@@ -768,6 +951,10 @@ class InkOverlay @JvmOverloads constructor(
 
     /** 本题有没有写过东西（用于「清空」按钮置灰之类） */
     val hasInk: Boolean get() = strokeCount > 0
+
+    /** 能不能撤销 / 重做（工具条据此决定图标亮度） */
+    val canUndo: Boolean get() = hasInk
+    val canRedo: Boolean get() = redoStack.isNotEmpty()
 
     // ---------------- 持久化 ----------------
 

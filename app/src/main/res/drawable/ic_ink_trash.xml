@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 细线风格清空（垃圾桶） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:strokeColor="@color/fb_icon" android:strokeWidth="1.7"
+        android:strokeLineCap="round"
+        android:pathData="M3.8,6.2 L20.2,6.2" />
+    <path android:strokeColor="@color/fb_icon" android:strokeWidth="1.7" android:fillColor="#00000000"
+        android:strokeLineJoin="round" android:strokeLineCap="round"
+        android:pathData="M18.6,6.2 L18.6,19.4 A1.9,1.9 0 0 1 16.7,21.3 L7.3,21.3 A1.9,1.9 0 0 1 5.4,19.4 L5.4,6.2" />
+    <path android:strokeColor="@color/fb_icon" android:strokeWidth="1.7" android:fillColor="#00000000"
+        android:strokeLineJoin="round" android:strokeLineCap="round"
+        android:pathData="M8.9,6.2 L8.9,4.3 A1.9,1.9 0 0 1 10.8,2.4 L13.2,2.4 A1.9,1.9 0 0 1 15.1,4.3 L15.1,6.2" />
+    <path android:strokeColor="@color/fb_icon" android:strokeWidth="1.7"
+        android:strokeLineCap="round"
+        android:pathData="M10.2,10.4 L10.2,16.8 M13.8,10.4 L13.8,16.8" />
+</vector>
