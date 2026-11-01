@@ -11,6 +11,7 @@ import android.widget.LinearLayout
 import androidx.activity.addCallback
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
+import com.lytree.qbank.BuildConfig
 import com.lytree.qbank.R
 import com.lytree.qbank.data.db.QBankDb
 import com.lytree.qbank.databinding.FragmentSettingsBinding
@@ -74,6 +75,7 @@ class SettingsFragment : Fragment(), Refreshable {
         ).forEach { it.onCheckedChange = { _ -> save() } }
 
         renderPenColors()
+        renderVersion()
 
         binding.rowBackup.setOnClickListener {
             parentFragmentManager.beginTransaction()
@@ -109,6 +111,20 @@ class SettingsFragment : Fragment(), Refreshable {
             R.string.settings_pen_color_hint,
             PenColors.labelOf(current)
         )
+    }
+
+    // ---------------- 关于 ----------------
+
+    /**
+     * 版本号直接取 BuildConfig：CI 用 -PversionName 覆盖时会跟着变，不用手改。
+     * debug 包额外标出「调试版」和 versionCode，方便对照反馈的是哪个包。
+     */
+    private fun renderVersion() {
+        binding.tvVersion.text = if (BuildConfig.DEBUG) {
+            getString(R.string.settings_version_debug, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE)
+        } else {
+            BuildConfig.VERSION_NAME
+        }
     }
 
     /** 未选中：纯色圆；选中：白色底 + 主色描边，中间留 4dp 空隙，看着像一枚被圈住的色块 */

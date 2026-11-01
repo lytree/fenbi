@@ -242,6 +242,38 @@
                         android:text="›" />
                 </LinearLayout>
             </LinearLayout>
+
+            <TextView
+                style="@style/FbGroupTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/fb_section_gap"
+                android:layout_marginBottom="@dimen/fb_space_8"
+                android:text="关于" />
+
+            <LinearLayout style="@style/FbCard">
+
+                <!-- 版本号：值从 BuildConfig 取，随构建自动变（CI 用 -PversionName 覆盖） -->
+                <LinearLayout
+                    style="@style/FbSwitchRow"
+                    android:background="@null">
+
+                    <TextView
+                        style="@style/FbRowTitle"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:text="版本号" />
+
+                    <TextView
+                        android:id="@+id/tvVersion"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="@dimen/fb_space_8"
+                        android:textSize="@dimen/fb_text_item_title"
+                        android:textColor="@color/fb_text_secondary"
+                        tools:text="0.0.18" />
+                </LinearLayout>
+            </LinearLayout>
         </LinearLayout>
     </ScrollView>
 </LinearLayout>

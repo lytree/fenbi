@@ -112,6 +112,8 @@
     <string name="note_title">本题笔记</string>
     <!-- 设置页 · 手写标注 -->
     <string name="settings_pen_color_hint">当前：%1$s笔。笔迹跟随本次作答记录保存，每题只留最新一份，退出重进还在。</string>
+    <!-- 设置页 · 关于 -->
+    <string name="settings_version_debug">%1$s（调试版 · %2$d）</string>
     <string name="more_split_on">开启左右分屏</string>
     <string name="more_split_off">关闭左右分屏</string>
     <string name="more_split_unavailable">左右分屏（本卷无材料）</string>
