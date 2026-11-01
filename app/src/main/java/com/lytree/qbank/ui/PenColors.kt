@@ -5,8 +5,8 @@ import android.content.Context
 /**
  * 手写笔色板。
  *
- * 颜色只存一处：`ink_prefs / pen_color`。设置页选完，答题页的笔直接用；答题页工具条上的
- * 小色点也能就地点一下换色，两边读写的是同一份偏好，不会出现「设置里选了蓝、写出来还是红」。
+ * 颜色只存一处：`ink_prefs / pen_color`，**只在设置页「手写标注 → 笔迹颜色」里改**。
+ * 写画工具条不带换色按钮 —— 答题时手忙脚乱地点色点容易误触，颜色定好一次就够了。
  *
  * 每笔笔迹自己带颜色（[InkOverlay] 里按笔存），所以换色不影响已经写上去的圈画——
  * 红笔划的关键词不会因为你后来换成蓝笔而变色。
@@ -40,10 +40,4 @@ object PenColors {
 
     fun labelOf(color: Int): String =
         items.firstOrNull { it.color == color }?.label ?: "自定义"
-
-    /** 点一下换下一个颜色（工具条上的色点用它循环） */
-    fun next(color: Int): Int {
-        val i = items.indexOfFirst { it.color == color }
-        return items[(i + 1).mod(items.size)].color
-    }
 }

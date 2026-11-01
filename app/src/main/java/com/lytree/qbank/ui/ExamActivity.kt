@@ -780,8 +780,6 @@ class ExamActivity : AppCompatActivity() {
             btnShade = binding.btnInkShade,
             btnClear = binding.btnInkClear,
             btnClose = binding.btnInkClose,
-            btnColor = binding.btnInkColor,
-            inkColorDot = binding.inkColorDot,
             styleInkButton = { }
         )
         inkToolbar.onModeChanged = { on ->

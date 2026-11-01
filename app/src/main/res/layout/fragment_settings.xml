@@ -168,7 +168,7 @@
 
                 <TextView
                     style="@style/FbRowSub"
-                    android:text="点题目右上角的笔进入写画，圈画与写字都用这个颜色" />
+                    android:text="圈画与写字都用这个颜色，写画时不再单独换色；不选就是默认红笔" />
 
                 <LinearLayout
                     android:id="@+id/colorRow"

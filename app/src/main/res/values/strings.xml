@@ -89,7 +89,6 @@
     <string name="action_ink_eraser">橡皮</string>
     <string name="action_ink_shade">题目遮盖档位</string>
     <string name="action_clear_ink">清空</string>
-    <string name="action_ink_color">笔迹颜色</string>
     <string name="action_done">完成</string>
     <string name="action_note_edit">编辑笔记</string>
     <string name="action_ink_edit">手写标注（长按写笔记）</string>

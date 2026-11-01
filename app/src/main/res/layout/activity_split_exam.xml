@@ -75,17 +75,6 @@
             android:contentDescription="@string/action_ink_shade"
             android:src="@drawable/ic_ink_shade" />
 
-        <FrameLayout
-            android:id="@+id/btnInkColor"
-            style="@style/FbInkSlot">
-
-            <View
-                android:id="@+id/inkColorDot"
-                android:layout_width="20dp"
-                android:layout_height="20dp"
-                android:layout_gravity="center"
-                android:background="@drawable/bg_fb_ink_color" />
-        </FrameLayout>
 
         <ImageView
             android:id="@+id/btnInkClear"

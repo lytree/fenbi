@@ -195,7 +195,6 @@ class InkOverlay @JvmOverloads constructor(
             field = value
             PenColors.save(context, value)
             invalidate()
-            onColorChanged?.invoke(value)
         }
 
     /** 当前工具：笔 / 橡皮。工具条上两个图标互斥高亮 */
@@ -221,6 +220,8 @@ class InkOverlay @JvmOverloads constructor(
             barTarget = null
             barLeftEdge = false
             isEnabled = value
+            // 笔色只在设置页改：每次进写画都重读一次，设置里刚换的颜色马上生效
+            if (value) penColor = PenColors.load(context)
             invalidate()
         }
 
@@ -236,8 +237,6 @@ class InkOverlay @JvmOverloads constructor(
     var onStrokeCountChanged: ((Int) -> Unit)? = null
     /** 遮盖档位切换回调（工具条按钮文案跟着变） */
     var onShadeChanged: ((Shade) -> Unit)? = null
-    /** 笔色切换回调（工具条上的色点跟着变） */
-    var onColorChanged: ((Int) -> Unit)? = null
     /** 工具切换回调（工具条换高亮） */
     var onToolChanged: ((Tool) -> Unit)? = null
 
@@ -940,11 +939,6 @@ class InkOverlay @JvmOverloads constructor(
     /** 遮盖档位循环切换：关 → 浅 → 中 → 深 → 关 */
     fun cycleShade() {
         shade = shade.next()
-    }
-
-    /** 笔色循环切换：红 → 蓝 → 绿 → 橙 → 黑 → 红 */
-    fun cycleColor() {
-        penColor = PenColors.next(penColor)
     }
 
     val strokeCount: Int get() = activeDoc()?.strokes?.size ?: 0

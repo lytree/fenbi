@@ -140,8 +140,6 @@ class SplitExamActivity : AppCompatActivity() {
             btnShade = binding.btnInkShade,
             btnClear = binding.btnInkClear,
             btnClose = binding.btnInkClose,
-            btnColor = binding.btnInkColor,
-            inkColorDot = binding.inkColorDot,
             styleInkButton = { on ->
                 binding.btnInk.setBackgroundResource(
                     if (on) R.drawable.bg_fb_mark_on else R.drawable.bg_fb_action
