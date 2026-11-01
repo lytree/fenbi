@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-把「超格·2027政治理论背诵手册」抓取结果整理成 App 的考点背诵资产
+把「超格·【早自习】2027政治理论背诵手册礼包 / 核心知识带背」抓取结果
+整理成 App 的考点背诵资产
 =================================================================
 读取 course_content/ 下按课程分文件的 .txt（形如 `N. 内容`，记忆关键词在词两侧
 用 2 个以上空格包住），转换成 ReciteRepository 需要的
@@ -10,7 +11,7 @@ app/src/main/assets/recite_politics.json（保留原有精编卡片，不覆盖�
 
 用法：
     python tools/build_recite_asset.py \
-        --src tmp/recite_extract/course_content \
+        --src tmp/recite_early/course_content \
         --asset app/src/main/assets/recite_politics.json
 
 转换规则：
@@ -23,8 +24,9 @@ import json
 import os
 import re
 import sys
+from datetime import date
 
-# 课程顺序（与超格「核心知识带背」18 节一致）
+# 课程顺序（与超格「核心知识带背」20 节一致）
 LESSONS = [
     "政治理论考情介绍+新思想导论",
     "新思想第一、二节",
@@ -44,6 +46,8 @@ LESSONS = [
     "时政理论-重要文件1",
     "时政理论-重要文件2",
     "时政理论-重要文件3",
+    "时政理论-重要文件4",
+    "时政理论-重要文件5",
 ]
 
 # 分组（弹层里作为二级标题展示）：(分组名, 该组分类简称, 包含前 N 节课)
@@ -75,6 +79,8 @@ LESSON_GROUPS = [
             "重要文件1",
             "重要文件2",
             "重要文件3",
+            "重要文件4",
+            "重要文件5",
         ],
     ),
 ]
@@ -99,7 +105,13 @@ def convert_line(line, answers):
             if term:
                 buf.append("____")
                 answers.append(term)
-    return "".join(buf)
+    out = "".join(buf)
+    # 整行只剩一个空位 = 这行本来只是「缩进的列表项」（如【回顾】里的排名清单），
+    # 不是填空：还原原文，把刚记下的假答案撤掉。
+    if out.strip() == "____":
+        answers.pop()
+        return line.strip()
+    return out
 
 
 def convert_card(raw):
@@ -114,7 +126,7 @@ def convert_card(raw):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--src", default="tmp/recite_extract/course_content")
+    ap.add_argument("--src", default="tmp/recite_early/course_content")
     ap.add_argument("--asset", default="app/src/main/assets/recite_politics.json")
     ap.add_argument("--replace", action="store_true", help="清空原有卡片，只用超格内容")
     ap.add_argument(
@@ -193,15 +205,15 @@ def main():
 
     asset["categories"] = new_cats + list(existing_cats)
     asset["cards"] = new_cards + existing_cards
-    asset["updated"] = "2026-10-29"
+    asset["updated"] = date.today().isoformat()
     asset["title"] = "2027 政治理论考点背诵（含超格背诵手册）"
     asset["intro"] = (
-        "含两部分：① 精编政治理论考点；② 超格《2027政治理论背诵手册礼包》"
-        "「核心知识带背」18 节全套考点。弹层按「超格 · 新思想」「超格 · 时政理论」"
+        "含两部分：① 精编政治理论考点；② 超格《【早自习】2027政治理论背诵手册礼包》"
+        f"「核心知识带背」{len(LESSONS)} 节全套考点。弹层按「超格 · 新思想」「超格 · 时政理论」"
         f"「精编考点」分组，共 {len(asset['categories'])} 个分类 / {len(asset['cards'])} 张卡片。"
     )
 
-    with open(args.asset, "w", encoding="utf-8") as f:
+    with open(args.asset, "w", encoding="utf-8", newline="\n") as f:
         json.dump(asset, f, ensure_ascii=False, indent=2)
 
     print(f"\n新增分类 {len(new_cats)} 个，新增卡片 {len(new_cards)} 张；"
