@@ -15,6 +15,9 @@ import com.lytree.qbank.databinding.ItemWordHeaderBinding
  *
  * 分组不在数据库里做——[Word.initial] 入库时就算好了，`ORDER BY initial, pinyin, text`
  * 取出来天然是分好的顺序，这里只负责在换组的地方插一行组头。
+ *
+ * 另外带一套「多选删除」状态：长按任意词条进入，行前冒出勾选框，点一行就是勾 / 取消；
+ * 选中态由本类维护，条数变化通过 [onSelectionChanged] 回调给页面去改顶栏。
  */
 class WordAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
@@ -39,6 +42,21 @@ class WordAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
     /** 展开的词条 id（点一行看例句 / 出处），换筛选时清空 */
     private val expanded = HashSet<Long>()
 
+    /** 多选删除：选中的词条 id（LinkedHashSet 保序，删完提示里不用再排） */
+    private val selected = LinkedHashSet<Long>()
+
+    private var selectionMode = false
+
+    /** 长按词条（非选择态）：页面据此进入多选 */
+    var onLongPress: ((Word) -> Unit)? = null
+
+    /** 选中数变化（0 = 已退出选择态） */
+    var onSelectionChanged: ((Int) -> Unit)? = null
+
+    val isSelecting: Boolean get() = selectionMode
+    val selectedCount: Int get() = selected.size
+    val selectedIds: List<Long> get() = selected.toList()
+
     fun submit(words: List<Word>) {
         rows.clear()
         expanded.clear()
@@ -51,6 +69,12 @@ class WordAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
             for (k in i until j) rows.add(Row(word = words[k]))
             i = j
         }
+        // 列表整批换了，选中的 id 可能已经不在了，直接退出选择态最稳
+        if (selectionMode) {
+            selectionMode = false
+            selected.clear()
+            onSelectionChanged?.invoke(0)
+        }
         notifyDataSetChanged()
     }
 
@@ -62,6 +86,45 @@ class WordAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
             if (!out.containsKey(h)) out[h] = index
         }
         return out
+    }
+
+    // ---------------- 多选删除 ----------------
+
+    fun startSelection(first: Word) {
+        selectionMode = true
+        selected.clear()
+        if (first.id > 0) selected.add(first.id)
+        notifyDataSetChanged()
+        onSelectionChanged?.invoke(selected.size)
+    }
+
+    fun toggleSelection(word: Word) {
+        if (!selectionMode || word.id <= 0) return
+        if (!selected.remove(word.id)) selected.add(word.id)
+        notifyItemChanged(positionOf(word.id))
+        onSelectionChanged?.invoke(selected.size)
+    }
+
+    /** 全选 / 取消全选：已经全选就清空，否则补全 */
+    fun toggleSelectAll() {
+        if (!selectionMode) return
+        val ids = rows.mapNotNull { it.word?.id }.filter { it > 0 }
+        if (ids.isNotEmpty() && selected.size >= ids.size) selected.clear() else selected.addAll(ids)
+        notifyDataSetChanged()
+        onSelectionChanged?.invoke(selected.size)
+    }
+
+    fun exitSelection() {
+        if (!selectionMode) return
+        selectionMode = false
+        selected.clear()
+        notifyDataSetChanged()
+        onSelectionChanged?.invoke(0)
+    }
+
+    private fun positionOf(id: Long): Int {
+        rows.forEachIndexed { index, row -> if (row.word?.id == id) return index }
+        return -1
     }
 
     override fun getItemCount(): Int = rows.size
@@ -83,6 +146,8 @@ class WordAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
         if (holder is HeaderVH) {
             holder.b.tvLetter.text = row.header
             holder.b.tvCount.text = row.headerCount.toString()
+            holder.itemView.setOnClickListener(null)
+            holder.itemView.setOnLongClickListener(null)
             return
         }
         holder as WordVH
@@ -95,7 +160,11 @@ class WordAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
         b.tvTag.text = if (w.tag.isNotBlank()) "${w.categoryLabel} · ${w.tag}" else w.categoryLabel
         b.tvMeaning.text = w.meaning.ifBlank { ctx.getString(R.string.word_meaning_empty) }
 
-        val isExpanded = w.id in expanded
+        val selecting = selectionMode
+        b.cbSelect.visibility = if (selecting) View.VISIBLE else View.GONE
+        b.cbSelect.isChecked = selecting && w.id in selected
+
+        val isExpanded = !selecting && w.id in expanded
         b.tvMeaning.maxLines = if (isExpanded) Int.MAX_VALUE else 2
 
         val extra = buildString {
@@ -113,9 +182,16 @@ class WordAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
         b.tvExtra.visibility = if (isExpanded && extra.isNotBlank()) View.VISIBLE else View.GONE
 
         holder.itemView.setOnClickListener {
-            if (!canExpand) return@setOnClickListener
-            if (!expanded.remove(w.id)) expanded.add(w.id)
-            notifyItemChanged(position)
+            if (selecting) {
+                toggleSelection(w)
+            } else if (canExpand) {
+                if (!expanded.remove(w.id)) expanded.add(w.id)
+                notifyItemChanged(position)
+            }
+        }
+        holder.itemView.setOnLongClickListener {
+            if (selecting) toggleSelection(w) else onLongPress?.invoke(w)
+            true
         }
     }
 

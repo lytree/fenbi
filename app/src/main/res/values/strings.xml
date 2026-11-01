@@ -19,7 +19,7 @@
     <string name="empty_words">词库还是空的，导入一份 Word 文档 / Excel / CSV 词表就能开始背——成语、实词都收</string>
     <string name="title_word_import">导入词表</string>
     <string name="word_pick_title">选择词表文档</string>
-    <string name="word_pick_hint">支持 Word(.docx) / Excel(.xlsx) / CSV / TXT / JSON。文档里有表格就按表头取列，没有表格就一段一个词条。不再局限于四字成语，实词一并导入。</string>
+    <string name="word_pick_hint">只支持 Excel(.xlsx)：第一行是表头（词条 / 拼音 / 分类 / 细分 / 释义 / 例句 / 出处，认得出的列都要），下面一行一个词条。实在没有分类列也能导，会按字数推测（4 字记成语，其余记实词）。</string>
     <string name="word_filter_all">全部</string>
     <string name="word_filter_idiom">成语</string>
     <string name="word_filter_word">实词</string>
@@ -53,9 +53,34 @@
     <string name="word_sample_button">载入词表（内置词库 / 示例）</string>
     <string name="word_sample_title">载入词表</string>
     <string name="word_sample_builtin">内置词库（成语 + 实词，装上就有）</string>
-    <string name="word_sample_csv">CSV 词表（成语 + 实词，带分类列）</string>
-    <string name="word_sample_docx">Word 文档（表格词表，含一条没填分类）</string>
+    <string name="word_sample_xlsx">Excel 词表模板（.xlsx，照表头填）</string>
     <string name="word_search_hint">搜索词条 / 拼音 / 释义 / 标签</string>
+
+    <!-- 词库：长按多选删除 / 导入查重 -->
+    <string name="word_select_title">已选 %1$d 项</string>
+    <string name="word_select_all">全选</string>
+    <string name="word_select_delete">删除</string>
+    <string name="word_select_none">请先选择要删除的词条</string>
+    <string name="word_select_hint">长按词条可多选删除</string>
+    <string name="word_delete_confirm_title">删除词条</string>
+    <string name="word_delete_confirm_msg">确定删除选中的 %1$d 条词条？删除后不可恢复（重新导入词表可以再补回来）。</string>
+    <string name="word_delete_done">已删除 %1$d 条词条</string>
+    <string name="word_tag_manage_hint">长按标签可多选删除</string>
+    <string name="word_tag_delete_mode">删除标签：选中后点「删除」，标签会从所有词条上摘掉，词条保留</string>
+    <string name="word_tag_delete_pick">已选 %1$d 个标签</string>
+    <string name="word_tag_delete_action">删除选中</string>
+    <string name="word_tag_delete_confirm_title">删除标签</string>
+    <string name="word_tag_delete_confirm_msg">从所有词条上摘掉选中的 %1$d 个标签？词条本身保留，只是不再带这个标签。</string>
+    <string name="word_tag_delete_done">已删除 %1$d 个标签，影响 %2$d 条词条</string>
+    <string name="word_tag_delete_none">请先选择要删除的标签</string>
+    <string name="word_import_dup_fmt">已在词库 %1$d 条 · 新增 %2$d 条</string>
+    <string name="word_import_dup_badge">已在词库</string>
+    <string name="word_import_dup_hint">重复项默认不勾选；想用新词表覆盖库里的释义 / 标签，把它们勾上再导入即可。</string>
+    <string name="word_import_all_dup">词表里的词条都已经在词库中了，不用再导入</string>
+    <string name="word_import_pick_none">请至少勾选一条词条</string>
+    <string name="word_import_excel_only">词表只支持 Excel(.xlsx)，请把文件另存为 .xlsx 再导入</string>
+    <string name="word_import_replace_confirm_title">覆盖模式只勾了部分词条</string>
+    <string name="word_import_replace_confirm_msg">覆盖会先清空整个词库，但这次只勾了 %1$d 条 —— 其余词条都会被删掉。确定继续？</string>
     <string name="action_reset">重置</string>
 
     <string name="action_import">导入</string>
@@ -199,7 +224,7 @@
     <string name="title_import">导入</string>
     <string name="import_pick">选择试卷文件</string>
     <string name="import_word_title">导入词表</string>
-    <string name="import_word_hint">背单词用的词库走另一套流程：Word(.docx) / Excel(.xlsx) / CSV / TXT 里按表头取「词条 / 拼音 / 释义 / 分类」，解析后逐条勾选再入库。</string>
+    <string name="import_word_hint">背单词用的词库走另一套流程：Excel(.xlsx) 里按表头取「词条 / 拼音 / 分类 / 细分 / 释义」，解析后逐条勾选再入库（重复的会标出来、默认不勾）。</string>
     <string name="import_link_action">从链接导入</string>
     <string name="import_link_title">从链接导入</string>
     <string name="import_link_hint">粘贴试卷文件的下载链接（http/https），下载完成后直接进入预览。支持 Excel（.xlsx）与试卷包（zip）。</string>

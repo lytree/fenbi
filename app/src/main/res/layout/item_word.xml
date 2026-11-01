@@ -16,6 +16,17 @@
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
+        <!-- 多选删除模式才显示（长按词条进入） -->
+        <CheckBox
+            android:id="@+id/cbSelect"
+            style="@style/FbCheckBox"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="4dp"
+            android:clickable="false"
+            android:focusable="false"
+            android:visibility="gone" />
+
         <TextView
             android:id="@+id/tvWord"
             android:layout_width="wrap_content"
@@ -42,7 +53,10 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:background="@drawable/bg_fb_tag"
+            android:ellipsize="end"
             android:includeFontPadding="false"
+            android:maxLines="1"
+            android:maxWidth="180dp"
             android:paddingStart="7dp"
             android:paddingTop="2dp"
             android:paddingEnd="7dp"

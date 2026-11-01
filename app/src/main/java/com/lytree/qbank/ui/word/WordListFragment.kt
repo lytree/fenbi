@@ -9,6 +9,7 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import androidx.core.widget.doAfterTextChanged
 import androidx.fragment.app.Fragment
@@ -17,6 +18,7 @@ import com.lytree.qbank.R
 import com.lytree.qbank.data.BuiltinWords
 import com.lytree.qbank.data.db.QBankDb
 import com.lytree.qbank.data.model.ReciteSubject
+import com.lytree.qbank.data.model.Word
 import com.lytree.qbank.data.model.WordCategory
 import com.lytree.qbank.databinding.FragmentWordsBinding
 import com.lytree.qbank.ui.LibrarySwitch
@@ -53,6 +55,9 @@ class WordListFragment : Fragment(), Refreshable {
     /** 当前标签筛选（细分原文，空串代表「未标注标签」），空表示不限 */
     private val tagFilter = LinkedHashSet<String>()
 
+    /** 顶栏平时显示的标题，退出多选模式时还原 */
+    private var pageTitle: CharSequence = ""
+
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, s: Bundle?): View {
         _binding = FragmentWordsBinding.inflate(inflater, container, false)
         return binding.root
@@ -62,7 +67,8 @@ class WordListFragment : Fragment(), Refreshable {
         db = QBankDb.get(requireContext())
 
         binding.titleBar.usePageTitleStyle()
-        binding.titleBar.setTitle(getString(R.string.page_words))
+        pageTitle = getString(R.string.page_words)
+        binding.titleBar.setTitle(pageTitle)
         // 顶栏不再放「导入」：统一从试卷页的导入入口进，再选「导入词表」
 
         // 词库 / 政治 / 常识 三段切换：当前已在词库，点另外两段只是把本页换掉
@@ -84,6 +90,10 @@ class WordListFragment : Fragment(), Refreshable {
 
         binding.list.layoutManager = LinearLayoutManager(requireContext())
         binding.list.adapter = adapter
+
+        // 长按词条 → 多选删除模式（顶栏换成 已选 N / 全选 / 删除 / 取消）
+        adapter.onLongPress = { word -> enterSelection(word) }
+        adapter.onSelectionChanged = { count -> onSelectionCount(count) }
 
         binding.chipAll.setOnClickListener { selectFilter(null) }
         binding.chipIdiom.setOnClickListener { selectFilter(WordCategory.IDIOM.code) }
@@ -136,19 +146,85 @@ class WordListFragment : Fragment(), Refreshable {
         refresh()
     }
 
-    /** 标签清单只列当前分类下的（跟着分类走），弹窗里点确定才生效 */
+    /** 标签清单只列当前分类下的（跟着分类走），弹窗里点确定才生效；长按可进多选删除 */
     private fun openTagDialog() {
         val tags = db.listWordTags(filter)
         if (tags.isEmpty()) {
             toast(getString(R.string.word_tag_empty))
             return
         }
-        WordTagDialog.show(requireContext(), scopeLabel(), tags, tagFilter) { picked ->
-            tagFilter.clear()
-            tagFilter.addAll(picked)
-            binding.list.scrollToPosition(0)
-            refresh()
+        WordTagDialog.show(
+            requireContext(), scopeLabel(), tags, tagFilter,
+            onApply = { picked ->
+                tagFilter.clear()
+                tagFilter.addAll(picked)
+                binding.list.scrollToPosition(0)
+                refresh()
+            },
+            onDelete = { doomed -> deleteTags(doomed) }
+        )
+    }
+
+    /** 删标签：只把标签从词条上摘掉，词条本身保留，所以删完直接重算列表 */
+    private fun deleteTags(tags: Set<String>) {
+        if (tags.isEmpty()) {
+            toast(getString(R.string.word_tag_delete_none))
+            return
         }
+        var affected = 0
+        tags.forEach { affected += db.deleteTag(it) }
+        tagFilter.removeAll(tags)
+        refresh()
+        toast(getString(R.string.word_tag_delete_done, tags.size, affected))
+    }
+
+    // ---------------- 多选删除 ----------------
+
+    private fun enterSelection(word: Word) {
+        adapter.startSelection(word)
+        binding.titleBar.clearActions()
+        binding.titleBar.addTextAction(getString(R.string.word_select_all)) {
+            adapter.toggleSelectAll()
+        }
+        binding.titleBar.addTextAction(getString(R.string.word_select_delete)) {
+            confirmDeleteSelected()
+        }
+        binding.titleBar.addTextAction(getString(R.string.action_cancel)) {
+            adapter.exitSelection()
+        }
+    }
+
+    private fun onSelectionCount(count: Int) {
+        if (count <= 0) {
+            // 勾到一条不剩就退出多选，否则顶栏没有「取消」会被困住
+            if (adapter.isSelecting) {
+                adapter.exitSelection()
+            } else {
+                binding.titleBar.clearActions()
+                binding.titleBar.setTitle(pageTitle)
+            }
+            return
+        }
+        binding.titleBar.setTitle(getString(R.string.word_select_title, count))
+    }
+
+    private fun confirmDeleteSelected() {
+        val ids = adapter.selectedIds
+        if (ids.isEmpty()) {
+            toast(getString(R.string.word_select_none))
+            return
+        }
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.word_delete_confirm_title)
+            .setMessage(getString(R.string.word_delete_confirm_msg, ids.size))
+            .setNegativeButton(R.string.action_cancel, null)
+            .setPositiveButton(R.string.word_select_delete) { _, _ ->
+                val n = db.deleteWords(ids)
+                adapter.exitSelection()
+                refresh()
+                toast(getString(R.string.word_delete_done, n))
+            }
+            .show()
     }
 
     private fun scopeLabel(): String = when (filter) {

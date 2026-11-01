@@ -12,11 +12,15 @@ import kotlin.concurrent.thread
  * 内置词库：把《成语与实词汇总（合并版）》预置进 App，装上就有词，不用先找文件导入。
  *
  * 数据是 `assets/builtin/words.csv`（表头：词条/拼音/分类/细分/释义/出处），
- * 由 `tools/BuildBuiltinWords.cs`（.NET file-based app，`dotnet run` 直接跑）从源 docx 生成——
- * 改词库改源文档再重跑脚本，不要手改这份 csv。
+ * 打底由 `tools/BuildBuiltinWords.cs`（.NET file-based app，`dotnet run` 直接跑）从合并版 docx 生成；
+ * 分组标签与 244 条新词由 `tools/extract_word_tags.py`（uv + python-docx）读四海 800 词上下册补上。
+ * 改词库请改源文档后重跑脚本，不要手改这份 csv。
  *
  * 只在**首次**自动灌一次（SharedPreferences 记标记）：
  * 用户后来自己删词、整表覆盖，都不该被偷偷塞回来。想重新灌就进导入页选「内置词库」。
+ *
+ * 标记从 v1 升到 v2 是因为词库补了「分组标签 + 四海 800 词的 244 条新词」，
+ * 老用户升上来会再合并一次（按词条文本 upsert，不会产生重复行）。
  */
 object BuiltinWords {
 
@@ -26,7 +30,7 @@ object BuiltinWords {
     const val LABEL = "内置词库（成语 + 实词）"
 
     private const val PREF = "qbank_builtin_words"
-    private const val KEY_SEEDED = "seeded_v1"
+    private const val KEY_SEEDED = "seeded_v2"
 
     fun isSeeded(context: Context): Boolean =
         context.applicationContext

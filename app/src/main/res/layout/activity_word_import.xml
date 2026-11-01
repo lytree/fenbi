@@ -104,7 +104,9 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
-                        android:lineSpacingExtra="4dp" />
+                        android:ellipsize="none"
+                        android:lineSpacingExtra="4dp"
+                        android:maxLines="6" />
 
                     <TextView
                         android:id="@+id/tvGuessed"

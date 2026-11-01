@@ -474,6 +474,82 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         writableDatabase.delete("words", "id = ?", arrayOf(id.toString()))
     }
 
+    /** 批量删除词条（列表页长按多选删除），返回真正删掉的条数 */
+    fun deleteWords(ids: Collection<Long>): Int {
+        if (ids.isEmpty()) return 0
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            var n = 0
+            // 不用 SQLite 的 999 个参数上限，500 一批足够快也不会炸
+            ids.toList().chunked(500).forEach { chunk ->
+                val marks = chunk.joinToString(",") { "?" }
+                val args = chunk.map { it.toString() }.toTypedArray()
+                n += db.delete("words", "id IN ($marks)", args)
+            }
+            db.setTransactionSuccessful()
+            return n
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    /**
+     * 库里已经存在的词条文本（导入预览判重用）。
+     *
+     * 只查文本不查 id：导入是按「词条文本」做 upsert 的，
+     * 只要文本撞上就算重复，跟来源、分类无关。
+     */
+    fun existingWordTexts(texts: Collection<String>): Set<String> {
+        val want = texts.filter { it.isNotBlank() }.distinct()
+        if (want.isEmpty()) return emptySet()
+        val out = HashSet<String>(want.size)
+        want.chunked(500).forEach { chunk ->
+            val marks = chunk.joinToString(",") { "?" }
+            readableDatabase.rawQuery(
+                "SELECT text FROM words WHERE text IN ($marks)",
+                chunk.toTypedArray()
+            ).use { c -> while (c.moveToNext()) out.add(c.getString(0) ?: "") }
+        }
+        return out
+    }
+
+    /**
+     * 删除一个标签：把这段标签从**所有**词条上摘掉，词条本身保留。
+     *
+     * 标签是「A·B」这种分段存储，删掉的只是其中一段；剩下没有标签的词条
+     * 落成空串（筛选里的「未标注标签」）。返回受影响的词条数。
+     */
+    fun deleteTag(tag: String): Int {
+        val target = tag.trim()
+        if (target.isEmpty()) {
+            // 「未标注标签」不是一个真标签，不能按标签删，返回 0 让上层提示
+            return 0
+        }
+        val db = writableDatabase
+        val fixes = ArrayList<Pair<Long, String>>()
+        db.rawQuery("SELECT id, tag FROM words WHERE tag <> ''", null).use { c ->
+            while (c.moveToNext()) {
+                val id = c.getLong(0)
+                val old = c.getString(1) ?: ""
+                val segments = Word.splitTags(old).filter { it.isNotEmpty() }
+                if (target !in segments) continue
+                fixes.add(id to segments.filter { it != target }.joinToString(Word.TAG_SEP.toString()))
+            }
+        }
+        if (fixes.isEmpty()) return 0
+        db.beginTransaction()
+        try {
+            fixes.forEach { (id, tag) ->
+                db.execSQL("UPDATE words SET tag = ? WHERE id = ?", arrayOf<Any>(tag, id))
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        return fixes.size
+    }
+
     fun clearWords() {
         writableDatabase.delete("words", null, null)
     }

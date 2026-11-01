@@ -8,6 +8,7 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
+import androidx.appcompat.app.AlertDialog
 import androidx.core.widget.doAfterTextChanged
 import com.lytree.qbank.R
 import com.lytree.qbank.data.model.WordTagCount
@@ -20,6 +21,9 @@ import com.lytree.qbank.databinding.ItemWordTagBinding
  * 词库的细分标签是自由文本（名词 / 动词 / 褒义 / 对比辨析·第十组 …），
  * 个数随词表来源浮动，所以不做固定筛选项，走「弹窗 + 搜索 + 多选」：
  * 打开时带上当前已选，点确定才回传，中途取消不影响列表。
+ *
+ * **长按任意标签 → 进入删除模式**：勾选框变成「要删的标签」，可多选，
+ * 底部按钮变成「删除选中」，确认后把标签从所有词条上摘掉（词条保留）。
  */
 object WordTagDialog {
 
@@ -30,24 +34,68 @@ object WordTagDialog {
         scopeLabel: CharSequence,
         tags: List<WordTagCount>,
         selected: Collection<String>,
-        onApply: (Set<String>) -> Unit
+        onApply: (Set<String>) -> Unit,
+        onDelete: ((Set<String>) -> Unit)? = null
     ) {
         val b = DialogWordTagsBinding.inflate(LayoutInflater.from(context))
         val dialog = Dialog(context)
         dialog.setContentView(b.root)
         dialog.setCanceledOnTouchOutside(true)
 
+        /** 筛选用的已选标签 */
         val chosen = LinkedHashSet(selected)
+        /** 删除模式下待删的标签 */
+        val doomed = LinkedHashSet<String>()
+        var deleteMode = false
+
         val rows = ArrayList<Row>()
         val inflater = LayoutInflater.from(context)
         val untagged = context.getString(R.string.word_tag_untagged)
 
+        fun renderRow(row: Row) {
+            val checked = if (deleteMode) row.tag.name.isNotEmpty() && row.tag.name in doomed
+            else row.tag.name in chosen
+            row.vh.cb.isChecked = checked
+        }
+
         fun updateSubtitle() {
-            b.tvSubtitle.text = if (chosen.isEmpty()) {
-                context.getString(R.string.word_tag_subtitle, scopeLabel, tags.size)
-            } else {
-                context.getString(R.string.word_tag_subtitle_picked, scopeLabel, tags.size, chosen.size)
+            b.tvSubtitle.text = when {
+                deleteMode -> context.getString(R.string.word_tag_delete_mode)
+                chosen.isEmpty() -> context.getString(R.string.word_tag_subtitle, scopeLabel, tags.size)
+                else -> context.getString(
+                    R.string.word_tag_subtitle_picked, scopeLabel, tags.size, chosen.size
+                )
             }
+        }
+
+        fun updateButtons() {
+            if (deleteMode) {
+                b.btnClear.visibility = View.GONE
+                b.btnCancel.setText(R.string.action_cancel)
+                b.btnOk.setText(R.string.word_tag_delete_action)
+            } else {
+                b.btnClear.visibility = View.VISIBLE
+                b.btnCancel.setText(R.string.action_cancel)
+                b.btnOk.setText(R.string.action_confirm)
+            }
+        }
+
+        fun enterDeleteMode(first: String) {
+            if (onDelete == null) return
+            deleteMode = true
+            doomed.clear()
+            if (first.isNotEmpty()) doomed.add(first)
+            rows.forEach { renderRow(it) }
+            updateSubtitle()
+            updateButtons()
+        }
+
+        fun exitDeleteMode() {
+            deleteMode = false
+            doomed.clear()
+            rows.forEach { renderRow(it) }
+            updateSubtitle()
+            updateButtons()
         }
 
         tags.forEach { tag ->
@@ -57,22 +105,40 @@ object WordTagDialog {
             vh.tvCount.text = tag.count.toString()
             vh.cb.isChecked = chosen.contains(tag.name)
 
+            val row = Row(vh, tag, label)
+            rows.add(row)
+
             vh.root.setOnClickListener {
-                if (chosen.contains(tag.name)) {
-                    chosen.remove(tag.name)
-                    vh.cb.isChecked = false
+                if (deleteMode) {
+                    // 「未标注标签」不是真标签，删除模式里点它不选
+                    if (tag.name.isEmpty()) return@setOnClickListener
+                    if (!doomed.remove(tag.name)) doomed.add(tag.name)
+                    vh.cb.isChecked = tag.name in doomed
                 } else {
-                    chosen.add(tag.name)
-                    vh.cb.isChecked = true
+                    if (chosen.contains(tag.name)) {
+                        chosen.remove(tag.name)
+                        vh.cb.isChecked = false
+                    } else {
+                        chosen.add(tag.name)
+                        vh.cb.isChecked = true
+                    }
+                    updateSubtitle()
                 }
-                updateSubtitle()
             }
-            // 勾选框本身不接事件（clickable/focusable 都是 false），点击统一走整行
-            rows.add(Row(vh, tag, label))
+            // 长按进删除模式（「未标注标签」没有可删的实体标签，不响应）
+            vh.root.setOnLongClickListener {
+                if (tag.name.isEmpty()) return@setOnLongClickListener false
+                if (!deleteMode) enterDeleteMode(tag.name) else {
+                    if (!doomed.remove(tag.name)) doomed.add(tag.name)
+                    vh.cb.isChecked = tag.name in doomed
+                }
+                true
+            }
             b.tagList.addView(vh.root)
         }
 
         updateSubtitle()
+        updateButtons()
         b.tvEmpty.visibility = if (rows.isEmpty()) View.VISIBLE else View.GONE
 
         b.etSearch.doAfterTextChanged { text ->
@@ -91,10 +157,29 @@ object WordTagDialog {
             rows.forEach { it.vh.cb.isChecked = false }
             updateSubtitle()
         }
-        b.btnCancel.setOnClickListener { dialog.dismiss() }
+        b.btnCancel.setOnClickListener {
+            if (deleteMode) exitDeleteMode() else dialog.dismiss()
+        }
         b.btnOk.setOnClickListener {
-            dialog.dismiss()
-            onApply(chosen)
+            if (!deleteMode) {
+                dialog.dismiss()
+                onApply(chosen)
+                return@setOnClickListener
+            }
+            if (doomed.isEmpty()) {
+                exitDeleteMode()
+                return@setOnClickListener
+            }
+            val toDelete = doomed.toSet()
+            AlertDialog.Builder(context)
+                .setTitle(R.string.word_tag_delete_confirm_title)
+                .setMessage(context.getString(R.string.word_tag_delete_confirm_msg, toDelete.size))
+                .setNegativeButton(R.string.action_cancel, null)
+                .setPositiveButton(R.string.word_tag_delete_action) { _, _ ->
+                    dialog.dismiss()
+                    onDelete?.invoke(toDelete)
+                }
+                .show()
         }
 
         dialog.window?.apply {
