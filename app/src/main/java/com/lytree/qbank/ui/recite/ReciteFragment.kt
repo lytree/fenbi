@@ -49,7 +49,8 @@ import kotlin.math.abs
  * 政治即原来的「考点背诵」，并进「背诵」Tab，与词库 / 常识共用顶部三段切换。
  *
  * · 不分「未掌握 / 已掌握」，当前范围就是一条卡片流，序号从 1 数到最后一张
- * · 填空式背诵卡：**左右滑动切题**，**长按显示答案**（松手仍在，轻点收起）
+ * · 填空式背诵卡：**左右滑动切题**，**长按显示答案**——政治是「按住偷看」：按住期间
+ *   答案可见，松手即隐藏；常识沿用老交互（松手仍在，轻点收起）
  * · **背诵模式**：顶栏的睁眼图标即开关，打开后答案直接显示、图标染主蓝，适合通读 / 朗读
  * · 卡片右上角星标：重点收藏，配合「只看重点」筛选
  * · 顶栏：背诵模式开关、考点范围（分类 / 只看重点）、字号 A小/A中/A大
@@ -84,10 +85,17 @@ class ReciteFragment : Fragment() {
     private var favoriteOnly = false
     private var currentId: String? = null
     private var revealed = false
+
+    /** 政治「按住偷看」：长按期间临时显示答案，松手即隐藏（不落库、不进恢复状态） */
+    private var peeking = false
     private var fontLevel = 0
 
     /** 背诵模式：答案直接显示，不再需要长按 */
     private var reciteMode = false
+
+    /** 政治启用「按住偷看」长按；常识保持松手仍在的老交互 */
+    private val peekMode: Boolean
+        get() = subject == ReciteSubject.POLITICS
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -248,14 +256,16 @@ class ReciteFragment : Fragment() {
     }
 
     private fun bindCard(card: ReciteCard) {
-        val showAnswer = reciteMode || revealed
+        val showAnswer = reciteMode || revealed || peeking
         binding.cardText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f + fontLevel * 2)
         binding.cardText.setLineSpacing(dp(7 + fontLevel).toFloat(), 1f)
         binding.cardText.text = cardSpanned(card, reveal = showAnswer)
         binding.cardHint.setText(
             when {
                 reciteMode -> R.string.recite_hint_mode
+                peeking -> R.string.recite_hint_peeking
                 revealed -> R.string.recite_hint_hide
+                peekMode -> R.string.recite_hint_peek_reveal
                 else -> R.string.recite_hint_reveal
             }
         )
@@ -353,8 +363,9 @@ class ReciteFragment : Fragment() {
     /**
      * 卡片上的三件事：
      * - 左右滑：上一张 / 下一张（滑得够远或甩得够快都算）；
-     * - 长按：显示答案（松手不收回，轻点才收起——低头背完再收）；
-     * - 轻点：显示 / 收起答案。
+     * - 长按：显示答案。政治是「按住偷看」——松手立即隐藏（见 [onLongPress] 与下面的
+     *   observer 收尾）；常识沿用松手不收回、轻点才收起的老交互；
+     * - 轻点：显示 / 收起答案（常显后可一边滚动一边对照长答案）。
      * 背诵模式下答案本来就一直显示，长按 / 轻点都不再改状态。
      */
     private fun setupCardGestures() {
@@ -372,7 +383,12 @@ class ReciteFragment : Fragment() {
                 override fun onLongPress(e: MotionEvent) {
                     if (reciteMode || revealed) return
                     binding.card.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                    revealed = true
+                    if (peekMode) {
+                        // 政治：按住偷看，答案只在手指按住期间显示，松手 / 滚动抢走事件即隐藏
+                        peeking = true
+                    } else {
+                        revealed = true
+                    }
                     currentCard()?.let { bindCard(it) }
                 }
 
@@ -396,6 +412,13 @@ class ReciteFragment : Fragment() {
         // 点击 / 长按 / 左右滑由 GestureDetector 顺带识别，不影响滚动。
         val observer = View.OnTouchListener { _, event ->
             detector.onTouchEvent(event)
+            // 政治「按住偷看」的收尾：手指抬起（UP）或 ScrollView 抢走事件（CANCEL）即隐藏
+            if (peeking &&
+                (event.action == MotionEvent.ACTION_UP || event.action == MotionEvent.ACTION_CANCEL)
+            ) {
+                peeking = false
+                currentCard()?.let { bindCard(it) }
+            }
             false
         }
         binding.cardScroll.setOnTouchListener(observer)
@@ -446,6 +469,7 @@ class ReciteFragment : Fragment() {
         val next = list[((index + delta) % list.size + list.size) % list.size]
         currentId = next.id
         revealed = false
+        peeking = false
         render(animate = true, forward = delta > 0)
     }
 
@@ -471,6 +495,7 @@ class ReciteFragment : Fragment() {
         ReciteRepository.rememberCategory(requireContext(), subject, categoryId)
         currentId = null
         revealed = false
+        peeking = false
         render(animate = true)
     }
 

@@ -289,6 +289,8 @@
     <string name="recite_font_medium">中</string>
     <string name="recite_font_large">大</string>
     <string name="recite_hint_reveal">长按显示答案 · 左右滑动切题</string>
+    <string name="recite_hint_peek_reveal">长按看答案，松手隐藏 · 左右滑动切题</string>
+    <string name="recite_hint_peeking">松手隐藏 · 轻点常显 · 左右滑动切题</string>
     <string name="recite_hint_hide">轻点收起答案 · 左右滑动切题</string>
     <string name="recite_hint_mode">背诵模式 · 答案已显示</string>
     <string name="recite_mode">背诵模式</string>
