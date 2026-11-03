@@ -10,14 +10,18 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.lytree.qbank.R
+import com.lytree.qbank.data.db.DbWrites
+import com.lytree.qbank.data.db.ExamProgress
 import com.lytree.qbank.data.db.QBankDb
 import com.lytree.qbank.data.model.ExamRecord
+import com.lytree.qbank.data.model.Paper
 import com.lytree.qbank.data.model.PaperStructure
 import com.lytree.qbank.data.model.Question
 import com.lytree.qbank.databinding.ActivitySplitExamBinding
 import com.lytree.qbank.databinding.ItemOptionBinding
 import com.lytree.qbank.databinding.ItemSplitQuestionBinding
 import com.lytree.qbank.engine.Judge
+import com.lytree.qbank.engine.Policy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -76,6 +80,25 @@ class SplitExamActivity : AppCompatActivity() {
     private var indexOffset = 0
     private lateinit var inkToolbar: InkToolbarController
     private lateinit var tvIndex: TextView
+    /** 判题规则：进页面时一次读回，解析区渲染与交卷判分复用（不再每题渲染查一次库） */
+    private var judgePolicy: Policy = Policy.DEFAULT
+    /** 卷名：启动批量读里一起取回，交卷记录用（不再交卷时再查一次库） */
+    private var paperTitle = ""
+
+    /**
+     * 进页面时一次性批量读回的数据。
+     *
+     * 原来 `getPaper` 之外还有 ensureDraftRecord / recordStartedAt / getProgress 在主线程串行查，
+     * 现在并进同一个 IO 批；主线程只做结构装配与界面绑定。
+     */
+    private class StartupData(
+        val paper: Paper,
+        val recordId: Long,
+        val recordStartedAt: Long,
+        val sessionStartWall: Long,
+        val progress: ExamProgress?,
+        val policy: Policy
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -86,15 +109,34 @@ class SplitExamActivity : AppCompatActivity() {
         db = QBankDb.get(this)
 
         paperId = intent.getLongExtra(EXTRA_PAPER_ID, 0L)
-        // 读卷移出主线程；Activity 销毁后 lifecycleScope 自动取消，结果直接丢弃
+        // 启动批量读：读卷 + 建/取草稿 + 首次开始时间 + 整卷未交卷进度 + 判题规则，一次 IO 拿全
         lifecycleScope.launch {
-            val paper = withContext(Dispatchers.IO) { db.getPaper(paperId) }
+            val data = withContext(Dispatchers.IO) {
+                val paper = db.getPaper(paperId) ?: return@withContext null
+                if (paper.questions.isEmpty()) return@withContext null
+                val wall = System.currentTimeMillis()
+                // **一进来就有记录**：先落一条「未完成」，交卷时转成「已完成」；
+                // 标注与每题用时都按这条记录存
+                val rid = db.ensureDraftRecord(paperId, DRAFT_SOURCE, wall)
+                // 记录最初的开始时间单独留着：顶栏的正计时要从「进这一页」算起，
+                // 而记录上的「开始时间」得是最早那次进卷的时刻
+                val firstStart = db.recordStartedAt(rid).takeIf { it > 0L } ?: wall
+                StartupData(
+                    paper = paper,
+                    recordId = rid,
+                    recordStartedAt = firstStart,
+                    sessionStartWall = wall,
+                    progress = db.getProgress(paperId),
+                    policy = db.getPolicy()
+                )
+            }
             if (isFinishing || isDestroyed) return@launch
-            if (paper == null || paper.questions.isEmpty()) {
+            if (data == null) {
                 android.widget.Toast.makeText(this@SplitExamActivity, "试卷不存在或为空", android.widget.Toast.LENGTH_SHORT).show()
                 finish()
                 return@launch
             }
+            val paper = data.paper
 
             // 按材料分组：直接用试卷结构里的材料组——同一材料跨大类会断成两组，
             // 按文本 filter 会把它们并成一组、题号也会错，这里取的正是这题所属的那一组
@@ -112,16 +154,14 @@ class SplitExamActivity : AppCompatActivity() {
             // 题号接着整卷往下排（参考应用分屏右栏显示的是 106./107./108.，不是 1./2./3.）
             indexOffset = group?.startIndex ?: 0
 
-            startedAt = System.currentTimeMillis()
-            // **一进来就有记录**：先落一条「未完成」，交卷时转成「已完成」；
-            // 标注与每题用时都按这条记录存
-            recordId = db.ensureDraftRecord(paperId, DRAFT_SOURCE, startedAt)
-            // 记录最初的开始时间单独留着：顶栏的正计时要从「进这一页」算起，
-            // 而记录上的「开始时间」得是最早那次进卷的时刻
-            recordStartedAt = db.recordStartedAt(recordId).takeIf { it > 0L } ?: startedAt
+            startedAt = data.sessionStartWall
+            recordId = data.recordId
+            recordStartedAt = data.recordStartedAt
+            paperTitle = paper.name
+            judgePolicy = data.policy
             // 与答题页共用同一份进度：进页面先把已作答的题读回来，
             // 否则「在答题页做的题」在这儿看不到、「在这儿改的答案」退出后也留不住
-            db.getProgress(paperId)?.let { p ->
+            data.progress?.let { p ->
                 answers.putAll(p.answers)
                 marked.addAll(p.marked)
                 savedElapsedSec = p.elapsedSec
@@ -393,7 +433,7 @@ class SplitExamActivity : AppCompatActivity() {
             if (revealAnswers) {
                 card.tvAnalysis.visibility = android.view.View.VISIBLE
                 val userAns = answers[q.id] ?: ""
-                val r = Judge.judge(q, userAns, db.getPolicy())
+                val r = Judge.judge(q, userAns, judgePolicy)
                 card.tvAnalysis.text = buildString {
                     append("正确答案：${q.displayAnswer()}\n")
                     append("你的答案：${userAns.ifBlank { "未作答" }}\n")
@@ -524,8 +564,10 @@ class SplitExamActivity : AppCompatActivity() {
         if (::questionTimer.isInitialized) questionTimer.stop()
         // 交卷前把节流中的笔迹写出去，别让最后几笔只留在内存里
         binding.inkOverlay.flush()
+        // 队列里排着的每题用时先落完，再合并本页作答并交卷，顺序不会反
+        DbWrites.flush()
 
-        val policy = db.getPolicy()
+        val policy = judgePolicy
         // 交卷整条链路放进 try：先合并本页作答，再走统一交卷事务。
         // 任一步失败就回到可重试状态——答案还在内存与库里，不会被清掉。
         val rid = try {
@@ -539,7 +581,7 @@ class SplitExamActivity : AppCompatActivity() {
 
             val record = ExamRecord(
                 paperId = paperId,
-                name = db.paperName(paperId).ifBlank { "分屏练习记录" },
+                name = paperTitle.ifBlank { "分屏练习记录" },
                 mode = "资料分析分屏",
                 startedAt = if (recordStartedAt > 0L) recordStartedAt else startedAt,
                 submittedAt = now,
@@ -622,12 +664,17 @@ class SplitExamActivity : AppCompatActivity() {
         // 只在这里写（不放 onStop），一次生命周期只落一次，避免重复写
         if (submitted || paperId <= 0L) return
         if (::questionTimer.isInitialized) questionTimer.stop()
-        val merged = saveMergedProgress()
-        db.updateRecordLive(
-            recordId,
-            merged.count { it.value.isNotBlank() },
-            allQuestions.size,
-            elapsedForRecord()
-        )
+        // 整卷合并写 + 记录计数写都排进写队列（合并结果只在队列内使用），顺序与「退出前落库」都保住
+        val answersCopy = answers.toMap()
+        val markedCopy = marked.toSet()
+        val elapsed = elapsedForRecord()
+        val rid = recordId
+        val total = allQuestions.size
+        DbWrites.submit {
+            val merged = db.saveProgress(paperId, answersCopy, markedCopy, elapsed, merge = true)
+            db.updateRecordLive(rid, merged.count { it.value.isNotBlank() }, total, elapsed)
+        }
+        // 页面离开前等队列落完，进程被回收也不会丢这一笔
+        DbWrites.flush()
     }
 }

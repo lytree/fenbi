@@ -14,6 +14,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.widget.doAfterTextChanged
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.lifecycle.lifecycleScope
 import com.lytree.qbank.R
 import com.lytree.qbank.data.BuiltinWords
 import com.lytree.qbank.data.db.QBankDb
@@ -24,6 +25,10 @@ import com.lytree.qbank.databinding.FragmentWordsBinding
 import com.lytree.qbank.ui.LibrarySwitch
 import com.lytree.qbank.ui.Refreshable
 import com.lytree.qbank.ui.recite.ReciteFragment
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 词库页：成语和实词同表，按拼音首字母分组，右侧字母条直接跳组。
@@ -54,6 +59,9 @@ class WordListFragment : Fragment(), Refreshable {
 
     /** 当前标签筛选（细分原文，空串代表「未标注标签」），空表示不限 */
     private val tagFilter = LinkedHashSet<String>()
+
+    /** 列表刷新任务：连续刷新时取消上一次，避免旧结果后到覆盖新结果 */
+    private var refreshJob: Job? = null
 
     /** 顶栏平时显示的标题，退出多选模式时还原 */
     private var pageTitle: CharSequence = ""
@@ -234,22 +242,33 @@ class WordListFragment : Fragment(), Refreshable {
     }
 
     override fun refresh() {
-        val total = db.countWords()
-        val words = if (total == 0) emptyList() else db.listWords(filter, tagFilter, query)
-        adapter.submit(words)
+        // 词库可能是两千多条：两次查询（总数 + 列表）都放后台，回主线程再更新适配器与筛选条
+        if (_binding == null) return
+        refreshJob?.cancel()
+        val filterSnapshot = filter
+        val tagsSnapshot = tagFilter.toSet()
+        val querySnapshot = query
+        refreshJob = viewLifecycleOwner.lifecycleScope.launch {
+            val (total, words) = withContext(Dispatchers.IO) {
+                val n = db.countWords()
+                n to (if (n == 0) emptyList() else db.listWords(filterSnapshot, tagsSnapshot, querySnapshot))
+            }
+            if (_binding == null) return@launch
+            adapter.submit(words)
 
-        val noResult = total > 0 && words.isEmpty()
-        binding.tvCount.text = when {
-            total == 0 -> ""
-            query.isNotEmpty() -> getString(R.string.word_search_count_fmt, words.size)
-            else -> getString(R.string.word_total_fmt, words.size)
+            val noResult = total > 0 && words.isEmpty()
+            binding.tvCount.text = when {
+                total == 0 -> ""
+                querySnapshot.isNotEmpty() -> getString(R.string.word_search_count_fmt, words.size)
+                else -> getString(R.string.word_total_fmt, words.size)
+            }
+            binding.emptyBox.visibility = if (total == 0) View.VISIBLE else View.GONE
+            binding.noResultBox.visibility = if (noResult) View.VISIBLE else View.GONE
+
+            buildIndex(adapter.sectionPositions())
+            applyChipStyles()
+            buildTagChips()
         }
-        binding.emptyBox.visibility = if (total == 0) View.VISIBLE else View.GONE
-        binding.noResultBox.visibility = if (noResult) View.VISIBLE else View.GONE
-
-        buildIndex(adapter.sectionPositions())
-        applyChipStyles()
-        buildTagChips()
     }
 
     private fun applyChipStyles() {

@@ -23,6 +23,7 @@ import com.lytree.qbank.ui.ImportActivity
 import com.lytree.qbank.ui.MainActivity
 import com.lytree.qbank.ui.Refreshable
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -39,6 +40,8 @@ class PaperListFragment : Fragment(), Refreshable {
     private var _binding: FragmentListBinding? = null
     private val binding get() = _binding!!
     private val adapter = PaperTreeAdapter()
+    /** 列表刷新任务：连续刷新时取消上一次，避免旧结果后到覆盖新结果 */
+    private var refreshJob: Job? = null
     private lateinit var db: QBankDb
     private var pendingPaper: Paper? = null
 
@@ -209,13 +212,20 @@ class PaperListFragment : Fragment(), Refreshable {
     // ---------------------------------------------------------------- 数据
 
     override fun refresh() {
-        val sets = db.listPaperSets()
-        val empty = sets.all { it.papers.isEmpty() }
-        // 空组（卷都被删干净了）不占列表：db.deletePaper 已顺手清理，这里只兜个底
-        adapter.submit(if (empty) emptyList() else sets, collapsed)
-        binding.emptyBox.visibility = if (empty) View.VISIBLE else View.GONE
-        binding.emptyAction.visibility = if (empty) View.VISIBLE else View.GONE
-        binding.empty.setText(if (empty) getString(R.string.empty_papers) else "")
+        // 读列表放后台：首页每次 onResume 都要刷，主线程不再等这次多表查询。
+        // 连续刷新时取消上一次，避免旧结果后到把新结果覆盖掉。
+        if (_binding == null) return
+        refreshJob?.cancel()
+        refreshJob = viewLifecycleOwner.lifecycleScope.launch {
+            val sets = withContext(Dispatchers.IO) { db.listPaperSets() }
+            if (_binding == null) return@launch
+            val empty = sets.all { it.papers.isEmpty() }
+            // 空组（卷都被删干净了）不占列表：db.deletePaper 已顺手清理，这里只兜个底
+            adapter.submit(if (empty) emptyList() else sets, collapsed)
+            binding.emptyBox.visibility = if (empty) View.VISIBLE else View.GONE
+            binding.emptyAction.visibility = if (empty) View.VISIBLE else View.GONE
+            binding.empty.setText(if (empty) getString(R.string.empty_papers) else "")
+        }
     }
 
     override fun onResume() {

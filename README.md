@@ -201,7 +201,15 @@ export ANDROID_HOME=/path/to/android-sdk
 
 ./gradlew assembleDebug        # app/build/outputs/apk/debug/app-debug.apk
 adb install -r app/build/outputs/apk/debug/app-debug.apk
+
+./gradlew assembleRelease      # app/build/outputs/apk/release/app-release.apk
 ```
+
+release 包开着 **R8**（`minifyEnabled` + `shrinkResources`）：当前约 **2.8 MB**（未开启时约 6.4 MB）。
+keep 规则只保留 `InkOverlay` 反射用到的三个 View 滚动进度方法，其余交给 R8 默认行为；
+`app/build/outputs/mapping/release/` 下的 `mapping.txt` / `usage.txt` / `seeds.txt` / `resources.txt`
+用于回溯崩溃栈与核对裁剪结果。改动构建配置后的冒烟路径见
+[06 构建与测试 § Release 构建](docs/06-构建与测试.md#release-构建r8)。
 
 > `gradle.properties` 里的 `org.gradle.java.home` 是作者本机路径，换机器记得改。
 > 环境细节与测试见 [06 构建与测试](docs/06-构建与测试.md)。
@@ -221,6 +229,7 @@ git tag v1.0.1 && git push origin v1.0.1   # 触发发版构建
 
 Kotlin · 原生 View + ViewBinding（无 Compose、无第三方 UI 库）· `SQLiteOpenHelper`（14 张表，无注解处理器）·
 compileSdk / targetSdk 35 · minSdk 24 · AGP 8.7 + Gradle 8.11 · xlsx 解析为自研零依赖 OOXML 读取器（不引 Apache POI）·
+release 走 R8 混淆 + 资源裁剪 · 数据库读写：启动读批量放 IO、过程性写走单线程 `DbWrites` 队列 ·
 云备份的 WebDAV 用 OkHttp（Android 的 `HttpURLConnection` 不支持 `PROPFIND`/`MKCOL`，这是唯一额外依赖）
 
 ---

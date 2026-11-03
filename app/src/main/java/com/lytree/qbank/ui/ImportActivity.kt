@@ -23,6 +23,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.lytree.qbank.R
 import com.lytree.qbank.data.db.PaperImport
+import com.lytree.qbank.data.db.PaperSet
 import com.lytree.qbank.data.db.QBankDb
 import com.lytree.qbank.data.db.SetImport
 import com.lytree.qbank.data.importer.ImportFormat
@@ -303,7 +304,7 @@ class ImportActivity : AppCompatActivity() {
     }
 
     /** 解析完成：按文件成组，组内按卷排好，默认预览第一组的第一卷 */
-    private fun applyParsed(list: List<FileBatch>) {
+    private fun applyParsed(list: List<FileBatch>, existing: List<PaperSet>) {
         batches = list
         activeBatch = 0
         activePaper = 0
@@ -313,7 +314,7 @@ class ImportActivity : AppCompatActivity() {
 
         // 同一个文件导过就沿用上次的标题：默认标题只是文件名，用户改过的名字不该被冲掉，
         // 也不要因为重导一次就多出一个同名分组（标题一致时接下来会走「覆盖导入」确认）
-        val existing = db.listPaperSets(withPapers = false)
+        // 已有的标题列表随解析一起在 IO 上取回，预览页不再同步查库
         batches.forEach { b ->
             val source = "导入自 ${b.source}"
             existing.firstOrNull { it.source == source }?.let { b.title = it.title }
@@ -594,8 +595,10 @@ class ImportActivity : AppCompatActivity() {
                 }
                 val first = loaded.first()
                 fileName = if (loaded.size == 1) first.first else ""
+                // 已有标题列表跟解析一起在后台拿，预览页装配时不再查库
+                val existing = withContext(Dispatchers.IO) { db.listPaperSets(withPapers = false) }
                 hideLoading()
-                applyParsed(built)
+                applyParsed(built, existing)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

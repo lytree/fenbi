@@ -62,11 +62,21 @@ class ReportActivity : AppCompatActivity() {
         binding.titleBar.setTitle("成绩报告")
 
         recordId = intent.getLongExtra(EXTRA_RECORD_ID, 0L)
-        val record = db.getRecord(recordId)
-        if (record == null) {
-            finish(); return
+        // 记录与每题用时都是一次性读：合并成一次 IO，回来再装配报告
+        lifecycleScope.launch {
+            val loaded = withContext(Dispatchers.IO) {
+                val record = db.getRecord(recordId) ?: return@withContext null
+                record to db.getQuestionTimes(record.id)
+            }
+            if (isFinishing || isDestroyed) return@launch
+            if (loaded == null) {
+                finish(); return@launch
+            }
+            renderReport(loaded.first, loaded.second)
         }
+    }
 
+    private fun renderReport(record: ExamRecord, questionTimes: Map<Long, Int>) {
         // 补答案入口：标题栏只留一个「补答案」，点开再选「逐题补录 / 导入文件」——
         // 文字动作挤在一行会压住标题，而缺答案的卷子两个入口都得给。
         binding.titleBar.addTextAction(getString(R.string.action_answer_fix)) {
@@ -103,7 +113,7 @@ class ReportActivity : AppCompatActivity() {
 
         binding.list.layoutManager = LinearLayoutManager(this)
         // 每题用时：答题时按题计时落库，这里逐题带出来，能看出哪道题磨得最久
-        binding.list.adapter = ReportAdapter(record.results, record.marked, db.getQuestionTimes(record.id))
+        binding.list.adapter = ReportAdapter(record.results, record.marked, questionTimes)
 
         // 本次标记过的题在逐题解析里带「已标记」标签，标题里先给个总数，免得逐页翻找
         binding.tvAnalysisTitle.text = if (record.marked.isEmpty()) {

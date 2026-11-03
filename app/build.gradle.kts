@@ -41,8 +41,8 @@ android {
         applicationId = "com.lytree.qbank"
         minSdk = 24
         targetSdk = 35
-        versionCode = versionCodeOverride ?: 22
-        versionName = versionNameOverride ?: "0.0.22"
+        versionCode = versionCodeOverride ?: 23
+        versionName = versionNameOverride ?: "0.0.23"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // 云端凭证编进 BuildConfig；空串表示未配置，运行时回落到 App 内手填的值
@@ -69,7 +69,9 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8：压缩 + 混淆 + 资源裁剪。keep 规则只保留真正被反射访问的成员，见 proguard-rules.pro
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = if (hasReleaseKeystore) {
                 signingConfigs.getByName("release")

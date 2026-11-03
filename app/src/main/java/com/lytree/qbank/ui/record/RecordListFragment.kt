@@ -19,6 +19,7 @@ import com.lytree.qbank.ui.Refreshable
 import com.lytree.qbank.ui.ReportActivity
 import com.lytree.qbank.ui.settings.SettingsFragment
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -37,6 +38,8 @@ class RecordListFragment : Fragment(), Refreshable {
     private val binding get() = _binding!!
     private val adapter = RecordAdapter()
     private lateinit var db: QBankDb
+    /** 列表刷新任务：连续刷新时取消上一次，避免旧结果后到覆盖新结果 */
+    private var refreshJob: Job? = null
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, s: Bundle?): View {
         _binding = FragmentListBinding.inflate(inflater, container, false)
@@ -134,10 +137,16 @@ class RecordListFragment : Fragment(), Refreshable {
     }
 
     override fun refresh() {
-        val list = db.listRecords()
-        adapter.submit(list)
-        binding.emptyBox.visibility = if (list.isEmpty()) View.VISIBLE else View.GONE
-        binding.empty.setText(if (list.isEmpty()) getString(R.string.empty_records_hint) else "")
+        // 记录列表每次回到本页都要刷：查询放后台，主线程只更新视图
+        if (_binding == null) return
+        refreshJob?.cancel()
+        refreshJob = viewLifecycleOwner.lifecycleScope.launch {
+            val list = withContext(Dispatchers.IO) { db.listRecords() }
+            if (_binding == null) return@launch
+            adapter.submit(list)
+            binding.emptyBox.visibility = if (list.isEmpty()) View.VISIBLE else View.GONE
+            binding.empty.setText(if (list.isEmpty()) getString(R.string.empty_records_hint) else "")
+        }
     }
 
     override fun onResume() {

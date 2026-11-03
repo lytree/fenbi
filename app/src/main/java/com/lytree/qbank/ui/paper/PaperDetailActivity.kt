@@ -74,9 +74,13 @@ class PaperDetailActivity : AppCompatActivity() {
     }
 
     private fun reload() {
-        val list = QBankDb.get(this).listQuestions(paperId)
-        adapter.submit(list)
-        binding.empty.visibility = if (list.isEmpty()) android.view.View.VISIBLE else android.view.View.GONE
+        // 题目清单可能是整卷几百题：查询放后台，回主线程再填列表
+        lifecycleScope.launch {
+            val list = withContext(Dispatchers.IO) { QBankDb.get(this@PaperDetailActivity).listQuestions(paperId) }
+            if (isFinishing || isDestroyed) return@launch
+            adapter.submit(list)
+            binding.empty.visibility = if (list.isEmpty()) android.view.View.VISIBLE else android.view.View.GONE
+        }
     }
 }
 

@@ -14,12 +14,15 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.viewpager2.widget.ViewPager2
 import com.lytree.qbank.R
+import com.lytree.qbank.data.db.DbWrites
+import com.lytree.qbank.data.db.ExamProgress
 import com.lytree.qbank.data.db.QBankDb
 import com.lytree.qbank.data.model.ExamRecord
 import com.lytree.qbank.data.model.PaperStructure
 import com.lytree.qbank.data.model.Question
 import com.lytree.qbank.databinding.ActivityExamBinding
 import com.lytree.qbank.engine.Judge
+import com.lytree.qbank.engine.Policy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -91,6 +94,27 @@ class ExamActivity : AppCompatActivity() {
     private var paperName = ""
     /** 每题用时：切题时把上一题的秒数累加进库 */
     private lateinit var questionTimer: QuestionTimer
+    /** 判题规则：进页面时随启动批量读一起取回，卡片渲染与交卷判分都用它（不再每次绑定查库） */
+    private var judgePolicy: Policy = Policy.DEFAULT
+
+    /**
+     * 进页面时一次性批量读回的数据。
+     *
+     * 原来 `getPaper` 之外还有 ensureDraftRecord / recordStartedAt / listFavoriteIds / getProgress
+     * 在主线程串行查，现在全部并进同一个 IO 批，主线程只负责装配 UI。
+     */
+    private class StartupData(
+        val paperName: String,
+        val questions: List<Question>,
+        val durationMin: Int,
+        val recordName: String,
+        val recordId: Long,
+        val startedAt: Long,
+        val sessionStartWall: Long,
+        val favorites: Set<Long>,
+        val progress: ExamProgress?,
+        val policy: Policy
+    )
     private var durationMin = 0
     private var startedAt = 0L
     private var submitted = false
@@ -196,33 +220,53 @@ class ExamActivity : AppCompatActivity() {
         loadPrefs()
 
         paperId = intent.getLongExtra(EXTRA_PAPER_ID, 0L)
-        // 读卷移出主线程：拿到的结果先在主线程校验，Activity 已销毁就直接丢弃（lifecycleScope 自动取消）
+        // 启动时的必要读**合并成一批**放 IO：读卷 + 建/取草稿记录 + 首次开始时间 + 收藏 + 未交卷进度 + 判题规则。
+        // 原来除了读卷以外都在主线程串行查库，进卷时首帧要等这几次查询；现在主线程只做装配。
         lifecycleScope.launch {
-            val paper = withContext(Dispatchers.IO) { db.getPaper(paperId) }
+            val data = withContext(Dispatchers.IO) {
+                val paper = db.getPaper(paperId) ?: return@withContext null
+                if (paper.questions.isEmpty()) return@withContext null
+                val wall = System.currentTimeMillis()
+                val name = intent.getStringExtra(EXTRA_PAPER_NAME)?.takeIf { it.isNotBlank() }
+                    ?: paper.name.ifBlank { "练习记录" }
+                // **一进卷就有记录**：先落一条「未完成」（status = ongoing），作答数 / 用时随答题回写，
+                // 中途退出也能在记录列表里看到并点回来接着做；标注与每题用时都挂在它上面
+                val rid = db.ensureDraftRecord(paperId, DRAFT_SOURCE, wall, name)
+                // 续做时沿用最初那次的开始时间，别每进一次就把「开始时间」刷成今天
+                val firstStart = db.recordStartedAt(rid).takeIf { it > 0L } ?: wall
+                StartupData(
+                    paperName = paper.name,
+                    questions = paper.questions,
+                    durationMin = paper.durationMin,
+                    recordName = name,
+                    recordId = rid,
+                    startedAt = firstStart,
+                    sessionStartWall = wall,
+                    // 收藏跨会话保留：从库里读出本卷题目的收藏状态（对齐参考应用「我的收藏」）
+                    favorites = db.listFavoriteIds(),
+                    progress = db.getProgress(paperId),
+                    policy = db.getPolicy()
+                )
+            }
             if (isFinishing || isDestroyed) return@launch
-            if (paper == null || paper.questions.isEmpty()) {
+            if (data == null) {
                 android.widget.Toast.makeText(this@ExamActivity, "试卷不存在或为空", android.widget.Toast.LENGTH_SHORT).show()
                 finish()
                 return@launch
             }
-            paperName = paper.name
-            questions.addAll(paper.questions)
+            paperName = data.paperName
+            questions.addAll(data.questions)
             structure = PaperStructure(questions)
-            durationMin = paper.durationMin
-            recordName = intent.getStringExtra(EXTRA_PAPER_NAME)?.takeIf { it.isNotBlank() }
-                ?: paper.name.ifBlank { "练习记录" }
-            startedAt = System.currentTimeMillis()
-            sessionStartWall = startedAt
-            // **一进卷就有记录**：先落一条「未完成」（status = ongoing），作答数 / 用时随答题回写，
-            // 中途退出也能在记录列表里看到并点回来接着做；标注与每题用时都挂在它上面
-            recordId = db.ensureDraftRecord(paperId, DRAFT_SOURCE, startedAt, recordName)
-            // 续做时沿用最初那次的开始时间，别每进一次就把「开始时间」刷成今天
-            db.recordStartedAt(recordId).takeIf { it > 0L }?.let { startedAt = it }
+            durationMin = data.durationMin
+            recordName = data.recordName
+            recordId = data.recordId
+            startedAt = data.startedAt
+            sessionStartWall = data.sessionStartWall
+            judgePolicy = data.policy
             questionTimer = QuestionTimer(db).apply { bindRecord(recordId) }
 
-            // 收藏跨会话保留：从库里读出本卷题目的收藏状态（对齐参考应用「我的收藏」）
             val qids = questions.map { it.id }.toHashSet()
-            favorites.addAll(db.listFavoriteIds().filter { it in qids })
+            favorites.addAll(data.favorites.filter { it in qids })
 
             setupList()
             setupPager()
@@ -240,7 +284,7 @@ class ExamActivity : AppCompatActivity() {
             applyNightMode()
             updateHeader()
             // 有未交卷进度先问「继续 / 重新开始」，再起倒计时（剩余时间要从上次退出的地方接）
-            maybeResume()
+            maybeResume(data.progress)
         }
     }
 
@@ -255,7 +299,7 @@ class ExamActivity : AppCompatActivity() {
             favorites = favorites,
             revealAnswers = revealAnswers,
             revealed = revealed,
-            policyProvider = { db.getPolicy() },
+            policyProvider = { judgePolicy },
             fontScale = fontScale,
             onMarkToggle = { q -> toggleMark(q) },
             onFavoriteToggle = { q -> toggleFavorite(q) },
@@ -297,7 +341,7 @@ class ExamActivity : AppCompatActivity() {
             answers = answers,
             marked = marked,
             favorites = favorites,
-            policyProvider = { db.getPolicy() },
+            policyProvider = { judgePolicy },
             fontScale = fontScale,
             revealAnswers = revealAnswers,
             revealed = revealed,
@@ -629,7 +673,7 @@ class ExamActivity : AppCompatActivity() {
             favorites = favorites,
             revealAnswers = revealAnswers,
             revealed = revealed,
-            policyProvider = { db.getPolicy() },
+            policyProvider = { judgePolicy },
             fontScale = fontScale,
             night = nightMode,
             onMarkToggle = { toggleMark(it) },
@@ -1234,12 +1278,21 @@ class ExamActivity : AppCompatActivity() {
      */
     private fun syncLiveRecord() {
         if (recordId <= 0L || submitted) return
-        db.updateRecordLive(
-            recordId,
-            questions.count { (answers[it.id] ?: "").isNotBlank() },
-            questions.size,
-            elapsedSec()
-        )
+        // 快照在投递时取好：后台真正执行时答案/计时可能已经被用户改过
+        val rid = recordId
+        val answered = questions.count { (answers[it.id] ?: "").isNotBlank() }
+        val total = questions.size
+        val elapsed = elapsedSec()
+        DbWrites.submit { db.updateRecordLive(rid, answered, total, elapsed) }
+    }
+
+    /** 把当前作答 / 标记 / 已用时长投递到写队列（顺序由队列保证，落库由 flush 保证） */
+    private fun enqueueSaveProgress() {
+        if (paperId <= 0L) return
+        val answersCopy = answers.toMap()
+        val markedCopy = marked.toSet()
+        val elapsed = elapsedSec()
+        DbWrites.submit { db.saveProgress(paperId, answersCopy, markedCopy, elapsed) }
     }
 
     // ---------------- 续做（中途退出保存进度） ----------------
@@ -1248,8 +1301,7 @@ class ExamActivity : AppCompatActivity() {
      * 进上一次未交卷的进度：弹「继续 / 重新开始」。
      * 保存时机在退出确认与 onPause——所以这里能读到的进度一定是最后一次离开时的样子。
      */
-    private fun maybeResume() {
-        val progress = db.getProgress(paperId)
+    private fun maybeResume(progress: ExamProgress?) {
         if (progress == null) {
             startTimer()
             return
@@ -1266,7 +1318,8 @@ class ExamActivity : AppCompatActivity() {
             cancelable = false,
             onOk = { restoreProgress(progress) },
             onCancel = {
-                db.clearProgress(paperId)
+                // 清进度也走写队列；restartDraftRecord 会先 flush，保证「清进度」早于「中止旧记录 / 开新记录」
+                DbWrites.submit { db.clearProgress(paperId) }
                 restartDraftRecord()
                 startTimer()
             }
@@ -1281,6 +1334,9 @@ class ExamActivity : AppCompatActivity() {
      */
     private fun restartDraftRecord() {
         if (::questionTimer.isInitialized) questionTimer.stop()
+        // 先把队列里排着的作答 / 进度写落完（含上面刚投递的 clearProgress），
+        // 再中断旧记录、开新记录——否则旧的进度写可能晚到，下次进卷又弹「继续答题」
+        DbWrites.flush()
         // 不看来源：这份卷当前进行中的那条一律改成「未完成（已中断）」
         db.abandonDraftRecords(paperId)
         startedAt = System.currentTimeMillis()
@@ -1308,12 +1364,16 @@ class ExamActivity : AppCompatActivity() {
      */
     private fun applyProgressFromDb() {
         if (submitted || paperId <= 0L) return
-        val p = db.getProgress(paperId) ?: return
-        answers.putAll(p.answers)
-        marked.addAll(p.marked)
-        refreshCards()
-        syncInkQuestion()
-        binding.inkOverlay.reload()
+        // 读库放后台；回来时页面已销毁 / 已交卷就丢弃这次结果
+        lifecycleScope.launch {
+            val p = withContext(Dispatchers.IO) { db.getProgress(paperId) } ?: return@launch
+            if (isFinishing || isDestroyed || submitted) return@launch
+            answers.putAll(p.answers)
+            marked.addAll(p.marked)
+            refreshCards()
+            syncInkQuestion()
+            binding.inkOverlay.reload()
+        }
     }
 
     /** 离开页面就把进度落库（交卷后不需要）。进程被杀也能从最后一次 onPause 恢复 */
@@ -1326,7 +1386,9 @@ class ExamActivity : AppCompatActivity() {
             // 先停表再落库：这一步之后的时间不该再算到「正在看的那道题」上
             if (::questionTimer.isInitialized) questionTimer.stop()
             syncLiveRecord()
-            db.saveProgress(paperId, answers, marked, elapsedSec())
+            enqueueSaveProgress()
+            // 页面离开前等写队列落完：进程在后台被回收也不会只剩内存里的作答
+            DbWrites.flush()
         }
     }
 
@@ -1665,7 +1727,9 @@ class ExamActivity : AppCompatActivity() {
             "退出后进度会保留，下次进入可以继续答题。确定退出吗？"
         }
         FbDialog.confirm(this, msg, okText = "退出", cancelText = "继续答题", onOk = {
-            db.saveProgress(paperId, answers, marked, elapsedSec())
+            enqueueSaveProgress()
+            // 退出即结束：等这一笔写完再 finish，避免刚退就被回收时进度没落库
+            DbWrites.flush()
             finish()
         })
     }
@@ -1724,8 +1788,10 @@ class ExamActivity : AppCompatActivity() {
         // 交卷前先把节流中的笔迹写出去：交卷事务里不含笔迹，
         // 之后进程立刻退出的话内存里那几笔就没机会落库了
         binding.inkOverlay.flush()
+        // 队列里排着的每题用时 / 作答进度先落完，交卷事务才读得到「最后一次切题」的结果
+        DbWrites.flush()
 
-        val policy = db.getPolicy()
+        val policy = judgePolicy
         val results = questions.map { Judge.judge(it, answers[it.id] ?: "", policy) }
         val summary = Judge.summarize(results)
         val now = System.currentTimeMillis()

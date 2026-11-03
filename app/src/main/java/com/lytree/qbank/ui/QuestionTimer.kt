@@ -1,5 +1,6 @@
 package com.lytree.qbank.ui
 
+import com.lytree.qbank.data.db.DbWrites
 import com.lytree.qbank.data.db.QBankDb
 
 /**
@@ -61,11 +62,20 @@ class QuestionTimer(private val db: QBankDb) {
         }
     }
 
-    /** 把待写的秒数落库（不改变当前计时目标） */
+    /**
+     * 把待写的秒数投递到写队列（不改变当前计时目标）。
+     *
+     * 切题会很频繁，这里不再在主线程同步写库：写按 FIFO 排队，
+     * 交卷 / 退出前由调用方 `DbWrites.flush()` 保证落完，顺序与不丢都不变。
+     */
     fun flush() {
         if (pending.isEmpty()) return
         if (recordId > 0L) {
-            pending.forEach { (qid, sec) -> db.addQuestionTime(recordId, qid, sec) }
+            // 拷贝一份再投递：投递后 pending 立刻清空，不能把活引用交给后台
+            val rid = recordId
+            pending.toList().forEach { (qid, sec) ->
+                DbWrites.submit { db.addQuestionTime(rid, qid, sec) }
+            }
         }
         pending.clear()
     }

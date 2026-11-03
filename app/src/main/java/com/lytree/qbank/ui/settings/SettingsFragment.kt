@@ -11,6 +11,7 @@ import android.widget.LinearLayout
 import androidx.activity.addCallback
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import com.lytree.qbank.BuildConfig
 import com.lytree.qbank.R
 import com.lytree.qbank.data.db.QBankDb
@@ -19,6 +20,9 @@ import com.lytree.qbank.ui.FbSwitchView
 import com.lytree.qbank.ui.PenColors
 import com.lytree.qbank.ui.Refreshable
 import com.lytree.qbank.ui.record.RecordListFragment
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 判题规则 + 手写标注设置。不同机构判题口径不同，这里让用户自己定。
@@ -50,29 +54,33 @@ class SettingsFragment : Fragment(), Refreshable {
         binding.titleBar.onBack = { backToRecords() }
         requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner) { backToRecords() }
 
-        val p = db.getPolicy()
-        binding.swMulti.setChecked(p.multiPartial)
-        binding.swUncertain.setChecked(p.uncertainPartial)
-        binding.swFill.setChecked(p.fillPartial)
-        binding.swSubjective.setChecked(p.subjectivePartial)
-        binding.swJudgeLenient.setChecked(p.judgeLenient)
+        // 判题规则放后台读；回主线程再填开关、挂监听（先填后挂，避免填充时触发一次无意义的写）
+        viewLifecycleOwner.lifecycleScope.launch {
+            val p = withContext(Dispatchers.IO) { db.getPolicy() }
+            if (_binding == null) return@launch
+            binding.swMulti.setChecked(p.multiPartial)
+            binding.swUncertain.setChecked(p.uncertainPartial)
+            binding.swFill.setChecked(p.fillPartial)
+            binding.swSubjective.setChecked(p.subjectivePartial)
+            binding.swJudgeLenient.setChecked(p.judgeLenient)
 
-        val save = {
-            db.setPolicy(
-                com.lytree.qbank.engine.Policy(
-                    multiPartial = binding.swMulti.isChecked,
-                    uncertainPartial = binding.swUncertain.isChecked,
-                    uncertainPartialRatio = 0.5,
-                    fillPartial = binding.swFill.isChecked,
-                    subjectivePartial = binding.swSubjective.isChecked,
-                    judgeLenient = binding.swJudgeLenient.isChecked
+            val save = {
+                db.setPolicy(
+                    com.lytree.qbank.engine.Policy(
+                        multiPartial = binding.swMulti.isChecked,
+                        uncertainPartial = binding.swUncertain.isChecked,
+                        uncertainPartialRatio = 0.5,
+                        fillPartial = binding.swFill.isChecked,
+                        subjectivePartial = binding.swSubjective.isChecked,
+                        judgeLenient = binding.swJudgeLenient.isChecked
+                    )
                 )
-            )
+            }
+            listOf(
+                binding.swMulti, binding.swUncertain, binding.swFill,
+                binding.swSubjective, binding.swJudgeLenient
+            ).forEach { it.onCheckedChange = { _ -> save() } }
         }
-        listOf(
-            binding.swMulti, binding.swUncertain, binding.swFill,
-            binding.swSubjective, binding.swJudgeLenient
-        ).forEach { it.onCheckedChange = { _ -> save() } }
 
         renderPenColors()
         renderVersion()
