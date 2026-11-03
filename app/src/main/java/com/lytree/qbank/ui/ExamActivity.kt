@@ -10,6 +10,7 @@ import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.viewpager2.widget.ViewPager2
 import com.lytree.qbank.R
@@ -19,6 +20,9 @@ import com.lytree.qbank.data.model.PaperStructure
 import com.lytree.qbank.data.model.Question
 import com.lytree.qbank.databinding.ActivityExamBinding
 import com.lytree.qbank.engine.Judge
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Locale
 
 /**
@@ -83,6 +87,8 @@ class ExamActivity : AppCompatActivity() {
     private var recordId = 0L
     /** 记录标题（题头卷名，记录列表里显示的就是它） */
     private var recordName = ""
+    /** 卷名：进页面时随试卷一起读回，顶栏缺 EXTRA_PAPER_NAME 时用它兜底（不再为标题再查一次库） */
+    private var paperName = ""
     /** 每题用时：切题时把上一题的秒数累加进库 */
     private lateinit var questionTimer: QuestionTimer
     private var durationMin = 0
@@ -154,9 +160,10 @@ class ExamActivity : AppCompatActivity() {
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode != RESULT_OK) return@registerForActivityResult
-        reloadQuestions()
-        refreshCards()
-        refreshAnswerEntry()
+        reloadQuestions {
+            refreshCards()
+            refreshAnswerEntry()
+        }
     }
 
     /**
@@ -189,47 +196,52 @@ class ExamActivity : AppCompatActivity() {
         loadPrefs()
 
         paperId = intent.getLongExtra(EXTRA_PAPER_ID, 0L)
-        val paper = db.getPaper(paperId)
-        if (paper == null || paper.questions.isEmpty()) {
-            android.widget.Toast.makeText(this, "试卷不存在或为空", android.widget.Toast.LENGTH_SHORT).show()
-            finish()
-            return
+        // 读卷移出主线程：拿到的结果先在主线程校验，Activity 已销毁就直接丢弃（lifecycleScope 自动取消）
+        lifecycleScope.launch {
+            val paper = withContext(Dispatchers.IO) { db.getPaper(paperId) }
+            if (isFinishing || isDestroyed) return@launch
+            if (paper == null || paper.questions.isEmpty()) {
+                android.widget.Toast.makeText(this@ExamActivity, "试卷不存在或为空", android.widget.Toast.LENGTH_SHORT).show()
+                finish()
+                return@launch
+            }
+            paperName = paper.name
+            questions.addAll(paper.questions)
+            structure = PaperStructure(questions)
+            durationMin = paper.durationMin
+            recordName = intent.getStringExtra(EXTRA_PAPER_NAME)?.takeIf { it.isNotBlank() }
+                ?: paper.name.ifBlank { "练习记录" }
+            startedAt = System.currentTimeMillis()
+            sessionStartWall = startedAt
+            // **一进卷就有记录**：先落一条「未完成」（status = ongoing），作答数 / 用时随答题回写，
+            // 中途退出也能在记录列表里看到并点回来接着做；标注与每题用时都挂在它上面
+            recordId = db.ensureDraftRecord(paperId, DRAFT_SOURCE, startedAt, recordName)
+            // 续做时沿用最初那次的开始时间，别每进一次就把「开始时间」刷成今天
+            db.recordStartedAt(recordId).takeIf { it > 0L }?.let { startedAt = it }
+            questionTimer = QuestionTimer(db).apply { bindRecord(recordId) }
+
+            // 收藏跨会话保留：从库里读出本卷题目的收藏状态（对齐参考应用「我的收藏」）
+            val qids = questions.map { it.id }.toHashSet()
+            favorites.addAll(db.listFavoriteIds().filter { it in qids })
+
+            setupList()
+            setupPager()
+            setupTopBar()
+            setupMorePanel()
+            setupInk()
+            applyWindowInsets()
+
+            // 「收起材料」：退出就地分屏，还原浏览模式
+            binding.btnSplitCollapse.setOnClickListener { closeSplit() }
+
+            // 启动时就把上次选的浏览模式落到位（旧实现只在点按钮时才应用，偏好读了等于没读）
+            applyBrowseMode()
+            // 夜间模式同理：偏好读进来后必须真的落到界面上，否则重进 App 面板显示「夜间」、界面却是白底
+            applyNightMode()
+            updateHeader()
+            // 有未交卷进度先问「继续 / 重新开始」，再起倒计时（剩余时间要从上次退出的地方接）
+            maybeResume()
         }
-        questions.addAll(paper.questions)
-        structure = PaperStructure(questions)
-        durationMin = paper.durationMin
-        recordName = intent.getStringExtra(EXTRA_PAPER_NAME)?.takeIf { it.isNotBlank() }
-            ?: paper.name.ifBlank { "练习记录" }
-        startedAt = System.currentTimeMillis()
-        sessionStartWall = startedAt
-        // **一进卷就有记录**：先落一条「未完成」（status = ongoing），作答数 / 用时随答题回写，
-        // 中途退出也能在记录列表里看到并点回来接着做；标注与每题用时都挂在它上面
-        recordId = db.ensureDraftRecord(paperId, DRAFT_SOURCE, startedAt, recordName)
-        // 续做时沿用最初那次的开始时间，别每进一次就把「开始时间」刷成今天
-        db.recordStartedAt(recordId).takeIf { it > 0L }?.let { startedAt = it }
-        questionTimer = QuestionTimer(db).apply { bindRecord(recordId) }
-
-        // 收藏跨会话保留：从库里读出本卷题目的收藏状态（对齐参考应用「我的收藏」）
-        val qids = questions.map { it.id }.toHashSet()
-        favorites.addAll(db.listFavoriteIds().filter { it in qids })
-
-        setupList()
-        setupPager()
-        setupTopBar()
-        setupMorePanel()
-        setupInk()
-        applyWindowInsets()
-
-        // 「收起材料」：退出就地分屏，还原浏览模式
-        binding.btnSplitCollapse.setOnClickListener { closeSplit() }
-
-        // 启动时就把上次选的浏览模式落到位（旧实现只在点按钮时才应用，偏好读了等于没读）
-        applyBrowseMode()
-        // 夜间模式同理：偏好读进来后必须真的落到界面上，否则重进 App 面板显示「夜间」、界面却是白底
-        applyNightMode()
-        updateHeader()
-        // 有未交卷进度先问「继续 / 重新开始」，再起倒计时（剩余时间要从上次退出的地方接）
-        maybeResume()
     }
 
     // ---------------- 装配 ----------------
@@ -362,20 +374,27 @@ class ExamActivity : AppCompatActivity() {
      * 表头与统一模板一致，导出的文件可以直接再导入（下载 → 换手机 → 再导入的闭环）。
      */
     private fun exportPaper() {
-        try {
-            val paper = db.getPaper(intent.getLongExtra(EXTRA_PAPER_ID, 0L)) ?: return
-            val dir = java.io.File(
-                getExternalFilesDir(null) ?: filesDir, "paper"
-            ).apply { mkdirs() }
-            val name = (intent.getStringExtra(EXTRA_PAPER_NAME) ?: "试卷")
-                .replace(Regex("[\\\\/:*?\"<>|]"), "_")
-            val f = java.io.File(dir, "$name.xlsx")
-            com.lytree.qbank.data.importer.XlsxWriter.writeToFile(paper.questions, f)
-            android.widget.Toast.makeText(
-                this, "已导出：${f.absolutePath}", android.widget.Toast.LENGTH_LONG
-            ).show()
-        } catch (e: Exception) {
-            android.widget.Toast.makeText(this, "导出失败：${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+        // 读卷与写 xlsx 都是 IO：整段挪到后台，Toast 回到主线程
+        lifecycleScope.launch {
+            try {
+                val paper = withContext(Dispatchers.IO) { db.getPaper(paperId) } ?: return@launch
+                val dir = java.io.File(
+                    getExternalFilesDir(null) ?: filesDir, "paper"
+                ).apply { mkdirs() }
+                val name = (intent.getStringExtra(EXTRA_PAPER_NAME) ?: "试卷")
+                    .replace(Regex("[\\\\/:*?\"<>|]"), "_")
+                val f = java.io.File(dir, "$name.xlsx")
+                withContext(Dispatchers.IO) {
+                    com.lytree.qbank.data.importer.XlsxWriter.writeToFile(paper.questions, f)
+                }
+                android.widget.Toast.makeText(
+                    this@ExamActivity, "已导出：${f.absolutePath}", android.widget.Toast.LENGTH_LONG
+                ).show()
+            } catch (e: Exception) {
+                android.widget.Toast.makeText(
+                    this@ExamActivity, "导出失败：${e.message}", android.widget.Toast.LENGTH_SHORT
+                ).show()
+            }
         }
     }
 
@@ -459,28 +478,37 @@ class ExamActivity : AppCompatActivity() {
 
     private fun importAnswers(uri: Uri) {
         AnswerImportUi.handle(this, db, questions, uri) {
-            reloadQuestions()
-            // 已交卷状态下补答案：题面解析区要跟着换成真正的标准答案
-            if (revealAnswers) {
-                adapter.revealAnswers = true
-                pagerAdapter.revealAnswers = true
-            }
-            refreshCards()
-            if (submitAfterImport) {
-                submitAfterImport = false
-                submit(auto = false)
+            // 题目要在后台重读，读完回到主线程再刷新；「补完就交卷」必须排在这之后，否则判分拿到旧答案
+            reloadQuestions {
+                // 已交卷状态下补答案：题面解析区要跟着换成真正的标准答案
+                if (revealAnswers) {
+                    adapter.revealAnswers = true
+                    pagerAdapter.revealAnswers = true
+                }
+                refreshCards()
+                if (submitAfterImport) {
+                    submitAfterImport = false
+                    submit(auto = false)
+                }
             }
         }
     }
 
-    /** 从库里重新读一遍题目（答案已更新），就地刷新共享列表 */
-    private fun reloadQuestions() {
-        val fresh = db.getPaper(paperId)?.questions ?: return
-        questions.clear()
-        questions.addAll(fresh)
-        rebuildStructure()
-        refreshAnswerEntry()
-        updateHeader()
+    /**
+     * 从库里重新读一遍题目（答案已更新），就地刷新共享列表。
+     * [after] 在刷新完成、回到主线程后执行（调用方原来紧跟其后的 UI 动作放这里）。
+     */
+    private fun reloadQuestions(after: () -> Unit = {}) {
+        lifecycleScope.launch {
+            val fresh = withContext(Dispatchers.IO) { db.getPaper(paperId)?.questions } ?: return@launch
+            if (isFinishing || isDestroyed) return@launch
+            questions.clear()
+            questions.addAll(fresh)
+            rebuildStructure()
+            refreshAnswerEntry()
+            updateHeader()
+            after()
+        }
     }
 
     /**
@@ -707,7 +735,7 @@ class ExamActivity : AppCompatActivity() {
             binding.morePanel.visibility = View.GONE
             splitLauncher.launch(Intent(this, SplitExamActivity::class.java).apply {
                 putExtra(SplitExamActivity.EXTRA_PAPER_ID, paperId)
-                putExtra(SplitExamActivity.EXTRA_PAPER_NAME, defaultPaperName())
+                putExtra(SplitExamActivity.EXTRA_PAPER_NAME, paperName.ifBlank { "练习" })
                 if (material.isNotBlank()) putExtra(SplitExamActivity.EXTRA_GROUP_KEY, material)
             })
         }
@@ -1102,13 +1130,9 @@ class ExamActivity : AppCompatActivity() {
     // ---------------- 顶栏状态 ----------------
 
     private fun updateHeader() {
-        val name = intent.getStringExtra(EXTRA_PAPER_NAME) ?: defaultPaperName()
+        // 卷名已在读卷时拿到，不再为顶栏标题再查一次库
+        val name = intent.getStringExtra(EXTRA_PAPER_NAME) ?: paperName.ifBlank { "练习" }
         binding.tvPaperName.text = getString(R.string.paper_title, name, questions.size)
-    }
-
-    private fun defaultPaperName(): String {
-        val paper = db.getPaper(intent.getLongExtra(EXTRA_PAPER_ID, 0L))
-        return paper?.name ?: "练习"
     }
 
     // ---------------- 计时 ----------------
@@ -1128,7 +1152,17 @@ class ExamActivity : AppCompatActivity() {
         // 进度太久远导致「一进来就没时间」时，至少给一分钟缓冲，避免闪交
         if (remaining <= 0) remaining = 60_000L
         lastRemainingSec = (remaining / 1000).toInt()
-        timer = object : CountDownTimer(remaining, 1000L) {
+        armCountDown(remaining)
+    }
+
+    /**
+     * 挂上倒计时（先撤掉旧表，重复调用不会叠两个计时器）。
+     *
+     * 交卷失败后也用它按「剩余时间」重新挂表，到点自动交卷的判定随之恢复。
+     */
+    private fun armCountDown(remainingMs: Long) {
+        timer?.cancel()
+        timer = object : CountDownTimer(remainingMs, 1000L) {
             override fun onTick(millisUntilFinished: Long) {
                 val s = millisUntilFinished / 1000
                 lastRemainingSec = s.toInt()
@@ -1150,6 +1184,36 @@ class ExamActivity : AppCompatActivity() {
                 submit(auto = true)
             }
         }.also { it.start() }
+    }
+
+    /**
+     * 交卷失败、事务回滚之后把计时接回去。
+     *
+     * - 限时卷：用取消那一刻的剩余时间重挂倒计时（失败这段时间不算作答），到点自动交卷的判定恢复；
+     * - 不限时卷：正计时按墙上时间，把失败窗口从已用时长里摘掉；
+     * - 每题计时：`stop()` 已结算到失败那一刻，这里把表重新拨回当前题。
+     *
+     * 幂等：每次都先撤旧表再挂新表，连续失败不会叠出多个计时器，剩余时间也不会越走越少。
+     */
+    private fun resumeTimersAfterFailure(submitStartedAt: Long) {
+        // 每题用时续上（stop() 已把失败前的秒数结算进 pending，switchTo 不会重复计）
+        syncInkQuestion()
+        val now = System.currentTimeMillis()
+        if (durationMin <= 0) {
+            sessionStartWall += (now - submitStartedAt).coerceAtLeast(0L)
+            return
+        }
+        val remainingMs = lastRemainingSec.coerceAtLeast(0).toLong() * 1000L
+        if (remainingMs <= 0L) {
+            // 已经到点：不再自动重试（库还坏着的话会每秒撞一次），显示 00:00 交给用户手动重试
+            binding.tvTimer.text = "00:00"
+            return
+        }
+        lastRemainingSec = (remainingMs / 1000).toInt()
+        binding.tvTimer.text = String.format(
+            Locale.CHINA, "%02d:%02d", remainingMs / 60_000L, remainingMs / 1000L % 60
+        )
+        armCountDown(remainingMs)
     }
 
     /** 本次答题已用掉的秒数（保存进度用，含续做前几次会话的累计） */
@@ -1255,6 +1319,9 @@ class ExamActivity : AppCompatActivity() {
     /** 离开页面就把进度落库（交卷后不需要）。进程被杀也能从最后一次 onPause 恢复 */
     override fun onPause() {
         super.onPause()
+        // 笔迹是节流合并后再写的：离开页面前必须把没落库的最后一笔写出去，
+        // 否则切后台 / 被系统回收就丢笔了（交卷后也照样 flush，标注不会因为交卷丢）
+        binding.inkOverlay.flush()
         if (!submitted && paperId > 0L) {
             // 先停表再落库：这一步之后的时间不该再算到「正在看的那道题」上
             if (::questionTimer.isInitialized) questionTimer.stop()
@@ -1649,16 +1716,14 @@ class ExamActivity : AppCompatActivity() {
     private fun submit(auto: Boolean) {
         if (submitted) return
         submitted = true
+        // 记下交卷开始时刻：失败回滚后用它把失败窗口从计时里摘掉
+        val submitStartedAt = System.currentTimeMillis()
         // 收表：把当前题的秒数结算掉，之后的时间不再算进任何一题
         if (::questionTimer.isInitialized) questionTimer.stop()
         timer?.cancel()
-        // 已交卷：清掉未交卷进度，下次进入是全新一轮
-        db.clearProgress(paperId)
-        revealAnswers = true
-        adapter.revealAnswers = true
-        adapter.notifyDataSetChanged()
-        pagerAdapter.revealAnswers = true
-        pagerAdapter.notifyDataSetChanged()
+        // 交卷前先把节流中的笔迹写出去：交卷事务里不含笔迹，
+        // 之后进程立刻退出的话内存里那几笔就没机会落库了
+        binding.inkOverlay.flush()
 
         val policy = db.getPolicy()
         val results = questions.map { Judge.judge(it, answers[it.id] ?: "", policy) }
@@ -1666,7 +1731,7 @@ class ExamActivity : AppCompatActivity() {
         val now = System.currentTimeMillis()
 
         val record = ExamRecord(
-            paperId = intent.getLongExtra(EXTRA_PAPER_ID, 0L),
+            paperId = paperId,
             name = recordName,
             mode = if (auto) "超时自动交卷" else "手动交卷",
             startedAt = startedAt,
@@ -1680,14 +1745,34 @@ class ExamActivity : AppCompatActivity() {
             partialCount = summary.partial,
             score = summary.score,
             fullScore = summary.fullScore,
-            // 标记随本次作答留档：交卷时 clearProgress 会删掉进度里的 marked，
-            // 这里先把它写进记录，回看报告才知道当时标了哪几题
+            // 标记随本次作答留档：清进度时 marked 会一起没掉，这里先写进记录
             marked = marked.toSet(),
             // 草稿转正：这条记录从「未完成」变成「已完成」，成绩与用时都能回看
             status = QBankDb.STATUS_DONE
         )
-        // 草稿转正：记录 id 不变，挂在它上面的标注（record_inks）继续可用
-        val rid = db.finalizeRecord(recordId, record, results)
+        // 交卷收成一个事务：记录转正 + 逐题作答 + 清进度一起提交。
+        // 失败就整体回滚（记录还是进行中、进度还在），把 submitted 放回去让用户重试，别把答案弄丢。
+        val rid = try {
+            db.finishSubmission(paperId, recordId, record, results)
+        } catch (e: Exception) {
+            submitted = false
+            // 计时接回去：倒计时按剩余时间重挂（到点自动交卷继续有效），每题用时也续上，
+            // 否则失败后用户只能干等手动重试
+            resumeTimersAfterFailure(submitStartedAt)
+            // 记录页的「答了几题 / 已用多久」跟着回滚后的实际状态刷新
+            syncLiveRecord()
+            android.util.Log.e("ExamActivity", "交卷失败，已整体回滚，可重试", e)
+            android.widget.Toast.makeText(
+                this, "交卷失败，答案与进度已保留，请重试交卷", android.widget.Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
+        revealAnswers = true
+        adapter.revealAnswers = true
+        adapter.notifyDataSetChanged()
+        pagerAdapter.revealAnswers = true
+        pagerAdapter.notifyDataSetChanged()
 
         startActivity(
             Intent(this, ReportActivity::class.java).apply {

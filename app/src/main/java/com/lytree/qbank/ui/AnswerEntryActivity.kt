@@ -10,6 +10,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.lytree.qbank.R
@@ -20,6 +21,9 @@ import com.lytree.qbank.data.importer.Normalizer
 import com.lytree.qbank.data.model.Question
 import com.lytree.qbank.databinding.ActivityAnswerEntryBinding
 import com.lytree.qbank.databinding.ItemAnswerEntryBinding
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 补录答案：**不需要答案文件**，逐题把标准答案填进来，保存后立刻按当前记录的作答重判。
@@ -60,33 +64,38 @@ class AnswerEntryActivity : AppCompatActivity() {
         val paperId = intent.getLongExtra(EXTRA_PAPER_ID, 0L)
         recordId = intent.getLongExtra(EXTRA_RECORD_ID, 0L)
 
-        // 题目优先取试卷当前版本；试卷被删了才退回记录里的快照
-        val paper = db.getPaper(paperId)
-        val record = if (recordId > 0) db.getRecord(recordId) else null
-        val source = paper?.questions?.takeIf { it.isNotEmpty() }
-            ?: record?.results?.map { it.question }
-            ?: emptyList()
-        if (source.isEmpty()) {
-            toast("没有可补录的题目")
-            finish()
-            return
+        // 读卷 + 读记录放后台，回来在主线程装配界面；Activity 销毁后 lifecycleScope 自动取消
+        lifecycleScope.launch {
+            val (paper, record) = withContext(Dispatchers.IO) {
+                db.getPaper(paperId) to if (recordId > 0) db.getRecord(recordId) else null
+            }
+            if (isFinishing || isDestroyed) return@launch
+            // 题目优先取试卷当前版本；试卷被删了才退回记录里的快照
+            val source = paper?.questions?.takeIf { it.isNotEmpty() }
+                ?: record?.results?.map { it.question }
+                ?: emptyList()
+            if (source.isEmpty()) {
+                toast("没有可补录的题目")
+                finish()
+                return@launch
+            }
+            questions.addAll(source)
+            questions.forEach { q ->
+                answers[q.id] = q.answer
+                record?.results?.firstOrNull { it.question.id == q.id }?.let { mine[q.id] = it.userAnswer }
+            }
+
+            binding.titleBar.setTitle(getString(R.string.fill_answer_title))
+            binding.titleBar.addTextAction(getString(R.string.fill_answer_paste)) { showPasteDialog() }
+            binding.bottomBar.applyNavBarBottomPadding()
+
+            adapter = AnswerEntryAdapter(questions, answers, mine) { refreshHint() }
+            binding.list.layoutManager = LinearLayoutManager(this@AnswerEntryActivity)
+            binding.list.adapter = adapter
+            binding.btnSave.setOnClickListener { save() }
+
+            refreshHint()
         }
-        questions.addAll(source)
-        questions.forEach { q ->
-            answers[q.id] = q.answer
-            record?.results?.firstOrNull { it.question.id == q.id }?.let { mine[q.id] = it.userAnswer }
-        }
-
-        binding.titleBar.setTitle(getString(R.string.fill_answer_title))
-        binding.titleBar.addTextAction(getString(R.string.fill_answer_paste)) { showPasteDialog() }
-        binding.bottomBar.applyNavBarBottomPadding()
-
-        adapter = AnswerEntryAdapter(questions, answers, mine) { refreshHint() }
-        binding.list.layoutManager = LinearLayoutManager(this)
-        binding.list.adapter = adapter
-        binding.btnSave.setOnClickListener { save() }
-
-        refreshHint()
     }
 
     /** 顶部说明条：兼作「已填 N 题」的进度显示 */

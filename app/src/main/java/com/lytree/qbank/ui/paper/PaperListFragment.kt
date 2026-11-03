@@ -8,6 +8,7 @@ import android.view.ViewGroup
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.lytree.qbank.R
 import com.lytree.qbank.data.db.PaperSet
@@ -21,6 +22,9 @@ import com.lytree.qbank.ui.FbDialog
 import com.lytree.qbank.ui.ImportActivity
 import com.lytree.qbank.ui.MainActivity
 import com.lytree.qbank.ui.Refreshable
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 试卷列表：**导入标题 → 试卷**两级树。
@@ -47,8 +51,13 @@ class PaperListFragment : Fragment(), Refreshable {
         pendingPaper = null
         val act = activity as? AppCompatActivity ?: return@registerForActivityResult
         if (uri == null || paper == null) return@registerForActivityResult
-        val questions = db.getPaper(paper.id)?.questions ?: emptyList()
-        AnswerImportUi.handle(act, db, questions, uri) { refresh() }
+        // 视图已销毁（例如宿主重建）时 lifecycleScope 不可用，直接放弃这次结果
+        if (view == null) return@registerForActivityResult
+        // 读卷放后台；本页视图销毁后结果直接丢弃
+        viewLifecycleOwner.lifecycleScope.launch {
+            val questions = withContext(Dispatchers.IO) { db.getPaper(paper.id)?.questions } ?: emptyList()
+            AnswerImportUi.handle(act, db, questions, uri) { refresh() }
+        }
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, s: Bundle?): View {

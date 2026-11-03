@@ -6,12 +6,19 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.util.AttributeSet
+import android.util.Log
 import android.view.MotionEvent
 import android.view.View
 import com.lytree.qbank.data.db.QBankDb
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlin.math.hypot
 
 /**
@@ -146,6 +153,32 @@ class InkOverlay @JvmOverloads constructor(
     private var current: Stroke? = null
     private var activePointerId = MotionEvent.INVALID_POINTER_ID
 
+    // ---------------- 预取与节流落库 ----------------
+
+    /**
+     * 没落库的笔迹：key = kind:targetId，值是**抬手 / 撤销那一刻的快照**。
+     *
+     * 同一次作答里连着写很多笔时，后来的快照直接覆盖前一份，真正写库只有一次；
+     * 快照带自己的 [PendingWrite.recordId]，换记录前没写出去的也不会串到新记录上。
+     */
+    private class PendingWrite(
+        val recordId: Long,
+        val kind: TargetKind,
+        val targetId: Long,
+        val strokes: List<Stroke>
+    )
+
+    private val pendingWrites = HashMap<String, PendingWrite>()
+    private var writeScheduled = false
+    private var firstDirtyAt = 0L
+    private var lastDirtyAt = 0L
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var ioExecutor: ExecutorService? = null
+    /** 同一时刻只跑一次预取；跑完之后没覆盖到的锚点由下一次绘制再触发 */
+    private var prefetchInFlight = false
+    /** 读取代次：换记录 / [reload] 会让在途的预取结果整体作废 */
+    private var loadGeneration = 0
+
     /** 撤销下来的笔迹：重做按逆序放回；一落新笔、一换目标就作废（标准撤销/重做语义） */
     private val redoStack = ArrayList<Stroke>()
 
@@ -165,12 +198,17 @@ class InkOverlay @JvmOverloads constructor(
     var recordId: Long = 0L
         set(value) {
             if (field == value) return
+            // 旧记录还没落库的笔迹先写出去；快照自己带 recordId，不会写到新记录上
+            flush()
             field = value
+            loadGeneration++
+            prefetchInFlight = false
             docs.clear()
             current = null
             redoStack.clear()
             invalidate()
             onStrokeCountChanged?.invoke(strokeCount)
+            prefetch()
         }
     /** 当前这一笔落下时，它所属的题目卡在本层里的位置（内容坐标 → 本层坐标的平移量） */
     private var strokeOriginX = 0f
@@ -221,7 +259,11 @@ class InkOverlay @JvmOverloads constructor(
             barLeftEdge = false
             isEnabled = value
             // 笔色只在设置页改：每次进写画都重读一次，设置里刚换的颜色马上生效
-            if (value) penColor = PenColors.load(context)
+            if (value) {
+                penColor = PenColors.load(context)
+                // 进写画模式就把屏幕上的目标笔迹补进缓存，之后每一步绘制都不再等 IO
+                prefetch()
+            }
             invalidate()
         }
 
@@ -353,17 +395,22 @@ class InkOverlay @JvmOverloads constructor(
     }
 
     /**
-     * 丢掉笔迹缓存，下次绘制重新读库。
+     * 丢掉笔迹缓存，后台重新预取。
      *
      * 同一份内容可能在本页不可见时被别的页面改过（资料分析独立分屏页、页面重建），
-     * 回来时不重读就会看到旧笔迹。已落库的不会丢——每一笔在抬手 / 撤销时就写库了。
+     * 回来时要重读；但重读是**一次后台查询**（[prefetch] 按记录整批取），
+     * 不是绘制时按锚点逐个查库——先把没落库的写出去，再刷新缓存。
      */
     fun reload() {
+        flush()
+        loadGeneration++
+        prefetchInFlight = false
         docs.clear()
         current = null
         redoStack.clear()
         invalidate()
         onStrokeCountChanged?.invoke(strokeCount)
+        prefetch()
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -377,11 +424,19 @@ class InkOverlay @JvmOverloads constructor(
                 for (s in doc.strokes) drawStroke(canvas, s, 0f, 0f)
             }
         } else {
+            // 绘制只读缓存：缓存里没有的目标按「暂时没有笔迹」画，顺手在后台补取，
+            // 补完再 invalidate 重画——绝不在这一帧里查库
+            var missing: ArrayList<Anchor>? = null
             for (a in anchors) {
-                val doc = docOf(a.kind, a.targetId)
+                val doc = docs[keyOf(a.kind, a.targetId)]
+                if (doc == null) {
+                    if (a.targetId != 0L) (missing ?: ArrayList<Anchor>(4)).add(a)
+                    continue
+                }
                 if (doc.strokes.isEmpty()) continue
                 for (s in doc.strokes) drawStroke(canvas, s, a.x, a.y)
             }
+            missing?.let { prefetch(it) }
         }
         // 正在写的那一笔：点已经换算成内容坐标，画的时候抬回屏幕
         current?.let { drawStroke(canvas, it, strokeOriginX, strokeOriginY) }
@@ -654,7 +709,7 @@ class InkOverlay @JvmOverloads constructor(
         barTarget = null
         barAnchor = null
         barPointerId = MotionEvent.INVALID_POINTER_ID
-        if (anchorSource == null) persist()   // 老页面上平移过的笔迹要落库，否则重进又回原位
+        if (anchorSource == null) activeDoc()?.let { persist(it) }   // 老页面上平移过的笔迹要落库，否则重进又回原位
         invalidate()
     }
 
@@ -775,12 +830,18 @@ class InkOverlay @JvmOverloads constructor(
                     return true
                 }
                 val s = current
-                val doc = activeDoc()
+                val doc = if (activeTargetId == 0L) {
+                    null
+                } else {
+                    // 预取还没回来时也可以落笔：缓存里没有就建一份空的，预取结果回来时会
+                    // 把库里的旧笔迹插到前面，顺序仍是「老的在前、刚写的在后」
+                    docs.getOrPut(keyOf(activeKind, activeTargetId)) { Doc(activeKind, activeTargetId) }
+                }
                 if (s != null && doc != null &&
                     event.actionMasked != MotionEvent.ACTION_CANCEL && s.points.isNotEmpty()
                 ) {
                     doc.strokes.add(s)
-                    persist()
+                    persist(doc)
                     onStrokeCountChanged?.invoke(doc.strokes.size)
                 }
                 current = null
@@ -861,7 +922,8 @@ class InkOverlay @JvmOverloads constructor(
         eraserX = -1f
         eraserY = -1f
         parent?.requestDisallowInterceptTouchEvent(false)
-        persist()          // 擦完立刻落库，切题 / 退出重进都还是擦干净的样子
+        // 擦完标记落库（合并到本次作答的下一次写），切题 / 退出重进都还是擦干净的样子
+        activeDoc()?.let { persist(it) }
         invalidate()
     }
 
@@ -876,8 +938,7 @@ class InkOverlay @JvmOverloads constructor(
         val kind = hit?.kind ?: activeKind
         val targetId = if (hit != null) hit.targetId else activeTargetId
         if (targetId == 0L) return
-        val doc = docOf(kind, targetId)
-        if (doc.strokes.isEmpty()) return
+        val doc = docs[keyOf(kind, targetId)] ?: return
 
         val origin = if (hit != null) floatArrayOf(hit.x, hit.y) else originOfActive()
         val px = x - origin[0]
@@ -909,7 +970,7 @@ class InkOverlay @JvmOverloads constructor(
         val doc = activeDoc() ?: return
         if (doc.strokes.isEmpty()) return
         redoStack.add(doc.strokes.removeAt(doc.strokes.size - 1))
-        persist()
+        persist(doc)
         invalidate()
         onStrokeCountChanged?.invoke(doc.strokes.size)
     }
@@ -919,7 +980,7 @@ class InkOverlay @JvmOverloads constructor(
         val doc = activeDoc() ?: return
         val s = redoStack.removeLastOrNull() ?: return
         doc.strokes.add(s)
-        persist()
+        persist(doc)
         invalidate()
         onStrokeCountChanged?.invoke(doc.strokes.size)
     }
@@ -931,7 +992,7 @@ class InkOverlay @JvmOverloads constructor(
         doc.strokes.clear()
         redoStack.clear()
         current = null
-        persist()
+        persist(doc)
         invalidate()
         onStrokeCountChanged?.invoke(0)
     }
@@ -953,39 +1014,186 @@ class InkOverlay @JvmOverloads constructor(
     // ---------------- 持久化 ----------------
 
     private fun activeDoc(): Doc? =
-        if (activeTargetId == 0L) null else docOf(activeKind, activeTargetId)
+        if (activeTargetId == 0L) null else docs[keyOf(activeKind, activeTargetId)]
 
-    /** 每个目标（题目 / 材料）一份，读过的（包括空）都缓存：滚动时不会反复查库 */
-    private fun docOf(kind: TargetKind, targetId: Long): Doc {
-        if (targetId == 0L) return EMPTY_DOC
-        val key = keyOf(kind, targetId)
-        docs[key]?.let { return it }
-        val doc = Doc(kind, targetId)
-        doc.strokes.addAll(loadStrokes(kind, targetId))
-        docs[key] = doc
-        return doc
-    }
+    // ---------------- 预取（绘制路径绝不查库） ----------------
 
     /**
-     * 当前目标的笔迹落库。撤销到空时直接删行——「每题只保留最新一份」，
-     * 清空后不该留一条空记录，也不保留历史版本。
+     * 后台把给定锚点里还没缓存的目标读进来；已经缓存（哪怕是空）的跳过，不重复查库。
+     *
+     * 锚点集合变化（切题、翻页、材料弹出）只会补新出现的目标，不是每次全量重取；
+     * [reload] 后的第一轮才会按记录整批读一次。
      */
-    private fun persist() {
-        val doc = activeDoc() ?: return
+    fun prefetch(anchors: List<Anchor> = anchorSource?.invoke().orEmpty()) {
         val rid = recordId
-        if (rid <= 0L) return
-        val db = QBankDb.get(context)
-        if (doc.strokes.isEmpty()) {
-            db.deleteInk(rid, doc.kind.dbValue, doc.targetId)
-        } else {
-            db.setInk(rid, doc.kind.dbValue, doc.targetId, serialize(doc))
+        if (rid <= 0L || anchors.isEmpty()) return
+        val targets = anchors.asSequence()
+            .filter { it.targetId != 0L }
+            .map { it.kind to it.targetId }
+            .distinct()
+            .filter { (kind, targetId) -> keyOf(kind, targetId) !in docs }
+            .toList()
+        if (targets.isEmpty() || prefetchInFlight) return
+
+        prefetchInFlight = true
+        val gen = loadGeneration
+        val exec = ioExecutor()
+        exec.execute {
+            val rows = try {
+                QBankDb.get(context).listInkForRecord(rid)
+            } catch (t: Throwable) {
+                Log.w(TAG, "预取笔迹失败，先按空笔迹绘制", t)
+                emptyList()
+            }
+            // 解析也在 IO 线程，结果只带回主线程拼进缓存
+            val wanted = targets.mapTo(HashSet()) { (kind, targetId) -> keyOf(kind, targetId) }
+            val loaded = HashMap<String, List<Stroke>>()
+            for (row in rows) {
+                val key = "${row.kind}:${row.targetId}"
+                if (key !in wanted) continue
+                loaded[key] = parseStrokes(row.strokes)
+            }
+            mainHandler.post { applyPrefetch(rid, gen, targets, loaded) }
         }
     }
 
-    private fun serialize(doc: Doc): String {
+    /** 预取结果回主线程：只在「还是同一条记录、同一次读取」时才认，旧结果整体丢弃 */
+    private fun applyPrefetch(
+        rid: Long,
+        gen: Int,
+        targets: List<Pair<TargetKind, Long>>,
+        loaded: Map<String, List<Stroke>>
+    ) {
+        if (recordId != rid || gen != loadGeneration) return
+        prefetchInFlight = false
+        var changed = false
+        for ((kind, targetId) in targets) {
+            val key = keyOf(kind, targetId)
+            val fresh = loaded[key].orEmpty()
+            val cached = docs[key]
+            if (cached == null) {
+                docs[key] = Doc(kind, targetId).apply { strokes.addAll(fresh) }
+                changed = true
+            } else if (fresh.isNotEmpty()) {
+                // 预取期间用户已经在这里写了新笔：库里的旧笔迹插到前面，
+                // 顺序仍是「老的在前、刚写的在后」，不覆盖内存里的新内容
+                cached.strokes.addAll(0, fresh)
+                changed = true
+            }
+        }
+        if (changed) {
+            invalidate()
+            onStrokeCountChanged?.invoke(strokeCount)
+        }
+    }
+
+    // ---------------- 节流落库 ----------------
+
+    /**
+     * 记下这一份最新快照，合并后再写库。
+     *
+     * 同一次作答里连着抬笔，后一份快照直接盖掉前一份（同 key），
+     * 真正写库的次数与「停顿次数」同量级，而不是与笔数同量级；
+     * 序列化与 SQL 都在 [ioExecutor] 的单线程里做，UI 线程只做一次浅拷贝。
+     */
+    private fun persist(doc: Doc) {
+        val rid = recordId
+        if (rid <= 0L) return
+        pendingWrites[keyOf(doc.kind, doc.targetId)] = PendingWrite(
+            rid, doc.kind, doc.targetId, ArrayList(doc.strokes)
+        )
+        scheduleWrite()
+    }
+
+    /**
+     * 把没落库的笔迹立刻写出去（等这一批真正写完才返回）。
+     *
+     * onPause / 退出 / 交卷前必须调：进程可能随时被系统收走，内存里的最后一笔不能丢。
+     * 调用方在主线程，这里只等一次小批量写（最多 [WRITE_WAIT_MS] 毫秒）。
+     */
+    fun flush() {
+        if (writeScheduled) {
+            mainHandler.removeCallbacks(writeRunnable)
+            writeScheduled = false
+        }
+        firstDirtyAt = 0L
+        lastDirtyAt = 0L
+        val batch = if (pendingWrites.isEmpty()) emptyList() else pendingWrites.values.toList()
+        pendingWrites.clear()
+        dispatchWrites(batch, wait = true)
+    }
+
+    private fun scheduleWrite() {
+        val now = SystemClock.uptimeMillis()
+        if (!writeScheduled) {
+            writeScheduled = true
+            firstDirtyAt = now
+            mainHandler.postDelayed(writeRunnable, WRITE_DEBOUNCE_MS)
+        }
+        lastDirtyAt = now
+    }
+
+    /**
+     * 节流合并：最后一笔之后安静 [WRITE_DEBOUNCE_MS] 才写；
+     * 一直写个不停时最多拖 [WRITE_MAX_DELAY_MS]，别把太多笔押在内存里。
+     */
+    private val writeRunnable = object : Runnable {
+        override fun run() {
+            val now = SystemClock.uptimeMillis()
+            val due = minOf(lastDirtyAt + WRITE_DEBOUNCE_MS, firstDirtyAt + WRITE_MAX_DELAY_MS)
+            if (now < due) {
+                mainHandler.postDelayed(this, due - now)
+                return
+            }
+            writeScheduled = false
+            firstDirtyAt = 0L
+            lastDirtyAt = 0L
+            val batch = pendingWrites.values.toList()
+            pendingWrites.clear()
+            dispatchWrites(batch, wait = false)
+        }
+    }
+
+    /**
+     * 所有读写都排在同一条 IO 线程上：先落的先写、后落的后写，[flush] 排在同一队的末尾，
+     * 等它返回时之前的写一定已经落库（也自然堵住了「读回来又被旧写覆盖」的乱序）。
+     */
+    private fun dispatchWrites(batch: List<PendingWrite>, wait: Boolean) {
+        val future = ioExecutor().submit { writeBatch(batch) }
+        if (!wait) return
+        try {
+            future.get(WRITE_WAIT_MS, TimeUnit.MILLISECONDS)
+        } catch (t: Throwable) {
+            Log.w(TAG, "等待笔迹落库超时", t)
+        }
+    }
+
+    private fun writeBatch(batch: List<PendingWrite>) {
+        if (batch.isEmpty()) return
+        val db = QBankDb.get(context)
+        for (w in batch) {
+            try {
+                if (w.strokes.isEmpty()) {
+                    db.deleteInk(w.recordId, w.kind.dbValue, w.targetId)
+                } else {
+                    db.setInk(w.recordId, w.kind.dbValue, w.targetId, serialize(w.strokes))
+                }
+            } catch (t: Throwable) {
+                Log.w(TAG, "笔迹落库失败：${w.kind.dbValue}:${w.targetId}", t)
+            }
+        }
+    }
+
+    private fun ioExecutor(): ExecutorService {
+        val current = ioExecutor
+        if (current != null && !current.isShutdown) return current
+        return Executors.newSingleThreadExecutor { r -> Thread(r, "ink-io") }.also { ioExecutor = it }
+    }
+
+    private fun serialize(strokes: List<Stroke>): String {
         val root = JSONObject().apply { put("v", 2) }
         val arr = JSONArray()
-        for (s in doc.strokes) {
+        for (s in strokes) {
             val o = JSONObject()
             o.put("c", s.color)
             val pts = JSONArray()
@@ -999,16 +1207,22 @@ class InkOverlay @JvmOverloads constructor(
         return root.toString()
     }
 
-    private fun loadStrokes(kind: TargetKind, targetId: Long): List<Stroke> {
-        val rid = recordId
-        if (rid <= 0L) return emptyList()
-        val raw = QBankDb.get(context).getInk(rid, kind.dbValue, targetId)?.trim().orEmpty()
-        if (raw.isEmpty()) return emptyList()
+    private fun parseStrokes(raw: String): List<Stroke> {
+        val text = raw.trim()
+        if (text.isEmpty()) return emptyList()
         return try {
-            if (raw.startsWith("{")) parseV2(raw) else parseV1(raw)
+            if (text.startsWith("{")) parseV2(text) else parseV1(text)
         } catch (_: Exception) {
             emptyList()
         }
+    }
+
+    override fun onDetachedFromWindow() {
+        // 兜底：Activity 万一没走 onPause 的 flush（或视图被提前摘掉），这里补一次
+        flush()
+        ioExecutor?.shutdown()
+        ioExecutor = null
+        super.onDetachedFromWindow()
     }
 
     private fun parseV2(raw: String): List<Stroke> {
@@ -1051,11 +1265,18 @@ class InkOverlay @JvmOverloads constructor(
 
     private companion object {
         const val KEY_SHADE = "shade_level"
+        const val TAG = "InkOverlay"
+
+        /** 最后一笔之后安静这么久再写库：连着抬笔的几笔合并成一次 */
+        const val WRITE_DEBOUNCE_MS = 500L
+
+        /** 一直写个不停时最多拖这么久，别让太多笔只活在内存里 */
+        const val WRITE_MAX_DELAY_MS = 2_000L
+
+        /** flush 等落库的上限；超过只记日志，不卡住生命周期回调 */
+        const val WRITE_WAIT_MS = 3_000L
 
         fun keyOf(kind: TargetKind, targetId: Long): String = "${kind.dbValue}:$targetId"
-
-        /** 空目标（模块说明页等）共用一份空文档，不会被写入 */
-        val EMPTY_DOC = Doc(TargetKind.QUESTION, 0L)
 
         /** 反射缓存：View 上没有公开的滚动进度 API，只能借 protected 的实现 */
         val OFFSET_M: java.lang.reflect.Method? = scrollMethod("computeVerticalScrollOffset")

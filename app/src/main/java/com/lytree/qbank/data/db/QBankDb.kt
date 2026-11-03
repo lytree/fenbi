@@ -138,6 +138,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         if (oldVersion < 10) createV10Tables(db)
         // v11：记录从「交卷才生成」改成「开始答题就生成」，并补上每题用时
         if (oldVersion < 11) createV11Tables(db)
+        // v12：只改了未交卷进度串的编码（表结构不变），11 → 12 是空迁移，不重建、不清数据
     }
 
     /** v3：收藏表 + 答题进度表（对齐参考应用「收藏跨会话保留 / 中途退出可续做」） */
@@ -906,14 +907,10 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         ).use { c ->
             while (c.moveToNext()) {
                 out.add(
-                    Paper(
-                        id = c.getLong(0), name = c.getString(1) ?: "",
-                        description = c.getString(2) ?: "",
-                        createdAt = c.getLong(3), durationMin = c.getInt(4), mode = c.getString(5) ?: "",
+                    readPaperBase(c).copy(
                         questionCount = c.getInt(6),
                         missingAnswers = c.getInt(7),
-                        setId = c.getLong(8),
-                        questions = emptyList()
+                        setId = c.getLong(8)
                     )
                 )
             }
@@ -921,8 +918,20 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         return out
     }
 
+    /** 按 id 直查单卷：不再为一份卷读全表 + 跑关联子查询，计数只按这份卷统计 */
     fun getPaper(id: Long): Paper? {
-        val p = listPapers().firstOrNull { it.id == id } ?: return null
+        val base = readableDatabase.rawQuery(
+            """SELECT id, name, description, created_at, duration_min, mode, IFNULL(set_id, 0)
+               FROM papers WHERE id = ? LIMIT 1""",
+            arrayOf(id.toString())
+        ).use { c ->
+            if (!c.moveToFirst()) return null
+            readPaperBase(c).copy(
+                questionCount = countPaperQuestions(id),
+                missingAnswers = countPaperMissingAnswers(id),
+                setId = c.getLong(6)
+            )
+        }
         val qs = ArrayList<Question>()
         readableDatabase.rawQuery(
             """SELECT q.* FROM paper_questions pq
@@ -930,8 +939,29 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
                WHERE pq.paper_id = ? ORDER BY pq.position""",
             arrayOf(id.toString())
         ).use { c -> while (c.moveToNext()) qs.add(readQuestion(c)) }
-        return p.copy(questions = qs)
+        return base.copy(questions = qs)
     }
+
+    /** papers 基础列（0 id / 1 name / 2 description / 3 created_at / 4 duration_min / 5 mode）的行映射 */
+    private fun readPaperBase(c: Cursor): Paper = Paper(
+        id = c.getLong(0), name = c.getString(1) ?: "",
+        description = c.getString(2) ?: "",
+        createdAt = c.getLong(3), durationMin = c.getInt(4), mode = c.getString(5) ?: ""
+    )
+
+    private fun countPaperQuestions(paperId: Long): Int =
+        readableDatabase.rawQuery(
+            "SELECT COUNT(*) FROM paper_questions WHERE paper_id = ?",
+            arrayOf(paperId.toString())
+        ).use { if (it.moveToFirst()) it.getInt(0) else 0 }
+
+    private fun countPaperMissingAnswers(paperId: Long): Int =
+        readableDatabase.rawQuery(
+            """SELECT COUNT(*) FROM paper_questions pq
+               JOIN questions q ON q.id = pq.question_id
+               WHERE pq.paper_id = ? AND TRIM(IFNULL(q.answer, '')) = ''""",
+            arrayOf(paperId.toString())
+        ).use { if (it.moveToFirst()) it.getInt(0) else 0 }
 
     /** 同名试卷（导入重名时用来提示覆盖） */
     fun findPaperByName(name: String): Paper? =
@@ -1278,6 +1308,36 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
     }
 
     /**
+     * 交卷：**一个事务**里完成「记录转成 done（成绩 / 用时 / 标记）+ 逐题作答 + 清未交卷进度」。
+     *
+     * 任何一步抛异常都整体回滚：记录仍是进行中、进度还在，用户可以直接重试交卷，
+     * 不会出现「进度没了、记录却没交上」的半成品。记录已经是 done 时直接返回该 id（幂等），
+     * 重复点击交卷 / 页面重建后再交一次都不会写出第二条 done 记录，也不会改动既有成绩。
+     */
+    fun finishSubmission(
+        paperId: Long,
+        recordId: Long,
+        record: ExamRecord,
+        results: List<com.lytree.qbank.data.model.AnswerResult>
+    ): Long {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val rid = if (recordId > 0L && recordStatus(db, recordId) == STATUS_DONE) {
+                // 已交过：只清残留进度，不再重写成绩、不再追加作答行
+                recordId
+            } else {
+                finalizeRecordInTransaction(db, recordId, record, results)
+            }
+            db.delete("exam_progress", "paper_id = ?", arrayOf(paperId.toString()))
+            db.setTransactionSuccessful()
+            return rid
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    /**
      * 把草稿转成正式记录：补上交卷时间与成绩，并用本次判分结果替换逐题作答。
      *
      * 笔迹（`record_inks`）与每题用时（`record_question_times`）都不删——它们本来就挂在
@@ -1291,24 +1351,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         val db = writableDatabase
         db.beginTransaction()
         try {
-            val values = recordValues(record)
-            val rid = if (recordId > 0L && recordExists(db, recordId)) {
-                db.update("records", values, "id = ?", arrayOf(recordId.toString()))
-                db.delete("record_answers", "record_id = ?", arrayOf(recordId.toString()))
-                recordId
-            } else {
-                db.insert("records", null, values)
-            }
-            for (r in results) {
-                val cv = ContentValues().apply {
-                    put("record_id", rid)
-                    put("question_id", r.question.id)
-                    put("user_answer", r.userAnswer)
-                    put("earned", r.earned)
-                    put("correct", if (r.correct) 1 else 0)
-                }
-                db.insert("record_answers", null, cv)
-            }
+            val rid = finalizeRecordInTransaction(db, recordId, record, results)
             db.setTransactionSuccessful()
             return rid
         } finally {
@@ -1316,9 +1359,43 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         }
     }
 
+    /** [finalizeRecord] 的事务内实体：调用方负责 begin / setTransactionSuccessful / end */
+    private fun finalizeRecordInTransaction(
+        db: SQLiteDatabase,
+        recordId: Long,
+        record: ExamRecord,
+        results: List<com.lytree.qbank.data.model.AnswerResult>
+    ): Long {
+        val values = recordValues(record)
+        val rid = if (recordId > 0L && recordExists(db, recordId)) {
+            db.update("records", values, "id = ?", arrayOf(recordId.toString()))
+            db.delete("record_answers", "record_id = ?", arrayOf(recordId.toString()))
+            recordId
+        } else {
+            // 用 insertOrThrow：insert() 会把 SQL 异常吞掉、返回 -1，交卷就会「静默半成功」
+            db.insertOrThrow("records", null, values)
+        }
+        for (r in results) {
+            val cv = ContentValues().apply {
+                put("record_id", rid)
+                put("question_id", r.question.id)
+                put("user_answer", r.userAnswer)
+                put("earned", r.earned)
+                put("correct", if (r.correct) 1 else 0)
+            }
+            db.insertOrThrow("record_answers", null, cv)
+        }
+        return rid
+    }
+
     private fun recordExists(db: SQLiteDatabase, id: Long): Boolean =
         db.rawQuery("SELECT 1 FROM records WHERE id = ?", arrayOf(id.toString()))
             .use { it.moveToFirst() }
+
+    /** 记录状态；记录不存在时返回空串（交卷时按「没交过」处理） */
+    private fun recordStatus(db: SQLiteDatabase, id: Long): String =
+        db.rawQuery("SELECT status FROM records WHERE id = ?", arrayOf(id.toString()))
+            .use { if (it.moveToFirst()) it.getString(0).orEmpty() else "" }
 
     private fun recordValues(record: ExamRecord): ContentValues = ContentValues().apply {
         put("paper_id", record.paperId)
@@ -1463,6 +1540,29 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         ).use { c -> return if (c.moveToFirst()) c.getString(0) else null }
     }
 
+    /**
+     * 一次性读出某条记录的全部笔迹。
+     *
+     * 进答题页 / 切写画模式时用它在后台预取，绘制路径就只读内存缓存；
+     * 按锚点逐个 [getInk] 会在开页时连查好几次库。
+     */
+    fun listInkForRecord(recordId: Long): List<InkRow> {
+        if (recordId <= 0L) return emptyList()
+        val out = ArrayList<InkRow>()
+        readableDatabase.rawQuery(
+            "SELECT kind, target_id, strokes FROM record_inks WHERE record_id = ?",
+            arrayOf(recordId.toString())
+        ).use { c ->
+            while (c.moveToNext()) {
+                out.add(InkRow(c.getString(0) ?: "", c.getLong(1), c.getString(2) ?: ""))
+            }
+        }
+        return out
+    }
+
+    /** `record_inks` 的一行：目标（题目 / 材料）+ 该目标最新的笔迹串 */
+    data class InkRow(val kind: String, val targetId: Long, val strokes: String)
+
     /** 写入笔迹：同一记录、同一目标只有一份，后写的覆盖前一份（只保留最新批注） */
     fun setInk(recordId: Long, kind: String, targetId: Long, strokes: String) {
         if (recordId <= 0L) return
@@ -1542,7 +1642,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
             arrayOf(paperId.toString())
         ).use { c ->
             if (!c.moveToFirst()) return null
-            val answers = parseIdTextMap(c.getString(0) ?: "")
+            val answers = decodeProgressAnswers(c.getString(0) ?: "")
             val marked = parseIdTextSet(c.getString(1) ?: "")
             if (answers.isEmpty() && marked.isEmpty()) return null
             return ExamProgress(paperId, answers, marked, c.getInt(2))
@@ -1566,8 +1666,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         merge: Boolean = false
     ): Map<Long, String> {
         if (!merge) {
-            writeProgress(paperId, answers.entries.joinToString(";") { "${it.key},${it.value}" },
-                marked.joinToString(","), elapsedSec)
+            writeProgress(paperId, encodeProgressAnswers(answers), marked.joinToString(","), elapsedSec)
             return answers
         }
 
@@ -1584,7 +1683,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
             ).use { c ->
                 if (c.moveToFirst()) {
                     val allAnswers = HashMap<Long, String>()
-                    allAnswers.putAll(parseIdTextMap(c.getString(0) ?: ""))
+                    allAnswers.putAll(decodeProgressAnswers(c.getString(0) ?: ""))
                     allAnswers.putAll(answers)
                     mergedAnswers = allAnswers
                     val allMarked = HashSet<Long>()
@@ -1594,7 +1693,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
                     mergedElapsedSec = maxOf(elapsedSec, c.getInt(2))
                 }
             }
-            writeProgress(paperId, mergedAnswers.entries.joinToString(";") { "${it.key},${it.value}" },
+            writeProgress(paperId, encodeProgressAnswers(mergedAnswers),
                 mergedMarked.joinToString(","), mergedElapsedSec)
             db.setTransactionSuccessful()
         } finally {
@@ -1621,18 +1720,6 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         writableDatabase.delete("exam_progress", "paper_id = ?", arrayOf(paperId.toString()))
     }
 
-    private fun parseIdTextMap(raw: String): HashMap<Long, String> {
-        val out = HashMap<Long, String>()
-        if (raw.isBlank()) return out
-        for (entry in raw.split(';')) {
-            val i = entry.indexOf(',')
-            if (i <= 0) continue
-            val id = entry.substring(0, i).toLongOrNull() ?: continue
-            out[id] = entry.substring(i + 1)
-        }
-        return out
-    }
-
     private fun parseIdTextSet(raw: String): HashSet<Long> {
         val out = HashSet<Long>()
         if (raw.isBlank()) return out
@@ -1644,8 +1731,14 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         /** 数据库文件名（云备份打交道时用，保持一致） */
         const val DB_NAME = "qbank.db"
 
-        /** 库版本。云备份包里的 manifest 会记下它，恢复时据此判断能否直接落地 */
-        const val DB_VERSION = 11
+        /**
+         * 库版本。云备份包里的 manifest 会记下它，恢复时据此判断能否直接落地。
+         *
+         * v12：表结构没变，只有 `exam_progress.answers` 的编码从 `id,value;` 换成了 US 分隔
+         * （见 [encodeProgressAnswers]）。读旧串仍兼容，但**新串老版本读不了**，
+         * 所以提一版，让老 App 在恢复 v12 备份时直接拒绝，而不是静默把进度读丢。
+         */
+        const val DB_VERSION = 12
 
         /** 重练卷统一挂的组名 */
         private const val RETRY_SET_TITLE = "错题重练"
@@ -1663,6 +1756,105 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
             val name = s.removePrefix("导入自").trim()
             val base = name.substringBeforeLast('.', name).trim()
             return base.ifBlank { LEGACY_SET_TITLE }
+        }
+
+        // ---------------- 作答进度串编解码 ----------------
+
+        /**
+         * 条目分隔符：Unit Separator（不可见控制字符）。
+         * 用户作答里可能出现 `;`（主观题分点）、换行、逗号，这些都不能再当分隔符用。
+         */
+        internal const val PROGRESS_UNIT_SEP = '\u001F'
+
+        /**
+         * 编码作答进度。新格式为：
+         *
+         * ```
+         * US  id,value  US  id,value …
+         * ```
+         *
+         * - 串首的 US 是**版本标记**：没有它的一律按旧的 `id,value;` 解析；
+         *   之所以要标记而不只靠「有没有 US 判断」，是因为只有一条作答时新串里也不会出现 US，
+         *   值里带 `;` 就会被旧解析器截断；
+         * - 键是自增数字，所以键与值之间仍用第一个逗号切开，值里的逗号原样保留（旧格式也如此）；
+         * - 值里真出现 US 或反斜杠时按反斜杠转义，任意字符串都能无损往返。
+         */
+        internal fun encodeProgressAnswers(answers: Map<Long, String>): String {
+            if (answers.isEmpty()) return ""
+            val sb = StringBuilder()
+            sb.append(PROGRESS_UNIT_SEP)
+            answers.entries.forEachIndexed { index, (id, value) ->
+                if (index > 0) sb.append(PROGRESS_UNIT_SEP)
+                sb.append(id).append(',').append(escapeProgressValue(value))
+            }
+            return sb.toString()
+        }
+
+        /** 解码作答进度：串首有 US 标记走新格式，否则按历史数据 `id,value;` 解析 */
+        internal fun decodeProgressAnswers(raw: String): HashMap<Long, String> {
+            val out = HashMap<Long, String>()
+            if (raw.isBlank()) return out
+            if (raw[0] != PROGRESS_UNIT_SEP) {
+                // 旧格式（升级前落库的数据）：值里出现 `;` 本来就会被截断，保持旧行为不变
+                for (entry in raw.split(';')) {
+                    val i = entry.indexOf(',')
+                    if (i <= 0) continue
+                    val id = entry.substring(0, i).toLongOrNull() ?: continue
+                    out[id] = entry.substring(i + 1)
+                }
+                return out
+            }
+            // 新格式逐字符扫描：值里被转义的 US / 反斜杠不能参与切分，所以不能先 split 再反转义
+            val body = raw.substring(1)
+            val idBuf = StringBuilder()
+            val valueBuf = StringBuilder()
+            var inValue = false
+            fun flushEntry() {
+                if (inValue && idBuf.isNotEmpty()) {
+                    idBuf.toString().toLongOrNull()?.let { out[it] = valueBuf.toString() }
+                }
+                idBuf.setLength(0)
+                valueBuf.setLength(0)
+                inValue = false
+            }
+            var i = 0
+            while (i < body.length) {
+                val ch = body[i]
+                if (ch == PROGRESS_UNIT_SEP) {
+                    flushEntry()
+                    i++
+                    continue
+                }
+                if (inValue && ch == '\\' && i + 1 < body.length) {
+                    val next = body[i + 1]
+                    if (next == '\\' || next == PROGRESS_UNIT_SEP) {
+                        valueBuf.append(next)
+                        i += 2
+                        continue
+                    }
+                }
+                if (!inValue) {
+                    if (ch == ',') inValue = true else idBuf.append(ch)
+                } else {
+                    valueBuf.append(ch)
+                }
+                i++
+            }
+            flushEntry()
+            return out
+        }
+
+        private fun escapeProgressValue(value: String): String {
+            if (value.indexOf('\\') < 0 && value.indexOf(PROGRESS_UNIT_SEP) < 0) return value
+            val sb = StringBuilder(value.length + 4)
+            for (ch in value) {
+                when (ch) {
+                    '\\' -> sb.append("\\\\")
+                    PROGRESS_UNIT_SEP -> sb.append('\\').append(PROGRESS_UNIT_SEP)
+                    else -> sb.append(ch)
+                }
+            }
+            return sb.toString()
         }
 
         /** v9 重建时整体清空、一并重建的表（题库相关；词库 / 背诵 / 设置不动） */

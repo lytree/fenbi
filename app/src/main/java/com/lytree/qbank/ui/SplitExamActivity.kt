@@ -8,6 +8,7 @@ import android.view.ViewGroup
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import com.lytree.qbank.R
 import com.lytree.qbank.data.db.QBankDb
 import com.lytree.qbank.data.model.ExamRecord
@@ -17,6 +18,9 @@ import com.lytree.qbank.databinding.ActivitySplitExamBinding
 import com.lytree.qbank.databinding.ItemOptionBinding
 import com.lytree.qbank.databinding.ItemSplitQuestionBinding
 import com.lytree.qbank.engine.Judge
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Locale
 
 /**
@@ -82,108 +86,112 @@ class SplitExamActivity : AppCompatActivity() {
         db = QBankDb.get(this)
 
         paperId = intent.getLongExtra(EXTRA_PAPER_ID, 0L)
-        val paper = db.getPaper(paperId)
-        if (paper == null || paper.questions.isEmpty()) {
-            android.widget.Toast.makeText(this, "试卷不存在或为空", android.widget.Toast.LENGTH_SHORT).show()
-            finish()
-            return
-        }
-
-        // 按材料分组：直接用试卷结构里的材料组——同一材料跨大类会断成两组，
-        // 按文本 filter 会把它们并成一组、题号也会错，这里取的正是这题所属的那一组
-        structure = PaperStructure(paper.questions)
-        val groupKey = intent.getStringExtra(EXTRA_GROUP_KEY)?.trim().orEmpty()
-        val group = if (groupKey.isEmpty()) {
-            null
-        } else {
-            structure.groups.firstOrNull {
-                it.isMaterialGroup && it.material.material.trim() == groupKey
+        // 读卷移出主线程；Activity 销毁后 lifecycleScope 自动取消，结果直接丢弃
+        lifecycleScope.launch {
+            val paper = withContext(Dispatchers.IO) { db.getPaper(paperId) }
+            if (isFinishing || isDestroyed) return@launch
+            if (paper == null || paper.questions.isEmpty()) {
+                android.widget.Toast.makeText(this@SplitExamActivity, "试卷不存在或为空", android.widget.Toast.LENGTH_SHORT).show()
+                finish()
+                return@launch
             }
-        }
-        allQuestions = paper.questions
-        questions = group?.questions ?: paper.questions
-        // 题号接着整卷往下排（参考应用分屏右栏显示的是 106./107./108.，不是 1./2./3.）
-        indexOffset = group?.startIndex ?: 0
 
-        startedAt = System.currentTimeMillis()
-        // **一进来就有记录**：先落一条「未完成」，交卷时转成「已完成」；
-        // 标注与每题用时都按这条记录存
-        recordId = db.ensureDraftRecord(paperId, DRAFT_SOURCE, startedAt)
-        // 记录最初的开始时间单独留着：顶栏的正计时要从「进这一页」算起，
-        // 而记录上的「开始时间」得是最早那次进卷的时刻
-        recordStartedAt = db.recordStartedAt(recordId).takeIf { it > 0L } ?: startedAt
-        // 与答题页共用同一份进度：进页面先把已作答的题读回来，
-        // 否则「在答题页做的题」在这儿看不到、「在这儿改的答案」退出后也留不住
-        db.getProgress(paperId)?.let { p ->
-            answers.putAll(p.answers)
-            marked.addAll(p.marked)
-            savedElapsedSec = p.elapsedSec
-        }
-        questionTimer = QuestionTimer(db).apply { bindRecord(recordId) }
-        binding.inkOverlay.recordId = recordId
-        binding.titleBar.showDivider(false)
-        // 对齐参考应用的分屏页：顶栏只留「返回 + 计时」，不放卷名与右侧动作
-        binding.titleBar.setTitle("")
-        binding.titleBar.onBack = { confirmExit() }
-        tvIndex = binding.titleBar.addTextAction("") { }
-        binding.titleBar.setTimer("00:00")
-        binding.bottomBar.applyNavBarBottomPadding()
-
-        binding.btnCard.setOnClickListener { openAnswerCard() }
-        binding.btnSubmit.setOnClickListener { confirmSubmit() }
-        binding.btnInk.setOnClickListener { toggleInk() }
-        // 左栏只有半屏宽，图 / 表挤在一起时弹到独立页面看（不再用 Dialog 浮层）
-        binding.btnMaterialExpand.setOnClickListener {
-            val material = groupMaterial()
-            if (material.isNotBlank()) {
-                startActivity(Intent(this, MaterialPopupActivity::class.java).apply {
-                    putExtra(MaterialPopupActivity.EXTRA_MATERIAL, material)
-                })
+            // 按材料分组：直接用试卷结构里的材料组——同一材料跨大类会断成两组，
+            // 按文本 filter 会把它们并成一组、题号也会错，这里取的正是这题所属的那一组
+            structure = PaperStructure(paper.questions)
+            val groupKey = intent.getStringExtra(EXTRA_GROUP_KEY)?.trim().orEmpty()
+            val group = if (groupKey.isEmpty()) {
+                null
+            } else {
+                structure.groups.firstOrNull {
+                    it.isMaterialGroup && it.material.material.trim() == groupKey
+                }
             }
-        }
+            allQuestions = paper.questions
+            questions = group?.questions ?: paper.questions
+            // 题号接着整卷往下排（参考应用分屏右栏显示的是 106./107./108.，不是 1./2./3.）
+            indexOffset = group?.startIndex ?: 0
 
-        // 左右占比可调：拖动中间手柄改变左栏宽度（25%～75%），比例记忆到偏好
-        setupSplitResize()
-
-        inkToolbar = InkToolbarController(
-            inkOverlay = binding.inkOverlay,
-            inkBar = binding.inkBar,
-            btnPen = binding.btnInkPen,
-            btnEraser = binding.btnInkEraser,
-            btnUndo = binding.btnInkUndo,
-            btnRedo = binding.btnInkRedo,
-            btnShade = binding.btnInkShade,
-            btnClear = binding.btnInkClear,
-            btnClose = binding.btnInkClose,
-            styleInkButton = { on ->
-                binding.btnInk.setBackgroundResource(
-                    if (on) R.drawable.bg_fb_mark_on else R.drawable.bg_fb_action
-                )
+            startedAt = System.currentTimeMillis()
+            // **一进来就有记录**：先落一条「未完成」，交卷时转成「已完成」；
+            // 标注与每题用时都按这条记录存
+            recordId = db.ensureDraftRecord(paperId, DRAFT_SOURCE, startedAt)
+            // 记录最初的开始时间单独留着：顶栏的正计时要从「进这一页」算起，
+            // 而记录上的「开始时间」得是最早那次进卷的时刻
+            recordStartedAt = db.recordStartedAt(recordId).takeIf { it > 0L } ?: startedAt
+            // 与答题页共用同一份进度：进页面先把已作答的题读回来，
+            // 否则「在答题页做的题」在这儿看不到、「在这儿改的答案」退出后也留不住
+            db.getProgress(paperId)?.let { p ->
+                answers.putAll(p.answers)
+                marked.addAll(p.marked)
+                savedElapsedSec = p.elapsedSec
             }
-        )
-        inkToolbar.onModeChanged = { on ->
-            inkMode = on
-            if (on) binding.inkOverlay.bindQuestion(questions.getOrNull(currentIndex)?.id ?: 0L)
-        }
+            questionTimer = QuestionTimer(db).apply { bindRecord(recordId) }
+            binding.inkOverlay.recordId = recordId
+            binding.titleBar.showDivider(false)
+            // 对齐参考应用的分屏页：顶栏只留「返回 + 计时」，不放卷名与右侧动作
+            binding.titleBar.setTitle("")
+            binding.titleBar.onBack = { confirmExit() }
+            tvIndex = binding.titleBar.addTextAction("") { }
+            binding.titleBar.setTimer("00:00")
+            binding.bottomBar.applyNavBarBottomPadding()
 
-        // 写画模式的滚动通道：手势落在左半屏滚材料、右半屏滚题目（分屏的意义就是两边对着看）
-        binding.inkOverlay.scrollTargetResolver = { x, _ ->
-            if (x <= binding.leftPane.right) binding.materialScroll else binding.rightPane
-        }
-        // 左边缘也放一条手柄，写画时材料还能翻
-        binding.inkOverlay.leftRailEnabled = true
-        // 工具条在顶上，右侧轨道可以用到底
-        binding.inkOverlay.scrollBarBottomInset = 0
+            binding.btnCard.setOnClickListener { openAnswerCard() }
+            binding.btnSubmit.setOnClickListener { confirmSubmit() }
+            binding.btnInk.setOnClickListener { toggleInk() }
+            // 左栏只有半屏宽，图 / 表挤在一起时弹到独立页面看（不再用 Dialog 浮层）
+            binding.btnMaterialExpand.setOnClickListener {
+                val material = groupMaterial()
+                if (material.isNotBlank()) {
+                    startActivity(Intent(this@SplitExamActivity, MaterialPopupActivity::class.java).apply {
+                        putExtra(MaterialPopupActivity.EXTRA_MATERIAL, material)
+                    })
+                }
+            }
 
-        // 笔迹钉在题目卡上（右栏每张卡一道题），滚材料 / 滚题目都不再和圈画错位
-        binding.inkOverlay.anchorSource = { inkAnchors() }
-        binding.root.viewTreeObserver.addOnScrollChangedListener {
-            binding.inkOverlay.invalidate()
-        }
+            // 左右占比可调：拖动中间手柄改变左栏宽度（25%～75%），比例记忆到偏好
+            setupSplitResize()
 
-        renderMaterial()
-        renderQuestions()
-        updateHeader()
+            inkToolbar = InkToolbarController(
+                inkOverlay = binding.inkOverlay,
+                inkBar = binding.inkBar,
+                btnPen = binding.btnInkPen,
+                btnEraser = binding.btnInkEraser,
+                btnUndo = binding.btnInkUndo,
+                btnRedo = binding.btnInkRedo,
+                btnShade = binding.btnInkShade,
+                btnClear = binding.btnInkClear,
+                btnClose = binding.btnInkClose,
+                styleInkButton = { on ->
+                    binding.btnInk.setBackgroundResource(
+                        if (on) R.drawable.bg_fb_mark_on else R.drawable.bg_fb_action
+                    )
+                }
+            )
+            inkToolbar.onModeChanged = { on ->
+                inkMode = on
+                if (on) binding.inkOverlay.bindQuestion(questions.getOrNull(currentIndex)?.id ?: 0L)
+            }
+
+            // 写画模式的滚动通道：手势落在左半屏滚材料、右半屏滚题目（分屏的意义就是两边对着看）
+            binding.inkOverlay.scrollTargetResolver = { x, _ ->
+                if (x <= binding.leftPane.right) binding.materialScroll else binding.rightPane
+            }
+            // 左边缘也放一条手柄，写画时材料还能翻
+            binding.inkOverlay.leftRailEnabled = true
+            // 工具条在顶上，右侧轨道可以用到底
+            binding.inkOverlay.scrollBarBottomInset = 0
+
+            // 笔迹钉在题目卡上（右栏每张卡一道题），滚材料 / 滚题目都不再和圈画错位
+            binding.inkOverlay.anchorSource = { inkAnchors() }
+            binding.root.viewTreeObserver.addOnScrollChangedListener {
+                binding.inkOverlay.invalidate()
+            }
+
+            renderMaterial()
+            renderQuestions()
+            updateHeader()
+        }
     }
 
     /**
@@ -511,40 +519,55 @@ class SplitExamActivity : AppCompatActivity() {
     private fun submit() {
         if (submitted) return
         submitted = true
+        // 记下交卷开始时刻：失败回滚后用它把失败窗口从「已用时长」里摘掉
+        val submitStartedAt = System.currentTimeMillis()
         if (::questionTimer.isInitialized) questionTimer.stop()
-        revealAnswers = true
+        // 交卷前把节流中的笔迹写出去，别让最后几笔只留在内存里
+        binding.inkOverlay.flush()
 
         val policy = db.getPolicy()
-        // 分屏页只显示一组题：先把本页作答并进整卷进度，再按**整卷**判分。
-        // 直接拿这一组的结果交卷，会把与答题页共享的草稿记录写成「只有这一组」的已完成记录
-        val elapsed = elapsedForRecord()
-        val merged = saveMergedProgress()
-        val results = allQuestions.map { Judge.judge(it, merged[it.id] ?: "", policy) }
-        val summary = Judge.summarize(results)
-        val now = System.currentTimeMillis()
+        // 交卷整条链路放进 try：先合并本页作答，再走统一交卷事务。
+        // 任一步失败就回到可重试状态——答案还在内存与库里，不会被清掉。
+        val rid = try {
+            // 分屏页只显示一组题：先把本页作答并进整卷进度，再按**整卷**判分。
+            // 直接拿这一组的结果交卷，会把与答题页共享的草稿记录写成「只有这一组」的已完成记录
+            val elapsed = elapsedForRecord()
+            val merged = saveMergedProgress()
+            val results = allQuestions.map { Judge.judge(it, merged[it.id] ?: "", policy) }
+            val summary = Judge.summarize(results)
+            val now = System.currentTimeMillis()
 
-        val record = ExamRecord(
-            paperId = paperId,
-            name = db.paperName(paperId).ifBlank { "分屏练习记录" },
-            mode = "资料分析分屏",
-            startedAt = if (recordStartedAt > 0L) recordStartedAt else startedAt,
-            submittedAt = now,
-            durationSec = elapsed,
-            totalCount = summary.total,
-            answeredCount = summary.answered,
-            correctCount = summary.correct,
-            partialCount = summary.partial,
-            score = summary.score,
-            fullScore = summary.fullScore,
-            // 与答题页同口径：标记跟着这条记录走
-            marked = marked.toSet(),
-            // 交卷即「已完成」：成绩与每题用时都能在记录里回看
-            status = QBankDb.STATUS_DONE
-        )
-        // 草稿转正：记录 id 不变，挂在它上面的标注（record_inks）继续可用
-        val rid = db.finalizeRecord(recordId, record, results)
-        // 已交卷：清掉未交卷进度，下次进入是全新一轮（与答题页同口径）
-        db.clearProgress(paperId)
+            val record = ExamRecord(
+                paperId = paperId,
+                name = db.paperName(paperId).ifBlank { "分屏练习记录" },
+                mode = "资料分析分屏",
+                startedAt = if (recordStartedAt > 0L) recordStartedAt else startedAt,
+                submittedAt = now,
+                durationSec = elapsed,
+                totalCount = summary.total,
+                answeredCount = summary.answered,
+                correctCount = summary.correct,
+                partialCount = summary.partial,
+                score = summary.score,
+                fullScore = summary.fullScore,
+                // 与答题页同口径：标记跟着这条记录走
+                marked = marked.toSet(),
+                // 交卷即「已完成」：成绩与每题用时都能在记录里回看
+                status = QBankDb.STATUS_DONE
+            )
+            // 草稿转正 + 清未交卷进度是一个事务（记录 id 不变，挂在它上面的标注继续可用）
+            db.finishSubmission(paperId, recordId, record, results)
+        } catch (e: Exception) {
+            submitted = false
+            resumeTimersAfterFailure(submitStartedAt)
+            android.util.Log.e("SplitExamActivity", "交卷失败，已整体回滚，可重试", e)
+            android.widget.Toast.makeText(
+                this, "交卷失败，答案与进度已保留，请重试交卷", android.widget.Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
+        revealAnswers = true
         // 告知答题页本页已交卷，让它退出，避免它再用内存里的旧作答覆盖这条已完成记录
         setResult(RESULT_OK, Intent().putExtra(EXTRA_SUBMITTED, true))
         startActivity(
@@ -570,6 +593,19 @@ class SplitExamActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * 交卷失败、事务回滚之后把计时接回去。
+     *
+     * 顶栏是正计时：把 [startedAt] 往后挪掉「交卷失败到回滚」这段窗口，
+     * 失败期间不算作答，显示也不会往回跳；失败多少次就各挪各自的窗口，不会叠加。
+     * 每题用时 [QuestionTimer] 在交卷时已 stop，这里重新拨回当前题。
+     */
+    private fun resumeTimersAfterFailure(submitStartedAt: Long) {
+        startedAt += (System.currentTimeMillis() - submitStartedAt).coerceAtLeast(0L)
+        // updateHeader 会把每题计时重新拨回当前题，并刷新顶栏正计时
+        updateHeader()
+    }
+
     override fun onResume() {
         super.onResume()
         binding.root.postDelayed(timerTick, 1000)
@@ -580,6 +616,8 @@ class SplitExamActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         binding.root.removeCallbacks(timerTick)
+        // 离开分屏页前先把节流中的笔迹写出去（退出 / 切后台 / 被回收都不会丢最后一笔）
+        binding.inkOverlay.flush()
         // 切后台就结算：当前题的秒数落库，作答进度与记录里的整卷计数一起刷新。
         // 只在这里写（不放 onStop），一次生命周期只落一次，避免重复写
         if (submitted || paperId <= 0L) return

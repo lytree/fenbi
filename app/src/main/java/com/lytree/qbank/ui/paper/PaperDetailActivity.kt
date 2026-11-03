@@ -6,6 +6,7 @@ import android.view.LayoutInflater
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.lytree.qbank.data.db.QBankDb
@@ -15,6 +16,9 @@ import com.lytree.qbank.databinding.ItemQuestionBinding
 import com.lytree.qbank.ui.ExamActivity
 import com.lytree.qbank.ui.MaterialRenderer
 import com.lytree.qbank.ui.applyNavBarBottomPadding
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 试卷详情：查看这份卷的题目清单，并直接开练。
@@ -52,17 +56,21 @@ class PaperDetailActivity : AppCompatActivity() {
     }
 
     private fun startExam() {
-        val paper = QBankDb.get(this).getPaper(paperId)
-        if (paper == null || paper.questions.isEmpty()) {
-            Toast.makeText(this, "这份试卷没有题目", Toast.LENGTH_SHORT).show()
-            return
-        }
-        startActivity(
-            Intent(this, ExamActivity::class.java).apply {
-                putExtra(ExamActivity.EXTRA_PAPER_ID, paper.id)
-                putExtra(ExamActivity.EXTRA_PAPER_NAME, paper.name)
+        // 读卷放后台；回来在主线程校验后再开答题页，页面销毁后结果丢弃
+        lifecycleScope.launch {
+            val paper = withContext(Dispatchers.IO) { QBankDb.get(this@PaperDetailActivity).getPaper(paperId) }
+            if (isFinishing || isDestroyed) return@launch
+            if (paper == null || paper.questions.isEmpty()) {
+                Toast.makeText(this@PaperDetailActivity, "这份试卷没有题目", Toast.LENGTH_SHORT).show()
+                return@launch
             }
-        )
+            startActivity(
+                Intent(this@PaperDetailActivity, ExamActivity::class.java).apply {
+                    putExtra(ExamActivity.EXTRA_PAPER_ID, paper.id)
+                    putExtra(ExamActivity.EXTRA_PAPER_NAME, paper.name)
+                }
+            )
+        }
     }
 
     private fun reload() {

@@ -77,4 +77,42 @@ class BackupArchiveTest {
             .exceptionOrNull()
         assertTrue("别的 App 的包必须拒绝", error is BackupArchive.BackupException)
     }
+
+    @Test
+    fun older_backup_with_db_version_11_is_accepted() {
+        workDir.mkdirs()
+        val zip = File(workDir, "v11.zip")
+        ZipOutputStream(zip.outputStream()).use { z ->
+            z.putNextEntry(ZipEntry("manifest.json"))
+            z.write("""{"app":"qbank","schema":1,"dbVersion":11}""".toByteArray())
+            z.closeEntry()
+            z.putNextEntry(ZipEntry("qbank.db"))
+            z.write(ByteArray(16))
+            z.closeEntry()
+        }
+
+        val opened = BackupArchive.open(zip, File(workDir, "v11-out"))
+        assertEquals("改动前的 v11 备份要继续允许恢复", 11, opened.manifest.dbVersion)
+    }
+
+    @Test
+    fun backup_from_newer_db_version_is_rejected() {
+        workDir.mkdirs()
+        val zip = File(workDir, "newer.zip")
+        ZipOutputStream(zip.outputStream()).use { z ->
+            z.putNextEntry(ZipEntry("manifest.json"))
+            z.write(
+                """{"app":"qbank","schema":1,"dbVersion":${QBankDb.DB_VERSION + 1}}""".toByteArray()
+            )
+            z.closeEntry()
+            z.putNextEntry(ZipEntry("qbank.db"))
+            z.write(ByteArray(16))
+            z.closeEntry()
+        }
+
+        val error = runCatching { BackupArchive.open(zip, File(workDir, "newer-out")) }
+            .exceptionOrNull()
+        assertTrue("比当前库更新的备份必须拒绝，避免降级恢复静默读丢", error is BackupArchive.BackupException)
+        assertTrue("提示里要说清是版本问题", error?.message?.contains("更新") == true)
+    }
 }

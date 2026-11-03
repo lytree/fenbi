@@ -9,6 +9,7 @@ import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.lytree.qbank.R
@@ -18,6 +19,9 @@ import com.lytree.qbank.data.model.ExamRecord
 import com.lytree.qbank.databinding.ActivityReportBinding
 import com.lytree.qbank.databinding.ItemReportQuestionBinding
 import com.lytree.qbank.ui.record.RecordAdapter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Locale
 
 /**
@@ -218,14 +222,19 @@ class ReportActivity : AppCompatActivity() {
     }
 
     private fun importAnswers(uri: Uri) {
-        val record = db.getRecord(recordId) ?: return
-        // 优先按试卷当前题目匹配（答案可能刚被别的入口改过），试卷没了才退回记录里的快照
-        val questions = db.getPaper(record.paperId)?.questions
-            ?: record.results.map { it.question }
-        AnswerImportUi.handle(this, db, questions, uri) {
-            // 答案已更新 → 按这条记录里的作答重判，然后整页重建数据显示对比结果
-            db.rejudgeRecord(recordId)
-            recreate()
+        // 读记录 + 读卷都是库操作：整段放后台，回到主线程再更新界面
+        lifecycleScope.launch {
+            val questions = withContext(Dispatchers.IO) {
+                val record = db.getRecord(recordId) ?: return@withContext null
+                // 优先按试卷当前题目匹配（答案可能刚被别的入口改过），试卷没了才退回记录里的快照
+                db.getPaper(record.paperId)?.questions ?: record.results.map { it.question }
+            } ?: return@launch
+            if (isFinishing || isDestroyed) return@launch
+            AnswerImportUi.handle(this@ReportActivity, db, questions, uri) {
+                // 答案已更新 → 按这条记录里的作答重判，然后整页重建数据显示对比结果
+                db.rejudgeRecord(recordId)
+                recreate()
+            }
         }
     }
 
