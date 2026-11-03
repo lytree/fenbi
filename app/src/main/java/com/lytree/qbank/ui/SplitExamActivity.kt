@@ -35,6 +35,8 @@ class SplitExamActivity : AppCompatActivity() {
         const val EXTRA_PAPER_NAME = "paper_name"
         /** 只显示这组题（同一份材料）；为空则显示整卷 */
         const val EXTRA_GROUP_KEY = "group_key"
+        /** 返回给答题页：本页已经交卷，答题页不要再拿内存里的旧作答覆盖这条记录 */
+        const val EXTRA_SUBMITTED = "submitted"
         private const val REQ_CARD = 1001
 
         /** 草稿记录的来源标记（存在 records.mode），与答题页的草稿分开 */
@@ -49,10 +51,15 @@ class SplitExamActivity : AppCompatActivity() {
     private var recordId = 0L
     /** 每题用时：切题时把上一题的秒数累加进库 */
     private lateinit var questionTimer: QuestionTimer
+    /** 本页显示的题（可能只是整卷里的一个材料组） */
     private var questions: List<Question> = emptyList()
+    /** 整卷题目：交卷与进度统计都以整卷为准，分屏页只显示其中一组 */
+    private var allQuestions: List<Question> = emptyList()
     private lateinit var structure: PaperStructure
     private val answers = HashMap<Long, String>()
     private val marked = HashSet<Long>()
+    /** 进页面时从库里读到的已用时长（答题页存下的基线），本次分屏会话叠在它上面 */
+    private var savedElapsedSec = 0
     /** 本页进入时间：顶栏正计时与「本次用了多久」都按它算 */
     private var startedAt = 0L
     /** 这条记录最初开始的时间（和答题页可能是同一条，别被本页的进入时间覆盖） */
@@ -93,6 +100,7 @@ class SplitExamActivity : AppCompatActivity() {
                 it.isMaterialGroup && it.material.material.trim() == groupKey
             }
         }
+        allQuestions = paper.questions
         questions = group?.questions ?: paper.questions
         // 题号接着整卷往下排（参考应用分屏右栏显示的是 106./107./108.，不是 1./2./3.）
         indexOffset = group?.startIndex ?: 0
@@ -104,6 +112,13 @@ class SplitExamActivity : AppCompatActivity() {
         // 记录最初的开始时间单独留着：顶栏的正计时要从「进这一页」算起，
         // 而记录上的「开始时间」得是最早那次进卷的时刻
         recordStartedAt = db.recordStartedAt(recordId).takeIf { it > 0L } ?: startedAt
+        // 与答题页共用同一份进度：进页面先把已作答的题读回来，
+        // 否则「在答题页做的题」在这儿看不到、「在这儿改的答案」退出后也留不住
+        db.getProgress(paperId)?.let { p ->
+            answers.putAll(p.answers)
+            marked.addAll(p.marked)
+            savedElapsedSec = p.elapsedSec
+        }
         questionTimer = QuestionTimer(db).apply { bindRecord(recordId) }
         binding.inkOverlay.recordId = recordId
         binding.titleBar.showDivider(false)
@@ -445,6 +460,21 @@ class SplitExamActivity : AppCompatActivity() {
         }
     }
 
+    // ---------------- 进度保存 ----------------
+
+    /** 整卷已用时长：答题页存下的基线 + 本次分屏会话 */
+    private fun elapsedForRecord(): Int =
+        savedElapsedSec + ((System.currentTimeMillis() - startedAt) / 1000).toInt().coerceAtLeast(0)
+
+    /**
+     * 把本页作答并进整卷进度再落库。
+     *
+     * 分屏页只显示一组题，直接覆盖会把答题页做的其它题冲掉，所以用 merge；
+     * 返回的合并结果用于统计整卷作答数与交卷判分。
+     */
+    private fun saveMergedProgress(): Map<Long, String> =
+        db.saveProgress(paperId, answers, marked, elapsedForRecord(), merge = true)
+
     // ---------------- 交卷 ----------------
 
     private fun confirmExit() {
@@ -485,17 +515,21 @@ class SplitExamActivity : AppCompatActivity() {
         revealAnswers = true
 
         val policy = db.getPolicy()
-        val results = questions.map { Judge.judge(it, answers[it.id] ?: "", policy) }
+        // 分屏页只显示一组题：先把本页作答并进整卷进度，再按**整卷**判分。
+        // 直接拿这一组的结果交卷，会把与答题页共享的草稿记录写成「只有这一组」的已完成记录
+        val elapsed = elapsedForRecord()
+        val merged = saveMergedProgress()
+        val results = allQuestions.map { Judge.judge(it, merged[it.id] ?: "", policy) }
         val summary = Judge.summarize(results)
         val now = System.currentTimeMillis()
 
         val record = ExamRecord(
-            paperId = intent.getLongExtra(EXTRA_PAPER_ID, 0L),
+            paperId = paperId,
             name = db.paperName(paperId).ifBlank { "分屏练习记录" },
             mode = "资料分析分屏",
             startedAt = if (recordStartedAt > 0L) recordStartedAt else startedAt,
             submittedAt = now,
-            durationSec = ((now - startedAt) / 1000).toInt(),
+            durationSec = elapsed,
             totalCount = summary.total,
             answeredCount = summary.answered,
             correctCount = summary.correct,
@@ -509,6 +543,10 @@ class SplitExamActivity : AppCompatActivity() {
         )
         // 草稿转正：记录 id 不变，挂在它上面的标注（record_inks）继续可用
         val rid = db.finalizeRecord(recordId, record, results)
+        // 已交卷：清掉未交卷进度，下次进入是全新一轮（与答题页同口径）
+        db.clearProgress(paperId)
+        // 告知答题页本页已交卷，让它退出，避免它再用内存里的旧作答覆盖这条已完成记录
+        setResult(RESULT_OK, Intent().putExtra(EXTRA_SUBMITTED, true))
         startActivity(
             Intent(this, ReportActivity::class.java).apply {
                 putExtra(ReportActivity.EXTRA_RECORD_ID, rid)
@@ -542,15 +580,16 @@ class SplitExamActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         binding.root.removeCallbacks(timerTick)
-        // 切后台就结算：当前题的秒数落库，记录里的作答数 / 用时也跟着刷新
-        if (!submitted) {
-            if (::questionTimer.isInitialized) questionTimer.stop()
-            db.updateRecordLive(
-                recordId,
-                questions.count { (answers[it.id] ?: "").isNotBlank() },
-                questions.size,
-                ((System.currentTimeMillis() - startedAt) / 1000).toInt()
-            )
-        }
+        // 切后台就结算：当前题的秒数落库，作答进度与记录里的整卷计数一起刷新。
+        // 只在这里写（不放 onStop），一次生命周期只落一次，避免重复写
+        if (submitted || paperId <= 0L) return
+        if (::questionTimer.isInitialized) questionTimer.stop()
+        val merged = saveMergedProgress()
+        db.updateRecordLive(
+            recordId,
+            merged.count { it.value.isNotBlank() },
+            allQuestions.size,
+            elapsedForRecord()
+        )
     }
 }

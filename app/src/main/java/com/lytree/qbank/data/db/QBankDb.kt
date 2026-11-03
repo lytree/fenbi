@@ -1121,22 +1121,37 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         startedAt: Long,
         name: String = ""
     ): Long {
-        // 按试卷找「进行中」，不看来源：答题页与分屏页是同一场练习，不能各挂一条未完成
-        readableDatabase.rawQuery(
-            "SELECT id FROM records WHERE paper_id = ? AND submitted_at = 0 AND status = ? ORDER BY id DESC LIMIT 1",
-            arrayOf(paperId.toString(), STATUS_ONGOING)
-        ).use { c -> if (c.moveToFirst()) return c.getLong(0) }
+        val db = writableDatabase
+        // 「查有没有 + 没有就插」放进同一个事务：答题页与分屏页先后进入同一份卷时，
+        // 不会各建一条未完成记录
+        db.beginTransaction()
+        try {
+            // 按试卷找「进行中」，不看来源：答题页与分屏页是同一场练习，不能各挂一条未完成
+            db.rawQuery(
+                "SELECT id FROM records WHERE paper_id = ? AND submitted_at = 0 AND status = ? ORDER BY id DESC LIMIT 1",
+                arrayOf(paperId.toString(), STATUS_ONGOING)
+            ).use { c ->
+                if (c.moveToFirst()) {
+                    db.setTransactionSuccessful()
+                    return c.getLong(0)
+                }
+            }
 
-        val cv = ContentValues().apply {
-            put("paper_id", paperId)
-            put("name", name.ifBlank { paperName(paperId).ifBlank { "答题记录" } })
-            put("mode", source)
-            put("started_at", startedAt)
-            put("submitted_at", 0)
-            put("total_count", countQuestions(paperId))
-            put("status", STATUS_ONGOING)
+            val cv = ContentValues().apply {
+                put("paper_id", paperId)
+                put("name", name.ifBlank { paperName(paperId).ifBlank { "答题记录" } })
+                put("mode", source)
+                put("started_at", startedAt)
+                put("submitted_at", 0)
+                put("total_count", countQuestions(paperId))
+                put("status", STATUS_ONGOING)
+            }
+            val id = db.insert("records", null, cv)
+            db.setTransactionSuccessful()
+            return id
+        } finally {
+            db.endTransaction()
         }
-        return writableDatabase.insert("records", null, cv)
     }
 
     /** 卷名（记录标题用它，别让列表里全是「练习记录」） */
@@ -1534,13 +1549,67 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         }
     }
 
-    fun saveProgress(paperId: Long, answers: Map<Long, String>, marked: Set<Long>, elapsedSec: Int) {
+    /**
+     * 落库本次作答进度。
+     *
+     * [merge] 为 true 时先读库里的旧进度再合并：同一题以本次传入的值为准，
+     * 其它题的作答、标记原样保留，已用时长取两者较大值。分屏页只有一组题，
+     * 必须用这种写法，否则会把答题页做的其它题一起冲掉。
+     *
+     * @return 合并后的整卷作答；[merge] 为 false 时原样返回入参
+     */
+    fun saveProgress(
+        paperId: Long,
+        answers: Map<Long, String>,
+        marked: Set<Long>,
+        elapsedSec: Int,
+        merge: Boolean = false
+    ): Map<Long, String> {
+        if (!merge) {
+            writeProgress(paperId, answers.entries.joinToString(";") { "${it.key},${it.value}" },
+                marked.joinToString(","), elapsedSec)
+            return answers
+        }
+
+        val db = writableDatabase
+        var mergedAnswers: Map<Long, String> = answers
+        var mergedMarked: Set<Long> = marked
+        var mergedElapsedSec = elapsedSec
+        db.beginTransaction()
+        try {
+            // 「读-合并-写」放在一个事务里，答题页与分屏页的两次保存不会互相覆盖
+            db.rawQuery(
+                "SELECT answers, marked, elapsed_sec FROM exam_progress WHERE paper_id = ?",
+                arrayOf(paperId.toString())
+            ).use { c ->
+                if (c.moveToFirst()) {
+                    val allAnswers = HashMap<Long, String>()
+                    allAnswers.putAll(parseIdTextMap(c.getString(0) ?: ""))
+                    allAnswers.putAll(answers)
+                    mergedAnswers = allAnswers
+                    val allMarked = HashSet<Long>()
+                    allMarked.addAll(parseIdTextSet(c.getString(1) ?: ""))
+                    allMarked.addAll(marked)
+                    mergedMarked = allMarked
+                    mergedElapsedSec = maxOf(elapsedSec, c.getInt(2))
+                }
+            }
+            writeProgress(paperId, mergedAnswers.entries.joinToString(";") { "${it.key},${it.value}" },
+                mergedMarked.joinToString(","), mergedElapsedSec)
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        return mergedAnswers
+    }
+
+    private fun writeProgress(paperId: Long, answersText: String, markedText: String, elapsedSec: Int) {
         writableDatabase.insertWithOnConflict(
             "exam_progress", null,
             ContentValues().apply {
                 put("paper_id", paperId)
-                put("answers", answers.entries.joinToString(";") { "${it.key},${it.value}" })
-                put("marked", marked.joinToString(","))
+                put("answers", answersText)
+                put("marked", markedText)
                 put("elapsed_sec", elapsedSec)
                 put("updated_at", System.currentTimeMillis())
             },

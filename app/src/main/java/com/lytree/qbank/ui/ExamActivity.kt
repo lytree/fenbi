@@ -159,6 +159,25 @@ class ExamActivity : AppCompatActivity() {
         refreshAnswerEntry()
     }
 
+    /**
+     * 分屏页回来。
+     *
+     * - 那边交卷了：本页直接退出，别再拿内存里的旧作答去覆盖那条已完成记录；
+     * - 那边没交卷：把库里合并后的进度同步回内存，分屏里改的答案立刻在卡片上可见。
+     */
+    private val splitLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (submitted) return@registerForActivityResult
+        val splitSubmitted = result.resultCode == RESULT_OK &&
+            result.data?.getBooleanExtra(SplitExamActivity.EXTRA_SUBMITTED, false) == true
+        if (splitSubmitted) {
+            finish()
+            return@registerForActivityResult
+        }
+        applyProgressFromDb()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // 手机继续锁竖屏（答题页是按竖屏设计的）；平板不能锁——见 ScreenAdapt 里的说明
@@ -686,7 +705,7 @@ class ExamActivity : AppCompatActivity() {
             val material = questions.getOrNull(currentPos)?.material?.takeIf { it.isNotBlank() }
                 ?: questions.firstOrNull { it.material.isNotBlank() }?.material.orEmpty()
             binding.morePanel.visibility = View.GONE
-            startActivity(Intent(this, SplitExamActivity::class.java).apply {
+            splitLauncher.launch(Intent(this, SplitExamActivity::class.java).apply {
                 putExtra(SplitExamActivity.EXTRA_PAPER_ID, paperId)
                 putExtra(SplitExamActivity.EXTRA_PAPER_NAME, defaultPaperName())
                 if (material.isNotBlank()) putExtra(SplitExamActivity.EXTRA_GROUP_KEY, material)
@@ -1217,6 +1236,20 @@ class ExamActivity : AppCompatActivity() {
         applyBrowseMode()
         syncInkQuestion()
         startTimer(p.elapsedSec)
+    }
+
+    /**
+     * 分屏页回来后同步作答：那边把本组题的作答并进了同一份进度，
+     * 这里只从库里读回来更新内存，不回写，避免用本页的旧值覆盖对方。
+     */
+    private fun applyProgressFromDb() {
+        if (submitted || paperId <= 0L) return
+        val p = db.getProgress(paperId) ?: return
+        answers.putAll(p.answers)
+        marked.addAll(p.marked)
+        refreshCards()
+        syncInkQuestion()
+        binding.inkOverlay.reload()
     }
 
     /** 离开页面就把进度落库（交卷后不需要）。进程被杀也能从最后一次 onPause 恢复 */
