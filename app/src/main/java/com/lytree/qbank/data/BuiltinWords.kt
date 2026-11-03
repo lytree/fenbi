@@ -32,15 +32,28 @@ object BuiltinWords {
     private const val PREF = "qbank_builtin_words"
     private const val KEY_SEEDED = "seeded_v2"
 
-    fun isSeeded(context: Context): Boolean =
-        context.applicationContext
-            .getSharedPreferences(PREF, Context.MODE_PRIVATE)
-            .getBoolean(KEY_SEEDED, false)
+    /**
+     * 分组标签补齐标记（v3）。
+     *
+     * v2 的词库里，来自《成语与实词汇总》的六百多条成语没有分组标签；
+     * 这批标签由 `tools/extra_tags.json` 人工按释义补上，走 [seedIfNeeded] 的补标签分支，
+     * 只 UPDATE 标签为空的词条——不新增、不覆盖，用户删过的词不会被塞回来。
+     */
+    private const val KEY_TAGS = "tags_v3"
+
+    private fun prefs(context: Context) =
+        context.applicationContext.getSharedPreferences(PREF, Context.MODE_PRIVATE)
+
+    fun isSeeded(context: Context): Boolean = prefs(context).getBoolean(KEY_SEEDED, false)
 
     fun markSeeded(context: Context) {
-        context.applicationContext
-            .getSharedPreferences(PREF, Context.MODE_PRIVATE)
-            .edit().putBoolean(KEY_SEEDED, true).apply()
+        prefs(context).edit().putBoolean(KEY_SEEDED, true).apply()
+    }
+
+    fun isTagPatched(context: Context): Boolean = prefs(context).getBoolean(KEY_TAGS, false)
+
+    fun markTagPatched(context: Context) {
+        prefs(context).edit().putBoolean(KEY_TAGS, true).apply()
     }
 
     fun readBytes(context: Context): ByteArray =
@@ -57,11 +70,35 @@ object BuiltinWords {
      */
     fun seedIfNeeded(context: Context, db: QBankDb, onDone: (Int) -> Unit) {
         val app = context.applicationContext
+        val main = Handler(Looper.getMainLooper())
+
+        // 已经全量灌过：只做一次「补空白标签」，跑完就不再碰用户的词库
         if (isSeeded(app)) {
-            onDone(0)
+            if (isTagPatched(app)) {
+                onDone(0)
+                return
+            }
+            thread(name = "builtin-words-tags") {
+                var result = 0
+                try {
+                    val outcome = WordImporter.build(app, WordFormat.CSV, readBytes(app))
+                    val tags = HashMap<String, String>()
+                    outcome.words.forEach { w ->
+                        if (w.text.isNotBlank() && w.tag.isNotBlank()) tags[w.text] = w.tag
+                    }
+                    val n = db.fillWordTags(tags)
+                    android.util.Log.i("BuiltinWords", "补标签：候选 ${tags.size}，更新 $n")
+                    markTagPatched(app)
+                } catch (e: Exception) {
+                    android.util.Log.e("BuiltinWords", "补标签失败", e)
+                    result = -1
+                }
+                // 补标签不算「新灌入」，回 0 让页面只刷新不提示条数
+                main.post { onDone(result) }
+            }
             return
         }
-        val main = Handler(Looper.getMainLooper())
+
         thread(name = "builtin-words-seed") {
             var result = -1
             try {
@@ -74,6 +111,7 @@ object BuiltinWords {
                 if (outcome.words.isNotEmpty()) {
                     result = db.upsertWords(outcome.words, replaceAll = false)
                     markSeeded(app)
+                    markTagPatched(app)
                 }
             } catch (e: Exception) {
                 android.util.Log.e("BuiltinWords", "内置词库灌库失败", e)

@@ -376,6 +376,33 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
     }
 
     /**
+     * 只给「标签为空」的词条补标签，用于内置词库补分组标签的增量升级。
+     *
+     * 与 [upsertWords] 的区别：不新增词条、不覆盖已有标签。
+     * 用户删过的词不会被塞回来，用户自己导入并标过标签的词也不会被改掉。
+     * 返回实际更新的行数。
+     */
+    fun fillWordTags(tags: Map<String, String>): Int {
+        if (tags.isEmpty()) return 0
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            var n = 0
+            for ((text, rawTag) in tags) {
+                if (text.isBlank()) continue
+                val tag = Word.normalizeTag(rawTag)
+                if (tag.isBlank()) continue
+                val cv = ContentValues().apply { put("tag", tag) }
+                n += db.update("words", cv, "text = ? AND (tag IS NULL OR tag = '')", arrayOf(text))
+            }
+            db.setTransactionSuccessful()
+            return n
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    /**
      * 按拼音首字母排序的词条列表。
      *
      * [category] 为空表示不限分类；[tags] 非空时只保留标签段命中其中之一的词条
