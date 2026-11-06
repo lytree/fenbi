@@ -163,50 +163,140 @@ def _row_count(bin_opt):
     return nrow
 
 
+def _on_groups(profile, thresh, min_gap, length):
+    """把一维投影里「有墨」的连续区段找出来，间隔 < min_gap 的合并。"""
+    on = profile >= thresh
+    runs = []
+    s = -1
+    for i, v in enumerate(on):
+        if v:
+            if s < 0:
+                s = i
+        else:
+            if s >= 0:
+                runs.append([s, i])
+                s = -1
+    if s >= 0:
+        runs.append([s, length])
+    merged = []
+    for r in runs:
+        if merged and r[0] - merged[-1][1] < min_gap:
+            merged[-1][1] = r[1]
+        else:
+            merged.append(r)
+    return merged
+
+
+def _fit_groups(groups, n):
+    """把分组数调整到恰好 n：多了就合并间隔最近的两组，少了就拆分最宽的一组。"""
+    groups = [list(g) for g in groups]
+    if not groups:
+        return None
+    while len(groups) > n:
+        gaps = [(groups[i + 1][0] - groups[i][1], i) for i in range(len(groups) - 1)]
+        _, i = min(gaps)
+        groups[i][1] = groups[i + 1][1]
+        del groups[i + 1]
+    while len(groups) < n:
+        i = max(range(len(groups)), key=lambda k: groups[k][1] - groups[k][0])
+        a, b = groups[i]
+        m = (a + b) // 2
+        if m <= a or m >= b:
+            return None
+        groups[i] = [a, m]
+        groups.insert(i + 1, [m, b])
+    return groups
+
+
+def _build_cells(region, top, w, h, force=None):
+    """在选项区域内，按实际墨迹分组切出 4 格，按 (行,列) 阅读顺序返回。
+    返回 (nrow, ncol, cells) 或 None（无法切成 4 格时）。
+
+    关键：先按行投影分组，**丢掉过细的行组**（题干残条/边距碎片，否则 1×4 会
+    被误判成 2×2）；再只在保留的行范围内统计列分组，丢掉过细的列组。
+    """
+    rh, rw = region.shape
+    if rh < 8 or rw < 8:
+        return None
+
+    # 列分组：阈值低、只丢极窄噪声列（文字选项的笔画很细，不能丢）
+    colprof = region.sum(axis=0)
+    cg = _on_groups(colprof, max(1, rh // 300), max(10, rw // 100), rw)
+    if not cg:
+        return None
+    cg = [g for g in cg if (g[1] - g[0]) >= 10]      # 极窄列当噪声
+    if not cg:
+        return None
+
+    # 行分组：**只有行间真空白（墨量<=1）且空隙>=6px 才分行**；
+    # 文字选项行很细（~15px）也要保留，图形之间若只是「低墨」并非空白则不拆行。
+    rowprof = region.sum(axis=1)
+    rg = _on_groups(rowprof, 1, 6, rh)
+    if rg:
+        rg = [g for g in rg if (g[1] - g[0]) >= 6]
+    nr = len(rg) if rg else 1
+
+    # 2×2 的判据：确实有 2 行，且列分组只有 2 个（图形 2×2 或「分类题」2 列×2 行文字）。
+    # 若列分组 >=3，说明是一排 4 个、那 2 行是误拆——按 1×4 处理。
+    if force == "1x4":
+        is_2x2 = False
+    elif force == "2x2":
+        is_2x2 = True
+    else:
+        is_2x2 = (nr >= 2 and len(cg) <= 2)
+
+    if not is_2x2:
+        # 1×4
+        cols = _fit_groups(cg, 4)
+        if not cols:
+            return None
+        y0 = rg[0][0] if rg else 0
+        y1 = rg[-1][1] if rg else rh
+        cells = [[cols[j][0], top + y0, cols[j][1], top + y1] for j in range(4)]
+        return 1, 4, cells
+    else:
+        # 2×2
+        rows = _fit_groups(rg, 2)
+        cols = _fit_groups(cg, 2)
+        if not rows or not cols:
+            return None
+        cells = [[cols[j][0], top + rows[i][0], cols[j][1], top + rows[i][1]]
+                 for i in range(2) for j in range(2)]
+        return 2, 2, cells
+
+
 def split_question(img_path):
     im = Image.open(img_path).convert("RGB")
     w, h = im.size
     bin_full = _binarize(im)
     row_any = bin_full.any(axis=1)
-    small = _block_bin(bin_full, BLOCK)
-    figs = _fig_boxes(small, BLOCK)
-    figs = _merge(figs, MERGE_PAD)
-
-    # 过滤 figure 级框
-    good = []
-    for b in figs:
-        bw, bh = b[2] - b[0], b[3] - b[1]
-        if bw > 0.95 * w or bh < 10 or bw < 10:
-            continue
-        area = int(bin_full[b[1]:b[3], b[0]:b[2]].sum())
-        if area < AREA_MIN:
-            continue
-        good.append(b)
-    good = _merge(good, MERGE_PAD)
 
     # —— 题干/选项分界：对每条候选分界（整行全白 >=8px，位于中下部），在其下方
-    #    区域做 4 格均分并验证「每格都有足量墨」；能干净分出 4 个选项格的才采用。
+    #    区域按「实际墨迹列/行分组」切成 4 格并验证每格都有足量墨；能干净分出 4 格的才采用。
     #    这样 1×4 只认题干/选项那条；2×2 会自动排除掉「A/B 与 C/D 之间」的内部那条。 ——
-    cand = [(s, e) for s, e in _blank_runs(row_any, 8)
+    # 候选分界：用「整行基本无墨」（<5% 宽）而不是「整行全白」，
+    # 这样题干图形与选项之间只要有明显空隙就能找到，文字选项题也不至于把图形并进选项。
+    row_ink = bin_full.sum(axis=1)
+    has_ink = row_ink >= (0.05 * w)
+    cand = [(s, e) for s, e in _blank_runs(has_ink, 6)
             if s >= 0.30 * h and e <= 0.97 * h]
-    chosen = None          # (opt_top, min_score, nrow, ncol, cells)
+    chosen = None          # (opt_top, -min_area, nrow, ncol, cells)
     for s, e in sorted(cand, key=lambda x: -x[0]):    # 从最靠下的分界试起
         top = e
         region = bin_full[top:, 0:w]
         if region.shape[0] < 0.18 * h:
             continue
-        nrow = _row_count(region)
-        ncol = 4 // nrow
-        cells = _grid_cells(region, nrow, ncol, w, top, h)
-        if len(cells) < 4:
+        built = _build_cells(region, top, w, h)
+        if built is None:
             continue
-        areas = [int(bin_full[c[1]:c[3], c[0]:c[2]].sum()) for c in cells[:4]]
-        if min(areas) < 400:
+        nrow, ncol, cells = built
+        areas = [int(bin_full[c[1]:c[3], c[0]:c[2]].sum()) for c in cells]
+        if min(areas) < 150:          # 文字选项每格墨量本来就少，阈值放低
             continue
         # 优先「分界最靠下（带最少题干）+ 每格墨量最足」
         score = (top, -min(areas))
         if chosen is None or score > chosen[:2]:
-            chosen = (top, -min(areas), nrow, ncol, cells[:4])
+            chosen = (top, -min(areas), nrow, ncol, cells)
 
     method = "band"
     if chosen is not None:
@@ -221,20 +311,52 @@ def split_question(img_path):
                 break
         opt_top = min(int(0.55 * h), ink_bottom)
         region = bin_full[opt_top:, 0:w]
-        nrow = _row_count(region)
-        ncol = 4 // nrow
-        cells = _grid_cells(region, nrow, ncol, w, opt_top, h)
-        areas = [int(bin_full[c[1]:c[3], c[0]:c[2]].sum()) for c in cells[:4]]
-        if len(areas) < 4 or min(areas) < 400:
+        built = _build_cells(region, opt_top, w, h)
+        if built is None:
             nrow, ncol = 1, 4
-            cells = _grid_cells(region, nrow, ncol, w, opt_top, h)
-        ordered = cells
+            cw = w // 4
+            ordered = [[i * cw, opt_top, (i + 1) * cw, h] for i in range(4)]
+        else:
+            nrow, ncol, ordered = built
         stem_bottom = max(0, opt_top)
         method = "fallback_region"
 
     options = [_tighten(bin_full, [c[0], c[1], c[2], c[3]]) for c in ordered[:4]]
 
-    # 题干：分界以上
+    def _areas(opts):
+        return [int(bin_full[b[1]:b[3], b[0]:b[2]].sum()) for b in opts]
+
+    def _balance(opts):
+        a = _areas(opts)
+        mx = max(a) if a else 0
+        return (min(a) / mx) if mx > 0 else 0.0
+
+    # 后处理：判成 2×2 但四格高度差太大（1×4 被误切成两半）→ 按 1×4 重切
+    if nrow == 2:
+        hs = [b[3] - b[1] for b in options]
+        if min(hs) < 0.55 * max(hs):
+            built = _build_cells(bin_full[opt_top:, 0:w], opt_top, w, h, force="1x4")
+            if built is not None:
+                nrow, ncol, ordered = built
+                options = [_tighten(bin_full, [c[0], c[1], c[2], c[3]])
+                           for c in ordered[:4]]
+
+    # 均衡度重试：四格严重不均时，试试另一种版式，取更均衡的
+    # （分类题的「2 列 × 2 行文字选项」常被当成 1×4 切成碎片，反之亦然）
+    if _balance(options) < 0.30:
+        alt = "2x2" if ncol == 4 else "1x4"
+        built = _build_cells(bin_full[opt_top:, 0:w], opt_top, w, h, force=alt)
+        if built is not None:
+            n2r, n2c, cells2 = built
+            opts2 = [_tighten(bin_full, [c[0], c[1], c[2], c[3]]) for c in cells2]
+            if _balance(opts2) > _balance(options):
+                nrow, ncol, options = n2r, n2c, opts2
+
+    # 标记低置信（供日志参考），但**不再整图当题干**：
+    # 题干一律裁到选项区以上，保证「题目」和「选项」是分开的独立图片。
+    areas = _areas(options)
+    low_conf = (min(areas) < 150) or (max(areas) > 0 and min(areas) / max(areas) < 0.2)
+
     if stem_bottom < 0.12 * h:
         stem_bottom = int(0.12 * h)
     stem_box = _tighten(bin_full, [0, 0, w, stem_bottom])
@@ -243,7 +365,7 @@ def split_question(img_path):
 
     grid = "%dx%d" % (nrow, ncol)
     return {"stem_box": stem_box, "options": options, "grid": grid,
-            "method": method, "size": (w, h)}
+            "method": method, "size": (w, h), "low_conf": low_conf}
 
 
 def _grid_cells(bin_opt, nrow, ncol, w, sy0, sy1):

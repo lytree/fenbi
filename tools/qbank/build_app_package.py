@@ -6,26 +6,31 @@
 
     图推700题试卷包/
     ├── 试卷.xlsx          # 35 张工作表 = 35 份试卷（图推第01套 … 图推第35套）
-    └── images/            # 700 张题图，随包走、换设备不丢图
+    └── images/            # 每题 5 张：题干图 + A/B/C/D 四张选项图（共 3500 张）
 
 再压成 图推700题试卷包.zip，可直接在 App 导入页选入；导入预览页顶部会出现
 35 个卷名胶囊，想建哪几套就勾哪几套。
 
 背景：原始数据是 Anki 的四列 TSV（`<img src>` + 答案字母 + 题号标签 + 标签列），
-一张图就是一道完整题（题干文字和 A–D 四个选项都画在图里），没有文字选项。
+一张图就是一道完整题（题干图形和 A–D 四个选项都画在同一张图里），没有文字选项。
+这里用 `split_options.py` 把整图**拆成「题干区 + 4 张选项图」**：
+题干图裁掉底部选项后写进「图片」列；四个选项图分别写进「选项A..D」列
+（`![选项](images/xxx_A.png)`，App 的选项单元格支持图片，会和字母一起渲染）。
+
 当前 App 的规则是：
 
 * 一个工作表 = 一份试卷（docs/02-试卷格式规范.md）——所以「按套拆卷」就是把
   每套题写成一张工作表，而不是把 700 题平铺在一张表里；
 * 题干必填且不渲染 Markdown —— 题图走「图片」列（导入时转成 material 里的图片
   并前置渲染，出现在题干上方），题干只放「第几套·第几题」的定位文字；
-* 只支持选择题 —— 每题补 4 个选项 A–D，文本统一写「见题图」，让答案字母有落点、
-  能正常判分；真正的四个图形就在题图里，选项行只起「点字母」的作用。
+* 选项列里的 `![选项](相对路径)` 由导入器统一改写为解压后的绝对路径，四个选项
+  各自显示自己的图形，不再出现「见题图」。
 
-运行（走 uv，避免踩到 Windows 商店那个坏掉的 python 重定向）：
-    uv run python tools/qbank/build_app_package.py
-    uv run python tools/qbank/build_app_package.py --zip ~/Downloads/图推700题_tsv导入包.zip
-    uv run python tools/qbank/build_app_package.py --per-set      # 另外再拆 35 个单卷包
+运行（走 uv，避免踩到 Windows 商店那个坏掉的 python 重定向；拆图需要 numpy+pillow）：
+    uv run --with numpy --with pillow python tools/qbank/build_app_package.py
+    uv run --with numpy --with pillow python tools/qbank/build_app_package.py --zip ~/Downloads/图推700题_tsv导入包.zip
+    ... --emit-dir      # 同时把解开的 试卷.xlsx + images/ 落到包目录
+    ... --per-set       # 另外再拆 35 个单卷包
 """
 
 import argparse
@@ -36,6 +41,7 @@ import sys
 import tempfile
 import zipfile
 import xml.sax.saxutils as sx
+from io import BytesIO
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))          # tools/qbank -> 仓库根
@@ -228,6 +234,16 @@ def build_xlsx(sheets):
     return files
 
 
+def opt_base(image):
+    return image[:-4] if image.lower().endswith(".png") else image
+
+
+def option_image_refs(image):
+    """某题的四个选项图在包内的相对路径（images/xxx_A.png …）。"""
+    base = opt_base(image)
+    return ["images/%s_%s.png" % (base, k) for k in "ABCD"]
+
+
 def rows_of_set(records):
     """一套题的表格行：表头 + 每题一行，题号在卷内 1..N 连续。"""
     rows = [list(HEADERS)]
@@ -235,13 +251,17 @@ def rows_of_set(records):
     for i, q in enumerate(records, start=1):
         # 题干只放定位文字：图形推理这类大标题由「科目」列决定，题图走「图片」列
         stem = "%s·第%d题" % (sheet_name(set_no), q["qnum"])
+        opts = option_image_refs(q["image"])
         rows.append([
             TYPE,                                   # 题型
             SUBJECT,                                # 科目（决定卷内大类）
             i,                                      # 题号（卷内连续）
             stem,                                   # 题干（纯文本定位，App 不渲染 Markdown）
-            "images/%s" % q["image"],               # 图片（包内相对路径）
-            OPTION_TEXT, OPTION_TEXT, OPTION_TEXT, OPTION_TEXT,   # 选项A..D
+            "images/%s" % q["image"],               # 图片（题干区，已裁掉选项）
+            "![选项](%s)" % opts[0],                # 选项A（图）
+            "![选项](%s)" % opts[1],                # 选项B（图）
+            "![选项](%s)" % opts[2],                # 选项C（图）
+            "![选项](%s)" % opts[3],                # 选项D（图）
             q["answer"] or "",                      # 答案
             SOURCE,                                 # 来源
         ])
@@ -285,58 +305,102 @@ def check_images(records, img_dir):
     return missing
 
 
-def write_package(sheets, records, img_dir):
-    """写包目录 + 主 zip；返回 (目录, zip 路径)。"""
-    if os.path.exists(PKG_DIR):
-        shutil.rmtree(PKG_DIR)
-    os.makedirs(os.path.join(PKG_DIR, "images"))
+def _png_bytes(im):
+    buf = BytesIO()
+    im.save(buf, format="PNG", optimize=True)
+    return buf.getvalue()
 
-    xlsx_path = os.path.join(PKG_DIR, "试卷.xlsx")
-    with zipfile.ZipFile(xlsx_path, "w", zipfile.ZIP_DEFLATED) as z:
+
+def _xlsx_bytes(sheets):
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for name, data in build_xlsx(sheets).items():
             z.writestr(name, data.encode("utf-8"))
+    return buf.getvalue()
 
-    for r in records:
-        shutil.copy2(os.path.join(img_dir, r["image"]),
-                     os.path.join(PKG_DIR, "images", r["image"]))
+
+def _question_images(src, image, so):
+    """把一道题拆成 {文件名: png_bytes}（题干 + 4 选项）。返回 (dict, ok)。"""
+    from PIL import Image
+    base = opt_base(image)
+    items = {}
+    try:
+        res = so.split_question(src)
+        im = Image.open(src).convert("RGB")
+        sx0, sy0, sx1, sy1 = res["stem_box"]
+        items[image] = _png_bytes(im.crop((sx0, sy0, sx1, sy1)))
+        for k, box in zip("ABCD", res["options"]):
+            items["%s_%s.png" % (base, k)] = _png_bytes(
+                im.crop((box[0], box[1], box[2], box[3])))
+        return items, True
+    except Exception as e:                       # 兜底也要出 4 张选项图
+        print("  拆分失败、整图兜底：%s（%s）" % (image, e))
+        im = Image.open(src).convert("RGB")
+        w, h = im.size
+        items[image] = _png_bytes(im)
+        top = int(h * 0.55)
+        cw = w // 4
+        for i, k in enumerate("ABCD"):
+            items["%s_%s.png" % (base, k)] = _png_bytes(
+                im.crop((i * cw, top, (i + 1) * cw, h)))
+        return items, False
+
+
+def write_package(sheets, records, img_dir, emit_dir=False):
+    """直接生成主 zip；emit_dir=True 时同时把解开的文件写到 PKG_DIR（覆盖写、不删目录）。
+    返回 (目录或 None, zip 路径)。"""
+    import split_options as so
 
     if os.path.exists(PKG_ZIP):
         os.remove(PKG_ZIP)
+    out_images = os.path.join(PKG_DIR, "images")
+    if emit_dir:
+        os.makedirs(out_images, exist_ok=True)
+
+    xlsx_bytes = _xlsx_bytes(sheets)
+    if emit_dir:
+        with open(os.path.join(PKG_DIR, "试卷.xlsx"), "wb") as fh:
+            fh.write(xlsx_bytes)
+
+    print("拆分题干/选项图（%d 题）…" % len(records))
+    ok = 0
     with zipfile.ZipFile(PKG_ZIP, "w") as z:
-        z.write(xlsx_path, "%s/试卷.xlsx" % PKG_NAME, compress_type=zipfile.ZIP_DEFLATED)
+        z.writestr("%s/试卷.xlsx" % PKG_NAME, xlsx_bytes,
+                   compress_type=zipfile.ZIP_DEFLATED)
         for r in records:
-            z.write(os.path.join(img_dir, r["image"]),
-                    "%s/images/%s" % (PKG_NAME, r["image"]),
-                    compress_type=zipfile.ZIP_STORED)
-    return PKG_DIR, PKG_ZIP
+            src = os.path.join(img_dir, r["image"])
+            items, good = _question_images(src, r["image"], so)
+            for fname, data in items.items():
+                z.writestr("%s/images/%s" % (PKG_NAME, fname), data,
+                           compress_type=zipfile.ZIP_STORED)
+                if emit_dir:
+                    with open(os.path.join(out_images, fname), "wb") as fh:
+                        fh.write(data)
+            if good:
+                ok += 1
+    print("  拆分完成：%d / %d 题" % (ok, len(records)))
+    return (PKG_DIR if emit_dir else None), PKG_ZIP
 
 
 def write_split_packages(sets, img_dir):
     """可选：每套单独一个 zip（只想练某一套时用）。"""
-    if os.path.exists(SPLIT_DIR):
-        shutil.rmtree(SPLIT_DIR)
-    os.makedirs(SPLIT_DIR)
+    import split_options as so
+
+    os.makedirs(SPLIT_DIR, exist_ok=True)
     made = []
     for recs in sets:
         name = sheet_name(recs[0]["set"])
-        tsv_dir = os.path.join(SPLIT_DIR, name)
-        os.makedirs(os.path.join(tsv_dir, "images"))
-        with zipfile.ZipFile(os.path.join(tsv_dir, "试卷.xlsx"), "w",
-                             zipfile.ZIP_DEFLATED) as z:
-            for fname, data in build_xlsx([(name, rows_of_set(recs))]).items():
-                z.writestr(fname, data.encode("utf-8"))
-        for r in recs:
-            shutil.copy2(os.path.join(img_dir, r["image"]),
-                         os.path.join(tsv_dir, "images", r["image"]))
         zpath = os.path.join(SPLIT_DIR, name + ".zip")
         with zipfile.ZipFile(zpath, "w") as z:
-            z.write(os.path.join(tsv_dir, "试卷.xlsx"), "%s/试卷.xlsx" % name,
-                    compress_type=zipfile.ZIP_DEFLATED)
+            z.writestr("%s/试卷.xlsx" % name,
+                       _xlsx_bytes([(name, rows_of_set(recs))]),
+                       compress_type=zipfile.ZIP_DEFLATED)
             for r in recs:
-                z.write(os.path.join(img_dir, r["image"]),
-                        "%s/images/%s" % (name, r["image"]),
-                        compress_type=zipfile.ZIP_STORED)
-        shutil.rmtree(tsv_dir)
+                items, _ = _question_images(os.path.join(img_dir, r["image"]),
+                                            r["image"], so)
+                for fname, data in items.items():
+                    z.writestr("%s/images/%s" % (name, fname), data,
+                               compress_type=zipfile.ZIP_STORED)
         made.append(zpath)
     return made
 
@@ -347,6 +411,8 @@ def main():
     ap.add_argument("--tsv", default=DEFAULT_TSV, help="anki TSV 路径")
     ap.add_argument("--images", default=DEFAULT_IMAGES, help="题图目录")
     ap.add_argument("--per-set", action="store_true", help="另外再拆成 35 个单卷小包")
+    ap.add_argument("--emit-dir", action="store_true",
+                    help="同时把解开的 试卷.xlsx + images/ 写到包目录（覆盖写，不删旧目录）")
     args = ap.parse_args()
 
     tmp = None
@@ -375,7 +441,7 @@ def main():
     assert len(set(names)) == len(names), "卷名重复：%s" % names
     assert all(len(n) <= 31 for n in names), "工作表名超过 31 字符"
 
-    pkg_dir, pkg_zip = write_package(sheets, records, img_dir)
+    pkg_dir, pkg_zip = write_package(sheets, records, img_dir, emit_dir=args.emit_dir)
 
     print("题图：%d 张" % len(records))
     print("试卷：%d 套（每套 %s 题）%s"
@@ -384,7 +450,8 @@ def main():
     print("答案分布：%s" % " ".join(
         "%s=%d" % (k, sum(1 for r in records if r["answer"] == k)) for k in "ABCD"))
     print("表名：%s … %s" % (names[0], names[-1]))
-    print("包目录：%s" % pkg_dir)
+    if pkg_dir:
+        print("包目录：%s" % pkg_dir)
     print("导入包：%s（%.1f MB）" % (pkg_zip, os.path.getsize(pkg_zip) / 1048576.0))
 
     if args.per_set:

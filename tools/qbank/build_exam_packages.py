@@ -648,6 +648,246 @@ def split_boxed_row(mask):
     return best[1], best[2], best[3]
 
 
+def split_region_options(mask, rect01, mode, exact=False):
+    """按人工标定的「选项区外框」切四个选项。
+
+    外框用归一化坐标 (x0, y0, x1, y1)（0~1，相对画布）。框内再按白缝切：
+      · mode="1x4"：找 3 条纵向白缝，切四列；
+      · mode="2x2"：找 1 条纵向 + 1 条横向白缝，切四格。
+    给「一个选项由好几块图形组成」或者「题干图形混在同一行」的题用——
+    只要框住选项区，格子里有多少块都整块收下。
+    """
+    H, W = mask.shape
+    x0 = int(round(rect01[0] * W)); x1 = int(round(rect01[2] * W))
+    y0 = int(round(rect01[1] * H)); y1 = int(round(rect01[3] * H))
+    x0, x1 = max(0, min(x0, W - 4)), max(0, min(x1, W))
+    y0, y1 = max(0, min(y0, H - 4)), max(0, min(y1, H))
+    if x1 - x0 < 40 or y1 - y0 < 40:
+        return None
+    sub = mask[y0:y1, x0:x1]
+
+    def gaps(prof, total, min_len):
+        out, s = [], None
+        for i, v in enumerate(prof):
+            if not v and s is None:
+                s = i
+            elif v and s is not None:
+                if i - s >= min_len:
+                    out.append((s, i))
+                s = None
+        if s is not None and total - s >= min_len:
+            out.append((s, total))
+        return out
+
+    def inner(spans, total, edge=6):
+        return [(a, b) for a, b in spans if a > edge and b < total - edge]
+
+    def strip_letters(sub):
+        """格子内容里如果带上了卷面印的 A/B/C/D（一小块、和图形有间隙），把它去掉。"""
+        prof = sub.any(axis=1)
+        bands, s0 = [], None
+        for i, v in enumerate(prof):
+            if v and s0 is None:
+                s0 = i
+            elif not v and s0 is not None:
+                bands.append((s0, i))
+                s0 = None
+        if s0 is not None:
+            bands.append((s0, len(prof)))
+        if len(bands) < 2:
+            return sub
+        inks = [int(sub[a:b].sum()) for a, b in bands]
+        keep = max(inks)
+        lo, hi = 0, len(bands) - 1
+        while lo < hi and inks[lo] < 0.22 * keep and                 (bands[lo + 1][0] - bands[lo][1]) >= 5:
+            lo += 1
+        while hi > lo and inks[hi] < 0.22 * keep and                 (bands[hi][0] - bands[hi - 1][1]) >= 5:
+            hi -= 1
+        return sub[bands[lo][0]:bands[hi][1]]
+
+    def cut(cell, fallback=False):
+        cx0, cy0, cx1, cy1 = cell
+        s2 = mask[y0 + cy0:y0 + cy1, x0 + cx0:x0 + cx1]
+        if s2.any():
+            s2 = strip_letters(s2)
+        bb = content_bbox(s2) if s2.any() else None
+        if bb is None:
+            if not fallback:
+                return None
+            bb = (0, 0, cx1 - cx0, cy1 - cy0)
+        res = (x0 + cx0 + bb[0], y0 + cy0 + bb[1], x0 + cx0 + bb[2], y0 + cy0 + bb[3])
+        if res[2] - res[0] < 10 or res[3] - res[1] < 10:
+            if not fallback:
+                return None
+        return res
+
+    h, w = sub.shape
+    vprof = sub.sum(axis=0).astype(float)
+    hprof = sub.sum(axis=1).astype(float)
+
+    def best_cut(prof, total, expect, win):
+        """在「预期分界位置」附近找墨量最低的那一列/行 —— 比找绝对空白更稳，
+        外框估得粗一点也能落在两条图形之间的空隙里。"""
+        lo = max(2, int(expect - win))
+        hi = min(total - 2, int(expect + win))
+        if hi <= lo:
+            return int(expect)
+        seg = prof[lo:hi]
+        return lo + int(np.argmin(seg))
+
+    cells = None
+    if mode == "1x4":
+        win = 0.14 * w
+        xs = [0] + [best_cut(vprof, w, w * i / 4.0, win) for i in (1, 2, 3)] + [w]
+        xs = sorted(set(xs))
+        if len(xs) == 5:
+            cells = [[xs[i], 0, xs[i + 1], h] for i in range(4)]
+        else:
+            xs = [int(w * i / 4.0) for i in range(5)]
+            cells = [[xs[i], 0, xs[i + 1], h] for i in range(4)]
+    elif mode == "2x2":
+        # 2×2 版式的四个选项本来就按象限摆，直接用几何中点切最稳；
+        # 「找最小墨量」会落到图形内部的空隙里，反而把图形劈开。
+        mx, my = w // 2, h // 2
+        cells = [[0, 0, mx, my], [mx, 0, w, my], [0, my, mx, h], [mx, my, w, h]]
+    if not cells:
+        return None
+
+    boxes = [cut(c, fallback=(mode == '2x2')) for c in cells]
+    if any(b is None for b in boxes):
+        return None
+    return {k: b for k, b in zip('ABCD', boxes)}, (y0, y1)
+
+
+def split_page_options(paper, page, rect01, mode, out_dir, stem_name, boxes01=None):
+    """从卷面渲染图（200dpi）直接裁四个选项。
+
+    极少数题的选项里掺着「纯符号/文字」的图（比如 ①→②→③…），PDF 位图里根本没有它们，
+    只能回到整页渲染图上按区域裁。给了 boxes01（四个归一化矩形）就直接按它裁。
+    """
+    path = os.path.join(os.path.dirname(BUILD), 'ocr_pages', paper, 'p%02d.png' % page)
+    if not os.path.exists(path):
+        return None
+    im = Image.open(path).convert('L')
+    W, H = im.size
+    if boxes01:
+        boxes = {}
+        for k, b in boxes01.items():
+            boxes[k] = (b[0] * W, b[1] * H, b[2] * W, b[3] * H)
+    else:
+        mask = np.asarray(im) < 128
+        got = split_region_options(mask, rect01, mode, exact=True)
+        if not got:
+            return None
+        boxes, _ = got
+    opts = {}
+    for letter, b in boxes.items():
+        crop = im.crop((int(b[0]), int(b[1]), int(b[2]), int(b[3])))
+        if crop.width < 10 or crop.height < 6:
+            return None
+        p = os.path.join(out_dir, '%s_%s.png' % (stem_name, letter))
+        trim_edge_lines(crop_tight(crop)).save(p, optimize=True)
+        opts[letter] = p
+    return opts
+
+
+def split_blocks_options(mask):
+    """按「连通的图形块」找四个选项：先用形态学膨胀把同一选项里几笔/几块粘在一起，
+    再取面积、尺寸最一致的四块（一排四个 或 两行两列）。
+
+    比纯网格稳：图形之间的间距、题干图形混在一边、位图被切成几块，都不影响。
+    只在前面几种方案都不合格时才用。
+    """
+    from scipy import ndimage
+    H, W = mask.shape
+    base = max(4, int(0.012 * max(H, W)))
+
+    def blocks_at(d):
+        dil = ndimage.binary_dilation(mask, np.ones((d, d), dtype=bool))
+        lab, n = ndimage.label(dil)
+        out = []
+        for i, sl in enumerate(ndimage.find_objects(lab), start=1):
+            if sl is None:
+                continue
+            sub = mask[sl] & (lab[sl] == i)
+            if not sub.any():
+                continue
+            ys, xs = np.where(sub)
+            x0 = sl[1].start + int(xs.min())
+            y0 = sl[0].start + int(ys.min())
+            x1 = sl[1].start + int(xs.max()) + 1
+            y1 = sl[0].start + int(ys.max()) + 1
+            area = int(sub.sum())
+            if area < 0.0008 * H * W or x1 - x0 < 10 or y1 - y0 < 10:
+                continue
+            out.append((x0, y0, x1, y1))
+        return out
+
+    def score(boxes):
+        ws = [b[2] - b[0] for b in boxes]
+        hs = [b[3] - b[1] for b in boxes]
+        if max(ws) > 2.4 * min(ws) or max(hs) > 2.4 * min(hs):
+            return None
+        # 排列：一排四个 或 两行两列
+        cys = [(b[1] + b[3]) / 2.0 for b in boxes]
+        cxs = [(b[0] + b[2]) / 2.0 for b in boxes]
+        rows = {}
+        for i, cy in enumerate(cys):
+            key = min(rows, key=lambda k: abs(k - cy)) if rows else None
+            if key is not None and abs(key - cy) < 0.5 * max(hs):
+                rows[key].append(i)
+            else:
+                rows[cy] = [i]
+        layout = sorted(len(v) for v in rows.values())
+        if layout not in ([4], [2, 2]):
+            return None
+        # 间距是否匀（同一排里相邻选项的间隔）
+        pitch_cv = 0.0
+        for idxs in rows.values():
+            if len(idxs) < 2:
+                continue
+            xs_sorted = sorted(cxs[i] for i in idxs)
+            gaps = [xs_sorted[k + 1] - xs_sorted[k] for k in range(len(xs_sorted) - 1)]
+            if len(gaps) > 1 and np.mean(gaps) > 0:
+                pitch_cv += float(np.std(gaps) / np.mean(gaps))
+        cv = float(np.std(ws) / np.mean(ws)) + float(np.std(hs) / np.mean(hs))
+        ink = [float(mask[b[1]:b[3], b[0]:b[2]].sum()) for b in boxes]
+        ratio = min(ink) / max(1.0, max(ink))
+        cx = float(np.mean(cxs)) / W
+        cy = float(np.mean(cys)) / H
+        return cv + 0.5 * pitch_cv - 0.25 * (cx + cy) - 0.3 * ratio
+
+    best = None
+    for mult in (1, 2, 3, 4, 6):
+        bl = blocks_at(base * mult)
+        if len(bl) < 4:
+            continue
+        if len(bl) > 14:                       # 别让组合数炸掉，先按面积留下大的
+            bl = sorted(bl, key=lambda b: -(b[2] - b[0]) * (b[3] - b[1]))[:14]
+        import itertools
+        for combo in itertools.combinations(bl, 4):
+            sc = score(list(combo))
+            if sc is not None and (best is None or sc < best[0]):
+                best = (sc, list(combo))
+    if best is None:
+        return None
+    boxes = sorted(best[1], key=lambda b: ((b[1] + b[3]) // max(10, (b[3] - b[1])), b[0]))
+    # 按「行优先」重新排成 A/B/C/D：先按 y 分行，再各排按 x
+    rows = []
+    for b in sorted(best[1], key=lambda b: (b[1] + b[3]) / 2.0):
+        cy = (b[1] + b[3]) / 2.0
+        for r in rows:
+            if abs(cy - (r[0][1] + r[0][3]) / 2.0) < 0.5 * max(1, b[3] - b[1]):
+                r.append(b)
+                break
+        else:
+            rows.append([b])
+    ordered = []
+    for r in sorted(rows, key=lambda r: (r[0][1] + r[0][3]) / 2.0):
+        ordered.extend(sorted(r, key=lambda b: b[0]))
+    return {k: b for k, b in zip('ABCD', ordered)}
+
+
 def split_by_columns(mask):
     """兜底拆法：卷面字母太小/糊掉时，按列白缝把选项区切成 4 列。
 
@@ -732,18 +972,13 @@ def split_question(paper, items, no, img_out_dir, stem_name):
         info['mode'] = 'k4-positional'
         return None, opts, info
 
-    if len(items) not in (1, 4):
-        # 2~3 块位图拼起来的题：卷面本身被切成了几段，按字母切会把一个选项切成两半，不做拆分
-        info['mode'] = 'fail:k=%d 多块位图' % len(items)
-        return None, None, info
+    # 2~3 块位图拼起来的题：卷面被切成几段，按字母切会把一个选项切成两半 ——
+    # 这类题跳过「字母 / 四格条 / 白缝」三条路子，只走最后的网格兜底。
+    multi_bitmap = len(items) not in (1, 4)
 
-    if len(items) not in (1, 4):
-        # 2~3 块位图拼起来的题：卷面本身被切成了几段，按字母切会把一个选项切成两半，不做拆分
-        info['mode'] = 'fail:k=%d 多块位图' % len(items)
-        return None, None, info
-
-    cands, lbl = letter_candidates(mask)
-    letters, why = pick_four_letters(cands, mask.shape[0], mask.shape[1])
+    cands, lbl = (letter_candidates(mask) if not multi_bitmap else ([], None))
+    letters, why = (pick_four_letters(cands, mask.shape[0], mask.shape[1])
+                    if cands else (None, 'multi-bitmap'))
     info['letters'] = len(cands)
 
     H, W = mask.shape
@@ -751,17 +986,6 @@ def split_question(paper, items, no, img_out_dir, stem_name):
     def boxes_ok(bx):
         if len(bx) != 4:
             return False
-        vals = list(bx.values())
-        for i in range(4):
-            for j in range(i + 1, 4):
-                ox = min(vals[i][2], vals[j][2]) - max(vals[i][0], vals[j][0])
-                oy = min(vals[i][3], vals[j][3]) - max(vals[i][1], vals[j][1])
-                if ox > 0 and oy > 0:          # 两个选项框明显重叠 -> 切错了
-                    area = ox * oy
-                    small = min((vals[i][2] - vals[i][0]) * (vals[i][3] - vals[i][1]),
-                                (vals[j][2] - vals[j][0]) * (vals[j][3] - vals[j][1]))
-                    if area > 0.12 * max(1, small):
-                        return False
         vals = list(bx.values())
         for i in range(4):
             for j in range(i + 1, 4):
@@ -782,7 +1006,7 @@ def split_question(paper, items, no, img_out_dir, stem_name):
         return True
 
     plans = []            # (方案名, boxes, band)
-    boxed = split_boxed_row(mask)
+    boxed = None if multi_bitmap else split_boxed_row(mask)
     if boxed:
         plans.append(('boxed', boxed[0], (boxed[1], boxed[2])))
 
@@ -817,7 +1041,7 @@ def split_question(paper, items, no, img_out_dir, stem_name):
                 plans.append((tag, bx, None))
                 info['dirs'] = used
 
-    alt = split_by_columns(mask)
+    alt = None if multi_bitmap else split_by_columns(mask)
     if alt and boxes_ok(alt):
         plans.append(('columns', alt, None))
 
@@ -845,9 +1069,38 @@ def split_question(paper, items, no, img_out_dir, stem_name):
     chosen = max(valid, key=lambda p: coverage(p[1]) + (0.02 if p[0] == 'boxed' else 0)) if valid else None
     info['cover'] = {p[0]: round(coverage(p[1]), 3) for p in valid}
     if chosen is None:
-        info['mode'] = 'fail:' + (why if not letters else 'no-valid-plan')
-        info['plans'] = [(p[0], len(p[1])) for p in plans]
-        return None, None, info
+        # 人工标过外框的题（图形太散、自动切不开）先按标定切
+        cfg = OPTION_RECTS.get('%s:%d' % (paper, no))
+        if cfg and cfg.get('method') == 'page':
+            opts = split_page_options(paper, items[0]['page'],
+                                      cfg.get('rect'), cfg.get('mode'),
+                                      img_out_dir, stem_name, cfg.get('boxes'))
+            if opts:
+                info['mode'] = 'ok'
+                info['via'] = 'page'
+                return None, opts, info
+        if cfg and cfg.get('method') == 'blocks':
+            bx = split_blocks_options(mask)
+            if bx and boxes_ok(bx):
+                chosen = ('rect', bx, None)
+                info['via'] = 'rect-blocks'
+        elif cfg:
+            reg = split_region_options(mask, cfg['rect'], cfg['mode'])
+            if reg and boxes_ok(reg[0]):
+                chosen = ('rect', reg[0], reg[1])
+                info['via'] = 'rect'
+                if cfg.get('no_stem'):
+                    band = None
+    if chosen is None:
+        # 再兜底：按连通图形块聚类，专治 2×2 版式与「位图被切成几块」的题
+        grid = split_blocks_options(mask)
+        if grid and boxes_ok(grid):
+            chosen = ('grid', grid, None)
+            info['via'] = 'grid'
+        else:
+            info['mode'] = 'fail:' + (why if not letters else 'no-valid-plan')
+            info['plans'] = [(p[0], len(p[1])) for p in plans]
+            return None, None, info
     info['via'], boxes, band = chosen
     letters = letters if info['via'].startswith('letters') else []
     pitch = float(np.mean([b[2] - b[0] for b in boxes.values()])) or 1.0
@@ -864,7 +1117,8 @@ def split_question(paper, items, no, img_out_dir, stem_name):
     #   · 带子上方的整幅（题目序列等）
     #   · 带子左右两侧，且剥掉格子边框后确实还有内容（立体图常与选项并排）
     # 直接按区域切出来再拼，比在整幅图上涂白干净——不会剩下空框线。
-    stem = build_stem(canvas, boxes, letters, pitch, band)
+    _cfg = OPTION_RECTS.get('%s:%d' % (paper, no)) or {}
+    stem = None if _cfg.get('no_stem') else build_stem(canvas, boxes, letters, pitch, band)
     if stem is None or np.asarray(stem).astype(np.int16).__lt__(200).sum() < 120:
         stem_path = None
     else:
@@ -875,6 +1129,21 @@ def split_question(paper, items, no, img_out_dir, stem_name):
 
 
 # ------------------------------------------------------------------ 主流程
+
+RECTS_FILE = os.path.join(HERE, 'option_rects.json')
+OPTION_RECTS = {}
+if os.path.exists(RECTS_FILE):
+    OPTION_RECTS = {k: v for k, v in
+                    json.load(open(RECTS_FILE, encoding='utf-8')).items()
+                    if not k.startswith('_')}
+
+# 少数题的选项图形太散（2×2 交错、一题多块位图），自动切不开时按人工标定的外框切
+RECTS_FILE = os.path.join(HERE, 'option_rects.json')
+OPTION_RECTS = {}
+if os.path.exists(RECTS_FILE):
+    OPTION_RECTS = {k: v for k, v in
+                    json.load(open(RECTS_FILE, encoding='utf-8')).items()
+                    if not k.startswith('_')}
 
 idx = json.load(open(os.path.join(BUILD, 'img_index.json'), encoding='utf-8'))
 answers_raw = json.load(open(os.path.join(BUILD, 'answers_raw.json'), encoding='utf-8'))
