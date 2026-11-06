@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 题目卡（试卷详情目录）：与答题页同一套字色/字号，但不带选项圆徽标 -->
+<!-- 题目卡（试卷详情目录）：与答题页同一套字色/字号，但不带选项圆徽标。
+     点一下卡片 = 展开这道题的完整资料（材料 / 解析），再点收起；
+     从成绩报告点某题跳过来时，落点那题默认就是展开的。 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    style="@style/FbListCard">
+    style="@style/FbListCard"
+    android:clickable="true"
+    android:focusable="true"
+    android:foreground="?attr/selectableItemBackground">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -24,6 +29,28 @@
             android:maxLines="1" />
     </LinearLayout>
 
+    <!-- 材料（资料分析 / 材料题）：只在展开时渲染——整卷几百题一起画图会卡 -->
+    <LinearLayout
+        android:id="@+id/materialBox"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/fb_space_12"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/tvMaterialTag"
+            style="@style/FbTag"
+            android:text="@string/tag_material" />
+
+        <LinearLayout
+            android:id="@+id/materialContent"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/fb_space_8"
+            android:orientation="vertical" />
+    </LinearLayout>
+
     <TextView
         android:id="@+id/tvStem"
         style="@style/FbStem"
@@ -41,4 +68,48 @@
         style="@style/FbBodySm"
         android:layout_marginTop="@dimen/fb_space_12"
         android:textColor="@color/fb_success" />
+
+    <!-- 本次作答（只有从成绩报告跳进来才有）：你的答案 + 对错 -->
+    <TextView
+        android:id="@+id/tvMine"
+        style="@style/FbBodySm"
+        android:layout_marginTop="@dimen/fb_space_4"
+        android:visibility="gone" />
+
+    <!-- 解析：展开时显示 -->
+    <TextView
+        android:id="@+id/tvAnalysis"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/fb_space_12"
+        android:background="@drawable/bg_fb_note"
+        android:lineSpacingExtra="4dp"
+        android:padding="@dimen/fb_space_12"
+        android:textColor="@color/fb_text_secondary"
+        android:textSize="@dimen/fb_text_body_sm"
+        android:visibility="gone" />
+
+    <!-- 展开 / 收起：告诉用户卡片是可点的 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/fb_space_8"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/tvToggle"
+            style="@style/FbCaption"
+            android:text="@string/question_show_more"
+            android:textColor="@color/fb_primary" />
+
+        <ImageView
+            android:id="@+id/icToggle"
+            android:layout_width="14dp"
+            android:layout_height="14dp"
+            android:layout_marginStart="2dp"
+            android:contentDescription="@null"
+            android:src="@drawable/ic_fb_chevron"
+            android:tint="@color/fb_primary" />
+    </LinearLayout>
 </LinearLayout>

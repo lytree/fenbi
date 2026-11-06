@@ -18,6 +18,7 @@ import com.lytree.qbank.data.model.AnswerResult
 import com.lytree.qbank.data.model.ExamRecord
 import com.lytree.qbank.databinding.ActivityReportBinding
 import com.lytree.qbank.databinding.ItemReportQuestionBinding
+import com.lytree.qbank.ui.paper.PaperDetailActivity
 import com.lytree.qbank.ui.record.RecordAdapter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -113,7 +114,11 @@ class ReportActivity : AppCompatActivity() {
 
         binding.list.layoutManager = LinearLayoutManager(this)
         // 每题用时：答题时按题计时落库，这里逐题带出来，能看出哪道题磨得最久
-        binding.list.adapter = ReportAdapter(record.results, record.marked, questionTimes)
+        binding.list.adapter = ReportAdapter(
+            record.results,
+            record.marked,
+            questionTimes
+        ) { position -> openInPaper(record, position) }
 
         // 本次标记过的题在逐题解析里带「已标记」标签，标题里先给个总数，免得逐页翻找
         binding.tvAnalysisTitle.text = if (record.marked.isEmpty()) {
@@ -169,6 +174,29 @@ class ReportActivity : AppCompatActivity() {
                 })
             }
         }
+    }
+
+    /**
+     * 点某道题 → 跳到它所在的试卷，定位到这道题并默认展开：
+     * 题干 / 选项 / 材料 / 标准答案 / 解析一次看全，顺带带上这次的作答与对错。
+     *
+     * 之所以不再单独做一个「题目详情」页：同一道题的完整资料，试卷详情本来就得会渲染
+     * （材料里的表格、图表、配图都在那儿），多一处实现只会多一处口径不一致。
+     */
+    private fun openInPaper(record: ExamRecord, position: Int) {
+        val qid = record.results.getOrNull(position)?.question?.id ?: return
+        if (record.paperId <= 0L) {
+            android.widget.Toast.makeText(this, R.string.report_paper_missing, android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        startActivity(
+            android.content.Intent(this, PaperDetailActivity::class.java).apply {
+                putExtra(PaperDetailActivity.EXTRA_PAPER_ID, record.paperId)
+                putExtra(PaperDetailActivity.EXTRA_PAPER_NAME, record.displayTitle)
+                putExtra(PaperDetailActivity.EXTRA_FOCUS_QUESTION_ID, qid)
+                putExtra(PaperDetailActivity.EXTRA_RECORD_ID, record.id)
+            }
+        )
     }
 
     /** 错题重练：把本次答错 / 部分得分的题按原顺序生成一份新卷，直接开练（对齐参考应用「错题重练」闭环） */
@@ -271,11 +299,13 @@ class ReportActivity : AppCompatActivity() {
  * [marked] 是本次作答被标记（细线星）的题 id —— 交卷时随记录落库，
  * 所以回看旧记录也能看出当时标了哪几题，而不只是当轮答题卡上的点。
  * [times] 是每道题各自花掉的秒数（答题时逐题计时），做题节奏一目了然。
+ * [onItemClick] 点卡片 = 去试卷里看这道题的完整资料（材料 / 选项 / 答案解析）。
  */
 class ReportAdapter(
     private val items: List<AnswerResult>,
     private val marked: Set<Long> = emptySet(),
-    private val times: Map<Long, Int> = emptyMap()
+    private val times: Map<Long, Int> = emptyMap(),
+    private val onItemClick: ((Int) -> Unit)? = null
 ) :
     RecyclerView.Adapter<ReportAdapter.VH>() {
 
@@ -320,6 +350,12 @@ class ReportAdapter(
             holder.binding.tvAnalysis.text = "解析：${r.question.analysis}"
         } else {
             holder.binding.tvAnalysis.visibility = android.view.View.GONE
+        }
+
+        // 整卡可点：跳到试卷里对应的题（材料 / 选项 / 答案 / 解析都在那边看全）
+        holder.itemView.setOnClickListener {
+            val pos = holder.bindingAdapterPosition
+            if (pos != RecyclerView.NO_POSITION) onItemClick?.invoke(pos)
         }
     }
 

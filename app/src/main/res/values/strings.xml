@@ -176,6 +176,12 @@
     <!-- 逐题解析区标题：本次有标记时带上标记数 -->
     <string name="report_analysis_title">逐题解析</string>
     <string name="report_analysis_title_marked">逐题解析（标记 %1$d 题）</string>
+    <!-- 报告页点题：跳到试卷里对应的题，看完整资料（材料 / 选项 / 答案解析） -->
+    <string name="report_open_question">在试卷中查看这道题</string>
+    <string name="report_paper_missing">试卷已删除，无法查看这道题</string>
+    <!-- 试卷详情题目卡：展开 / 收起完整资料 -->
+    <string name="question_show_more">查看完整题目</string>
+    <string name="question_show_less">收起</string>
     <string name="progress_saved">进度已保存，下次进入可继续答题</string>
 
     <!-- 补录答案：不用答案文件，做完直接在 App 里逐题填标准答案 -->
