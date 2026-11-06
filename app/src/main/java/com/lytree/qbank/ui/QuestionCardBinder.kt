@@ -1,7 +1,9 @@
 package com.lytree.qbank.ui
 
+import android.graphics.Paint
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -297,6 +299,52 @@ object QuestionCardBinder {
         val correctKeys = if (revealNow) revealKeys(q) else emptySet()
         val wrongSelected = if (revealNow) selected.filter { it !in correctKeys }.toSet() else emptySet()
 
+        /** 选中 / 取消某一项：单选换项、多选增删，然后就地刷新徽标 */
+        fun pick(key: String) {
+            val k = key.uppercase()
+            if (multi) {
+                if (!selected.remove(k)) selected.add(k)
+            } else {
+                selected.clear()
+                selected.add(k)
+            }
+            answers[q.id] = selected.sorted().joinToString(",")
+            refreshSelection(b, q, answers, night)
+            cb.onAnswerChanged(q)
+        }
+
+        /**
+         * 打叉排除一个**已选**项：排除与「已选」互斥，答案要跟着撤
+         * （单选清空、多选只删这一项），否则会出现「灰掉的项还计分」。
+         */
+        fun unpick(key: String) {
+            if (!selected.remove(key.uppercase())) return
+            answers[q.id] = selected.sorted().joinToString(",")
+            refreshSelection(b, q, answers, night)
+            cb.onAnswerChanged(q)
+        }
+
+        // 图形推理那种「每个选项就是一张图」的题：横排一行、图按格宽等比缩小，
+        // 四个图放一起才比得出来；文字选项仍旧单列。
+        if (isImageOnlyOptions(q)) {
+            val revealFor: (String) -> Reveal = { key ->
+                when {
+                    revealNow && correctKeys.isNotEmpty() && key in correctKeys -> Reveal.RIGHT
+                    revealNow && key in wrongSelected -> Reveal.WRONG
+                    else -> Reveal.NONE
+                }
+            }
+            b.optionsBox.addView(
+                buildImageOptionsRow(
+                    b.optionsBox, q, { selected }, night, fontScale,
+                    revealFor = revealFor,
+                    onPick = { pick(it) },
+                    onCrossChanged = { key, crossed -> if (crossed) unpick(key) }
+                )
+            )
+            return
+        }
+
         /** 绑定单个选项行 */
         fun bindOption(opt: com.lytree.qbank.data.model.Option): ItemOptionBinding {
             val item = ItemOptionBinding.inflate(inflater, b.optionsBox, false)
@@ -304,9 +352,12 @@ object QuestionCardBinder {
             item.tvKey.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f * fontScale)
             bindOptionBody(item, opt.text, night, fontScale)
             val key = opt.key.uppercase()
-            applyCircleState(
+
+            /** 按「当前选中 + 打叉 + 判分」重画这一行（长按 / 点叉后要就地更新，不整卡重绑） */
+            fun refresh() = applyOptionState(
                 item,
                 selected.contains(key),
+                OptionCross.isCrossed(q.id, key),
                 night,
                 when {
                     revealNow && correctKeys.isNotEmpty() && key in correctKeys -> Reveal.RIGHT
@@ -314,26 +365,143 @@ object QuestionCardBinder {
                     else -> Reveal.NONE
                 }
             )
+            refresh()
 
             // 把 item 绑定挂到子 view 上，作答后就地刷新徽标时不必重新解析下标
             item.root.tag = item
-            item.root.setOnClickListener {
-                val k = opt.key.uppercase()
-                if (multi) {
-                    if (!selected.remove(k)) selected.add(k)
-                } else {
-                    selected.clear()
-                    selected.add(k)
+            bindOptionInteractions(
+                item, q.id, opt.key,
+                onPick = { pick(opt.key) },
+                onCrossChanged = { crossed ->
+                    if (crossed) unpick(key)
+                    refresh()
                 }
-                answers[q.id] = selected.sorted().joinToString(",")
-                refreshSelection(b, q, answers, night)
-                cb.onAnswerChanged(q)
-            }
+            )
             return item
         }
 
-        // 选项一律单列（对齐参考应用手机端：即便「2个 / 3个」这种超短选项也是竖排一列）
+        // 文字选项一律单列（对齐参考应用手机端：即便「2个 / 3个」这种超短选项也是竖排一列）
         q.options.forEach { opt -> b.optionsBox.addView(bindOption(opt).root) }
+    }
+
+    /**
+     * 选项是不是「每项一张图、没有正文」的题型（图形推理最典型）。
+     *
+     * 只有 2~4 项才横排：再多一行就挤成缩略图墙了，还不如单列看大图。
+     */
+    fun isImageOnlyOptions(q: Question): Boolean {
+        if (q.options.size !in 2..4) return false
+        return q.options.all { opt ->
+            val c = MaterialRenderer.splitOption(opt.text)
+            c.text.isBlank() && c.images.size == 1
+        }
+    }
+
+    /**
+     * 图片选项横向排成一行：每格宽度均分，图按格宽等比缩放（高不过 1.5 倍格宽，也要矮一档），
+     * A/B/C/D 徽标放在图上方居中——图一高，徽标在左侧会把整行撑歪。
+     *
+     * [selectedProvider] 传函数而不是快照：行内的「打叉 / 恢复」是就地重画的，
+     * 得快照会读到打叉前的选中态（叉还在、圈还是蓝的）。
+     *
+     * [applyRowPadding] 为 false 时不吃行内留白：分屏右栏整页已经有左右留白了。
+     */
+    fun buildImageOptionsRow(
+        container: ViewGroup,
+        q: Question,
+        selectedProvider: () -> Set<String>,
+        night: Boolean,
+        fontScale: Float = 1f,
+        revealFor: ((String) -> Reveal)? = null,
+        applyRowPadding: Boolean = true,
+        onPick: (String) -> Unit,
+        /** 打叉状态变了：调用方负责把已选项从答案里撤掉（重画由本行自己做） */
+        onCrossChanged: ((key: String, crossed: Boolean) -> Unit)? = null
+    ): View {
+        val ctx = container.context
+        val res = ctx.resources
+        val dm = res.displayMetrics
+        val inflater = LayoutInflater.from(ctx)
+        val gap = (8 * dm.density).toInt()
+        val padStart = if (applyRowPadding) res.getDimensionPixelSize(R.dimen.fb_option_row_padding_start) else 0
+        val padEnd = if (applyRowPadding) res.getDimensionPixelSize(R.dimen.fb_content_padding_h) else 0
+        val padV = res.getDimensionPixelSize(R.dimen.fb_option_row_padding_v)
+        val count = q.options.size.takeIf { it > 0 } ?: 1
+        val cellWidth = ((dm.widthPixels - padStart - padEnd - gap * (count - 1)) / count)
+            .coerceAtLeast(gap * 4)
+        // 高度按格宽放一档半：正方图就是格子宽，长条图不会把一行顶得过高
+        val maxHeightDp = (cellWidth / dm.density * 1.5f).coerceIn(72f, 180f)
+        val circle = res.getDimensionPixelSize(R.dimen.fb_option_circle)
+
+        val row = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.TOP
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            setPadding(padStart, padV, padEnd, padV)
+        }
+
+        q.options.forEachIndexed { index, opt ->
+            val item = ItemOptionBinding.inflate(inflater, row, false)
+            item.root.layoutParams = LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+            ).apply {
+                if (index < count - 1) marginEnd = gap
+            }
+            (item.root as LinearLayout).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_HORIZONTAL
+                setPadding(0, (4 * dm.density).toInt(), 0, (2 * dm.density).toInt())
+            }
+            item.tvKey.text = opt.key
+            item.tvKey.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f * fontScale)
+            item.tvKey.layoutParams = LinearLayout.LayoutParams(circle, circle).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+                bottomMargin = (6 * dm.density).toInt()
+            }
+            // 竖排之后正文容器要自己撑满格宽（XML 里是 0dp + weight，那是横向行用的）
+            item.optionBody.layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            item.tvText.visibility = View.GONE
+
+            val content = MaterialRenderer.splitOption(opt.text)
+            item.optionMedia.visibility = View.VISIBLE
+            MaterialRenderer.renderOptionImages(
+                ctx, item.optionMedia, content.images, night,
+                compact = true, widthPx = cellWidth, maxHeightDp = maxHeightDp
+            )
+
+            val key = opt.key.uppercase()
+            // 竖排之后叉号落到图下方居中（XML 里那条 8dp 起始边距是给横排用的）
+            item.ivCross.layoutParams = LinearLayout.LayoutParams(
+                (16 * dm.density).toInt(), (16 * dm.density).toInt()
+            ).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+                topMargin = (4 * dm.density).toInt()
+            }
+
+            fun refresh() = applyOptionState(
+                item,
+                selectedProvider().contains(key),
+                OptionCross.isCrossed(q.id, key),
+                night,
+                revealFor?.invoke(key) ?: Reveal.NONE
+            )
+            refresh()
+            item.root.tag = item
+            bindOptionInteractions(
+                item, q.id, opt.key,
+                onPick = { onPick(key) },
+                onCrossChanged = { crossed ->
+                    onCrossChanged?.invoke(key, crossed)
+                    refresh()
+                }
+            )
+            row.addView(item.root)
+        }
+        return row
     }
 
     /**
@@ -390,6 +558,98 @@ object QuestionCardBinder {
         }
     }
 
+    /**
+     * 选项行的两个手势：**点 = 选这一项，长按 = 打叉排除**。
+     *
+     * 打叉是「排除法」：划掉的项变灰、打叉，**不能再点选**；想反悔就再点一下（或再长按），
+     * 立刻回到可选状态。所以点叉不等于作答，[onPick] 只在没划掉时才走。
+     *
+     * 这里只管手势与状态位，**不碰答案**：划掉的是已选项时由调用方在 [onCrossChanged] 里
+     * 把它从答案里撤掉（单选清空 / 多选删这一项），并按自己的口径重画这一行——
+     * 主答题页、图选项一行、分屏页共用同一套手势，各家的重画逻辑才不会漂。
+     */
+    fun bindOptionInteractions(
+        item: ItemOptionBinding,
+        questionId: Long,
+        key: String,
+        onPick: () -> Unit,
+        onCrossChanged: (crossed: Boolean) -> Unit
+    ) {
+        item.root.setOnClickListener {
+            if (OptionCross.isCrossed(questionId, key)) {
+                // 点在叉掉的项上 = 撤销排除，回到可选状态（不是作答）
+                OptionCross.toggle(questionId, key)
+                onCrossChanged(false)
+            } else {
+                onPick()
+            }
+        }
+        item.root.setOnLongClickListener { v ->
+            val crossed = OptionCross.toggle(questionId, key)
+            onCrossChanged(crossed)
+            v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            true
+        }
+    }
+
+    /**
+     * 一行选项的完整外观：徽标 + 正文 + 配图 + 叉号，三个状态一起算，别分两次调用。
+     *
+     * 划掉（排除）后的样子：徽标换成**灰色实心圆**（灰点，与「未选」的描边圈区分开），
+     * 正文压删除线并置灰，配图压暗，行尾亮一个叉号。
+     *
+     * 优先级：判对绿 / 判错红 > 已选蓝 > 已排除灰点 > 未选描边圈——
+     * 判分结果是答案本身，不能被「已排除」盖掉（选项先划掉后来又被选中的极端情况也按这个来）。
+     */
+    fun applyOptionState(
+        item: ItemOptionBinding,
+        selected: Boolean,
+        crossed: Boolean,
+        night: Boolean = false,
+        reveal: Reveal = Reveal.NONE
+    ) {
+        val ctx = item.root.context
+        val gray = ContextCompat.getColor(
+            ctx, if (night) R.color.fb_night_text_meta else R.color.fb_text_placeholder
+        )
+
+        if (crossed && !selected && reveal == Reveal.NONE) {
+            // 灰点：实心浅灰圆 + 更深一档的字母，一眼看得出「这项我排除了」
+            item.tvKey.setBackgroundResource(
+                if (night) R.drawable.bg_fb_circle_crossed_night else R.drawable.bg_fb_circle_crossed
+            )
+            item.tvKey.setTextColor(
+                ContextCompat.getColor(
+                    ctx,
+                    if (night) R.color.fb_night_circle_crossed_text else R.color.fb_circle_crossed_text
+                )
+            )
+        } else {
+            applyCircleState(item, selected, night, reveal)
+        }
+
+        // 正文：删除线 + 灰；恢复时把两样一起撤掉
+        val flags = item.tvText.paintFlags
+        item.tvText.paintFlags = if (crossed) {
+            flags or Paint.STRIKE_THRU_TEXT_FLAG
+        } else {
+            flags and Paint.STRIKE_THRU_TEXT_FLAG.inv()
+        }
+        item.tvText.setTextColor(
+            if (crossed) {
+                gray
+            } else {
+                ContextCompat.getColor(
+                    ctx, if (night) R.color.fb_night_text_body else R.color.fb_option_text
+                )
+            }
+        )
+        // 图上看不出删除线，压暗 + 叉号一起说明「这项排除了」
+        item.optionMedia.alpha = if (crossed) 0.3f else 1f
+        item.ivCross.visibility = if (crossed) View.VISIBLE else View.GONE
+        item.ivCross.setColorFilter(gray)
+    }
+
     /** 作答后就地刷新所有选项徽标（不重绑整张卡） */
     private fun refreshSelection(
         b: ItemQuestionPageBinding,
@@ -402,19 +662,26 @@ object QuestionCardBinder {
             val child = b.optionsBox.getChildAt(i)
             if (child.tag is ItemOptionBinding) {
                 // 单列：child 本身就是选项行
-                applyState(child.tag as ItemOptionBinding, selected, night)
+                applyState(child.tag as ItemOptionBinding, q.id, selected, night)
             } else if (child is ViewGroup) {
-                // 两列：选项行包在水平容器里，逐个刷新（单数行末尾是占位 View，tag 为空会跳过）
+                // 横排容器：两列老版式，或「图选项一行」（见 [buildImageOptionsRow]）；
+                // 逐个刷新（占位 View 没 tag 会跳过）
                 for (j in 0 until child.childCount) {
                     val inner = child.getChildAt(j)
-                    (inner.tag as? ItemOptionBinding)?.let { applyState(it, selected, night) }
+                    (inner.tag as? ItemOptionBinding)?.let { applyState(it, q.id, selected, night) }
                 }
             }
         }
     }
 
-    private fun applyState(item: ItemOptionBinding, selected: Set<String>, night: Boolean) {
-        applyCircleState(item, selected.contains(item.tvKey.text.toString().uppercase()), night)
+    private fun applyState(
+        item: ItemOptionBinding,
+        questionId: Long,
+        selected: Set<String>,
+        night: Boolean
+    ) {
+        val key = item.tvKey.text.toString().uppercase()
+        applyOptionState(item, selected.contains(key), OptionCross.isCrossed(questionId, key), night)
     }
 
     /** `"A,C"` / `"a，c"` / `"A C"` 统一解成大写键集合 */

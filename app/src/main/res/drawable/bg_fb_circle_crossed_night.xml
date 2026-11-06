@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 选项徽标「已排除（长按打叉）」态（夜间）：深灰实心，衬在卷面上仍看得出是个灰点 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+    <solid android:color="@color/fb_night_circle_crossed_fill" />
+</shape>

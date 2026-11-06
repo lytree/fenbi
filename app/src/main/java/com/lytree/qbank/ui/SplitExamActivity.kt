@@ -404,30 +404,66 @@ class SplitExamActivity : AppCompatActivity() {
                 .filter { it.isNotEmpty() }
                 .toMutableSet()
 
-            q.options.forEach { opt ->
-                val item = ItemOptionBinding.inflate(inflater, card.optionsBox, false)
-                item.tvKey.text = opt.key
-                // 文字 + 配图（图形推理的选项可能就是一张图）；分屏页暂无夜间配色
-                QuestionCardBinder.bindOptionBody(item, opt.text, night = false)
-                // 卷面已经给了左右留白（fb_content_padding_h），选项行不再二次缩进，否则会比题干多缩一截
-                item.root.setPadding(0, item.root.paddingTop, 0, item.root.paddingBottom)
-                val isSel = selected.contains(opt.key.uppercase())
-                QuestionCardBinder.applyCircleState(item, isSel)
-                item.root.setOnClickListener {
-                    if (multi) {
-                        if (selected.contains(opt.key.uppercase())) selected.remove(opt.key.uppercase())
-                        else selected.add(opt.key.uppercase())
-                    } else {
-                        selected.clear()
-                        selected.add(opt.key.uppercase())
-                    }
+            // 选中某项 → 记答案、刷新整栏（分屏页选项少，直接重绘最省事）
+            val pick: (String) -> Unit = { key ->
+                if (multi) {
+                    if (selected.contains(key)) selected.remove(key) else selected.add(key)
+                } else {
+                    selected.clear()
+                    selected.add(key)
+                }
+                answers[q.id] = selected.sorted().joinToString(",")
+                currentIndex = i
+                updateHeader()
+                renderQuestions()
+                binding.inkOverlay.bindQuestion(q.id)
+            }
+
+            // 打叉排除一个已选项：排除与「已选」互斥，答案跟着撤；重画由选项行自己负责，
+            // 这里不整栏重绘——长按调用的还是被按住的这一行，重建会把手指下的 View 拆掉
+            val deselectCrossed: (String, Boolean) -> Unit = { key, crossed ->
+                if (crossed && selected.remove(key)) {
                     answers[q.id] = selected.sorted().joinToString(",")
                     currentIndex = i
                     updateHeader()
-                    renderQuestions()
-                    binding.inkOverlay.bindQuestion(q.id)
                 }
-                card.optionsBox.addView(item.root)
+            }
+
+            // 图形推理「四个选项就是四张图」：和主答题页同口径，横排一行、按格宽缩图
+            if (QuestionCardBinder.isImageOnlyOptions(q)) {
+                card.optionsBox.addView(
+                    QuestionCardBinder.buildImageOptionsRow(
+                        card.optionsBox, q, { selected }, night = false,
+                        applyRowPadding = false, onPick = pick,
+                        onCrossChanged = deselectCrossed
+                    )
+                )
+            } else {
+                q.options.forEach { opt ->
+                    val item = ItemOptionBinding.inflate(inflater, card.optionsBox, false)
+                    item.tvKey.text = opt.key
+                    // 文字 + 配图（图形推理的选项可能就是一张图）；分屏页暂无夜间配色
+                    QuestionCardBinder.bindOptionBody(item, opt.text, night = false)
+                    // 卷面已经给了左右留白（fb_content_padding_h），选项行不再二次缩进，否则会比题干多缩一截
+                    item.root.setPadding(0, item.root.paddingTop, 0, item.root.paddingBottom)
+                    val key = opt.key.uppercase()
+                    val refresh: () -> Unit = {
+                        QuestionCardBinder.applyOptionState(
+                            item, selected.contains(key), OptionCross.isCrossed(q.id, key)
+                        )
+                    }
+                    refresh()
+                    // 点 = 选，长按 = 打叉，点已打叉的项 = 恢复可选（与主答题页同一套手感）
+                    QuestionCardBinder.bindOptionInteractions(
+                        item, q.id, key,
+                        onPick = { pick(key) },
+                        onCrossChanged = { crossed ->
+                            deselectCrossed(key, crossed)
+                            refresh()
+                        }
+                    )
+                    card.optionsBox.addView(item.root)
+                }
             }
 
             if (revealAnswers) {

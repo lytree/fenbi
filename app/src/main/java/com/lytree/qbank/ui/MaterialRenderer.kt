@@ -387,19 +387,29 @@ object MaterialRenderer {
      *
      * 与材料配图两点不同：**不抢点击**（图形推理里点图就是选这一项），
      * 上限也矮一档（四个选项各占一屏就没法比较了）。
+     *
+     * [compact] / [widthPx] / [maxHeightDp] 给「四图一行」的图形推理排版用：
+     * 格子只有屏宽的四分之一，加载占位与上下留白都要收一收，解码宽度也按格子给，
+     * 免得一张小图按整屏宽度解码白占内存。
      */
     fun renderOptionImages(
         context: Context,
         container: ViewGroup,
         images: List<OptionImage>,
-        night: Boolean = false
+        night: Boolean = false,
+        compact: Boolean = false,
+        widthPx: Int = 0,
+        maxHeightDp: Float = 240f
     ) {
         container.removeAllViews()
         images.forEach { img ->
             container.addView(
                 buildImage(
                     context, img.src, img.alt, night,
-                    maxHeightDp = 240f, previewOnTap = false
+                    maxHeightDp = maxHeightDp,
+                    previewOnTap = false,
+                    reqWidthPx = widthPx.takeIf { it > 0 },
+                    compact = compact
                 )
             )
         }
@@ -636,7 +646,11 @@ object MaterialRenderer {
         alt: String,
         night: Boolean,
         maxHeightDp: Float = 420f,
-        previewOnTap: Boolean = true
+        previewOnTap: Boolean = true,
+        /** 解码目标宽度：默认按整屏算；选项图排成一行时按格子宽度给 */
+        reqWidthPx: Int? = null,
+        /** 紧凑排版：占位与上下留白收窄，给四图一行的格子用 */
+        compact: Boolean = false
     ): View {
         val metaColor = ContextCompat.getColor(
             context, if (night) R.color.fb_night_text_meta else R.color.fb_text_meta
@@ -645,8 +659,9 @@ object MaterialRenderer {
         holder.layoutParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply {
-            topMargin = dp(context, 6f)
-            bottomMargin = dp(context, 6f)
+            val v = dp(context, if (compact) 2f else 6f)
+            topMargin = v
+            bottomMargin = v
         }
 
         val hint = TextView(context)
@@ -657,7 +672,7 @@ object MaterialRenderer {
         )
         hint.setTextColor(metaColor)
         hint.gravity = Gravity.CENTER
-        hint.setPadding(0, dp(context, 26f), 0, dp(context, 26f))
+        hint.setPadding(0, dp(context, if (compact) 8f else 26f), 0, dp(context, if (compact) 8f else 26f))
         hint.layoutParams = FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
         )
@@ -672,8 +687,9 @@ object MaterialRenderer {
         )
         holder.addView(image)
 
-        val reqWidth = (context.resources.displayMetrics.widthPixels - dp(context, 88f))
-            .coerceAtLeast(dp(context, 240f))
+        val reqWidth = reqWidthPx
+            ?: (context.resources.displayMetrics.widthPixels - dp(context, 88f))
+                .coerceAtLeast(dp(context, 240f))
         ImageLoader.load(context, src, reqWidth) { bmp ->
             if (bmp == null) {
                 hint.text = context.getString(R.string.material_image_failed, src)

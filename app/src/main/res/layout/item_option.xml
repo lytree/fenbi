@@ -5,6 +5,8 @@
   · 正文 16sp 次级色，行距 5dp；徽标与文字块上下居中（多行时圈落在文字块中间）
   · 正文下面可以带图：图形推理那种「四个选项就是四张图」的题，
     图片由 QuestionCardBinder.bindOptionBody 塞进 optionMedia（默认隐藏，纯文字选项没有额外开销）
+  · 选项全是图时改横排（QuestionCardBinder.buildImageOptionsRow）：同一份布局在代码里
+    转成竖排（徽标在上、图在下），宽度由外层均分，图按格宽缩小
   · 左右留白走 fb_option_row_padding_start / fb_content_padding_h，与题干对齐
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -48,4 +50,19 @@
             android:visibility="gone"
             tools:visibility="visible" />
     </LinearLayout>
+
+    <!-- 长按划掉（排除法）后的叉号：默认隐藏，见 QuestionCardBinder.applyCrossState。
+         放在正文右侧而不是左上角——选项是多行时右上角会顶着一行字，右边留白处最不抢视线；
+         纯图选项横排时这一行被转成竖排，叉号落到图下方居中。 -->
+    <ImageView
+        android:id="@+id/ivCross"
+        android:layout_width="16dp"
+        android:layout_height="16dp"
+        android:layout_gravity="center_vertical"
+        android:layout_marginStart="8dp"
+        android:contentDescription="@null"
+        android:importantForAccessibility="no"
+        android:src="@drawable/ic_fb_cross"
+        android:visibility="gone"
+        tools:visibility="visible" />
 </LinearLayout>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 选项右侧的「已划掉」叉号（与顶栏 ic_fb_close 同一套细线笔触，尺寸小一号） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="16dp" android:height="16dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:strokeColor="@color/fb_text_placeholder" android:strokeWidth="1.9"
+        android:strokeLineCap="round"
+        android:pathData="M3.8,3.8 L12.2,12.2 M12.2,3.8 L3.8,12.2" />
+</vector>

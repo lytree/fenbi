@@ -97,6 +97,9 @@
     <color name="fb_circle_text">#868EA8</color>
     <color name="fb_circle_fill">#3C7CFC</color>
     <color name="fb_circle_on">#FFFFFF</color>
+    <!-- 选项徽标「已排除（打叉）」态：灰实心圆 + 稍深一档的字母 -->
+    <color name="fb_circle_crossed_fill">#E4E7EC</color>
+    <color name="fb_circle_crossed_text">#A6ACB6</color>
     <!-- 选项正文（比题干略柔） -->
     <color name="fb_option_text">#3C464F</color>
     <!-- 模块说明卡（资料分析 / 常识判断这类模块头） -->
@@ -191,6 +194,9 @@
     <!-- 选项圆形徽标未选态 -->
     <color name="fb_night_circle_stroke">#4A4E58</color>
     <color name="fb_night_circle_text">#9AA0AC</color>
+    <!-- 选项徽标「已排除（打叉）」态（夜间） -->
+    <color name="fb_night_circle_crossed_fill">#2C2F37</color>
+    <color name="fb_night_circle_crossed_text">#6E737D</color>
     <!-- 更多面板 / 分段控件 / 手写工具条 -->
     <color name="fb_night_panel_bg">#2A2C33</color>
     <color name="fb_night_segment_bg">#22242A</color>

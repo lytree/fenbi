@@ -1,6 +1,9 @@
 package com.lytree.qbank
 
+import com.lytree.qbank.data.model.Option
+import com.lytree.qbank.data.model.Question
 import com.lytree.qbank.ui.MaterialRenderer
+import com.lytree.qbank.ui.QuestionCardBinder
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -66,5 +69,46 @@ class OptionImageParseTest {
         assertEquals("见下图 ［图片］", MaterialRenderer.optionSummary("见下图\n![图](/tmp/1.png)"))
         assertEquals("增长 5.8%", MaterialRenderer.optionSummary("增长 5.8%"))
         assertTrue(MaterialRenderer.splitOption("![x](data:image/png;base64,AAAA)").hasImages)
+    }
+
+    // ---------------- 版式分流：什么时候能横排一行 ----------------
+
+    private fun q(vararg texts: String) = Question(
+        options = texts.mapIndexed { i, t -> Option(('A' + i).toString(), t) }
+    )
+
+    @Test
+    fun `四个只带图的选项走横排`() {
+        assertTrue(
+            QuestionCardBinder.isImageOnlyOptions(
+                q(
+                    "![A](/tmp/a.png)", "![B](/tmp/b.png)",
+                    "![C](/tmp/c.png)", "![D](/tmp/d.png)"
+                )
+            )
+        )
+        // 两个、三个同理；整格一条路径也算纯图
+        assertTrue(QuestionCardBinder.isImageOnlyOptions(q("/tmp/a.png", "/tmp/b.png")))
+        assertTrue(
+            QuestionCardBinder.isImageOnlyOptions(
+                q("![A](/a.png)", "![B](/b.png)", "![C](/c.png)")
+            )
+        )
+    }
+
+    @Test
+    fun `带文字或图太多仍走单列`() {
+        // 文字 + 图：图会被压成小缩略图，横排反而读不出字
+        assertFalse(QuestionCardBinder.isImageOnlyOptions(q("![A](/a.png)", "见下图 ![B](/b.png)")))
+        // 选项不是图
+        assertFalse(QuestionCardBinder.isImageOnlyOptions(q("甲", "乙", "丙", "丁")))
+        // 一格里两张图：横排放不下
+        assertFalse(QuestionCardBinder.isImageOnlyOptions(q("![A1](/a1.png)![A2](/a2.png)", "![B](/b.png)")))
+        // 超过 4 项一行就挤成缩略图墙了
+        assertFalse(
+            QuestionCardBinder.isImageOnlyOptions(
+                q("![A](/a.png)", "![B](/b.png)", "![C](/c.png)", "![D](/d.png)", "![E](/e.png)")
+            )
+        )
     }
 }
