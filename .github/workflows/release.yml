@@ -96,7 +96,57 @@ jobs:
           cp "$APK" "out/qbank-${{ steps.version.outputs.name }}.apk"
           cd out && sha256sum *.apk > SHA256SUMS.txt && cat SHA256SUMS.txt
 
-      - name: 发布 GitHub Release
+      # Release 正文优先取 CHANGELOG.md 里这一版的段落（原文照发，保留 Markdown），
+      # 取不到才走下面「回退」那个 step。分两个 step 而不是一个，
+      # 是因为 action-gh-release 的 body / generate_release_notes 谁优先不好赌——
+      # 显式二选一，跑出来是什么就是什么。
+      - name: 提取 CHANGELOG 段落
+        id: notes
+        run: |
+          python3 - "${{ steps.version.outputs.name }}" <<'PY'
+          import os, pathlib, re, sys
+
+          ver = sys.argv[1].lstrip("v")
+          changelog = pathlib.Path("CHANGELOG.md")
+          if not changelog.exists():
+              print("没有 CHANGELOG.md，本次用自动生成的说明")
+              sys.exit(0)
+
+          text = changelog.read_text(encoding="utf-8")
+          # 版本标题形如 `## [0.0.24] - 2026-11-06`，方括号可有可无
+          head = re.search(r"^##\s+\[?v?" + re.escape(ver) + r"\]?(?:\s|$).*$", text, re.M)
+          if not head:
+              print(f"CHANGELOG.md 里没有 {ver} 这一节，本次用自动生成的说明")
+              sys.exit(0)
+
+          rest = text[head.end():]
+          # 段落写到下一个二级标题或分隔线为止（文件末尾的 `---` 之后是补充说明，不算正文）
+          nxt = re.search(r"^(?:##\s|---\s*$)", rest, re.M)
+          body = (rest[: nxt.start()] if nxt else rest).strip()
+          if not body:
+              print(f"CHANGELOG.md 的 {ver} 那一节是空的，本次用自动生成的说明")
+              sys.exit(0)
+
+          pathlib.Path("release-notes.md").write_text(body + "\n", encoding="utf-8")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              out.write("has_notes=true\n")
+          print(f"已取到 {ver} 的更新说明：{len(body)} 字")
+          PY
+
+      - name: 发布 GitHub Release（正文取 CHANGELOG）
+        if: steps.notes.outputs.has_notes == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          body_path: release-notes.md
+          make_latest: true
+          files: |
+            out/*.apk
+            out/SHA256SUMS.txt
+
+      - name: 发布 GitHub Release（回退自动生成）
+        if: steps.notes.outputs.has_notes != 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
