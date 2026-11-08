@@ -442,8 +442,6 @@ class SplitExamActivity : AppCompatActivity() {
                 q.options.forEach { opt ->
                     val item = ItemOptionBinding.inflate(inflater, card.optionsBox, false)
                     item.tvKey.text = opt.key
-                    // 文字 + 配图（图形推理的选项可能就是一张图）；分屏页暂无夜间配色
-                    QuestionCardBinder.bindOptionBody(item, opt.text, night = false)
                     // 卷面已经给了左右留白（fb_content_padding_h），选项行不再二次缩进，否则会比题干多缩一截
                     item.root.setPadding(0, item.root.paddingTop, 0, item.root.paddingBottom)
                     val key = opt.key.uppercase()
@@ -452,6 +450,16 @@ class SplitExamActivity : AppCompatActivity() {
                             item, selected.contains(key), OptionCross.isCrossed(q.id, key)
                         )
                     }
+                    // 文字 + 配图（图形推理的选项可能就是一张图）；分屏页暂无夜间配色。
+                    // 图上的长按要接回「打叉」，否则图片可点会吃掉整行的长按
+                    QuestionCardBinder.bindOptionBody(
+                        item, opt.text, night = false,
+                        onImageLongPress = {
+                            val crossed = OptionCross.toggle(q.id, key)
+                            deselectCrossed(key, crossed)
+                            refresh()
+                        }
+                    )
                     refresh()
                     // 点 = 选，长按 = 打叉，点已打叉的项 = 恢复可选（与主答题页同一套手感）
                     QuestionCardBinder.bindOptionInteractions(

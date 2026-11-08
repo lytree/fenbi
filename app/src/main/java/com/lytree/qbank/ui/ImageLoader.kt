@@ -34,35 +34,44 @@ object ImageLoader {
     /** 单边最大解码宽度：再大对手机屏也没有意义，只会吃内存 */
     private const val MAX_WIDTH = 1600
 
-    private val cache = object : LruCache<String, Bitmap>(16 * 1024 * 1024) {
-        override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
+    /**
+     * 一次解码的结果：位图 + **原图**像素尺寸。
+     *
+     * 排版要靠原图尺寸算「这张图本来就多大」（见 [MaterialRenderer] 的自适应配图），
+     * 不能拿降采样后的 `bitmap.width` 当原图——那会把大图误判成小图，越排越小。
+     */
+    class Loaded(val bitmap: Bitmap, val srcWidth: Int, val srcHeight: Int)
+
+    // 键带目标宽度：同一张图在「选项格子里」和「整屏预览」用的精度不一样，
+    // 只按路径缓存会让点开的大图复用选项里那份低清位图（放大后一片糊）。
+    private val cache = object : LruCache<String, Loaded>(16 * 1024 * 1024) {
+        override fun sizeOf(key: String, value: Loaded): Int = value.bitmap.byteCount
     }
 
     private val executor = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
 
-    fun cached(src: String): Bitmap? = cache.get(src)
-
     /** 异步加载；[onReady] 一定在主线程回调，失败给 null */
-    fun load(context: Context, src: String, reqWidth: Int, onReady: (Bitmap?) -> Unit) {
-        cache.get(src)?.let {
+    fun load(context: Context, src: String, reqWidth: Int, onReady: (Loaded?) -> Unit) {
+        val app = context.applicationContext
+        val width = reqWidth.coerceIn(320, MAX_WIDTH)
+        val key = "$width|$src"
+        cache.get(key)?.let {
             onReady(it)
             return
         }
-        val app = context.applicationContext
-        val width = reqWidth.coerceIn(320, MAX_WIDTH)
         executor.execute {
-            val bmp = try {
+            val loaded = try {
                 decode(app, src, width)
             } catch (_: Throwable) {
                 null
             }
-            if (bmp != null) cache.put(src, bmp)
-            main.post { onReady(bmp) }
+            if (loaded != null) cache.put(key, loaded)
+            main.post { onReady(loaded) }
         }
     }
 
-    private fun decode(context: Context, src: String, reqWidth: Int): Bitmap? {
+    private fun decode(context: Context, src: String, reqWidth: Int): Loaded? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         openStream(context, src)?.use { BitmapFactory.decodeStream(it, null, bounds) }
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
@@ -74,7 +83,9 @@ object ImageLoader {
             inSampleSize = sample
             inPreferredConfig = Bitmap.Config.ARGB_8888
         }
-        return openStream(context, src)?.use { BitmapFactory.decodeStream(it, null, opts) }
+        val bmp = openStream(context, src)?.use { BitmapFactory.decodeStream(it, null, opts) }
+            ?: return null
+        return Loaded(bmp, bounds.outWidth, bounds.outHeight)
     }
 
     private fun openStream(context: Context, raw: String): InputStream? {

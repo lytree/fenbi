@@ -350,7 +350,6 @@ object QuestionCardBinder {
             val item = ItemOptionBinding.inflate(inflater, b.optionsBox, false)
             item.tvKey.text = opt.key
             item.tvKey.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f * fontScale)
-            bindOptionBody(item, opt.text, night, fontScale)
             val key = opt.key.uppercase()
 
             /** 按「当前选中 + 打叉 + 判分」重画这一行（长按 / 点叉后要就地更新，不整卡重绑） */
@@ -364,6 +363,17 @@ object QuestionCardBinder {
                     revealNow && key in wrongSelected -> Reveal.WRONG
                     else -> Reveal.NONE
                 }
+            )
+
+            /** 图上长按 = 整行长按（翻转排除态 → 撤答案 → 重画），两条路径别分叉 */
+            fun toggleCrossOnImage() {
+                if (OptionCross.toggle(q.id, opt.key)) unpick(key)
+                refresh()
+            }
+
+            bindOptionBody(
+                item, opt.text, night, fontScale,
+                onImageLongPress = { toggleCrossOnImage() }
             )
             refresh()
 
@@ -400,6 +410,9 @@ object QuestionCardBinder {
     /**
      * 图片选项横向排成一行：每格宽度均分，图按格宽等比缩放（高不过 1.5 倍格宽，也要矮一档），
      * A/B/C/D 徽标放在图上方居中——图一高，徽标在左侧会把整行撑歪。
+     *
+     * 手势：**点图 = 看大图，点字母圈 / 行内空白 = 选中，长按 = 打叉**。
+     * 图比格子窄时按原图宽度居中放着，不为了填满格子把图拉糊。
      *
      * [selectedProvider] 传函数而不是快照：行内的「打叉 / 恢复」是就地重画的，
      * 得快照会读到打叉前的选中态（叉还在、圈还是蓝的）。
@@ -468,10 +481,6 @@ object QuestionCardBinder {
 
             val content = MaterialRenderer.splitOption(opt.text)
             item.optionMedia.visibility = View.VISIBLE
-            MaterialRenderer.renderOptionImages(
-                ctx, item.optionMedia, content.images, night,
-                compact = true, widthPx = cellWidth, maxHeightDp = maxHeightDp
-            )
 
             val key = opt.key.uppercase()
             // 竖排之后叉号落到图下方居中（XML 里那条 8dp 起始边距是给横排用的）
@@ -488,6 +497,20 @@ object QuestionCardBinder {
                 OptionCross.isCrossed(q.id, key),
                 night,
                 revealFor?.invoke(key) ?: Reveal.NONE
+            )
+
+            /** 图上长按 = 整行长按（翻转排除态 → 交给调用方撤答案 → 重画） */
+            fun toggleCrossOnImage() {
+                val crossed = OptionCross.toggle(q.id, opt.key)
+                onCrossChanged?.invoke(key, crossed)
+                refresh()
+            }
+
+            // 图按格宽缩、点图看大图；字母圈照样是选中，长按（含图上的长按）是打叉
+            MaterialRenderer.renderOptionImages(
+                ctx, item.optionMedia, content.images, night,
+                compact = true, widthPx = cellWidth, maxHeightDp = maxHeightDp,
+                onLongPress = { toggleCrossOnImage() }
             )
             refresh()
             item.root.tag = item
@@ -508,8 +531,9 @@ object QuestionCardBinder {
      * 选项正文：文字 + 配图。
      *
      * 图形推理那种「四个选项就是四张图」的题，选项单元格里放的就是图片地址
-     * （写法与材料图片一致，见 [MaterialRenderer.splitOption]）。图片按选项正文宽度铺开、
-     * 最高 240dp，**不抢点击**——点图就等于点这一项；只有图没有字时正文行整个隐藏。
+     * （写法与材料图片一致，见 [MaterialRenderer.splitOption]）。图片多大就显示多大
+     * （只缩不放、保持原比例），最高 240dp；**点图看大图**，点其余部分是选这一项。
+     * 配图上的长按交给 [onImageLongPress]，否则图片可点会把整行的「长按打叉」吃掉。
      *
      * 分屏页（[SplitExamActivity]）也走这里，两处口径一致，别各写一份。
      */
@@ -517,7 +541,8 @@ object QuestionCardBinder {
         item: ItemOptionBinding,
         text: String,
         night: Boolean,
-        fontScale: Float = 1f
+        fontScale: Float = 1f,
+        onImageLongPress: (() -> Unit)? = null
     ) {
         val ctx = item.root.context
         val content = MaterialRenderer.splitOption(text)
@@ -551,7 +576,10 @@ object QuestionCardBinder {
 
         if (content.hasImages) {
             item.optionMedia.visibility = View.VISIBLE
-            MaterialRenderer.renderOptionImages(ctx, item.optionMedia, content.images, night)
+            MaterialRenderer.renderOptionImages(
+                ctx, item.optionMedia, content.images, night,
+                onLongPress = onImageLongPress
+            )
         } else {
             item.optionMedia.visibility = View.GONE
             item.optionMedia.removeAllViews()

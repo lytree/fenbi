@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Color
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -45,6 +46,14 @@ import com.lytree.qbank.R
  * ```
  */
 object MaterialRenderer {
+
+    /**
+     * 配图最多放大到原图像素的几倍。
+     *
+     * 图形推理的选项图常常只有几十像素（从截图里切出来的），铺满格子要放大三四倍，糊成一片；
+     * 2 倍是「还能看」的折中——再想看清细节就点图看大图。
+     */
+    private const val UPSCALE_CAP = 2
 
     /**
      * 把材料文本渲染进 [container]。
@@ -385,12 +394,16 @@ object MaterialRenderer {
     /**
      * 把选项里的图片铺进 [container]（按选项正文宽度，最高 240dp）。
      *
-     * 与材料配图两点不同：**不抢点击**（图形推理里点图就是选这一项），
-     * 上限也矮一档（四个选项各占一屏就没法比较了）。
+     * 尺寸口径与材料配图一致：按原图尺寸排、最多放大 2 倍，小图居中、不被拉满一行。
+     * 材料配图点一下整屏看，这里也一样——选项整行仍然点一下选中，
+     * 但**落在图上的点击**给预览（字母圈照样能选中，见 [QuestionCardBinder.bindOptionInteractions]）。
      *
      * [compact] / [widthPx] / [maxHeightDp] 给「四图一行」的图形推理排版用：
      * 格子只有屏宽的四分之一，加载占位与上下留白都要收一收，解码宽度也按格子给，
      * 免得一张小图按整屏宽度解码白占内存。
+     *
+     * [onLongPress] 非空时图片自己吃掉长按（选项图长按 = 打叉排除），
+     * 否则图片可点会挡掉父容器的长按。
      */
     fun renderOptionImages(
         context: Context,
@@ -399,7 +412,8 @@ object MaterialRenderer {
         night: Boolean = false,
         compact: Boolean = false,
         widthPx: Int = 0,
-        maxHeightDp: Float = 240f
+        maxHeightDp: Float = 240f,
+        onLongPress: (() -> Unit)? = null
     ) {
         container.removeAllViews()
         images.forEach { img ->
@@ -407,7 +421,8 @@ object MaterialRenderer {
                 buildImage(
                     context, img.src, img.alt, night,
                     maxHeightDp = maxHeightDp,
-                    previewOnTap = false,
+                    previewOnTap = true,
+                    onImageLongPress = onLongPress,
                     reqWidthPx = widthPx.takeIf { it > 0 },
                     compact = compact
                 )
@@ -635,10 +650,16 @@ object MaterialRenderer {
     }
 
     /**
-     * 配图：按原图比例铺满可用宽度（最高 [maxHeightDp] dp）。
+     * 配图：按原图尺寸排，**最多放大 2 倍**，绝不为了填满一行硬拉（高度顶到 [maxHeightDp] 再回缩）。
      *
-     * 材料图默认 420dp、点一下整屏看；选项图上限 240dp 且 [previewOnTap] = false——
-     * 选项整行本身就是热区，图片把点击吃掉的话「点图选这项」就没了。
+     * 以前是所有图一律铺满可用宽度：图形推理那种几十像素的选项图被拉到整行，
+     * 一张 66×54 的图放成 200 多像素宽，糊得看不清细节。现在的口径：
+     * - 宽度 = min(可用宽度, 原图宽 × 2)，图比这更窄就居中放着；2 倍是「小图还不至于太糊」的上限；
+     * - 高度按原图比例算，超过 [maxHeightDp]（材料 420dp / 选项 240dp）就按比例把宽度也收回，
+     *   不留左右空白，比例始终是原图的；
+     * - 点图整屏预览（按原图重新解码，不复用格子里的低清位图）。
+     *
+     * [onImageLongPress] 非空时图片自己吃掉长按（选项图长按 = 打叉排除），否则图可点会把父容器的长按挡掉。
      */
     private fun buildImage(
         context: Context,
@@ -647,6 +668,7 @@ object MaterialRenderer {
         night: Boolean,
         maxHeightDp: Float = 420f,
         previewOnTap: Boolean = true,
+        onImageLongPress: (() -> Unit)? = null,
         /** 解码目标宽度：默认按整屏算；选项图排成一行时按格子宽度给 */
         reqWidthPx: Int? = null,
         /** 紧凑排版：占位与上下留白收窄，给四图一行的格子用 */
@@ -678,30 +700,41 @@ object MaterialRenderer {
         )
         holder.addView(hint)
 
-        val image = RatioImageView(context, dp(context, maxHeightDp))
+        val image = AdaptiveImageView(context, dp(context, maxHeightDp))
         image.visibility = View.GONE
         image.scaleType = ImageView.ScaleType.FIT_CENTER
         image.contentDescription = alt
+        // 宽度由 onMeasure 按「原图多宽」定，父容器只负责把它居中
         image.layoutParams = FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-        )
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+        }
         holder.addView(image)
 
         val reqWidth = reqWidthPx
             ?: (context.resources.displayMetrics.widthPixels - dp(context, 88f))
                 .coerceAtLeast(dp(context, 240f))
-        ImageLoader.load(context, src, reqWidth) { bmp ->
-            if (bmp == null) {
+        ImageLoader.load(context, src, reqWidth) { loaded ->
+            if (loaded == null) {
                 hint.text = context.getString(R.string.material_image_failed, src)
             } else {
                 hint.visibility = View.GONE
-                image.setImageBitmap(bmp)
-                image.ratio = bmp.height.toFloat() / bmp.width.coerceAtLeast(1)
+                image.setImageBitmap(loaded.bitmap)
+                image.ratio = loaded.srcHeight.toFloat() / loaded.srcWidth.coerceAtLeast(1)
+                // 原图像素宽 ×2 就是允许的最大显示宽度：比这更宽的行不再拉，比这窄就居中放着
+                image.naturalWidthPx = loaded.srcWidth * UPSCALE_CAP
                 image.visibility = View.VISIBLE
                 image.requestLayout()
                 if (previewOnTap) {
-                    image.setOnClickListener {
-                        context.findActivity()?.let { ImagePreviewDialog.show(it, bmp) }
+                    // 点图 = 看大图；没设预览时图保持不可点，点击继续交给整行（选中那一项）
+                    image.setOnClickListener { openPreview(context, src) }
+                }
+                if (onImageLongPress != null) {
+                    image.setOnLongClickListener { v ->
+                        v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                        onImageLongPress()
+                        true
                     }
                 }
             }
@@ -709,19 +742,37 @@ object MaterialRenderer {
         return holder
     }
 
-    /** 高度按原图比例算，超过 [maxHeight] 就截住（长截图不会一屏糊满） */
-    private class RatioImageView(context: Context, private val maxHeight: Int) :
+    /** 整屏看大图：按屏幕宽度重新解码，别复用选项格子里那份小图 */
+    private fun openPreview(context: Context, src: String) {
+        val activity = context.findActivity() ?: return
+        ImagePreviewDialog.show(activity, src)
+    }
+
+    /**
+     * 按原图比例自适应：宽 = min(可用宽度, 原图宽 × [UPSCALE_CAP])，高 = 宽 × 比例；
+     * 高超过 [maxHeight] 时按比例回缩宽度，保证图始终是原图比例、不留大片空白。
+     */
+    private class AdaptiveImageView(context: Context, private val maxHeight: Int) :
         AppCompatImageView(context) {
 
         var ratio: Float = 0f
+        /** 允许的最大显示宽度（像素）= 原图宽 × 放大上限 */
+        var naturalWidthPx: Int = 0
 
         override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-            val w = MeasureSpec.getSize(widthMeasureSpec)
-            if (ratio > 0f && w > 0) {
-                setMeasuredDimension(w, (w * ratio).toInt().coerceAtMost(maxHeight))
-            } else {
+            val avail = MeasureSpec.getSize(widthMeasureSpec)
+            if (ratio <= 0f || avail <= 0 || MeasureSpec.getMode(widthMeasureSpec) == MeasureSpec.UNSPECIFIED) {
                 super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+                return
             }
+            val cap = if (naturalWidthPx > 0) minOf(avail, naturalWidthPx) else avail
+            var w = cap
+            var h = (w * ratio).toInt()
+            if (h > maxHeight) {
+                h = maxHeight
+                w = (h / ratio).toInt()
+            }
+            setMeasuredDimension(w.coerceAtLeast(1), h.coerceAtLeast(1))
         }
     }
 
