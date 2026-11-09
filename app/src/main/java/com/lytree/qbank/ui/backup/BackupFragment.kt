@@ -3,6 +3,8 @@ package com.lytree.qbank.ui.backup
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.Process
 import android.provider.OpenableColumns
 import android.view.LayoutInflater
@@ -20,6 +22,7 @@ import com.lytree.qbank.data.backup.BackupManager
 import com.lytree.qbank.data.backup.CloudFile
 import com.lytree.qbank.data.backup.CloudStore
 import com.lytree.qbank.data.backup.WebDavProvider
+import com.lytree.qbank.data.db.QBankDb
 import com.lytree.qbank.databinding.FragmentBackupBinding
 import com.lytree.qbank.ui.FbDialog
 import com.lytree.qbank.ui.Refreshable
@@ -47,6 +50,9 @@ class BackupFragment : Fragment(), Refreshable {
 
     private var busy = false
 
+    /** 预览中、等用户点「覆盖并恢复」的那份解包结果；取消或落地完就清空 */
+    private var pendingRestore: BackupArchive.Opened? = null
+
     private val pickRestoreFile =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             if (uri == null) return@registerForActivityResult
@@ -55,20 +61,19 @@ class BackupFragment : Fragment(), Refreshable {
                 FbDialog.alert(requireContext(), "选中的不是 .zip 备份包。\n\n备份包文件名形如 qbank-backup-20261029-2230.zip。")
                 return@registerForActivityResult
             }
-            confirmRestore(name) {
-                val temp = File(requireContext().cacheDir, "restore-src").apply { mkdirs() }
-                val local = File(temp, name)
-                val ok = runCatching {
-                    requireContext().contentResolver.openInputStream(uri)?.use { input ->
-                        local.outputStream().use { output -> input.copyTo(output) }
-                    } ?: throw IllegalStateException("读不到这个文件")
-                }.isSuccess
-                if (!ok || !local.isFile || local.length() == 0L) {
-                    FbDialog.alert(requireContext(), "这个文件读不出来，换个位置再选一次（或先复制到「下载」目录）。")
-                    return@confirmRestore
-                }
-                restoreFromLocal(local)
+            // 先落到缓存，再交给「校验 → 预览 → 覆盖」那条链路
+            val temp = File(requireContext().cacheDir, "restore-src").apply { mkdirs() }
+            val local = File(temp, name)
+            val ok = runCatching {
+                requireContext().contentResolver.openInputStream(uri)?.use { input ->
+                    local.outputStream().use { output -> input.copyTo(output) }
+                } ?: throw IllegalStateException("读不到这个文件")
+            }.isSuccess
+            if (!ok || !local.isFile || local.length() == 0L) {
+                FbDialog.alert(requireContext(), "这个文件读不出来，换个位置再选一次（或先复制到「下载」目录）。")
+                return@registerForActivityResult
             }
+            restoreFromLocal(local)
         }
 
     override fun onCreateView(
@@ -256,39 +261,106 @@ class BackupFragment : Fragment(), Refreshable {
         }
         FbDialog.list(requireContext(), "选择一份云端备份", labels.toTypedArray()) { index ->
             val picked = list.getOrNull(index) ?: return@list
-            confirmRestore(picked.name) { restoreFromCloud(picked) }
+            restoreFromCloud(picked)
         }
     }
 
-    private fun confirmRestore(source: String, onConfirm: () -> Unit) {
-        FbDialog.confirm(
-            requireContext(),
-            "将用这份备份覆盖当前所有试卷、作答记录、笔迹与设置：\n\n$source\n\n当前数据库会留一份 .before-restore 兜底，但仍建议先自己备份一次。",
-            okText = "覆盖并恢复",
-            onOk = { onConfirm() }
-        )
-    }
-
-    /** 本地 zip 直接落地 */
+    /**
+     * 本地 zip：先解包校验，再把包里的内容摆给用户看，确认了才覆盖。
+     *
+     * 校验放在预览之前是有意的——包坏了、来自更新版本、传输截断都在这一步报错，
+     * 用户不会等到数据被换掉一半才发现恢复不了。
+     */
     private fun restoreFromLocal(zip: File) {
-        runTask("恢复中") { progress ->
-            val manifest = BackupManager.restore(requireContext(), zip) { p, label ->
-                progress(p, label)
+        runTask("检查备份包") { _ ->
+            val opened = BackupManager.openForRestore(requireContext(), zip)
+            withContext(Dispatchers.Main) {
+                if (_binding == null) BackupManager.discardOpened(opened) else showRestorePreview(opened)
             }
-            announceRestored(manifest)
         }
     }
 
-    /** 云端先下载再落地，两段进度接成一条 */
+    /** 云端先下载到本地，再走同一套「校验 → 预览 → 覆盖」 */
     private fun restoreFromCloud(file: CloudFile) {
-        runTask("恢复中") { progress ->
+        runTask("下载备份包") { progress ->
             val local = BackupManager.downloadFromCloud(
                 requireContext(), provider, file
-            ) { p -> progress(p * 0.5f, "下载中 ${(p * 100).toInt()}%") }
-            val manifest = BackupManager.restore(requireContext(), local) { p, label ->
-                progress(0.5f + p * 0.5f, label)
+            ) { p -> progress(p, "下载中 ${(p * 100).toInt()}%") }
+            val opened = BackupManager.openForRestore(requireContext(), local)
+            withContext(Dispatchers.Main) {
+                if (_binding == null) BackupManager.discardOpened(opened) else showRestorePreview(opened)
             }
-            announceRestored(manifest)
+        }
+    }
+
+    /**
+     * 覆盖前把包里有什么摊开：什么时候备的、来自哪台机器、多少卷多少题、库版本会不会被降级。
+     *
+     * 老流程只有一句「将覆盖当前数据」，用户看不到自己选的是哪一份——
+     * 从网盘下载时选错文件（比如去年那份），覆盖完才发现记录没了。
+     */
+    private fun showRestorePreview(opened: BackupArchive.Opened) {
+        val ctx = requireContext()
+        val m = opened.manifest
+        val counts = m.counts
+        pendingRestore = opened
+
+        val detail = buildString {
+            append("备份时间：${formatTime(m.createdAt)}")
+            append("\n内容：试卷 ${counts["papers"] ?: 0} 份 · 题目 ${counts["questions"] ?: 0} 道")
+            append(" · 记录 ${counts["records"] ?: 0} 次")
+            if (m.imageCount > 0) append(" · 配图 ${m.imageCount} 张")
+            val bytes = if (m.totalBytes > 0) m.totalBytes else opened.dbFile.length()
+            append("\n体积：${BackupArchive.humanSize(bytes)}")
+            if (m.device.isNotBlank() || m.versionName.isNotBlank()) {
+                append("\n来源：")
+                append(m.device.ifBlank { "未知设备" })
+                if (m.versionName.isNotBlank()) append(" · App ${m.versionName}")
+            }
+            append("\n库版本：v${m.dbVersion}")
+            if (m.dbVersion < QBankDb.DB_VERSION) {
+                append("（本机 v${QBankDb.DB_VERSION}，恢复后打开时自动升级）")
+            }
+            append("\n\n覆盖后，当前所有试卷、作答记录、笔迹与设置都会被这份备份替换。")
+        }
+
+        var applied = false
+        val dialog = FbDialog.confirm(
+            ctx,
+            detail,
+            okText = "覆盖并恢复",
+            cancelText = "取消",
+            onOk = {
+                applied = true
+                applyRestore(opened)
+            }
+        )
+        dialog.setOnDismissListener {
+            // 点「覆盖并恢复」时 dismiss 先于 onOk 触发，这条判断得推到队尾，
+            // 否则会把刚要落地的解包目录删掉
+            Handler(Looper.getMainLooper()).post {
+                if (!applied && pendingRestore === opened) {
+                    pendingRestore = null
+                    BackupManager.discardOpened(opened)
+                }
+            }
+        }
+    }
+
+    /** 用户确认后才真正换库；排到下一帧，避开上一个任务收尾时还没复位的 busy */
+    private fun applyRestore(opened: BackupArchive.Opened) {
+        pendingRestore = null
+        Handler(Looper.getMainLooper()).post {
+            if (_binding == null) {
+                BackupManager.discardOpened(opened)
+                return@post
+            }
+            runTask("恢复中") { progress ->
+                val manifest = BackupManager.installOpened(requireContext(), opened) { p, label ->
+                    progress(p, label)
+                }
+                announceRestored(manifest)
+            }
         }
     }
 
@@ -411,6 +483,9 @@ class BackupFragment : Fragment(), Refreshable {
     }
 
     override fun onDestroyView() {
+        // 预览还没确认就离开页面：解包目录是临时的，跟着清掉
+        pendingRestore?.let { BackupManager.discardOpened(it) }
+        pendingRestore = null
         super.onDestroyView()
         _binding = null
     }

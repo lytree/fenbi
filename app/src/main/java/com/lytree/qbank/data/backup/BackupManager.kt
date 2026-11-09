@@ -15,6 +15,9 @@ object BackupManager {
     /** 本地缓存里最多留几份，够手动分享就行，长期留存交给云端 */
     private const val LOCAL_KEEP = 2
 
+    /** 恢复时解包用的临时目录（cache 下），预览阶段也用它 */
+    private const val RESTORE_WORK = "restore-work"
+
     /** 自动备份生成的文件名前缀，清理时只认自己生成的，别删用户放进同目录的东西 */
     const val NAME_PREFIX = "qbank-backup-"
 
@@ -64,24 +67,53 @@ object BackupManager {
     }
 
     /**
-     * 从备份包恢复。中途失败时 [BackupArchive.install] 已把旧库放回原位，
-     * 这里不再兜底——但调用方仍应在成功后重启进程，避免各页面拿着旧 id。
+     * 只解包 + 校验，**不碰本机数据**——给「恢复前预览」用。
+     *
+     * 校验（app 标记 / schema / MD5 / 库版本）在这一步就做完，包坏了、来自更新版本、
+     * 传输被截断都会当场抛 [BackupArchive.BackupException]，用户不会等到覆盖一半才发现。
+     * 解开的内容留在 cache 的 `restore-work` 里，交给 [installOpened] 落地；
+     * 用户看完取消就调 [discardOpened] 清掉。
      */
-    suspend fun restore(
+    suspend fun openForRestore(context: Context, zip: File): BackupArchive.Opened =
+        withContext(Dispatchers.IO) {
+            val temp = File(context.cacheDir, RESTORE_WORK)
+            BackupArchive.open(zip, temp)
+        }
+
+    /**
+     * 把 [openForRestore] 解开的包换进本机，完事清掉临时目录。
+     *
+     * 中途失败时 [BackupArchive.install] 已把旧库放回原位，这里不再兜底——
+     * 但调用方仍应在成功后重启进程，避免各页面拿着旧 id。
+     */
+    suspend fun installOpened(
         context: Context,
-        zip: File,
+        opened: BackupArchive.Opened,
         onProgress: (Float, String) -> Unit = { _, _ -> }
     ): BackupArchive.Manifest = withContext(Dispatchers.IO) {
-        val temp = File(context.cacheDir, "restore-work")
-        val opened = BackupArchive.open(zip, temp)
         try {
             BackupArchive.install(context, opened) { p, label ->
                 onProgress(p, label)
             }
             opened.manifest
         } finally {
-            temp.deleteRecursively()
+            opened.dir.deleteRecursively()
         }
+    }
+
+    /** 预览之后决定不恢复了：把解开的临时目录删掉 */
+    fun discardOpened(opened: BackupArchive.Opened) {
+        runCatching { opened.dir.deleteRecursively() }
+    }
+
+    /** 一步到位的恢复（解包 → 校验 → 落地），预览流程用 [openForRestore] + [installOpened] */
+    suspend fun restore(
+        context: Context,
+        zip: File,
+        onProgress: (Float, String) -> Unit = { _, _ -> }
+    ): BackupArchive.Manifest {
+        val opened = openForRestore(context, zip)
+        return installOpened(context, opened, onProgress)
     }
 
     /** 云端列表（只留本 App 生成的包），用于恢复页展示 */
