@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>粉笔 · 练习报告 / 解析页 复刻</title>
+<style>
+  :root{
+    --ink:#1B2126; --sub:#868EA8; --sub2:#8E95AE;
+    --blue:#3C7CFC; --blue-soft:#ECF1FF; --blue-line:#D6E2FE;
+    --red:#FF5A5A; --green:#2BC8A0;
+    --bg:#F4F6F9; --line:#EDEFF3; --chip:#F2F2F5;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{height:100%;background:#20242B;font-family:"PingFang SC","HarmonyOS Sans SC","Noto Sans SC","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;}
+  .toolbar{height:52px;display:flex;align-items:center;gap:8px;padding:0 16px;background:#171A20;color:#8b93a1;
+    font-size:13px;position:fixed;top:0;left:0;right:0;z-index:20;}
+  .toolbar b{color:#dfe4ec;font-weight:600;margin-right:12px;font-size:13px;}
+  .tab{padding:6px 14px;border-radius:7px;cursor:pointer;user-select:none;transition:.15s;}
+  .tab:hover{background:#23272f;color:#c9d1de;}
+  .tab.on{background:#3C7CFC;color:#fff;}
+  .wrap{position:absolute;inset:52px 0 0 0;display:flex;justify-content:center;align-items:flex-start;overflow:auto;padding:10px;}
+  .stage{width:1920px;height:1080px;background:#fff;position:relative;overflow:hidden;flex:none;
+    transform-origin:top center;box-shadow:0 20px 60px rgba(0,0,0,.5);}
+
+  /* ============ 通用 ============ */
+  .screen{position:absolute;inset:0;display:none;}
+  .screen.on{display:block;}
+  .statusbar{height:72px;display:flex;align-items:center;justify-content:space-between;padding:0 24px 0 34px;
+    font-size:30px;font-weight:600;color:var(--ink);background:#fff;}
+  .statusbar .ico{display:flex;align-items:center;gap:12px;}
+  .appbar{height:132px;display:flex;align-items:center;background:#fff;position:relative;}
+  .appbar .back{width:84px;height:84px;margin-left:36px;display:flex;align-items:center;justify-content:center;}
+  .appbar .title{position:absolute;left:0;right:0;text-align:center;font-size:52px;font-weight:700;letter-spacing:1px;color:#111;}
+  .appbar .right{position:absolute;right:75px;width:84px;height:84px;display:flex;align-items:center;justify-content:center;}
+
+  /* ============ 成绩报告 ============ */
+  .report-body{position:absolute;left:0;right:0;top:204px;bottom:192px;background:var(--bg);overflow:auto;}
+  .report-body::-webkit-scrollbar{width:0;}
+
+  .card{margin:0 45px;background:#fff;border-radius:30px;}
+
+  .card-exam{margin-top:62px;position:relative;overflow:hidden;
+    background:
+      radial-gradient(92% 96% at 100% 0%, rgba(150,197,255,.92) 0%, rgba(196,226,255,.80) 16%,
+        rgba(232,244,255,.55) 42%, rgba(255,255,255,0) 74%),
+      linear-gradient(180deg,#EFF8FF 0%,#FBFDFF 40%,#FFFFFF 62%,#FFFFFF 100%);
+    padding-bottom:36px;}
+  .exam-deco{position:absolute;right:-10px;top:-34px;width:270px;height:210px;pointer-events:none;}
+  .exam-head{display:flex;align-items:center;gap:24px;padding:70px 0 0 27px;}
+  .exam-head .pin{width:48px;height:52px;flex:none;}
+  .exam-head h2{font-size:53px;font-weight:700;color:var(--ink);letter-spacing:.5px;}
+
+  .stats{margin:42px 45px 0 45px;height:202px;background:#F5F7FA;border-radius:12px;display:flex;align-items:center;}
+  .stat{flex:1;text-align:center;position:relative;}
+  .stat+.stat::before{content:"";position:absolute;left:0;top:22px;bottom:22px;width:1px;background:#E2E5EC;}
+  .stat .k{font-size:32px;color:var(--sub);line-height:1;margin-bottom:22px;}
+  .stat .v{font-size:46px;font-weight:600;line-height:1;letter-spacing:.5px;}
+  .stat .v i{font-size:31px;font-weight:500;font-style:normal;margin-left:2px;}
+  .c-blue{color:var(--blue);} .c-green{color:var(--green);} .c-red{color:var(--red);}
+
+  .keypoint{display:flex;align-items:flex-start;gap:0;margin:62px 45px 0 36px;padding-top:0;}
+  .keypoint .chk{width:75px;height:75px;border-radius:26px;flex:none;margin-top:0;
+    background:linear-gradient(140deg,#4E8DFF,#2F6BF0);display:flex;align-items:center;justify-content:center;
+    box-shadow:0 6px 14px rgba(60,124,252,.28);}
+  .keypoint .txt{margin-left:33px;flex:1;}
+  .keypoint h3{font-size:48px;font-weight:700;color:var(--ink);line-height:1.2;}
+  .keypoint p{font-size:33px;color:var(--sub);margin-top:14px;line-height:1.3;}
+
+  .card-sheet{margin-top:60px;padding:44px 53px 52px;}
+  .card-head{display:flex;align-items:center;}
+  .card-head .sq{width:60px;height:60px;border-radius:14px;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(150deg,#FFB43A,#FF8A1F);box-shadow:0 4px 10px rgba(255,150,40,.28);}
+  .card-head h2{font-size:46px;font-weight:700;margin-left:24px;color:var(--ink);}
+  .legend{margin-left:auto;display:flex;align-items:center;gap:34px;font-size:30px;color:var(--sub);}
+  .legend span{display:flex;align-items:center;gap:12px;}
+  .dot{width:22px;height:22px;border-radius:50%;}
+  .grid{margin-top:46px;display:flex;flex-wrap:wrap;justify-content:flex-start;row-gap:72px;}
+  .grid .cell{width:96px;height:96px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    font-size:38px;font-weight:600;}
+  .grid .row{display:flex;justify-content:flex-start;gap:108px;width:100%;}
+
+  .bottom-bar{position:absolute;left:0;right:0;bottom:0;height:192px;background:#fff;display:flex;
+    align-items:center;padding:0 60px;gap:24px;border-top:1px solid var(--line);}
+  .btn{flex:1;height:120px;border-radius:60px;display:flex;align-items:center;justify-content:center;
+    font-size:47px;font-weight:600;letter-spacing:2px;}
+  .btn.ghost{background:var(--blue-soft);color:var(--blue);}
+  .btn.solid{background:var(--blue);color:#fff;box-shadow:0 10px 26px rgba(60,124,252,.34);}
+
+  /* ============ 解析页 ============ */
+  .sol-appbar{height:132px;display:flex;align-items:center;background:#fff;position:relative;}
+  .sol-appbar .acts{display:flex;align-items:center;gap:45px;margin-left:auto;padding-right:36px;}
+  .sol-appbar .acts .a{width:84px;height:84px;display:flex;align-items:center;justify-content:center;}
+
+  .qindex{height:171px;position:relative;background:#fff;}
+  .qindex::after{content:"";position:absolute;left:0;right:0;top:111px;height:60px;
+    background:linear-gradient(#fff, rgba(255,255,255,0));}
+  .qindex .row{height:111px;display:flex;align-items:center;padding:0 60px;}
+  .qindex .t{font-size:34px;color:#5F677C;}
+  .qindex .st{margin-left:auto;display:flex;align-items:center;gap:18px;}
+  .qindex .st .num{font-size:38px;font-weight:700;color:var(--ink);}
+  .qindex .st .tot{font-size:34px;color:var(--sub);}
+
+  .material{position:absolute;left:0;right:0;top:315px;height:453px;background:#fff;overflow:hidden;}
+  .tag{display:inline-flex;align-items:center;height:63px;padding:0 20px;border-radius:10px;
+    background:var(--blue-soft);color:var(--blue);font-size:32px;font-weight:500;}
+  .material .tag{margin:48px 0 0 60px;}
+  .material .mbody{padding:40px 60px 0 60px;}
+
+  /* 材料表格 */
+  table.tb{border-collapse:collapse;font-size:31px;width:1380px;}
+  table.tb td{border:1px solid #C9CDD6;padding:26px 12px;text-align:center;color:#2A3038;}
+  table.tb .diag{position:relative;width:230px;height:190px;padding:0;
+    background:
+      linear-gradient(to top right, transparent calc(50% - 1px), #C9CDD6 50%, transparent calc(50% + 1px)),
+      #fff;}
+  table.tb .diag .lb1{position:absolute;right:18px;top:14px;font-size:31px;}
+  table.tb .diag .lb2{position:absolute;left:18px;bottom:14px;font-size:31px;}
+  table.tb .cap{display:block;font-size:33px;font-weight:700;margin-bottom:10px;}
+
+  /* 底部答题面板 */
+  .panel-handle{position:absolute;left:0;right:0;top:645px;height:120px;display:flex;justify-content:center;
+    align-items:flex-start;pointer-events:none;}
+  .panel-handle i{width:456px;height:15px;border-radius:8px;background:#DFE3EA;display:block;}
+  .panel{position:absolute;left:0;right:0;top:768px;bottom:0;background:#fff;border-radius:34px 34px 0 0;
+    box-shadow:0 -14px 40px rgba(23,32,56,.10);overflow:auto;padding:46px 60px 80px;}
+  .panel::-webkit-scrollbar{width:0;}
+
+  .qtype{display:inline-flex;align-items:center;height:63px;padding:0 20px;border-radius:10px;
+    background:var(--blue-soft);color:var(--blue);font-size:32px;}
+  .stem{margin-top:34px;font-size:44px;line-height:1.75;color:var(--ink);}
+
+  .opts{margin-top:36px;}
+  .opt{display:flex;align-items:flex-start;gap:30px;margin-bottom:44px;}
+  .opt .lt{width:82px;height:82px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;
+    font-size:36px;font-weight:600;background:var(--chip);color:var(--sub);}
+  .opt.right .lt{background:var(--green);color:#fff;}
+  .opt.wrong .lt{background:var(--red);color:#fff;}
+  .opt p{font-size:42px;line-height:1.55;color:var(--ink);padding-top:8px;}
+
+  .answerbar{margin-top:12px;height:132px;border-radius:12px;background:#F5F7FA;display:flex;align-items:center;}
+  .answerbar div{flex:1;padding-left:36px;font-size:36px;color:#5F677C;}
+  .answerbar b{font-size:38px;font-weight:700;margin-left:6px;}
+  .answerbar .ok b{color:var(--green);}
+  .answerbar .no b{color:var(--red);}
+
+  .qstats{margin-top:34px;display:flex;align-items:center;height:150px;}
+  .qstats .c{flex:1;text-align:center;position:relative;}
+  .qstats .c+.c::before{content:"";position:absolute;left:0;top:34px;bottom:34px;width:1px;background:#E6E9EF;}
+  .qstats .v{font-size:52px;font-weight:700;line-height:1;}
+  .qstats .v i{font-size:30px;font-weight:600;font-style:normal;}
+  .qstats .k{font-size:32px;color:var(--sub);margin-top:22px;}
+
+  .sec{margin-top:56px;}
+  .sec-h{display:flex;align-items:center;gap:26px;}
+  .sec-h .blob{width:52px;height:44px;flex:none;}
+  .sec-h h3{font-size:46px;font-weight:700;color:var(--ink);}
+  .sec-h .fold{margin-left:auto;color:#B6BCC9;}
+  .sec p.body{margin-top:34px;font-size:40px;line-height:1.8;color:var(--ink);}
+  .cover{margin-top:30px;height:420px;border-radius:14px;overflow:hidden;position:relative;
+    background:linear-gradient(120deg,#3E3A2E,#6B5B3E 40%,#4A4232);}
+  .cover .play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:96px;height:96px;
+    border-radius:50%;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;}
+  .rate{display:flex;align-items:center;margin-top:26px;font-size:30px;color:var(--sub);}
+  .rate .stars{display:flex;gap:6px;margin-right:14px;}
+  .rate .cmt{margin-left:auto;display:flex;align-items:center;gap:10px;}
+
+  .chiprow{display:flex;gap:26px;margin-top:34px;}
+  .chip{height:86px;padding:0 40px;border-radius:12px;background:#F5F7FA;display:flex;align-items:center;
+    font-size:34px;color:#3A4150;}
+
+  .srcbox{margin-top:30px;background:#F5F7FA;border-radius:12px;padding:34px 36px;font-size:35px;
+    line-height:1.6;color:#5F677C;}
+
+  .notebox{margin-top:30px;background:#F5F7FA;border-radius:14px;height:156px;display:flex;align-items:center;
+    padding:0 36px;}
+  .notebox .bar{width:9px;height:44px;border-radius:5px;background:var(--blue);margin-right:26px;}
+  .notebox h4{font-size:40px;font-weight:700;color:var(--ink);}
+  .notebox .add{margin-left:auto;height:78px;padding:0 40px;border-radius:39px;background:var(--blue);
+    color:#fff;font-size:34px;display:flex;align-items:center;box-shadow:0 8px 20px rgba(60,124,252,.3);}
+
+  .relate{margin-top:26px;display:flex;align-items:center;}
+  .relate p{font-size:35px;color:#5F677C;}
+  .relate .go{margin-left:auto;height:84px;padding:0 46px;border-radius:42px;background:var(--blue);
+    color:#fff;font-size:34px;display:flex;align-items:center;}
+
+  /* 答题卡弹层 */
+  .mask{position:absolute;inset:0;background:rgba(0,0,0,.45);}
+  .sheet{position:absolute;left:0;right:0;bottom:0;height:890px;background:#fff;border-radius:34px 34px 0 0;
+    padding:0 53px;}
+  .sheet .hd{height:148px;display:flex;align-items:center;justify-content:center;position:relative;}
+  .sheet .hd h3{font-size:44px;font-weight:700;color:var(--ink);}
+  .sheet .hd .x{position:absolute;right:0;width:76px;height:76px;display:flex;align-items:center;justify-content:center;}
+  .sheet .grid2{display:flex;flex-wrap:wrap;justify-content:flex-start;row-gap:75px;margin-top:60px;}
+  .sheet .grid2 .row{display:flex;justify-content:flex-start;gap:70px;width:100%;}
+  .sheet .cell{width:120px;height:120px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    font-size:44px;font-weight:600;color:#fff;background:var(--red);}
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <b>粉笔 · 练习报告 / 解析页 复刻</b>
+  <div class="tab on" data-s="report">① 成绩报告</div>
+  <div class="tab" data-s="all">② 全部解析</div>
+  <div class="tab" data-s="wrong">③ 错题解析</div>
+</div>
+
+<div class="wrap"><div class="stage" id="stage">
+
+  <!-- ================= ① 成绩报告 ================= -->
+  <div class="screen on" id="s-report">
+    <div class="statusbar">
+      <span>00:06</span>
+      <span class="ico">
+        <svg width="34" height="24" viewBox="0 0 34 24"><path d="M2 20l7-7 5 4 8-9 10 10" fill="none" stroke="#1B2126" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg width="32" height="24" viewBox="0 0 32 24"><path d="M16 21l14-13a20 20 0 00-28 0z" fill="#1B2126"/></svg>
+        <svg width="24" height="34" viewBox="0 0 24 34"><rect x="2" y="2" width="20" height="30" rx="4" fill="none" stroke="#1B2126" stroke-width="2.4"/><rect x="5" y="9" width="14" height="20" rx="2" fill="#1B2126"/></svg>
+      </span>
+    </div>
+
+    <div class="appbar">
+      <div class="back">
+        <svg width="40" height="40" viewBox="0 0 40 40"><path d="M26 6L12 20l14 14" fill="none" stroke="#1B2126" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="title">练习报告</div>
+      <div class="right">
+        <svg width="42" height="42" viewBox="0 0 42 42"><path d="M17 6H7a2 2 0 00-2 2v26a2 2 0 002 2h26a2 2 0 002-2V24" fill="none" stroke="#1B2126" stroke-width="3" stroke-linecap="round"/><path d="M25 4h13v13" fill="none" stroke="#1B2126" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M37 5L19 23" fill="none" stroke="#1B2126" stroke-width="3" stroke-linecap="round"/></svg>
+      </div>
+    </div>
+
+    <div class="report-body">
+      <!-- 考试情况 -->
+      <div class="card card-exam">
+        <svg class="exam-deco" viewBox="0 0 270 210">
+          <defs>
+            <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#8FB8FF"/><stop offset="1" stop-color="#3C7CFC"/>
+            </linearGradient>
+            <linearGradient id="g2" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#BFD7FF"/><stop offset="1" stop-color="#5C93FD"/>
+            </linearGradient>
+          </defs>
+          <rect x="34" y="10" width="132" height="132" rx="34" fill="url(#g1)" transform="rotate(-14 100 76)"/>
+          <rect x="58" y="34" width="96" height="16" rx="8" fill="#fff" opacity=".92" transform="rotate(-14 106 42)"/>
+          <rect x="58" y="66" width="68" height="16" rx="8" fill="#fff" opacity=".82" transform="rotate(-14 92 74)"/>
+          <circle cx="176" cy="140" r="52" fill="url(#g2)"/>
+          <text x="176" y="156" text-anchor="middle" font-size="44" font-weight="700" fill="#fff" font-family="Arial">Fb</text>
+        </svg>
+
+        <div class="exam-head">
+          <svg class="pin" viewBox="0 0 48 52">
+            <defs><linearGradient id="gp" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#6BA1FF"/><stop offset="1" stop-color="#2F6BF0"/></linearGradient></defs>
+            <path d="M24 2l20 11v26L24 50 4 39V13z" fill="url(#gp)"/>
+            <path d="M24 14c-5 0-9 4-9 9 0 6 9 15 9 15s9-9 9-15c0-5-4-9-9-9z" fill="#fff" opacity=".95"/>
+          </svg>
+          <h2>考试情况</h2>
+        </div>
+
+        <div class="stats">
+          <div class="stat"><div class="k">一共</div><div class="v c-blue">15<i>题</i></div></div>
+          <div class="stat"><div class="k">答对</div><div class="v c-green">4<i>题</i></div></div>
+          <div class="stat"><div class="k">答错</div><div class="v c-red">11<i>题</i></div></div>
+          <div class="stat"><div class="k">总用时</div><div class="v c-blue">28<i>秒</i></div></div>
+        </div>
+
+        <div class="keypoint">
+          <div class="chk">
+            <svg width="42" height="42" viewBox="0 0 42 42"><path d="M10 22l8 8 15-17" fill="none" stroke="#fff" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div class="txt">
+            <h3>资料分析</h3>
+            <p>共15题，答对4题，正确率27%，用时28秒</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 答题卡 -->
+      <div class="card card-sheet">
+        <div class="card-head">
+          <div class="sq">
+            <svg width="34" height="34" viewBox="0 0 34 34"><path d="M8 18l6 6 12-14" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <h2>答题卡</h2>
+          <div class="legend">
+            <span><i class="dot" style="background:#EDEFF3"></i>未答</span>
+            <span><i class="dot" style="background:#2BC8A0"></i>答对</span>
+            <span><i class="dot" style="background:#FF5A5A"></i>答错</span>
+          </div>
+        </div>
+        <div class="grid">
+          <div class="row">
+            <div class="cell" style="background:#FF5A5A;color:#fff">1</div>
+            <div class="cell" style="background:#FF5A5A;color:#fff">2</div>
+            <div class="cell" style="background:#FF5A5A;color:#fff">3</div>
+            <div class="cell" style="background:#FF5A5A;color:#fff">4</div>
+            <div class="cell" style="background:#FF5A5A;color:#fff">5</div>
+            <div class="cell" style="background:#FF5A5A;color:#fff">6</div>
+            <div class="cell" style="background:#FF5A5A;color:#fff">7</div>
+            <div class="cell" style="background:#FF5A5A;color:#fff">8</div>
+            <div class="cell" style="background:#FF5A5A;color:#fff">9</div>
+          </div>
+          <div class="row">
+            <div class="cell" style="background:#FF5A5A;color:#fff">10</div>
+            <div class="cell" style="background:#2BC8A0;color:#fff">11</div>
+            <div class="cell" style="background:#2BC8A0;color:#fff">12</div>
+            <div class="cell" style="background:#2BC8A0;color:#fff">13</div>
+            <div class="cell" style="background:#2BC8A0;color:#fff">14</div>
+            <div class="cell" style="background:#FF5A5A;color:#fff">15</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="height:60px"></div>
+    </div>
+
+    <div class="bottom-bar">
+      <div class="btn ghost">全部解析</div>
+      <div class="btn solid">错题解析</div>
+    </div>
+  </div>
+
+  <!-- ================= ② 全部解析 ================= -->
+  <div class="screen" id="s-all">
+    <div class="statusbar">
+      <span>00:09</span>
+      <span class="ico">
+        <svg width="34" height="24" viewBox="0 0 34 24"><path d="M2 20l7-7 5 4 8-9 10 10" fill="none" stroke="#1B2126" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg width="32" height="24" viewBox="0 0 32 24"><path d="M16 21l14-13a20 20 0 00-28 0z" fill="#1B2126"/></svg>
+        <svg width="24" height="34" viewBox="0 0 24 34"><rect x="2" y="2" width="20" height="30" rx="4" fill="none" stroke="#1B2126" stroke-width="2.4"/><rect x="5" y="9" width="14" height="20" rx="2" fill="#1B2126"/></svg>
+      </span>
+    </div>
+
+    <div class="sol-appbar">
+      <div class="back" style="width:84px;height:84px;margin-left:36px;display:flex;align-items:center;justify-content:center;">
+        <svg width="40" height="40" viewBox="0 0 40 40"><path d="M26 6L12 20l14 14" fill="none" stroke="#1B2126" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="acts">
+        <div class="a"><svg width="44" height="44" viewBox="0 0 44 44"><path d="M22 5v22m0 0l-8-8m8 8l8-8" fill="none" stroke="#1B2126" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 32v6h30v-6" fill="none" stroke="#1B2126" stroke-width="3.2" stroke-linecap="round"/></svg></div>
+        <div class="a"><svg width="44" height="44" viewBox="0 0 44 44"><path d="M7 30l14-14 7 7-14 14H7z" fill="none" stroke="#1B2126" stroke-width="3.1" stroke-linejoin="round"/><path d="M25 12l5-5 7 7-5 5" fill="none" stroke="#1B2126" stroke-width="3.1" stroke-linejoin="round"/><path d="M6 38h32" fill="none" stroke="#1B2126" stroke-width="3.1" stroke-linecap="round"/></svg></div>
+        <div class="a"><svg width="44" height="44" viewBox="0 0 44 44"><rect x="6" y="10" width="17" height="16" rx="3" fill="none" stroke="#1B2126" stroke-width="3.1"/><rect x="21" y="20" width="17" height="16" rx="3" fill="#fff" stroke="#1B2126" stroke-width="3.1"/></svg></div>
+        <div class="a"><svg width="46" height="44" viewBox="0 0 46 44"><path d="M23 5l5.4 11.6L41 18.2l-9 9.3 2 13.1L23 34.4 12 40.6l2-13.1-9-9.3 12.6-1.6z" fill="none" stroke="#1B2126" stroke-width="3" stroke-linejoin="round"/></svg></div>
+        <div class="a"><svg width="44" height="44" viewBox="0 0 44 44"><circle cx="9" cy="22" r="3.4" fill="#1B2126"/><circle cx="22" cy="22" r="3.4" fill="#1B2126"/><circle cx="35" cy="22" r="3.4" fill="#1B2126"/></svg></div>
+      </div>
+    </div>
+
+    <div class="qindex">
+      <div class="row">
+        <div class="t">专项智能练习（资料分析）</div>
+        <div class="st">
+          <svg width="48" height="48" viewBox="0 0 48 48"><path d="M14 14l20 20M34 14L14 34" stroke="#FF5A5A" stroke-width="5" stroke-linecap="round"/></svg>
+          <span class="num">15</span><span class="tot">/15</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 材料 -->
+    <div class="material">
+      <div class="tag">材料</div>
+      <div class="mbody">
+        <p style="font-size:33px;line-height:1.95;color:#1B2126;text-indent:2em;">
+          2023年，我国铁路客运创历史最好水平，服务保障国家重大战略成效显著旅客运输。国家铁路旅客发送量完成36.85亿人，比上年增加20.75亿人；国家铁路旅客周转量（旅客周转量=旅客发送量×旅客平均运送距离）完成14717.12亿人公里，比上年增加8145.36亿人公里。
+        </p>
+        <svg width="900" height="330" viewBox="0 0 900 330" style="margin-top:6px;">
+          <g stroke="#B9BEC9" stroke-width="2">
+            <line x1="70" y1="270" x2="860" y2="270"/>
+            <line x1="70" y1="200" x2="860" y2="200" stroke="#E6E8ED"/>
+            <line x1="70" y1="130" x2="860" y2="130" stroke="#E6E8ED"/>
+            <line x1="70" y1="60" x2="860" y2="60" stroke="#E6E8ED"/>
+            <line x1="70" y1="20" x2="70" y2="270"/>
+          </g>
+          <g font-size="24" fill="#3A4150" font-family="Arial">
+            <text x="24" y="66">40</text><text x="24" y="136">35</text><text x="24" y="206">30</text>
+            <text x="120" y="60">33.17</text><text x="330" y="46">35.79</text><text x="700" y="30">36.85</text>
+          </g>
+          <g fill="#fff" stroke="#3A4150" stroke-width="3">
+            <rect x="108" y="86" width="78" height="184"/>
+            <rect x="318" y="66" width="78" height="204"/>
+            <rect x="690" y="48" width="78" height="222"/>
+          </g>
+        </svg>
+      </div>
+    </div>
+
+    <!-- 拖拽手柄 -->
+    <div class="panel-handle"><i></i></div>
+
+    <!-- 底部面板 -->
+    <div class="panel">
+      <span class="qtype">单选题</span>
+      <p class="stem">根据材料，以下说法不正确的是（　）。</p>
+
+      <div class="opts">
+        <div class="opt"><div class="lt">A</div><p>2023年，国家铁路旅客发送量完成36.85亿人</p></div>
+        <div class="opt wrong"><div class="lt">B</div><p>2023年，国家铁路旅客发送量较2017年增长约50%</p></div>
+        <div class="opt"><div class="lt">C</div><p>2018年～2023年，国家铁路旅客发送量增速高于周转量</p></div>
+        <div class="opt right"><div class="lt">D</div><p>2018～2023年，国家铁路旅客年均周转量超过12000亿人公里</p></div>
+      </div>
+
+      <div class="answerbar">
+        <div class="ok">正确答案：<b>D</b></div>
+        <div class="no">你的答案：<b>B</b></div>
+      </div>
+
+      <div class="qstats">
+        <div class="c"><div class="v c-blue">2<i>秒</i></div><div class="k">答题时间</div></div>
+        <div class="c"><div class="v c-green">63<i>%</i></div><div class="k">全站正确率</div></div>
+        <div class="c"><div class="v c-red">B</div><div class="k">易错项</div></div>
+      </div>
+
+      <!-- 解析视频 -->
+      <div class="sec">
+        <div class="sec-h">
+          <svg class="blob" viewBox="0 0 52 44">
+            <circle cx="16" cy="22" r="15" fill="#3C7CFC" opacity=".55"/>
+            <circle cx="33" cy="22" r="15" fill="#3C7CFC"/>
+          </svg>
+          <h3>解析视频</h3>
+        </div>
+        <div class="cover">
+          <div class="play">
+            <svg width="40" height="40" viewBox="0 0 40 40"><path d="M14 9l18 11-18 11z" fill="#fff"/></svg>
+          </div>
+        </div>
+        <div class="rate">
+          <span class="stars">
+            <svg width="28" height="28" viewBox="0 0 30 30"><path d="M15 2l4 8.6 9 1.2-6.6 6.4 1.7 9.3L15 23.1 6.9 27.5l1.7-9.3L2 11.8l9-1.2z" fill="#FFB300"/></svg>
+            <svg width="28" height="28" viewBox="0 0 30 30"><path d="M15 2l4 8.6 9 1.2-6.6 6.4 1.7 9.3L15 23.1 6.9 27.5l1.7-9.3L2 11.8l9-1.2z" fill="#FFB300"/></svg>
+            <svg width="28" height="28" viewBox="0 0 30 30"><path d="M15 2l4 8.6 9 1.2-6.6 6.4 1.7 9.3L15 23.1 6.9 27.5l1.7-9.3L2 11.8l9-1.2z" fill="#FFB300"/></svg>
+            <svg width="28" height="28" viewBox="0 0 30 30"><path d="M15 2l4 8.6 9 1.2-6.6 6.4 1.7 9.3L15 23.1 6.9 27.5l1.7-9.3L2 11.8l9-1.2z" fill="#FFB300"/></svg>
+            <svg width="28" height="28" viewBox="0 0 30 30"><path d="M15 2l4 8.6 9 1.2-6.6 6.4 1.7 9.3L15 23.1 6.9 27.5l1.7-9.3L2 11.8l9-1.2z" fill="#FFB300"/></svg>
+          </span>
+          4.8分
+          <span class="cmt">
+            <svg width="30" height="30" viewBox="0 0 32 32"><path d="M6 8h20v14H14l-8 6z" fill="none" stroke="#9AA1B2" stroke-width="2.6" stroke-linejoin="round"/></svg>
+            206
+          </span>
+        </div>
+      </div>
+
+      <!-- 解析 -->
+      <div class="sec">
+        <div class="sec-h">
+          <svg class="blob" viewBox="0 0 52 44">
+            <circle cx="16" cy="22" r="15" fill="#3C7CFC" opacity=".55"/>
+            <circle cx="33" cy="22" r="15" fill="#3C7CFC"/>
+          </svg>
+          <h3>解析</h3>
+          <span class="fold">
+            <svg width="34" height="34" viewBox="0 0 34 34"><path d="M8 21l9-9 9 9" fill="none" stroke="#B6BCC9" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </span>
+        </div>
+        <p class="body">软件产品收入：5月=1月～5月-1月～4月=9142-6823=2300⁺亿元；6月=1月～6月-1月～5月=11451-9142=2300⁺亿元；7月=1月～7月-1月～6月=‥‥，逐月均超过2300亿元，结合选项图形判断，选择D项。</p>
+      </div>
+
+      <!-- 举一反三 -->
+      <div class="sec">
+        <div class="sec-h">
+          <svg class="blob" viewBox="0 0 52 44">
+            <circle cx="16" cy="22" r="15" fill="#3C7CFC" opacity=".55"/>
+            <circle cx="33" cy="22" r="15" fill="#3C7CFC"/>
+          </svg>
+          <h3>举一反三</h3>
+        </div>
+        <div class="relate">
+          <p>根据你的错题，推荐相同考点下其他题目进行强化训练</p>
+          <div class="go">开始练习</div>
+        </div>
+      </div>
+
+      <!-- 考点 -->
+      <div class="sec">
+        <div class="sec-h">
+          <svg class="blob" viewBox="0 0 52 44">
+            <circle cx="16" cy="22" r="15" fill="#3C7CFC" opacity=".55"/>
+            <circle cx="33" cy="22" r="15" fill="#3C7CFC"/>
+          </svg>
+          <h3>考点</h3>
+        </div>
+        <div class="chiprow">
+          <div class="chip">简单加减计算</div>
+          <div class="chip">统计表</div>
+        </div>
+      </div>
+
+      <!-- 题目来源 -->
+      <div class="sec">
+        <div class="sec-h">
+          <svg class="blob" viewBox="0 0 52 44">
+            <circle cx="16" cy="22" r="15" fill="#3C7CFC" opacity=".55"/>
+            <circle cx="33" cy="22" r="15" fill="#3C7CFC"/>
+          </svg>
+          <h3>题目来源</h3>
+        </div>
+        <div class="srcbox">2023年辽宁省公务员录用考试《行测》题（网友回忆版）第106题</div>
+      </div>
+
+      <!-- 笔记 -->
+      <div class="notebox">
+        <i class="bar"></i>
+        <h4>笔记</h4>
+        <div class="add">添加笔记</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= ③ 错题解析 ================= -->
+  <div class="screen" id="s-wrong">
+    <div class="statusbar">
+      <span>00:09</span>
+      <span class="ico">
+        <svg width="34" height="24" viewBox="0 0 34 24"><path d="M2 20l7-7 5 4 8-9 10 10" fill="none" stroke="#1B2126" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg width="32" height="24" viewBox="0 0 32 24"><path d="M16 21l14-13a20 20 0 00-28 0z" fill="#1B2126"/></svg>
+        <svg width="24" height="34" viewBox="0 0 24 34"><rect x="2" y="2" width="20" height="30" rx="4" fill="none" stroke="#1B2126" stroke-width="2.4"/><rect x="5" y="9" width="14" height="20" rx="2" fill="#1B2126"/></svg>
+      </span>
+    </div>
+
+    <div class="sol-appbar">
+      <div class="back" style="width:84px;height:84px;margin-left:36px;display:flex;align-items:center;justify-content:center;">
+        <svg width="40" height="40" viewBox="0 0 40 40"><path d="M26 6L12 20l14 14" fill="none" stroke="#1B2126" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="acts">
+        <div class="a"><svg width="44" height="44" viewBox="0 0 44 44"><path d="M22 5v22m0 0l-8-8m8 8l8-8" fill="none" stroke="#1B2126" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 32v6h30v-6" fill="none" stroke="#1B2126" stroke-width="3.2" stroke-linecap="round"/></svg></div>
+        <div class="a"><svg width="44" height="44" viewBox="0 0 44 44"><path d="M7 30l14-14 7 7-14 14H7z" fill="none" stroke="#1B2126" stroke-width="3.1" stroke-linejoin="round"/><path d="M25 12l5-5 7 7-5 5" fill="none" stroke="#1B2126" stroke-width="3.1" stroke-linejoin="round"/><path d="M6 38h32" fill="none" stroke="#1B2126" stroke-width="3.1" stroke-linecap="round"/></svg></div>
+        <div class="a"><svg width="44" height="44" viewBox="0 0 44 44"><rect x="6" y="10" width="17" height="16" rx="3" fill="none" stroke="#1B2126" stroke-width="3.1"/><rect x="21" y="20" width="17" height="16" rx="3" fill="#fff" stroke="#1B2126" stroke-width="3.1"/></svg></div>
+        <div class="a"><svg width="46" height="44" viewBox="0 0 46 44"><path d="M23 5l5.4 11.6L41 18.2l-9 9.3 2 13.1L23 34.4 12 40.6l2-13.1-9-9.3 12.6-1.6z" fill="none" stroke="#1B2126" stroke-width="3" stroke-linejoin="round"/></svg></div>
+        <div class="a"><svg width="44" height="44" viewBox="0 0 44 44"><circle cx="9" cy="22" r="3.4" fill="#1B2126"/><circle cx="22" cy="22" r="3.4" fill="#1B2126"/><circle cx="35" cy="22" r="3.4" fill="#1B2126"/></svg></div>
+      </div>
+    </div>
+
+    <div class="qindex">
+      <div class="row">
+        <div class="t">专项智能练习（资料分析）</div>
+        <div class="st">
+          <svg width="48" height="48" viewBox="0 0 48 48"><path d="M14 14l20 20M34 14L14 34" stroke="#FF5A5A" stroke-width="5" stroke-linecap="round"/></svg>
+          <span class="num">1</span><span class="tot">/15</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="material">
+      <div class="tag">材料</div>
+      <div class="mbody">
+        <p style="font-size:32px;line-height:1.9;color:#1B2126;margin-top:18px;">2018年～2023年，国家铁路旅客发送量与周转量变化情况如下表：</p>
+        <table class="tb" style="margin-top:24px;">
+          <tr>
+            <td class="diag"><span class="lb1">行业</span><span class="lb2">月份</span></td>
+            <td>软件业务</td><td>软件产品</td><td>信息技术服务</td><td>嵌入式系统软件</td>
+          </tr>
+          <tr><td>1月～4月</td><td>25719</td><td>6823</td><td>—</td><td>2289</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel-handle"><i></i></div>
+
+    <div class="panel" style="filter:blur(0);">
+      <span class="qtype">单选题</span>
+      <p class="stem">下图能正确反映2021年5月至9月软件产品收入（亿元）的是：</p>
+      <div class="answerbar" style="margin-top:44px;">
+        <div class="ok">正确答案：<b>A</b></div>
+        <div class="no">你的答案：<b>B</b></div>
+      </div>
+    </div>
+
+    <!-- 答题卡弹层（错题解析下只列错题） -->
+    <div class="mask"></div>
+    <div class="sheet">
+      <div class="hd">
+        <h3>答题卡</h3>
+        <div class="x">
+          <svg width="44" height="44" viewBox="0 0 44 44"><path d="M12 12l20 20M32 12L12 32" stroke="#1B2126" stroke-width="3.4" stroke-linecap="round"/></svg>
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="row">
+          <div class="cell">1</div><div class="cell">2</div><div class="cell">3</div><div class="cell">4</div>
+          <div class="cell">5</div><div class="cell">6</div><div class="cell">7</div><div class="cell">8</div>
+          <div class="cell">9</div><div class="cell">10</div>
+        </div>
+        <div class="row" style="justify-content:flex-start;gap:70px;">
+          <div class="cell">15</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div></div>
+
+<script>
+  const stage = document.getElementById('stage');
+  const RAW = location.search.includes('raw');
+  function fit(){
+    if (RAW) return;
+    const wrap = stage.parentElement;
+    const s = Math.min((window.innerWidth-24)/1920, (window.innerHeight-52-24)/1080);
+    stage.style.transform = 'scale('+s+')';
+    wrap.style.height = (1080*s+24)+'px';
+  }
+  if (RAW){
+    document.querySelector('.toolbar').style.display='none';
+    const w=document.querySelector('.wrap');
+    w.style.inset='0'; w.style.padding='0'; w.style.overflow='hidden';
+    stage.style.boxShadow='none';
+    const s=location.search.match(/s=(\w+)/); if(s) document.querySelectorAll('.screen').forEach(x=>x.classList.remove('on')),document.getElementById('s-'+s[1]).classList.add('on');
+    const r=location.search.match(/rs=(\d+)/); if(r) document.querySelectorAll('.report-body').forEach(x=>x.scrollTop=+r[1]);
+    const ps=location.search.match(/ps=(\d+)/); if(ps) document.querySelectorAll('.panel').forEach(x=>x.scrollTop=+ps[1]);
+  }
+  addEventListener('resize', fit); fit();
+
+  document.querySelectorAll('.tab').forEach(t=>{
+    t.onclick = ()=>{
+      document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
+      t.classList.add('on');
+      document.querySelectorAll('.screen').forEach(x=>x.classList.remove('on'));
+      document.getElementById('s-'+t.dataset.s).classList.add('on');
+    };
+  });
+</script>
+</body>
+</html>
