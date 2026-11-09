@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 成绩报告：统一标题栏 + 成绩卡 + 分模块正确率 + 逐题解析 -->
+<!-- 成绩报告：统一标题栏 + 成绩卡 + 分模块正确率 + 全部题目对错一览 + 解析入口 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     style="@style/FbPage">
@@ -108,17 +108,63 @@
                     android:orientation="vertical" />
             </LinearLayout>
 
+            <!-- 全部题目：只给对错一览（对=绿 / 错=红 / 未答=灰），解析收进下面的两个入口 -->
             <TextView
-                android:id="@+id/tvAnalysisTitle"
+                android:id="@+id/tvOverviewTitle"
                 style="@style/FbSectionTitle"
                 android:layout_marginTop="@dimen/fb_section_gap"
-                android:text="@string/report_analysis_title" />
+                android:text="@string/report_overview_title" />
 
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/list"
+            <LinearLayout
+                style="@style/FbCard"
+                android:layout_marginTop="@dimen/fb_card_gap_v">
+
+                <!-- 图例按实际出现的状态动态生成（最多一行 3 个） -->
+                <LinearLayout
+                    android:id="@+id/legendBox"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/grid"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/fb_space_8"
+                    android:nestedScrollingEnabled="false"
+                    android:overScrollMode="never" />
+
+                <TextView
+                    android:id="@+id/tvOverviewHint"
+                    style="@style/FbCaption"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/fb_space_8"
+                    android:text="@string/report_overview_hint" />
+            </LinearLayout>
+
+            <!-- 解析入口：逐题翻页看 / 一次性看全 -->
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:nestedScrollingEnabled="false" />
+                android:layout_marginTop="@dimen/fb_card_gap_v"
+                android:orientation="horizontal">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnStepAnalysis"
+                    style="@style/FbGhostButton"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:text="@string/report_action_wrong_analysis" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnAllAnalysis"
+                    style="@style/FbPrimaryButton"
+                    android:layout_width="0dp"
+                    android:layout_marginStart="@dimen/fb_space_12"
+                    android:layout_weight="1"
+                    android:text="@string/report_action_all_analysis" />
+            </LinearLayout>
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
 </LinearLayout>

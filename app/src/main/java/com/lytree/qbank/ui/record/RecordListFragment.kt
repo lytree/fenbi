@@ -85,7 +85,7 @@ class RecordListFragment : Fragment(), Refreshable {
     }
 
     /**
-     * 已完成 → 成绩报告（得分 / 正确率 / 用时 / 逐题解析与每题用时）；
+     * 已完成 → 成绩报告（得分 / 正确率 / 用时 / 全部题目对错一览，错题解析与全部解析按需展开）；
      * 未完成 → 回答题页，进去会问「继续答题 / 重新开始」，倒计时从上次退出的地方接着走。
      */
     private fun open(record: ExamRecord) {

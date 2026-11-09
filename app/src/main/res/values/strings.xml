@@ -173,9 +173,23 @@
     <string name="report_subject_row">%1$s　答对 %2$d/%3$d · %4$d%%</string>
     <string name="report_retry_wrong">错题重练</string>
     <string name="report_retry_empty">这次没有错题，保持！</string>
-    <!-- 逐题解析区标题：本次有标记时带上标记数 -->
-    <string name="report_analysis_title">逐题解析</string>
-    <string name="report_analysis_title_marked">逐题解析（标记 %1$d 题）</string>
+    <!-- 错题解析：报告页的入口按钮，只在本次没答对的题里翻（答错 / 部分得分 / 未作答） -->
+    <string name="report_action_wrong_analysis">错题解析</string>
+    <!-- 报告页 · 全部题目对错一览（答题卡式网格）：对=绿、错=红 -->
+    <string name="report_overview_title">全部题目</string>
+    <string name="report_overview_title_marked">全部题目（标记 %1$d 题）</string>
+    <string name="report_overview_hint">点题号看这道题的解析，也可以左右翻页</string>
+    <string name="report_legend_right">答对</string>
+    <string name="report_legend_wrong">答错</string>
+    <string name="report_legend_partial">部分得分</string>
+    <string name="report_legend_blank">未作答</string>
+    <string name="report_legend_pending">待补答案</string>
+    <!-- 解析入口：错题解析（弹层翻错题）/ 全部解析（整页列表） -->
+    <string name="report_action_all_analysis">全部解析</string>
+    <string name="report_all_analysis_title">全部解析</string>
+    <!-- 解析页（与答题页同款卷面）：顶栏「第 8/30 题」，右侧「看原题」回试卷定位 -->
+    <string name="report_analysis_page_title">第 %1$d/%2$d 题</string>
+    <string name="report_action_open_paper">看原题</string>
     <!-- 报告页点题：跳到试卷里对应的题，看完整资料（材料 / 选项 / 答案解析） -->
     <string name="report_open_question">在试卷中查看这道题</string>
     <string name="report_paper_missing">试卷已删除，无法查看这道题</string>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 全部解析：把本次每道题的题干 / 我的答案 / 正确答案 / 解析一次列全，往下滑着看完 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    style="@style/FbPage">
+
+    <com.lytree.qbank.ui.FbTitleBar
+        android:id="@+id/titleBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/list"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:clipToPadding="false"
+        android:paddingTop="@dimen/fb_space_4"
+        android:paddingBottom="@dimen/fb_space_24"
+        android:scrollbars="none" />
+</LinearLayout>

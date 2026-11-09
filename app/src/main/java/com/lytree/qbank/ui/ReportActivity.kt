@@ -1,24 +1,29 @@
 package com.lytree.qbank.ui
 
+import android.content.Intent
+import android.content.res.ColorStateList
 import android.net.Uri
 import android.os.Bundle
+import android.util.TypedValue
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.lytree.qbank.R
 import com.lytree.qbank.data.db.QBankDb
 import com.lytree.qbank.data.model.AnswerResult
 import com.lytree.qbank.data.model.ExamRecord
 import com.lytree.qbank.databinding.ActivityReportBinding
-import com.lytree.qbank.databinding.ItemReportQuestionBinding
-import com.lytree.qbank.ui.paper.PaperDetailActivity
+import com.lytree.qbank.databinding.ItemCardNumBinding
 import com.lytree.qbank.ui.record.RecordAdapter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -26,7 +31,11 @@ import kotlinx.coroutines.withContext
 import java.util.Locale
 
 /**
- * 成绩报告：得分 / 正确率 / 用时 + 逐题解析。
+ * 成绩报告：得分 / 正确率 / 用时 + 全部题目对错一览 + 解析入口。
+ *
+ * 这里不再直接铺「逐题解析」那一长串卡片——一屏先给整卷的答题对错（答对绿、答错红），
+ * 想深看再选：点某个题号 = 单题解析弹层（可上下翻），「错题解析」只翻没答对的题，
+ * 「全部解析」= 整页顺序过一遍。
  *
  * 试卷常常是先导入、答案后补，所以这里也是补答案的主入口：
  * 导入答案后会按记录里的作答「重判」，不需要重做一遍。
@@ -63,21 +72,18 @@ class ReportActivity : AppCompatActivity() {
         binding.titleBar.setTitle("成绩报告")
 
         recordId = intent.getLongExtra(EXTRA_RECORD_ID, 0L)
-        // 记录与每题用时都是一次性读：合并成一次 IO，回来再装配报告
+        // 题干 / 答案 / 判定一次读完再装配报告；每题用时留给解析页自己读
         lifecycleScope.launch {
-            val loaded = withContext(Dispatchers.IO) {
-                val record = db.getRecord(recordId) ?: return@withContext null
-                record to db.getQuestionTimes(record.id)
-            }
+            val record = withContext(Dispatchers.IO) { db.getRecord(recordId) }
             if (isFinishing || isDestroyed) return@launch
-            if (loaded == null) {
+            if (record == null) {
                 finish(); return@launch
             }
-            renderReport(loaded.first, loaded.second)
+            renderReport(record)
         }
     }
 
-    private fun renderReport(record: ExamRecord, questionTimes: Map<Long, Int>) {
+    private fun renderReport(record: ExamRecord) {
         // 补答案入口：标题栏只留一个「补答案」，点开再选「逐题补录 / 导入文件」——
         // 文字动作挤在一行会压住标题，而缺答案的卷子两个入口都得给。
         binding.titleBar.addTextAction(getString(R.string.action_answer_fix)) {
@@ -111,20 +117,136 @@ class ReportActivity : AppCompatActivity() {
 
         setupSubjectStats(record)
         setupRetryWrong(record)
+        setupOverview(record)
 
-        binding.list.layoutManager = LinearLayoutManager(this)
-        // 每题用时：答题时按题计时落库，这里逐题带出来，能看出哪道题磨得最久
-        binding.list.adapter = ReportAdapter(
-            record.results,
-            record.marked,
-            questionTimes
-        ) { position -> openInPaper(record, position) }
+        // 错题解析：只在本次「答了但没全对」的题里翻，口径与上面「答错」统计、错题重练一致；
+        // 未作答与待补答案不算错题，想看得去点对应的题号
+        binding.btnStepAnalysis.setOnClickListener {
+            val wrongIdx = record.results.indices.filter { i ->
+                val r = record.results[i]
+                !r.pending && r.userAnswer.isNotBlank() && !r.correct
+            }
+            if (wrongIdx.isEmpty()) {
+                Toast.makeText(this, R.string.report_retry_empty, Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            openReview(record, wrongIdx, 0)
+        }
+        // 全部解析：整页按题序看，适合考完复盘
+        binding.btnAllAnalysis.setOnClickListener {
+            startActivity(
+                Intent(this, AnalysisActivity::class.java).apply {
+                    putExtra(AnalysisActivity.EXTRA_RECORD_ID, record.id)
+                }
+            )
+        }
+    }
 
-        // 本次标记过的题在逐题解析里带「已标记」标签，标题里先给个总数，免得逐页翻找
-        binding.tvAnalysisTitle.text = if (record.marked.isEmpty()) {
-            getString(R.string.report_analysis_title)
+    /**
+     * 全部题目：答题卡式网格，一格一题。
+     * 答对绿、答错红、未作答灰、部分得分橙、待补答案浅橙，整卷错在哪一眼就能扫出来。
+     */
+    private fun setupOverview(record: ExamRecord) {
+        // 本次标记过的题在格子上带一个橙点，标题里先给总数，免得逐个找
+        binding.tvOverviewTitle.text = if (record.marked.isEmpty()) {
+            getString(R.string.report_overview_title)
         } else {
-            getString(R.string.report_analysis_title_marked, record.marked.size)
+            getString(R.string.report_overview_title_marked, record.marked.size)
+        }
+        setupLegend(record)
+
+        // 格子 48dp（40dp 圆 + 两侧 4dp），按屏宽扣掉页面左右 16dp 与卡片 16dp 内边距后算列数
+        val cellDp = (resources.getDimension(R.dimen.fb_card_num_size)
+                + resources.getDimension(R.dimen.fb_card_num_pad) * 2) / resources.displayMetrics.density
+        val padDp = (resources.getDimension(R.dimen.fb_page_pad) * 2
+                + resources.getDimension(R.dimen.fb_card_pad) * 2) / resources.displayMetrics.density
+        val usableDp = resources.configuration.screenWidthDp - padDp
+        val columns = (usableDp / cellDp).toInt().coerceIn(5, 12)
+
+        binding.grid.layoutManager = GridLayoutManager(this, columns)
+        binding.grid.itemAnimator = null
+        binding.grid.adapter = ReportGridAdapter(record.results, record.marked) { position ->
+            // 点题号 = 进解析页，从这道题开始按原卷顺序往后翻
+            openReview(record, record.results.indices.toList(), position)
+        }
+    }
+
+    /**
+     * 进解析页。版式与答题页完全相同（[QuestionReviewActivity]），
+     * [numbers] 是要翻的题（原卷下标）：点题号给整卷，错题解析只给错题。
+     */
+    private fun openReview(record: ExamRecord, numbers: List<Int>, start: Int) {
+        startActivity(
+            Intent(this, QuestionReviewActivity::class.java).apply {
+                putExtra(QuestionReviewActivity.EXTRA_RECORD_ID, record.id)
+                putExtra(QuestionReviewActivity.EXTRA_NUMBERS, numbers.toIntArray())
+                putExtra(QuestionReviewActivity.EXTRA_START, start)
+            }
+        )
+    }
+
+    /** 图例：只列本卷实际出现的状态，全列 5 个反而要占两行、还都是没意义的灰点 */
+    private fun setupLegend(record: ExamRecord) {
+        val box = binding.legendBox
+        box.removeAllViews()
+        val statuses = record.results.map { it.status }.toSet()
+        val entries = ArrayList<Pair<String, Int>>()
+        if ("right" in statuses) entries += getString(R.string.report_legend_right) to R.color.right
+        if ("wrong" in statuses) entries += getString(R.string.report_legend_wrong) to R.color.wrong
+        if ("partial" in statuses) entries += getString(R.string.report_legend_partial) to R.color.partial
+        if ("blank" in statuses) entries += getString(R.string.report_legend_blank) to R.color.blank
+        if ("pending" in statuses) entries += getString(R.string.report_legend_pending) to R.color.fb_warning
+        if (entries.isEmpty()) {
+            box.visibility = View.GONE
+            return
+        }
+        box.visibility = View.VISIBLE
+
+        val rowGap = (6 * resources.displayMetrics.density).toInt()
+        // 每行最多 3 个，最后一行补空位，列与列之间才能对齐
+        entries.chunked(3).forEachIndexed { rowIndex, row ->
+            val rowView = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            row.forEach { (label, color) -> rowView.addView(legendItem(label, color)) }
+            repeat(3 - row.size) {
+                rowView.addView(View(this), LinearLayout.LayoutParams(0, 0, 1f))
+            }
+            box.addView(
+                rowView,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { if (rowIndex > 0) topMargin = rowGap }
+            )
+        }
+    }
+
+    /** 图例一项：8dp 圆点 + 11sp 说明，占 1/3 行宽 */
+    private fun legendItem(label: String, colorRes: Int): LinearLayout {
+        val density = resources.displayMetrics.density
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            val dot = View(context).apply {
+                background = ContextCompat.getDrawable(context, R.drawable.bg_num_blank)
+                ViewCompat.setBackgroundTintList(
+                    this,
+                    ColorStateList.valueOf(ContextCompat.getColor(context, colorRes))
+                )
+            }
+            addView(dot, LinearLayout.LayoutParams((8 * density).toInt(), (8 * density).toInt()))
+            addView(
+                TextView(context).apply {
+                    text = label
+                    setTextSize(TypedValue.COMPLEX_UNIT_PX, resources.getDimension(R.dimen.fb_text_tag))
+                    setTextColor(ContextCompat.getColor(context, R.color.fb_text_meta))
+                    includeFontPadding = false
+                },
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { marginStart = (5 * density).toInt() }
+            )
         }
     }
 
@@ -157,7 +279,7 @@ class ReportActivity : AppCompatActivity() {
             val tv = TextView(this).apply {
                 text = getString(R.string.report_subject_row, label, s.right, s.total, pct)
                 setTextSize(
-                    android.util.TypedValue.COMPLEX_UNIT_PX,
+                    TypedValue.COMPLEX_UNIT_PX,
                     resources.getDimension(R.dimen.fb_text_body_size)
                 )
                 setTextColor(ContextCompat.getColor(context, R.color.fb_text_secondary))
@@ -176,29 +298,6 @@ class ReportActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * 点某道题 → 跳到它所在的试卷，定位到这道题并默认展开：
-     * 题干 / 选项 / 材料 / 标准答案 / 解析一次看全，顺带带上这次的作答与对错。
-     *
-     * 之所以不再单独做一个「题目详情」页：同一道题的完整资料，试卷详情本来就得会渲染
-     * （材料里的表格、图表、配图都在那儿），多一处实现只会多一处口径不一致。
-     */
-    private fun openInPaper(record: ExamRecord, position: Int) {
-        val qid = record.results.getOrNull(position)?.question?.id ?: return
-        if (record.paperId <= 0L) {
-            android.widget.Toast.makeText(this, R.string.report_paper_missing, android.widget.Toast.LENGTH_SHORT).show()
-            return
-        }
-        startActivity(
-            android.content.Intent(this, PaperDetailActivity::class.java).apply {
-                putExtra(PaperDetailActivity.EXTRA_PAPER_ID, record.paperId)
-                putExtra(PaperDetailActivity.EXTRA_PAPER_NAME, record.displayTitle)
-                putExtra(PaperDetailActivity.EXTRA_FOCUS_QUESTION_ID, qid)
-                putExtra(PaperDetailActivity.EXTRA_RECORD_ID, record.id)
-            }
-        )
-    }
-
     /** 错题重练：把本次答错 / 部分得分的题按原顺序生成一份新卷，直接开练（对齐参考应用「错题重练」闭环） */
     private fun setupRetryWrong(record: ExamRecord) {
         val wrongIds = record.results
@@ -209,11 +308,11 @@ class ReportActivity : AppCompatActivity() {
             val name = "${record.name}·错题重练"
             val newPaperId = db.createPaperFromQuestions(name, wrongIds)
             if (newPaperId == 0L) {
-                android.widget.Toast.makeText(this, "生成错题卷失败", android.widget.Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "生成错题卷失败", Toast.LENGTH_SHORT).show()
                 return@addTextAction
             }
             startActivity(
-                android.content.Intent(this, ExamActivity::class.java).apply {
+                Intent(this, ExamActivity::class.java).apply {
                     putExtra(ExamActivity.EXTRA_PAPER_ID, newPaperId)
                     putExtra(ExamActivity.EXTRA_PAPER_NAME, name)
                 }
@@ -244,7 +343,7 @@ class ReportActivity : AppCompatActivity() {
     /** 逐题补录答案页：保存后本页会按记录里的作答重判并重建 */
     private fun openAnswerEntry(record: ExamRecord) {
         fillAnswerLauncher.launch(
-            android.content.Intent(this, AnswerEntryActivity::class.java).apply {
+            Intent(this, AnswerEntryActivity::class.java).apply {
                 putExtra(AnswerEntryActivity.EXTRA_PAPER_ID, record.paperId)
                 putExtra(AnswerEntryActivity.EXTRA_RECORD_ID, record.id)
             }
@@ -294,71 +393,57 @@ class ReportActivity : AppCompatActivity() {
 }
 
 /**
- * 逐题解析列表。
+ * 全部题目的题号网格（答题卡样式）。
  *
- * [marked] 是本次作答被标记（细线星）的题 id —— 交卷时随记录落库，
- * 所以回看旧记录也能看出当时标了哪几题，而不只是当轮答题卡上的点。
- * [times] 是每道题各自花掉的秒数（答题时逐题计时），做题节奏一目了然。
- * [onItemClick] 点卡片 = 去试卷里看这道题的完整资料（材料 / 选项 / 答案解析）。
+ * 颜色口径就一条：**答对绿、答错红**；未作答灰、部分得分橙、待补答案浅橙。
+ * 圆点用底色填充（不走实心 drawable），新状态加进来只要在 [fillRes] / [textRes] 里补一行。
  */
-class ReportAdapter(
+class ReportGridAdapter(
     private val items: List<AnswerResult>,
     private val marked: Set<Long> = emptySet(),
-    private val times: Map<Long, Int> = emptyMap(),
-    private val onItemClick: ((Int) -> Unit)? = null
-) :
-    RecyclerView.Adapter<ReportAdapter.VH>() {
+    private val onClick: ((Int) -> Unit)? = null
+) : RecyclerView.Adapter<ReportGridAdapter.VH>() {
 
-    class VH(val binding: ItemReportQuestionBinding) : RecyclerView.ViewHolder(binding.root)
+    class VH(val binding: ItemCardNumBinding) : RecyclerView.ViewHolder(binding.root)
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
-        VH(ItemReportQuestionBinding.inflate(LayoutInflater.from(parent.context), parent, false))
+        VH(ItemCardNumBinding.inflate(LayoutInflater.from(parent.context), parent, false))
 
     override fun getItemCount() = items.size
 
     override fun onBindViewHolder(holder: VH, position: Int) {
+        val b = holder.binding
+        val ctx = b.root.context
         val r = items[position]
-        val ctx = holder.itemView.context
-        val sec = times[r.question.id] ?: 0
-        holder.binding.tvIndex.text = buildString {
-            append("第 ${position + 1} 题 · ${r.question.type.label}")
-            // 单独记的每题用时：没计到（比如旧记录）就不显示，不硬塞一个 0 秒
-            if (sec > 0) append(" · 用时 ${RecordAdapter.fmtDuration(sec)}")
-        }
-        holder.binding.tvStem.text = r.question.stem
-        holder.binding.tvMark.visibility =
-            if (r.question.id in marked) android.view.View.VISIBLE else android.view.View.GONE
+        val status = r.status
 
-        val (label, color) = when (r.status) {
-            "right" -> "正确" to R.color.right
-            "partial" -> "部分得分" to R.color.partial
-            "blank" -> "未作答" to R.color.blank
-            "pending" -> ctx.getString(R.string.pending_answer) to R.color.partial
-            else -> "错误" to R.color.wrong
-        }
-        holder.binding.tvStatus.text = label
-        holder.binding.tvStatus.setTextColor(ContextCompat.getColor(ctx, color))
+        b.tvNum.text = (position + 1).toString()
+        ViewCompat.setBackgroundTintList(
+            b.tvNum,
+            ColorStateList.valueOf(ContextCompat.getColor(ctx, fillRes(status)))
+        )
+        b.tvNum.setTextColor(ContextCompat.getColor(ctx, textRes(status)))
+        b.vMark.visibility = if (r.question.id in marked) View.VISIBLE else View.GONE
+        b.vFav.visibility = View.GONE
 
-        holder.binding.tvMine.text = "你的答案：${r.userAnswer.ifBlank { "未作答" }}" +
-            if (r.pending) "" else "　得分 ${fmt(r.earned)}/${fmt(r.full)}"
-        holder.binding.tvCorrect.text =
-            if (r.pending) ctx.getString(R.string.pending_answer_empty)
-            else "正确答案：${r.question.displayAnswer()}"
-
-        if (r.question.analysis.isNotBlank()) {
-            holder.binding.tvAnalysis.visibility = android.view.View.VISIBLE
-            holder.binding.tvAnalysis.text = "解析：${r.question.analysis}"
-        } else {
-            holder.binding.tvAnalysis.visibility = android.view.View.GONE
-        }
-
-        // 整卡可点：跳到试卷里对应的题（材料 / 选项 / 答案 / 解析都在那边看全）
-        holder.itemView.setOnClickListener {
-            val pos = holder.bindingAdapterPosition
-            if (pos != RecyclerView.NO_POSITION) onItemClick?.invoke(pos)
-        }
+        // 无障碍：读屏念出来是「第 3 题 错误」，而不是光一个数字
+        b.root.contentDescription = "第 ${position + 1} 题 ${ReportAdapter.statusStyle(ctx, r).first}"
+        b.root.setOnClickListener { onClick?.invoke(position) }
     }
 
-    private fun fmt(v: Double) =
-        if (v == v.toLong().toDouble()) v.toLong().toString() else String.format(Locale.CHINA, "%.1f", v)
+    /** 格子底色：对=绿 / 错=红 / 部分得分=橙 / 未作答=浅灰 / 待补答案=浅橙 */
+    private fun fillRes(status: String) = when (status) {
+        "right" -> R.color.right
+        "wrong" -> R.color.wrong
+        "partial" -> R.color.partial
+        "blank" -> R.color.fb_card_num_blank_bg
+        else -> R.color.fb_warning_bg
+    }
+
+    /** 填充色重的那几种用白字，浅底用深字 */
+    private fun textRes(status: String) = when (status) {
+        "right", "wrong", "partial" -> android.R.color.white
+        "blank" -> R.color.fb_card_num_blank_text
+        else -> R.color.fb_warning
+    }
 }

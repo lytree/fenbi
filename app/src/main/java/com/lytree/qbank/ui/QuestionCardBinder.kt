@@ -113,7 +113,13 @@ object QuestionCardBinder {
          * 题间分隔线。多题浏览是卷面通铺，靠这条线分题；
          * 单题浏览一屏一题、下面没有「下一题」，画了反而像被截断。
          */
-        showDivider: Boolean = true
+        showDivider: Boolean = true,
+        /**
+         * 只读复习（错题解析 / 单题解析）：答案已经定了，选项不能再点选、也不能长按打叉，
+         * 右上角「标记 / 笔 / 收藏」也没有承接动作，直接不显示。
+         * 其余版式、字号、判分着色一律与答题页相同——复习页就是要跟答题页长得一模一样。
+         */
+        readOnly: Boolean = false
     ) {
         val ctx = b.root.context
         val res = ctx.resources
@@ -194,6 +200,11 @@ object QuestionCardBinder {
             cb.onNoteClicked(q)
             true
         }
+        // 复习页只读：三个动作图标没有承接方，留着点了没反应，干脆不显示
+        val actionVisibility = if (readOnly) View.GONE else View.VISIBLE
+        b.btnMark.visibility = actionVisibility
+        b.btnScratch.visibility = actionVisibility
+        b.btnFavorite.visibility = actionVisibility
 
         // ---- 题干（字号随「更多」面板缩放；基准 16sp / 额外行距 7dp）----
         b.tvStem.text = q.stem
@@ -240,7 +251,7 @@ object QuestionCardBinder {
 
         // ---- 选项 ----
         b.optionsBox.removeAllViews()
-        buildOptions(b, q, answers, fontScale, cb, night, revealNow)
+        buildOptions(b, q, answers, fontScale, cb, night, revealNow, readOnly)
 
         // ---- 解析（交卷后 / 练习模式即时判分后）----
         b.tvAnalysis.setBackgroundResource(
@@ -289,7 +300,8 @@ object QuestionCardBinder {
         fontScale: Float,
         cb: Callbacks,
         night: Boolean,
-        revealNow: Boolean
+        revealNow: Boolean,
+        readOnly: Boolean = false
     ) {
         val ctx = b.root.context
         val inflater = LayoutInflater.from(ctx)
@@ -339,7 +351,8 @@ object QuestionCardBinder {
                     b.optionsBox, q, { selected }, night, fontScale,
                     revealFor = revealFor,
                     onPick = { pick(it) },
-                    onCrossChanged = { key, crossed -> if (crossed) unpick(key) }
+                    onCrossChanged = { key, crossed -> if (crossed) unpick(key) },
+                    readOnly = readOnly
                 )
             )
             return
@@ -379,14 +392,17 @@ object QuestionCardBinder {
 
             // 把 item 绑定挂到子 view 上，作答后就地刷新徽标时不必重新解析下标
             item.root.tag = item
-            bindOptionInteractions(
-                item, q.id, opt.key,
-                onPick = { pick(opt.key) },
-                onCrossChanged = { crossed ->
-                    if (crossed) unpick(key)
-                    refresh()
-                }
-            )
+            // 只读复习：不挂手势，已判分的圈色停在本来的位置，点一下不会把答案「改成」别的项
+            if (!readOnly) {
+                bindOptionInteractions(
+                    item, q.id, opt.key,
+                    onPick = { pick(opt.key) },
+                    onCrossChanged = { crossed ->
+                        if (crossed) unpick(key)
+                        refresh()
+                    }
+                )
+            }
             return item
         }
 
@@ -429,7 +445,9 @@ object QuestionCardBinder {
         applyRowPadding: Boolean = true,
         onPick: (String) -> Unit,
         /** 打叉状态变了：调用方负责把已选项从答案里撤掉（重画由本行自己做） */
-        onCrossChanged: ((key: String, crossed: Boolean) -> Unit)? = null
+        onCrossChanged: ((key: String, crossed: Boolean) -> Unit)? = null,
+        /** 只读复习：不挂点选 / 打叉手势，行内只保留判分着色 */
+        readOnly: Boolean = false
     ): View {
         val ctx = container.context
         val res = ctx.resources
@@ -514,14 +532,16 @@ object QuestionCardBinder {
             )
             refresh()
             item.root.tag = item
-            bindOptionInteractions(
-                item, q.id, opt.key,
-                onPick = { onPick(key) },
-                onCrossChanged = { crossed ->
-                    onCrossChanged?.invoke(key, crossed)
-                    refresh()
-                }
-            )
+            if (!readOnly) {
+                bindOptionInteractions(
+                    item, q.id, opt.key,
+                    onPick = { onPick(key) },
+                    onCrossChanged = { crossed ->
+                        onCrossChanged?.invoke(key, crossed)
+                        refresh()
+                    }
+                )
+            }
             row.addView(item.root)
         }
         return row

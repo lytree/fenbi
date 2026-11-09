@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  解析页：与答题页同一套卷面（题号 + 题型标签 / 题干 16sp / 选项圆标 / 卷面白底通铺），
+  只多出「正确答案 / 你的答案 / 结果 / 解析」那一块，并且不能作答。
+  · 一屏一题，左右滑动切题（与答题页翻题手势一致），底部再给一对「上一题 / 下一题」
+  · 顶栏标题显示「第 N/M 题」，右侧「看原题」回试卷定位（材料里的表格 / 配图在那边最全）
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    style="@style/FbPage">
+
+    <com.lytree.qbank.ui.FbTitleBar
+        android:id="@+id/titleBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
+
+    <androidx.viewpager2.widget.ViewPager2
+        android:id="@+id/pager"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="@color/fb_sheet_bg" />
+
+    <View style="@style/FbDivider" />
+
+    <LinearLayout
+        style="@style/FbBottomBar"
+        android:orientation="horizontal">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnPrev"
+            style="@style/FbGhostButton"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:text="@string/action_prev" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnNext"
+            style="@style/FbPrimaryButton"
+            android:layout_width="0dp"
+            android:layout_marginStart="@dimen/fb_space_12"
+            android:layout_weight="1"
+            android:text="@string/action_next" />
+    </LinearLayout>
+</LinearLayout>
