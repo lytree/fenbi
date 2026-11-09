@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  解析页的单页容器：一屏一题，左右滑切换。
+  内容可能很长（题干 + 长解析），所以每页自己竖向滚；横向翻页交给外层 ViewPager2。
+-->
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:clipToPadding="false"
+    android:paddingStart="@dimen/fb_page_pad"
+    android:paddingTop="@dimen/fb_space_4"
+    android:paddingEnd="@dimen/fb_page_pad"
+    android:paddingBottom="@dimen/fb_space_16"
+    android:scrollbars="none">
+
+    <include
+        android:id="@+id/card"
+        layout="@layout/item_report_question" />
+</androidx.core.widget.NestedScrollView>

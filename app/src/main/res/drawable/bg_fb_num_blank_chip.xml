@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  未作答的题号圆：浅灰底 + 一圈浅描边。
+  纯灰底在白色卡片上几乎看不见，加一圈描边才认得出「这是个可点的题号」。
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="@color/fb_fill" />
+    <stroke
+        android:width="1dp"
+        android:color="@color/fb_border" />
+</shape>

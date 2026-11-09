@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 报告逐题卡：题号 + 判定状态 + 题干 + 我的答案 / 正确答案 + 解析
-     父容器（报告页内容列）已经给了左右 16dp，这里只加卡间距，不再加左右外边距 -->
+<!-- 解析题卡：题号 + 判定状态 + 题干 + 我的答案 / 正确答案 + 解析
+     用在逐题解析页（activity_analysis）：父容器 RecyclerView 给了左右 page_pad，这里只加卡间距 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     style="@style/FbCard"
     android:layout_marginTop="@dimen/fb_card_gap_v"

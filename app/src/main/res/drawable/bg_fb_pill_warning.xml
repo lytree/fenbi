@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 告警小胶囊：缺标准答案这类「待补」状态，浅橙底 + 橙字，比灰字更早被看到 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/fb_warning_bg" />
+    <corners android:radius="@dimen/fb_type_tag_radius" />
+</shape>

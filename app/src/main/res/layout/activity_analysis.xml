@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  逐题解析：从成绩报告点进来，单独一页看题卡。
+  顶部「错题解析 / 全部解析」两档切换；下面一屏一题、左右滑翻页，底部给页码。
+  两档显示完全一致，只是错题档筛掉做对的题。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    style="@style/FbPage">
+
+    <com.lytree.qbank.ui.FbTitleBar
+        android:id="@+id/titleBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
+
+    <!-- 两档切换：错题解析 / 全部解析。两档同一套题卡，只有数据集合不同 -->
+    <LinearLayout
+        android:id="@+id/segAnalysis"
+        android:layout_width="match_parent"
+        android:layout_height="32dp"
+        android:layout_marginStart="@dimen/fb_page_pad"
+        android:layout_marginTop="@dimen/fb_space_12"
+        android:layout_marginEnd="@dimen/fb_page_pad"
+        android:background="@drawable/bg_fb_segment_track"
+        android:orientation="horizontal"
+        android:padding="3dp">
+
+        <TextView
+            android:id="@+id/btnWrongTab"
+            style="@style/FbSegmentPill"
+            tools:text="错题解析 8" />
+
+        <TextView
+            android:id="@+id/btnAllTab"
+            style="@style/FbSegmentPill"
+            tools:text="全部解析 20" />
+    </LinearLayout>
+
+    <!-- 错题档为空时（全对 / 全是待补答案）给一句说明，免得以为加载失败 -->
+    <TextView
+        android:id="@+id/tvEmpty"
+        style="@style/FbBodySm"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:paddingStart="@dimen/fb_page_pad"
+        android:paddingTop="@dimen/fb_space_24"
+        android:paddingEnd="@dimen/fb_page_pad"
+        android:paddingBottom="@dimen/fb_space_24"
+        android:text="@string/report_retry_empty"
+        android:visibility="gone"
+        tools:visibility="visible" />
+
+    <!-- 一屏一题，左右滑翻页（竖向由每页自己滚） -->
+    <androidx.viewpager2.widget.ViewPager2
+        android:id="@+id/pager"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <!-- 页码：当前第几题 / 共几题，滑动时实时更新 -->
+    <TextView
+        android:id="@+id/tvPageCounter"
+        style="@style/FbBodySm"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:paddingTop="6dp"
+        android:paddingBottom="8dp"
+        android:textColor="@color/fb_text_meta"
+        tools:text="3 / 9" />
+</LinearLayout>

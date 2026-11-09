@@ -63,6 +63,8 @@
             android:exported="false"
             android:theme="@style/Theme.QBank.Popup" />
         <activity android:name=".ui.ReportActivity" android:exported="false" />
+        <!-- 逐题解析：从成绩报告点进来，独立一页（错题 / 全部两档切换） -->
+        <activity android:name=".ui.AnalysisActivity" android:exported="false" />
         <!-- 补录答案：逐题填标准答案（键盘弹出时列表要能被顶上去） -->
         <activity
             android:name=".ui.AnswerEntryActivity"

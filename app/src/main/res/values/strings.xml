@@ -172,10 +172,25 @@
     <string name="report_subject_title">模块正确率</string>
     <string name="report_subject_row">%1$s　答对 %2$d/%3$d · %4$d%%</string>
     <string name="report_retry_wrong">错题重练</string>
-    <string name="report_retry_empty">这次没有错题，保持！</string>
     <!-- 逐题解析区标题：本次有标记时带上标记数 -->
     <string name="report_analysis_title">逐题解析</string>
     <string name="report_analysis_title_marked">逐题解析（标记 %1$d 题）</string>
+    <!-- 报告页「全部题目」题号卡：题号按判分状态上色，点题号直达解析 -->
+    <string name="report_all_questions">全部题目</string>
+    <string name="report_numbers_hint">点题号看这道题的解析，也可以左右翻页</string>
+    <string name="report_legend_right">答对</string>
+    <string name="report_legend_partial">部分得分</string>
+    <string name="report_legend_wrong">答错</string>
+    <string name="report_legend_blank">未作答</string>
+    <!-- 报告页两个入口：进的是同一页、同一套题卡，只差数据集合 -->
+    <string name="report_enter_wrong">错题解析</string>
+    <string name="report_enter_all">全部解析</string>
+    <string name="report_number_desc">第 %1$d 题，%2$s</string>
+    <!-- 解析页两档切换：两档同一套题卡，错题解析只列没做对的 -->
+    <string name="report_tab_wrong">错题解析 %1$d</string>
+    <string name="report_tab_all">全部解析 %1$d</string>
+    <string name="report_retry_empty">这次没有错题，保持！</string>
+    <string name="report_analysis_empty">本卷没有可解析的题目</string>
     <!-- 报告页点题：跳到试卷里对应的题，看完整资料（材料 / 选项 / 答案解析） -->
     <string name="report_open_question">在试卷中查看这道题</string>
     <string name="report_paper_missing">试卷已删除，无法查看这道题</string>

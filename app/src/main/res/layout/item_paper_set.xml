@@ -1,28 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  导入组标题（树的第一层）：左边折叠箭头 + 标题 + 「N 份 · M 题 · 来源」，点一下展开 / 收起。
-  与下面的试卷卡拉开一点距离，读起来是「一组卷」而不是又一张卡。
+  导入组标题（树的第一层）：折叠箭头 + 标题 + 「N 份 · M 题 · 日期」，点一下展开 / 收起。
+  · 整行是一张描边卡：页面底 #F9FAFC 和白卡几乎同色，没这条 1dp 边框，分组头就只剩一行灰字
+  · 箭头用矢量 chevron（收起时转 -90°），比 ▾/▸ 文字三角细一档，和标题的视觉重量不打架
+  · 缺答案不混在灰字里，改成行尾橙色胶囊——待补的组扫一眼就能挑出来
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    style="@style/FbPressable"
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
+    style="@style/FbListCardLinePressable"
+    android:layout_marginBottom="@dimen/fb_space_4"
     android:gravity="center_vertical"
     android:orientation="horizontal"
-    android:paddingStart="@dimen/fb_page_pad"
-    android:paddingTop="@dimen/fb_space_16"
-    android:paddingEnd="@dimen/fb_page_pad"
-    android:paddingBottom="@dimen/fb_space_4">
+    android:paddingStart="@dimen/fb_space_4"
+    android:paddingTop="@dimen/fb_space_12"
+    android:paddingEnd="@dimen/fb_space_12"
+    android:paddingBottom="@dimen/fb_space_12">
 
-    <TextView
+    <ImageView
         android:id="@+id/arrow"
-        android:layout_width="14dp"
-        android:layout_height="wrap_content"
-        android:includeFontPadding="false"
-        android:textColor="@color/fb_text_meta"
-        android:textSize="@dimen/fb_text_item_sub"
-        tools:text="▾" />
+        android:layout_width="16dp"
+        android:layout_height="16dp"
+        android:contentDescription="@null"
+        android:src="@drawable/ic_fb_chevron_down" />
 
     <LinearLayout
         android:layout_width="0dp"
@@ -43,7 +42,15 @@
             style="@style/FbItemSub"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
+            android:layout_marginTop="3dp"
             android:maxLines="1" />
     </LinearLayout>
+
+    <TextView
+        android:id="@+id/missing"
+        style="@style/FbPillWarning"
+        android:layout_marginStart="@dimen/fb_space_8"
+        android:visibility="gone"
+        tools:text="缺 3 答案"
+        tools:visibility="visible" />
 </LinearLayout>
