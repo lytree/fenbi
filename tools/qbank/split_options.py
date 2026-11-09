@@ -208,6 +208,40 @@ def _fit_groups(groups, n):
     return groups
 
 
+def _tighten_opt(bin_full, box):
+    """收紧选项框，并丢掉贴在外边缘的那条表格框线（只裁边缘，不碰图形内部笔画）。"""
+    x0, y0, x1, y1 = box
+    x1 = min(x1, bin_full.shape[1])
+    y1 = min(y1, bin_full.shape[0])
+    if x1 <= x0 or y1 <= y0:
+        return box
+    sub = bin_full[y0:y1, x0:x1]
+    if sub.sum() == 0:
+        return box
+    ys, xs = np.where(sub)
+    t, b = int(ys.min()), int(ys.max())
+    l, r = int(xs.min()), int(xs.max())
+    wdt = r - l + 1
+
+    def full_row(y):
+        return int(sub[y, l:r + 1].sum()) >= 0.9 * wdt
+
+    while t < b and b - t > 8 and full_row(t):
+        t += 1
+    while b > t and b - t > 8 and full_row(b):
+        b -= 1
+    hgt = b - t + 1
+
+    def full_col(x):
+        return int(sub[t:b + 1, x].sum()) >= 0.9 * hgt
+
+    while l < r and r - l > 8 and full_col(l):
+        l += 1
+    while r > l and r - l > 8 and full_col(r):
+        r -= 1
+    return [x0 + l, y0 + t, x0 + r + 1, y0 + b + 1]
+
+
 def _build_cells(region, top, w, h, force=None):
     """在选项区域内，按实际墨迹分组切出 4 格，按 (行,列) 阅读顺序返回。
     返回 (nrow, ncol, cells) 或 None（无法切成 4 格时）。
@@ -265,7 +299,400 @@ def _build_cells(region, top, w, h, force=None):
         return 2, 2, cells
 
 
+def _ink_bands(bin_full, w, gap=6):
+    """横向「内容带」：有墨的行连成带，带之间用空白隔开（间隙 < gap 的合并）。
+
+    阈值取 0.4% 宽度——A/B/C/D 这种小字号标签行每行只有几个墨点，
+    阈值放高会把它切成一堆 1~2px 的碎片，认不出是「标签行」。
+    """
+    h = bin_full.shape[0]
+    row_ink = bin_full.sum(axis=1)
+    on = row_ink >= max(2, int(0.004 * w))
+    bands, s = [], -1
+    for i, v in enumerate(on):
+        if v:
+            if s < 0:
+                s = i
+        else:
+            if s >= 0:
+                bands.append([s, i])
+                s = -1
+    if s >= 0:
+        bands.append([s, h])
+    merged = []
+    for b in bands:
+        if merged and b[0] - merged[-1][1] < gap:
+            merged[-1][1] = b[1]
+        else:
+            merged.append(b)
+    return [(a, b) for a, b in merged]
+
+
+def _drop_rules(bands, bin_full, w):
+    """丢掉「表格横线 / 边框」：很扁（<=6px）且近乎贯穿全宽的带。"""
+    out = []
+    for s, e in bands:
+        if (e - s) <= 6:
+            span = int(bin_full[s:e].any(axis=0).sum())
+            if span >= 0.85 * w:
+                continue
+        out.append((s, e))
+    return out
+
+
+def _run_mask(mask, minlen=0, maxlen=10 ** 9):
+    """返回 mask 里连续 True 的区段 [(s,e)]，长度落在 [minlen, maxlen]。"""
+    out, s = [], -1
+    for i, v in enumerate(mask):
+        if v:
+            if s < 0:
+                s = i
+        else:
+            if s >= 0:
+                if minlen <= i - s <= maxlen:
+                    out.append((s, i))
+                s = -1
+    if s >= 0 and minlen <= len(mask) - s <= maxlen:
+        out.append((s, len(mask)))
+    return out
+
+
+def _strip_rules(block):
+    """把区域内的表格框线（细且贯穿整块高/宽的横竖线）抹掉再统计投影。
+
+    题干表格的框线会把 4 个相邻的选项图形“连成一整块”，导致列分组只剩 1 组。
+    """
+    b = block.copy()
+    rh, rw = b.shape
+    if rh < 6 or rw < 6:
+        return b
+    col_ink = b.sum(axis=0)
+    for s, e in _run_mask(col_ink >= 0.88 * rh, maxlen=6):
+        b[:, s:e] = 0
+    row_ink = b.sum(axis=1)
+    for s, e in _run_mask(row_ink >= 0.90 * rw, maxlen=6):
+        b[s:e, :] = 0
+    return b
+
+
+def _v_rule_positions(block, ratio=0.85):
+    """竖直框线位置：细（<=6px）且**几乎贯穿整块高**的列。
+
+    图形推理卷里大量题目把选项排在**表格**里，表格竖线恰好就是选项边界；
+    表格里一行 4 个格 => 5 条竖线。阈值取 0.85 是关键：图形自己的竖直笔画
+    只有 0.5~0.8 块高，达不到，不会误判成框线。
+    """
+    rh = block.shape[0]
+    if rh < 36:
+        return []
+    col_ink = block.sum(axis=0)
+    runs = _run_mask(col_ink >= ratio * rh, maxlen=6)
+    return [(s + e) // 2 for s, e in runs]
+
+
+def _split_at_rules(bands, bin_full, min_h=8):
+    """把跨越「长横线」的内容带在这些线处切开（去掉线本身）。
+
+    跨度按**本条带自己**的内容宽度算：表格的分隔线只贯穿表格，
+    而图片里还可能有比表格更宽的文字行，用整图宽度会漏判。
+    """
+    out = []
+    for s, e in bands:
+        sub = bin_full[s:e, :]
+        cols = np.where(sub.any(axis=0))[0]
+        if cols.size == 0:
+            out.append((s, e))
+            continue
+        x0, x1 = int(cols.min()), int(cols.max()) + 1
+        span = x1 - x0
+        if span < 40:
+            out.append((s, e))
+            continue
+        row_ink = sub[:, x0:x1].sum(axis=1)
+        cuts = []
+        for y in np.where(row_ink >= 0.6 * span)[0]:
+            row = sub[y, x0:x1]
+            best = c = 0
+            for v in row:
+                c = c + 1 if v else 0
+                if c > best:
+                    best = c
+            if best >= 0.85 * span:
+                cuts.append(int(y))
+        if not cuts:
+            out.append((s, e))
+            continue
+        cur = s
+        for y in cuts:
+            cut = s + y
+            if cut - cur >= min_h:
+                out.append((cur, cut))
+            cur = cut + 1
+        if e - cur >= min_h:
+            out.append((cur, e))
+    return out
+
+
+def _is_label_band(block, w):
+    """整条带是不是「A B C D」这种单字母标签行：4 个又窄又矮的小块。"""
+    rh = block.shape[0]
+    if not (6 <= rh <= 26):
+        return False
+    cg = _col_groups(block, w, True)
+    if len(cg) != 4:
+        return False
+    ws = [b - a for a, b in cg]
+    if max(ws) > 24:
+        return False
+    inks = [int(block[:, a:b].sum()) for a, b in cg]
+    return min(inks) >= 3
+
+
+def _col_groups(rowblock, w, text_like):
+    """一行内的列分组。文字行用更大的合并间隙（选项之间的间距远大于逗号间距）。"""
+    rh = rowblock.shape[0]
+    gap = 42 if text_like else max(12, w // 90)
+    cg = _on_groups(rowblock.sum(axis=0), max(1, rh // 300), gap, w)
+    return [g for g in cg if (g[1] - g[0]) >= 8]
+
+
+def _rule_span(block, x):
+    """在 x 列上找最长的一段连续墨迹，作为这条框线的上下跨度（= 单元格高度）。"""
+    if x < 0 or x >= block.shape[1]:
+        return None
+    col = block[:, max(0, x - 1):x + 2].any(axis=1)
+    best, s = None, -1
+    for i, v in enumerate(col):
+        if v:
+            if s < 0:
+                s = i
+        else:
+            if s >= 0:
+                if best is None or i - s > best[1] - best[0]:
+                    best = (s, i)
+                s = -1
+    if s >= 0 and (best is None or len(col) - s > best[1] - best[0]):
+        best = (s, len(col))
+    return best
+
+
+def _cell_y(block, rules, ref):
+    """用框线自身的跨度确定单元格上下边界（避免内容被拆成两条带时切掉上下）。"""
+    spans = [sp for sp in (_rule_span(block, x) for x in rules) if sp]
+    if not spans:
+        return None
+    y0 = min(s for s, e in spans)
+    y1 = max(e for s, e in spans)
+    if y1 - y0 < 10:
+        return None
+    if not (y0 - 6 <= ref[0] and ref[1] <= y1 + 6):   # 参考行应在跨度内
+        return None
+    # 框线可能连着相邻行，限制外扩幅度，避免把别的行也框进来
+    pad = int(0.35 * (ref[1] - ref[0]))
+    return max(y0, ref[0] - pad), min(y1, ref[1] + pad)
+
+
+def _partition(block):
+    """把一块区域按实际墨迹切成 4 个格子，按阅读顺序返回 (nrow, ncol, cells)。
+
+    先取「墨量最多的那一行」当选项行：这样即使块里混进了 A/B/C/D 字母标签行，
+    也只会切真正的内容行。
+
+    切列的优先级：
+      1. 表格竖框线恰好 5 条 → 直接就是 4 格（最准）；
+      2. 只有左右两条框线 → 在这两条之间等分 4 格（内部格线被图形压住时）；
+      3. 3 条框线 + 2 行 → 2×2；
+      4. 没有框线 → 按列分组数收敛（1 行 3~6 组、2 行各 2 组、4 行各 1 组）。
+    """
+    b = _strip_rules(block)
+    rh, rw = b.shape
+    if rh < 8 or rw < 8:
+        return None
+
+    rg = _on_groups(b.sum(axis=1), 1, 5, rh)
+    rg = [g for g in rg if (g[1] - g[0]) >= 5]
+    if not rg:
+        return None
+    inks = [int(b[s:e].sum()) for s, e in rg]
+    main = rg[int(np.argmax(inks))]
+
+    # 竖框线：先整块找；找不到（框线只贯穿某一格、被字母标签行稀释掉）就逐行找，
+    # 取第一个能给出 3~5 条线的区域。ref 记下这个区域，供 _cell_y 定位单元格高度。
+    vr, ref = _v_rule_positions(block), main
+    if not (3 <= len(vr) <= 5):
+        for g in sorted(rg, key=lambda x: -(x[1] - x[0])):
+            v = _v_rule_positions(block[g[0]:g[1], :])
+            if 3 <= len(v) <= 5:
+                vr, ref = v, g
+                break
+    if len(vr) == 5:
+        span = _cell_y(block, vr, ref) or main
+        cells = [[vr[j] + 3, span[0], vr[j + 1] - 3, span[1]] for j in range(4)]
+        if all(c[2] - c[0] >= 12 for c in cells):
+            return 1, 4, cells
+    if len(vr) == 2:
+        span = _cell_y(block, vr, main) or main
+        width = vr[1] - vr[0]
+        if width >= 160:
+            step = width / 4.0
+            cells = [[int(vr[0] + j * step) + 2, span[0],
+                      int(vr[0] + (j + 1) * step) - 2, span[1]] for j in range(4)]
+            if all(c[2] - c[0] >= 12 for c in cells):
+                return 1, 4, cells
+    if len(vr) == 3 and len(rg) >= 2:
+        two = sorted(rg, key=lambda g: -int(b[g[0]:g[1]].sum()))[:2]
+        two.sort(key=lambda g: g[0])
+        cells = [[vr[j] + 3, two[i][0], vr[j + 1] - 3, two[i][1]]
+                 for i in range(2) for j in range(2)]
+        if all(c[2] - c[0] >= 12 for c in cells):
+            return 2, 2, cells
+
+    nr = len(rg)
+    text_like = max(e - s for s, e in rg) <= 34
+    per_row = [_col_groups(b[s:e, :], rw, text_like) for s, e in rg]
+
+    if nr == 1:
+        cg = per_row[0]
+        if not (3 <= len(cg) <= 6):
+            return None
+        cols = _fit_groups(cg, 4)
+        if not cols:
+            return None
+        y0, y1 = rg[0]
+        return 1, 4, [[cols[j][0], y0, cols[j][1], y1] for j in range(4)]
+
+    if nr == 2:
+        g0, g1 = per_row[0], per_row[1]
+        if not (2 <= len(g0) <= 3 and 2 <= len(g1) <= 3):
+            return None
+        c0, c1 = _fit_groups(g0, 2), _fit_groups(g1, 2)
+        if not c0 or not c1:
+            return None
+        cells = []
+        for j in range(2):
+            cells.append([c0[j][0], rg[0][0], c0[j][1], rg[0][1]])
+        for j in range(2):
+            cells.append([c1[j][0], rg[1][0], c1[j][1], rg[1][1]])
+        return 2, 2, cells
+
+    if nr == 4:
+        if not all(1 <= len(g) <= 2 for g in per_row):
+            return None
+        widths = []
+        for g in per_row:
+            gg = _fit_groups(g, 1)
+            widths.append(gg[0])
+        return 4, 1, [[widths[i][0], rg[i][0], widths[i][1], rg[i][1]]
+                      for i in range(4)]
+    return None
+
+
+def _is_label_row(opts):
+    """四个格子都只是「A/B/C/D 这种单字母标签」——不是选项本身。"""
+    ok = True
+    for b in opts:
+        bw, bh = b[2] - b[0], b[3] - b[1]
+        if bw > 30 or bh > 26:
+            ok = False
+            break
+    return ok
+
+
+def _looks_like_options(opts, bin_full, w, h):
+    if len(opts) != 4:
+        return False
+    inks, ws, hs = [], [], []
+    for b in opts:
+        x0, y0, x1, y1 = b
+        if x1 <= x0 or y1 <= y0:
+            return False
+        inks.append(int(bin_full[y0:y1, x0:x1].sum()))
+        ws.append(x1 - x0)
+        hs.append(y1 - y0)
+    if min(inks) < 40 or min(ws) < 8 or min(hs) < 6:
+        return False
+    if max(inks) > 0 and min(inks) / max(inks) < 0.15:
+        return False
+    if max(hs) > 0 and min(hs) / max(hs) < 0.25:
+        return False
+    if min(b[1] for b in opts) < 0.30 * h:      # 选项必须在画面下半部
+        return False
+    return True
+
+
+def _find_option_block(bin_full, w, h):
+    """自下而上拼「选项块」并打分选最优。
+
+    同时处理：
+      * 一排 4 个图形选项（最后一条带直接就是）；
+      * 2×2 图形选项 / 2 列×2 行文字选项（拼两条带）；
+      * 计数题「A. 1 B. 2 C. 3 D. 4」这种底部一行矮文字选项；
+      * A/B/C/D 字母写在图形**下方**的表格题（字母行当标签剔掉）；
+      * 表格横线（很扁且贯穿全宽的带，先丢掉）。
+    """
+    bands = _drop_rules(_ink_bands(bin_full, w), bin_full, w)
+    bands = _split_at_rules(bands, bin_full)
+
+    # 尾部「字母标签行」先剔掉：只有 4 个单字母大小的小块
+    while bands:
+        s, e = bands[-1]
+        if _is_label_band(bin_full[s:e, :], w):
+            bands.pop()
+            continue
+        break
+
+    best = None
+    for k in range(1, len(bands) + 1):
+        block = bands[-k:]
+        top, bot = block[0][0], block[-1][1]
+        if bot - top > 0.88 * h:
+            break
+        built = _partition(bin_full[top:bot, :])
+        if built is None:
+            continue
+        nrow, ncol, cells = built
+        opts = [_tighten_opt(bin_full, [c[0], top + c[1], c[2], top + c[3]])
+                for c in cells]
+        if not _looks_like_options(opts, bin_full, w, h):
+            continue
+        inks = [int(bin_full[b[1]:b[3], b[0]:b[2]].sum()) for b in opts]
+        bal = min(inks) / max(inks) if max(inks) else 0
+        score = (round(bal, 3), -k)          # 先看均衡度，同分选「带更少」的块
+        if best is None or score > best[0]:
+            best = (score, opts, nrow, ncol, top)
+    return None if best is None else best[1:]
+
+
 def split_question(img_path):
+    im = Image.open(img_path).convert("RGB")
+    w, h = im.size
+    bin_full = _binarize(im)
+
+    found = _find_option_block(bin_full, w, h)
+    if found is not None:
+        options, nrow, ncol, _block_top = found
+        # 题干止于「四个选项格的真实上沿」，而不是选项块的顶部：
+        # 块里可能还混着上面的内容（表格上边线、文字行），用块顶会把题干压成一条
+        opt_top = min(b[1] for b in options)
+        stem_bottom = max(0, opt_top - 2)
+        if stem_bottom < 0.10 * h:
+            stem_bottom = int(0.10 * h)
+        stem_box = _tighten(bin_full, [0, 0, w, stem_bottom])
+        if stem_box[3] - stem_box[1] < 20:
+            stem_box = [0, 0, w, max(20, int(0.10 * h))]
+        if stem_box[3] > opt_top:               # 题干不得越过选项上沿
+            stem_box[3] = opt_top
+        areas = [int(bin_full[b[1]:b[3], b[0]:b[2]].sum()) for b in options]
+        mx = max(areas) if areas else 0
+        return {"stem_box": stem_box, "options": options,
+                "grid": "%dx%d" % (nrow, ncol), "method": "block",
+                "size": (w, h),
+                "low_conf": bool(mx == 0 or min(areas) / mx < 0.30)}
+
+    return _split_legacy(img_path)
+
+
+def _split_legacy(img_path):
     im = Image.open(img_path).convert("RGB")
     w, h = im.size
     bin_full = _binarize(im)

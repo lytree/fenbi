@@ -306,9 +306,41 @@ def check_images(records, img_dir):
 
 
 def _png_bytes(im):
+    """存 PNG。本来就是黑白扫描件的转成灰度存（体积能小一半以上），
+    真有彩色内容的（彩色像素占比不低）保持 RGB。"""
+    import numpy as np
+    a = np.asarray(im.convert("RGB"))
+    if a.size:
+        spread = a.max(axis=2).astype(np.int16) - a.min(axis=2).astype(np.int16)
+        if float((spread > 24).mean()) < 0.01:
+            im = im.convert("L")
     buf = BytesIO()
     im.save(buf, format="PNG", optimize=True)
     return buf.getvalue()
+
+
+# 选项图最小边长：原卷里「A. 1」这种文字选项只有 14px 高，App 最多把图放大到原图的
+# 2 倍（MaterialRenderer.UPSCALE_CAP），不放大就会在格子里小到看不清。
+# 这里把过小的选项图按整数倍插值放大（内容是原像素，不改动任何信息）。
+OPT_MIN_H = 48          # 放大后的目标高度
+OPT_TRIGGER_H = 36      # 只有比这更矮的才放大（文字选项 / 极小的图）
+OPT_UPSCALE_MAX = 4
+
+
+def _opt_png(im, box):
+    """裁出选项；过矮的（文字选项）按整数倍放大，免得在格子里看不清。
+
+    只放大「确实太小」的，避免整包体积暴涨——正常图形的选项本来就够大。
+    """
+    from PIL import Image
+    import math
+    crop = im.crop((box[0], box[1], box[2], box[3]))
+    if 0 < crop.height < OPT_TRIGGER_H:
+        factor = min(OPT_UPSCALE_MAX,
+                     max(2, int(math.ceil(OPT_MIN_H / float(crop.height)))))
+        crop = crop.resize((crop.width * factor, crop.height * factor),
+                           Image.LANCZOS)
+    return _png_bytes(crop)
 
 
 def _xlsx_bytes(sheets):
@@ -319,19 +351,48 @@ def _xlsx_bytes(sheets):
     return buf.getvalue()
 
 
-def _question_images(src, image, so):
+MANUAL_RECTS = os.path.join(HERE, "manual_rects.json")
+
+
+def _manual_rects():
+    """手工坐标（少数版式几何规则识别不了，见 manual_rects.json 的说明）。"""
+    import json
+    if not os.path.exists(MANUAL_RECTS):
+        return {}
+    with open(MANUAL_RECTS, encoding="utf-8") as fh:
+        data = json.load(fh)
+    return {k: v for k, v in data.items() if not k.startswith("_")}
+
+
+def _question_images(src, image, so, manual=None):
     """把一道题拆成 {文件名: png_bytes}（题干 + 4 选项）。返回 (dict, ok)。"""
     from PIL import Image
     base = opt_base(image)
     items = {}
+
+    ov = (manual or {}).get(os.path.splitext(image)[0])
+    if ov:
+        from PIL import ImageDraw
+        im = Image.open(src).convert("RGB")
+        sx0, sy0, sx1, sy1 = ov["stem_box"]
+        stem = im.crop((sx0, sy0, sx1, sy1))
+        # 把选项列从题干图里涂白：题目和选项彻底分开，且题干不漏内容
+        d = ImageDraw.Draw(stem)
+        for wx0, wy0, wx1, wy1 in ov.get("whiteout", []):
+            d.rectangle((wx0 - sx0, wy0 - sy0, wx1 - sx0, wy1 - sy0),
+                        fill=(255, 255, 255))
+        items[image] = _png_bytes(stem)
+        for k, box in zip("ABCD", ov["options"]):
+            items["%s_%s.png" % (base, k)] = _opt_png(im, box)
+        return items, True
+
     try:
         res = so.split_question(src)
         im = Image.open(src).convert("RGB")
         sx0, sy0, sx1, sy1 = res["stem_box"]
         items[image] = _png_bytes(im.crop((sx0, sy0, sx1, sy1)))
         for k, box in zip("ABCD", res["options"]):
-            items["%s_%s.png" % (base, k)] = _png_bytes(
-                im.crop((box[0], box[1], box[2], box[3])))
+            items["%s_%s.png" % (base, k)] = _opt_png(im, box)
         return items, True
     except Exception as e:                       # 兜底也要出 4 张选项图
         print("  拆分失败、整图兜底：%s（%s）" % (image, e))
@@ -363,13 +424,14 @@ def write_package(sheets, records, img_dir, emit_dir=False):
             fh.write(xlsx_bytes)
 
     print("拆分题干/选项图（%d 题）…" % len(records))
+    manual = _manual_rects()
     ok = 0
     with zipfile.ZipFile(PKG_ZIP, "w") as z:
         z.writestr("%s/试卷.xlsx" % PKG_NAME, xlsx_bytes,
                    compress_type=zipfile.ZIP_DEFLATED)
         for r in records:
             src = os.path.join(img_dir, r["image"])
-            items, good = _question_images(src, r["image"], so)
+            items, good = _question_images(src, r["image"], so, manual)
             for fname, data in items.items():
                 z.writestr("%s/images/%s" % (PKG_NAME, fname), data,
                            compress_type=zipfile.ZIP_STORED)
@@ -387,6 +449,7 @@ def write_split_packages(sets, img_dir):
     import split_options as so
 
     os.makedirs(SPLIT_DIR, exist_ok=True)
+    manual = _manual_rects()
     made = []
     for recs in sets:
         name = sheet_name(recs[0]["set"])
@@ -397,7 +460,7 @@ def write_split_packages(sets, img_dir):
                        compress_type=zipfile.ZIP_DEFLATED)
             for r in recs:
                 items, _ = _question_images(os.path.join(img_dir, r["image"]),
-                                            r["image"], so)
+                                            r["image"], so, manual)
                 for fname, data in items.items():
                     z.writestr("%s/images/%s" % (name, fname), data,
                                compress_type=zipfile.ZIP_STORED)

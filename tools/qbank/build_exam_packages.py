@@ -41,7 +41,7 @@ import shutil
 import zipfile
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 import openpyxl
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -172,9 +172,9 @@ def item_image(paper, item):
 
 
 def build_canvas(paper, items):
-    """按 PDF 坐标把该题的位图拼回一张画布，返回 (L 模式图, 每块在图上的位置)。"""
+    """按 PDF 坐标把该题的位图拼回一张画布，返回 (L 模式图, 每块在图上的位置, 缩放倍率)。"""
     if len(items) == 1:
-        return item_image(paper, items[0]), [(0, 0, items[0])]
+        return item_image(paper, items[0]), [(0, 0, items[0])], 1.0
     # 用「原始像素 / PDF 点」估一个不缩小倍率，避免糊
     scales = []
     for it in items:
@@ -195,8 +195,8 @@ def build_canvas(paper, items):
         px = int((it['bbox'][0] - x0) * S) + PAD
         py = int((it['bbox'][1] - y0) * S) + PAD
         canvas.paste(im.resize((tw, th), Image.LANCZOS), (px, py))
-        placed.append((px, py, it))
-    return canvas, placed
+        placed.append((px, py, it, S))
+    return canvas, placed, S
 
 
 # ------------------------------------------------------------------ 找字母
@@ -323,18 +323,40 @@ def ink_runs_1d(profile):
     return runs
 
 
-def content_bbox(sub, line_frac=0.92):
-    """在子图里算墨迹包围盒，先剔掉贯穿整幅的框线（选项常画在带边框的格子里）。"""
+def content_bbox(sub, line_frac=0.92, max_line=3):
+    """在子图里算墨迹包围盒，先剔掉贯穿整幅的**细框线**。
+
+    注意只能剔细线：实心黑块（比如柱状图的柱子、填色方块）整行都是墨，
+    但它不是框线，剔掉就会把内容算小。
+    """
     if not sub.any():
         return None
     h, w = sub.shape
-    rows = sub.mean(axis=1)
-    cols = sub.mean(axis=0)
     m = sub.copy()
-    for y in np.where(rows >= line_frac)[0]:
-        m[y, :] = False
-    for x in np.where(cols >= line_frac)[0]:
-        m[:, x] = False
+
+    def erase_thin_lines(full, horizontal):
+        idx = np.where(full)[0]
+        if len(idx) == 0:
+            return
+        runs, run = [], [idx[0]]
+        for v in idx[1:]:
+            if v - run[-1] <= 1:
+                run.append(v)
+            else:
+                runs.append(run)
+                run = [v]
+        runs.append(run)
+        for r in runs:
+            if len(r) > max_line:
+                continue                      # 厚的是实心黑块，不是框线
+            for y in r:
+                if horizontal:
+                    m[y, :] = False
+                else:
+                    m[:, y] = False
+
+    erase_thin_lines(sub.mean(axis=1) >= line_frac, True)
+    erase_thin_lines(sub.mean(axis=0) >= line_frac, False)
     if not m.any():
         m = sub
     ys, xs = np.where(m)
@@ -786,9 +808,306 @@ def split_page_options(paper, page, rect01, mode, out_dir, stem_name, boxes01=No
         if crop.width < 10 or crop.height < 6:
             return None
         p = os.path.join(out_dir, '%s_%s.png' % (stem_name, letter))
-        trim_edge_lines(crop_tight(crop)).save(p, optimize=True)
+        crop_tight(crop).save(p, optimize=True)
         opts[letter] = p
     return opts
+
+
+def _max_run_row(row):
+    best = cur = 0
+    for v in row:
+        cur = cur + 1 if v else 0
+        if cur > best:
+            best = cur
+    return best
+
+
+def split_frame_cells(mask):
+    """按「表格边框」切：先用贯穿的长直线找出外框，再用框内的竖线/横线划格子，
+    挑出连续的 4 个等宽格子当 A-D。
+
+    图形推理卷面普遍是「题干一格 + 选项 N 格」共用一个外框，每格之间有分隔线。
+    按格子切最可靠：一个选项里有几块图形（上下叠、左右并排）都能整块收下。
+    返回 ({letter: box}, top, bottom) 或 None。
+    """
+    H, W = mask.shape
+    if H < 40 or W < 80:
+        return None
+
+    # 横线：最长连续段够长
+    hl = [y for y in range(H) if _max_run_row(mask[y]) > 0.42 * W]
+    if len(hl) < 2:
+        return None
+    groups = []
+    for y in hl:
+        if groups and y - groups[-1][-1] <= 3:
+            groups[-1].append(y)
+        else:
+            groups.append([y])
+    ys = [int(np.mean(g)) for g in groups]
+
+    def vlines(t, b, frac=0.80):
+        band = mask[t + 2:b - 1]
+        if band.size == 0:
+            return []
+        cols = [x for x in range(band.shape[1]) if _max_run_row(band[:, x]) > frac * band.shape[0]]
+        out = []
+        for x in cols:
+            if out and x - out[-1][-1] <= 3:
+                out[-1].append(x)
+            else:
+                out.append([x])
+        return [int(np.mean(g)) for g in out]
+
+    def cells_from(xs, y0, y1):
+        out = []
+        for i in range(len(xs) - 1):
+            a, b = xs[i] + 2, xs[i + 1] - 1
+            if b - a > 0.05 * W:
+                out.append((a, y0, b, y1))
+        return out
+
+    best = None
+    for i, t in enumerate(ys):
+        for b in ys[i + 1:]:
+            hgt = b - t
+            if hgt < 0.10 * H or hgt > 0.70 * H:
+                continue
+            xs = vlines(t, b)
+            if len(xs) < 4:
+                continue
+            cells = cells_from(xs, t + 2, b - 1)
+            if len(cells) < 4:
+                continue
+            # 找连续 4 个等宽格
+            for k in range(len(cells) - 3):
+                quad = cells[k:k + 4]
+                ws = [c[2] - c[0] for c in quad]
+                if max(ws) > 1.15 * min(ws):
+                    continue
+                inbox = [float(mask[c[1]:c[3], c[0]:c[2]].sum()) for c in quad]
+                if min(inbox) < 0.004 * W * H:
+                    continue
+                # 四个格子高度是否一致（同一行）
+                if max(c[3] - c[1] for c in quad) != min(c[3] - c[1] for c in quad):
+                    continue
+                score = (float(np.std(ws) / np.mean(ws))
+                         - 0.30 * (sum(c[0] for c in quad) / 4.0) / W
+                         - 0.10 * (min(inbox) / max(1.0, max(inbox))))
+                if best is None or score < best[0]:
+                    best = (score, quad, t, b)
+    if best is None:
+        return None
+
+    _, quad, t, b = best
+    # 2×2：带内还有一条横线把格子分成上下两排，且上下两排各两个格
+    xs = vlines(t, b)
+    mid = [y for y in range(t + 8, b - 8) if _max_run_row(mask[y]) > 0.30 * W]
+    boxes = {}
+    if mid:
+        my = int(np.mean(mid))
+        top_cells = cells_from(xs, t + 2, my - 1)
+        bot_cells = cells_from(xs, my + 2, b - 1)
+        quad_t = [c for c in top_cells if c[2] - c[0] > 0.05 * W]
+        quad_b = [c for c in bot_cells if c[2] - c[0] > 0.05 * W]
+        if len(quad_t) == 2 and len(quad_b) == 2:
+            cells = quad_t + quad_b
+            boxes = {}
+            for letter, c in zip('ABCD', cells):
+                bb = cell_content(mask, c)
+                if bb is None:
+                    boxes = {}
+                    break
+                boxes[letter] = bb
+            if len(boxes) == 4:
+                return boxes, t, b
+
+    for letter, c in zip('ABCD', quad):
+        bb = cell_content(mask, c)
+        if bb is None:
+            return None
+        boxes[letter] = bb
+    return boxes, t, b
+
+
+def _edge_letter_boxes(mask, box_h, box_w):
+    """找出贴边、与主体分离的小块（卷面印的 A/B/C/D），返回 [(y0,y1,x0,x1)]。"""
+    from scipy import ndimage
+    if not mask.any():
+        return []
+    lab, n = ndimage.label(mask, np.ones((3, 3), bool))
+    if n < 2:
+        return []
+    comps = []
+    for i, sl in enumerate(ndimage.find_objects(lab), 1):
+        if sl is None:
+            continue
+        ys, xs = sl
+        comps.append((int((lab[sl] == i).sum()), ys.start, ys.stop, xs.start, xs.stop))
+    main = max(c[0] for c in comps)
+    H = mask.shape[0]
+    out = []
+    for area, y0, y1, x0, x1 in comps:
+        h, w = y1 - y0, x1 - x0
+        if area > 0.18 * main:
+            continue
+        if not (0.03 * box_h <= h <= 0.24 * box_h):
+            continue
+        if w > 0.25 * box_w:
+            continue
+        if not (0.25 <= w / float(h) <= 2.4):
+            continue
+        if (H - y1) <= 0.16 * box_h or y0 <= 0.10 * box_h:
+            out.append((y0, y1, x0, x1))
+    return out
+
+
+def _edge_letter_boxes(mask, box_h, box_w):
+    """找出贴边、与主体分离的小块（卷面印的 A/B/C/D），返回 [(y0,y1,x0,x1)]。"""
+    from scipy import ndimage
+    if not mask.any():
+        return []
+    lab, n = ndimage.label(mask, np.ones((3, 3), bool))
+    if n < 2:
+        return []
+    comps = []
+    for i, sl in enumerate(ndimage.find_objects(lab), 1):
+        if sl is None:
+            continue
+        ys, xs = sl
+        comps.append((int((lab[sl] == i).sum()), ys.start, ys.stop, xs.start, xs.stop))
+    main = max(c[0] for c in comps)
+    H = mask.shape[0]
+    out = []
+    for area, y0, y1, x0, x1 in comps:
+        h, w = y1 - y0, x1 - x0
+        if area > 0.18 * main:
+            continue
+        if not (0.03 * box_h <= h <= 0.24 * box_h):
+            continue
+        if w > 0.25 * box_w:
+            continue
+        if not (0.25 <= w / float(h) <= 2.4):
+            continue
+        if (H - y1) <= 0.16 * box_h or y0 <= 0.10 * box_h:
+            out.append((y0, y1, x0, x1))
+    return out
+
+
+def strip_frame_border(img, frac=0.90, gap=2):
+    """削掉裁图边上那条「格子边框」。
+
+    只削「整行/整列几乎都是墨，且紧跟着就是空白」的边 —— 那是表格线；
+    图形自身的边线后面紧接图形，不会被削（展开图那种整幅外框因此保得住）。
+    """
+    a = np.asarray(img) < 160
+    h, w = a.shape
+    y0, y1, x0, x1 = 0, h, 0, w
+    # 上
+    while y1 - y0 > 8 and a[y0:y1, x0:x1][0].mean() > frac:
+        rest = a[y0 + 1:y1, x0:x1]
+        if rest.shape[0] <= gap or rest[:gap].any(axis=1).any():
+            break
+        y0 += 1
+    # 下
+    while y1 - y0 > 8 and a[y0:y1, x0:x1][-1].mean() > frac:
+        rest = a[y0:y1 - 1, x0:x1]
+        if rest.shape[0] <= gap or rest[-gap:].any(axis=1).any():
+            break
+        y1 -= 1
+    # 左
+    while x1 - x0 > 8 and a[y0:y1, x0:x1][:, 0].mean() > frac:
+        rest = a[y0:y1, x0 + 1:x1]
+        if rest.shape[1] <= gap or rest[:, :gap].any(axis=0).any():
+            break
+        x0 += 1
+    # 右
+    while x1 - x0 > 8 and a[y0:y1, x0:x1][:, -1].mean() > frac:
+        rest = a[y0:y1, x0:x1 - 1]
+        if rest.shape[1] <= gap or rest[:, -gap:].any(axis=0).any():
+            break
+        x1 -= 1
+    if (x0, y0, x1, y1) == (0, 0, w, h):
+        return img
+    return img.crop((x0, y0, x1, y1))
+
+
+def strip_edge_letters(mask, box_h, box_w):
+    """抹掉贴边、与主体分离的小块（卷面印的 A/B/C/D）。返回新的 mask。"""
+    from scipy import ndimage
+    if not mask.any():
+        return mask
+    lab, n = ndimage.label(mask, np.ones((3, 3), bool))
+    if n < 2:
+        return mask
+    comps = []
+    for i, sl in enumerate(ndimage.find_objects(lab), 1):
+        if sl is None:
+            continue
+        ys, xs = sl
+        comps.append((int((lab[sl] == i).sum()), ys.start, ys.stop, xs.start, xs.stop, i))
+    main = max(c[0] for c in comps)
+    out = mask.copy()
+    H, W = mask.shape
+    for area, y0, y1, x0, x1, i in comps:
+        h, w = y1 - y0, x1 - x0
+        if area > 0.18 * main:
+            continue
+        if not (0.04 * box_h <= h <= 0.22 * box_h):
+            continue
+        if w > 0.22 * box_w:
+            continue
+        if not (0.3 <= w / float(h) <= 2.2):
+            continue
+        near = (H - y1) <= 0.14 * box_h or y0 <= 0.10 * box_h
+        if near:
+            out[y0:y1, x0:x1] = False
+    return out
+
+
+def cell_content(mask, cell):
+    """格子里的内容包围盒：先擦掉贴边的框线，再丢掉角落里像字母的小块。"""
+    x0, y0, x1, y1 = cell
+    sub = mask[y0:y1, x0:x1].copy()
+    if not sub.any():
+        return None
+    h, w = sub.shape
+    # 贴边贯穿线
+    for y in list(range(min(3, h))) + list(range(max(0, h - 3), h)):
+        if sub[y].mean() > 0.6:
+            sub[y, :] = False
+    for x in list(range(min(3, w))) + list(range(max(0, w - 3), w)):
+        if sub[:, x].mean() > 0.6:
+            sub[:, x] = False
+    if not sub.any():
+        return None
+    # 角落的小块（卷面印的 A/B/C/D）
+    from scipy import ndimage
+    lab, n = ndimage.label(sub, np.ones((3, 3), bool))
+    if n > 1:
+        blobs = []
+        for i, sl in enumerate(ndimage.find_objects(lab), 1):
+            if sl is None:
+                continue
+            ys, xs = sl
+            blobs.append((int((lab[sl] == i).sum()), ys.start, ys.stop, xs.start, xs.stop))
+        big = max(b for b, *_ in blobs)
+        for area, by0, by1, bx0, bx1 in blobs:
+            bh, bw = by1 - by0, bx1 - bx0
+            if area >= 0.35 * big or bh > 0.5 * h or bw > 0.5 * w:
+                continue
+            if bh < 6 or bw < 4:
+                continue
+            corner = (by0 < 0.30 * h or by1 > 0.70 * h) and (bx0 < 0.30 * w or bx1 > 0.70 * w)
+            if corner:
+                sub[max(0, by0 - 1):by1 + 1, max(0, bx0 - 1):bx1 + 1] = False
+    if not sub.any():
+        return None
+    ys, xs = np.where(sub)
+    bb = (x0 + int(xs.min()), y0 + int(ys.min()), x0 + int(xs.max()) + 1, y0 + int(ys.max()) + 1)
+    if bb[2] - bb[0] < 10 or bb[3] - bb[1] < 10:
+        return None
+    return bb
 
 
 def split_blocks_options(mask):
@@ -889,9 +1208,10 @@ def split_blocks_options(mask):
 
 
 def split_by_columns(mask):
-    """兜底拆法：卷面字母太小/糊掉时，按列白缝把选项区切成 4 列。
+    """兜底拆法：按「竖向墨迹段」切四列（选项横排、列间有空隙的版式）。
 
-    只对「选项横排、列之间有空隙」的版式有效（条形图、折线图那种）。
+    先按列找墨迹段，再从里面挑「连续 4 段、宽度相近、间距均匀」的那一组，
+    并偏向靠右的一组 —— 因为题干通常在最左边，宽度也和选项不一样。
     返回 {'A': box, ...} 或 None。
     """
     H, W = mask.shape
@@ -907,41 +1227,56 @@ def split_by_columns(mask):
             y += 1
     if len(bands) < 2:
         return None
+    # 最后一条带子若是零散的字母行，切掉
     y_end = bands[-1][0] if (bands[-1][1] - bands[-1][0]) < 0.22 * H else H
     sub = mask[:y_end]
     colink = sub.any(axis=0)
-    # 找贯穿的白缝（内部）
-    gaps, x = [], 0
+
+    segs, x = [], 0
     while x < W:
-        if not colink[x]:
+        if colink[x]:
             x0 = x
-            while x < W and not colink[x]:
+            while x < W and colink[x]:
                 x += 1
-            if x0 > 0 and x < W:
-                gaps.append((x0, x))
+            if x - x0 >= 8:
+                segs.append((x0, x))
         else:
             x += 1
-    if len(gaps) < 3:
+
+    # 同一个选项内部的窄缝（比如一行里两根柱子之间的空）先合上
+    merged = []
+    for a, b in segs:
+        if merged and a - merged[-1][1] < 0.05 * W:
+            merged[-1] = (merged[-1][0], b)
+        else:
+            merged.append((a, b))
+    segs = merged
+    if len(segs) < 4:
         return None
-    import itertools
+
     best = None
-    for pick in itertools.combinations(gaps, 3):
-        edges = [0] + [(a + b) // 2 for a, b in pick] + [W]
-        cells = [(edges[i], edges[i + 1]) for i in range(4)]
-        ws = [c[1] - c[0] for c in cells]
-        if min(ws) < 0.12 * W:
+    for i in range(len(segs) - 3):
+        quad = segs[i:i + 4]
+        ws = [b - a for a, b in quad]
+        if min(ws) < 0.06 * W:
             continue
-        score = float(np.std(ws) / np.mean(ws))
+        if max(ws) > 1.35 * min(ws):
+            continue
+        gaps = [quad[k + 1][0] - quad[k][1] for k in range(3)]
+        cv_w = float(np.std(ws) / np.mean(ws))
+        cv_g = float(np.std(gaps) / np.mean(gaps)) if np.mean(gaps) > 0 else 1.0
+        if cv_g > 0.35:
+            continue
+        score = cv_w + 0.8 * cv_g - 0.35 * (quad[0][0] / float(W))
         if best is None or score < best[0]:
-            best = (score, cells)
+            best = (score, quad)
     if best is None:
         return None
-    cells = best[1]
+
     boxes = {}
-    for letter, (x0, x1) in zip('ABCD', cells):
+    for letter, (x0, x1) in zip('ABCD', best[1]):
         c0, c1 = max(0, x0 - 2), min(W, x1 + 2)
-        sub2 = mask[:y_end, c0:c1]
-        bb = content_bbox(sub2)
+        bb = content_bbox(mask[:y_end, c0:c1])
         if bb is None:
             return None
         boxes[letter] = (c0 + bb[0], bb[1], c0 + bb[2], bb[3])
@@ -953,23 +1288,28 @@ def split_question(paper, items, no, img_out_dir, stem_name):
 
     返回 (stem_path|None, {letter: path}|None, info)
     """
-    canvas, placed = build_canvas(paper, items)
+    canvas, placed, scale = build_canvas(paper, items)
     arr = np.asarray(canvas.convert('L'))
     mask = arr < 128
-    info = {'k': len(items), 'canvas': list(canvas.size)}
+    info = {'k': len(items), 'canvas': list(canvas.size),
+            'items': [{'file': it['file'], 'bbox': [float(x) for x in it['bbox']]} for it in items]}
 
     letters, why = None, ''
     if len(items) == 4:
         # 四个独立位图 = 四个选项（卷面 2×2 排布，字母在 PDF 里是文本、不在位图内）：按阅读顺序当 A-D
         opts = {}
         # 直接按位图裁（resize 前的原图更清晰）
-        for letter, (px, py, it) in zip('ABCD', placed):
-            bw = int((it['bbox'][2] - it['bbox'][0]) * 1)
+        for letter, (px, py, it, _st) in zip('ABCD', placed):
             im = item_image(paper, it)
             path = os.path.join(img_out_dir, '%s_%s.png' % (stem_name, letter))
-            trim_edge_lines(crop_tight(im)).save(path, optimize=True)
+            crop_tight(im).save(path, optimize=True)
             opts[letter] = path
         info['mode'] = 'k4-positional'
+        info['boxes'] = {k: [int(v) for v in b] for k, b in
+                         zip('ABCD', [(px, py,
+                                       px + max(1, int((it['bbox'][2] - it['bbox'][0]) * st)),
+                                       py + max(1, int((it['bbox'][3] - it['bbox'][1]) * st)))
+                                      for px, py, it, st in placed])}
         return None, opts, info
 
     # 2~3 块位图拼起来的题：卷面被切成几段，按字母切会把一个选项切成两半 ——
@@ -1063,14 +1403,26 @@ def split_question(paper, items, no, img_out_dir, stem_name):
         return False
 
     two_by_two = bool(letters) and info.get('rows') == [2, 2]
+    cfg = OPTION_RECTS.get('%s:%d' % (paper, no))
+
+    # 人工标定优先：这几题自动切不可靠，框是逐题量出来的
+    chosen = None
+    if cfg and cfg.get('boxes'):
+        W0, H0 = canvas.size
+        bx = {k: [int(round(v[0] * W0)), int(round(v[1] * H0)),
+                  int(round(v[2] * W0)), int(round(v[3] * H0))]
+              for k, v in cfg['boxes'].items()}
+        if boxes_ok(bx):
+            chosen = ('manual', bx, None)
+            info['via'] = 'manual'
+
     valid = [p for p in plans if boxes_ok(p[1])
              and not (p[0].startswith('letters') and letters and hit_letter(p[1]))
              and not (p[0].startswith('letters') and two_by_two)]
-    chosen = max(valid, key=lambda p: coverage(p[1]) + (0.02 if p[0] == 'boxed' else 0)) if valid else None
+    if chosen is None:
+        chosen = max(valid, key=lambda p: coverage(p[1]) + (0.02 if p[0] == 'boxed' else 0)) if valid else None
     info['cover'] = {p[0]: round(coverage(p[1]), 3) for p in valid}
     if chosen is None:
-        # 人工标过外框的题（图形太散、自动切不开）先按标定切
-        cfg = OPTION_RECTS.get('%s:%d' % (paper, no))
         if cfg and cfg.get('method') == 'page':
             opts = split_page_options(paper, items[0]['page'],
                                       cfg.get('rect'), cfg.get('mode'),
@@ -1084,7 +1436,7 @@ def split_question(paper, items, no, img_out_dir, stem_name):
             if bx and boxes_ok(bx):
                 chosen = ('rect', bx, None)
                 info['via'] = 'rect-blocks'
-        elif cfg:
+        elif cfg and cfg.get('rect'):
             reg = split_region_options(mask, cfg['rect'], cfg['mode'])
             if reg and boxes_ok(reg[0]):
                 chosen = ('rect', reg[0], reg[1])
@@ -1102,15 +1454,26 @@ def split_question(paper, items, no, img_out_dir, stem_name):
             info['plans'] = [(p[0], len(p[1])) for p in plans]
             return None, None, info
     info['via'], boxes, band = chosen
+    info['boxes'] = {k: [int(v) for v in boxes[k]] for k in 'ABCD'}
+    all_letters = list(letters or [])          # 卷面印的 A/B/C/D 位置（裁图前要涂掉）
     letters = letters if info['via'].startswith('letters') else []
     pitch = float(np.mean([b[2] - b[0] for b in boxes.values()])) or 1.0
 
     opts = {}
     for letter in 'ABCD':
         b = boxes[letter]
-        im = canvas.crop(b)
+        im = canvas.crop(b).convert('L')
+        # 只涂白「落在本框里的卷面字母」，不做二值化（否则浅灰网格会变粗黑）
+        drawer = ImageDraw.Draw(im)
+        for c in all_letters:
+            ox0 = max(b[0], c['x0'] - 2) - b[0]
+            oy0 = max(b[1], c['y0'] - 2) - b[1]
+            ox1 = min(b[2], c['x1'] + 2) - b[0]
+            oy1 = min(b[3], c['y1'] + 2) - b[1]
+            if ox1 - ox0 >= 2 and oy1 - oy0 >= 2:
+                drawer.rectangle([ox0, oy0, ox1, oy1], fill=255)
         path = os.path.join(img_out_dir, '%s_%s.png' % (stem_name, letter))
-        trim_edge_lines(crop_tight(im)).save(path, optimize=True)
+        strip_frame_border(crop_tight(im)).save(path, optimize=True)
         opts[letter] = path
 
     # 题干图形 = 画布上「选项那一带」以外的部分：
@@ -1130,14 +1493,7 @@ def split_question(paper, items, no, img_out_dir, stem_name):
 
 # ------------------------------------------------------------------ 主流程
 
-RECTS_FILE = os.path.join(HERE, 'option_rects.json')
-OPTION_RECTS = {}
-if os.path.exists(RECTS_FILE):
-    OPTION_RECTS = {k: v for k, v in
-                    json.load(open(RECTS_FILE, encoding='utf-8')).items()
-                    if not k.startswith('_')}
-
-# 少数题的选项图形太散（2×2 交错、一题多块位图），自动切不开时按人工标定的外框切
+# 少数题的选项图形太散（2×2 交错、一题多块位图）或自动切不可靠，按人工标定的框切
 RECTS_FILE = os.path.join(HERE, 'option_rects.json')
 OPTION_RECTS = {}
 if os.path.exists(RECTS_FILE):
@@ -1236,8 +1592,6 @@ def main():
                     paper, items, q['no'], os.path.join(pdir, 'images'), stem_name)
                 if probe and probe[1] == q['no']:
                     print('PROBE', json.dumps(info, ensure_ascii=False))
-                if probe and probe[1] == q['no']:
-                    print('PROBE', json.dumps(info, ensure_ascii=False))
                 if opt_imgs:
                     mat = IMG_RE.sub('', mat).strip()
                     if stem_path:
@@ -1322,7 +1676,6 @@ def main():
             'questions': len(out_qs),
             'opt_split': opt_split,
             'opt_fail': opt_fail,
-            'opt_info': opt_info,
             'opt_info': opt_info,
             'imgs': len(imgs),
             'no_answer': no_ans,
