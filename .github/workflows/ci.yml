@@ -48,11 +48,9 @@ jobs:
           fi
           echo "ANDROID_HOME=$ANDROID_HOME"
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-      # gradle.properties 里写死了作者本机的 org.gradle.java.home，其他机器上会让构建直接失败
-      - name: 去掉本机 JDK 路径
-        run: |
-          sed -i '/^org\.gradle\.java\.home/d' gradle.properties
-          chmod +x gradlew
+      # gradle.properties 里不再写本机 org.gradle.java.home（各机器 JDK 路径不同，CI 用 setup-java 的 JDK 21）
+      - name: 赋执行权限
+        run: chmod +x gradlew
 
       - name: 编译 debug APK
         run: ./gradlew --no-daemon --stacktrace assembleDebug
