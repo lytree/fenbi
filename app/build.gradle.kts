@@ -41,8 +41,8 @@ android {
         applicationId = "com.lytree.qbank"
         minSdk = 24
         targetSdk = 35
-        versionCode = versionCodeOverride ?: 30
-        versionName = versionNameOverride ?: "0.0.30"
+        versionCode = versionCodeOverride ?: 31
+        versionName = versionNameOverride ?: "0.0.31"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // 云端凭证编进 BuildConfig；空串表示未配置，运行时回落到 App 内手填的值
