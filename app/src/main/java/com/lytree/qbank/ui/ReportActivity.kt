@@ -34,8 +34,8 @@ import java.util.Locale
  * 成绩报告：得分 / 正确率 / 用时 + 全部题目对错一览 + 解析入口。
  *
  * 这里不再直接铺「逐题解析」那一长串卡片——一屏先给整卷的答题对错（答对绿、答错红），
- * 想深看再选：点某个题号 = 单题解析弹层（可上下翻），「错题解析」只翻没答对的题，
- * 「全部解析」= 整页顺序过一遍。
+ * 想深看再选：点某个题号 = 单题解析（可上下翻），「错题解析」只翻没答对的题，
+ * 「全部解析」用同一个解析页翻整卷——两个入口只是「翻哪些题」不同，版式完全一致。
  *
  * 试卷常常是先导入、答案后补，所以这里也是补答案的主入口：
  * 导入答案后会按记录里的作答「重判」，不需要重做一遍。
@@ -132,13 +132,9 @@ class ReportActivity : AppCompatActivity() {
             }
             openReview(record, wrongIdx, 0)
         }
-        // 全部解析：整页按题序看，适合考完复盘
+        // 全部解析：与错题解析同一个解析页，只是要翻的题给整卷（含未作答 / 待补答案）
         binding.btnAllAnalysis.setOnClickListener {
-            startActivity(
-                Intent(this, AnalysisActivity::class.java).apply {
-                    putExtra(AnalysisActivity.EXTRA_RECORD_ID, record.id)
-                }
-            )
+            openReview(record, record.results.indices.toList(), 0)
         }
     }
 
@@ -427,7 +423,7 @@ class ReportGridAdapter(
         b.vFav.visibility = View.GONE
 
         // 无障碍：读屏念出来是「第 3 题 错误」，而不是光一个数字
-        b.root.contentDescription = "第 ${position + 1} 题 ${ReportAdapter.statusStyle(ctx, r).first}"
+        b.root.contentDescription = "第 ${position + 1} 题 ${statusStyle(ctx, r).first}"
         b.root.setOnClickListener { onClick?.invoke(position) }
     }
 
@@ -445,5 +441,16 @@ class ReportGridAdapter(
         "right", "wrong", "partial" -> android.R.color.white
         "blank" -> R.color.fb_card_num_blank_text
         else -> R.color.fb_warning
+    }
+
+    companion object {
+        /** 判定状态 → 文案 + 配色（报告页对错总览的口径，与解析页判色一致） */
+        fun statusStyle(ctx: android.content.Context, r: AnswerResult): Pair<String, Int> = when {
+            r.pending -> ctx.getString(R.string.pending_answer) to R.color.partial
+            r.userAnswer.isBlank() -> "未作答" to R.color.blank
+            r.correct -> "正确" to R.color.right
+            r.partial -> "部分得分" to R.color.partial
+            else -> "错误" to R.color.wrong
+        }
     }
 }

@@ -184,9 +184,8 @@
     <string name="report_legend_partial">部分得分</string>
     <string name="report_legend_blank">未作答</string>
     <string name="report_legend_pending">待补答案</string>
-    <!-- 解析入口：错题解析（弹层翻错题）/ 全部解析（整页列表） -->
+    <!-- 解析入口：错题解析 / 全部解析——进的是同一个解析页，只是翻的题不同 -->
     <string name="report_action_all_analysis">全部解析</string>
-    <string name="report_all_analysis_title">全部解析</string>
     <!-- 解析页（与答题页同款卷面）：顶栏「第 8/30 题」，右侧「看原题」回试卷定位 -->
     <string name="report_analysis_page_title">第 %1$d/%2$d 题</string>
     <string name="report_action_open_paper">看原题</string>

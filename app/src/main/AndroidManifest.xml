@@ -63,10 +63,8 @@
             android:exported="false"
             android:theme="@style/Theme.QBank.Popup" />
         <activity android:name=".ui.ReportActivity" android:exported="false" />
-        <!-- 解析页：与答题页同一套卷面，只读 + 答案解析（错题解析 / 点题号进入） -->
+        <!-- 解析页：与答题页同一套卷面，只读 + 答案解析（错题解析 / 全部解析 / 点题号进入） -->
         <activity android:name=".ui.QuestionReviewActivity" android:exported="false" />
-        <!-- 全部解析：把本次每道题的答案与解析整页列全（成绩报告不再直接铺） -->
-        <activity android:name=".ui.AnalysisActivity" android:exported="false" />
         <!-- 补录答案：逐题填标准答案（键盘弹出时列表要能被顶上去） -->
         <activity
             android:name=".ui.AnswerEntryActivity"
