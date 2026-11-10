@@ -475,15 +475,12 @@ class SplitExamActivity : AppCompatActivity() {
             }
 
             if (revealAnswers) {
-                card.tvAnalysis.visibility = android.view.View.VISIBLE
-                val userAns = answers[q.id] ?: ""
-                val r = Judge.judge(q, userAns, judgePolicy)
-                card.tvAnalysis.text = buildString {
-                    append("正确答案：${q.displayAnswer()}\n")
-                    append("你的答案：${userAns.ifBlank { "未作答" }}\n")
-                    append("结果：${when { r.correct -> "正确"; r.partial -> "部分得分"; else -> "错误" }}\n")
-                    if (q.analysis.isNotBlank()) append("解析：${q.analysis}")
-                }
+                // 作答小结与解析走主卷面同一块（左边「正确答案」右「你的答案」）
+                AnswerBlock.bind(
+                    card.answerBlock, q, answers[q.id] ?: "", judgePolicy, night = false
+                )
+            } else {
+                AnswerBlock.hide(card.answerBlock)
             }
 
             binding.questionList.addView(card.root)

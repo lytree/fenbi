@@ -253,41 +253,14 @@ object QuestionCardBinder {
         b.optionsBox.removeAllViews()
         buildOptions(b, q, answers, fontScale, cb, night, revealNow, readOnly)
 
-        // ---- 解析（交卷后 / 练习模式即时判分后）----
-        b.tvAnalysis.setBackgroundResource(
-            if (night) R.drawable.bg_fb_note_night else R.drawable.bg_fb_note
-        )
-        b.tvAnalysis.setTextColor(
-            ContextCompat.getColor(
-                ctx, if (night) R.color.fb_night_text_body else R.color.fb_text_primary
-            )
-        )
+        // ---- 作答小结 + 解析（交卷后 / 练习模式即时判分后）----
+        // 版式与配色集中在 AnswerBlock，分屏右栏、解析页用的是同一份
         if (revealNow) {
-            val userAns = answers[q.id] ?: ""
-            val r = Judge.judge(q, userAns, policy)
-            b.tvAnalysis.visibility = View.VISIBLE
-            b.tvAnalysis.text = if (r.pending) {
-                buildString {
-                    append(res.getString(R.string.pending_answer_empty)).append('\n')
-                    append("你的答案：${userAns.ifBlank { "未作答" }}\n")
-                    append(res.getString(R.string.pending_answer_hint))
-                }
-            } else {
-                buildString {
-                    append("正确答案：${q.displayAnswer()}\n")
-                    append("你的答案：${userAns.ifBlank { "未作答" }}\n")
-                    append(
-                        "结果：${when {
-                            r.correct -> "正确"
-                            r.partial -> "部分得分 ${fmtScore(r.earned)}/${fmtScore(r.full)}"
-                            else -> "错误"
-                        }}\n"
-                    )
-                    if (q.analysis.isNotBlank()) append("解析：${q.analysis}")
-                }
-            }
+            AnswerBlock.bind(
+                b.answerBlock, q, answers[q.id] ?: "", policy, night
+            )
         } else {
-            b.tvAnalysis.visibility = View.GONE
+            AnswerBlock.hide(b.answerBlock)
         }
     }
 

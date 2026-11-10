@@ -199,20 +199,16 @@
         tools:text="笔记：注意区分前瞻性与创新性"
         tools:visibility="visible" />
 
-    <!-- ===== 解析 ===== -->
-    <TextView
-        android:id="@+id/tvAnalysis"
+    <!-- ===== 作答小结 + 解析（交卷后 / 练习模式即时判分后才有）=====
+         版式见 view_fb_answer_block.xml：正确答案 / 你的答案 左右两栏 + 结果 / 解析正文 -->
+    <include
+        android:id="@+id/answerBlock"
+        layout="@layout/view_fb_answer_block"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginStart="@dimen/fb_content_padding_h"
         android:layout_marginTop="@dimen/fb_space_12"
-        android:layout_marginEnd="@dimen/fb_content_padding_h"
-        android:background="@drawable/bg_fb_note"
-        android:lineSpacingExtra="4dp"
-        android:padding="@dimen/fb_space_12"
-        android:textColor="@color/fb_text_primary"
-        android:textSize="@dimen/fb_text_body_size"
-        android:visibility="gone" />
+        android:layout_marginEnd="@dimen/fb_content_padding_h" />
 
     <!-- ===== 题间分隔线（白底通铺靠它分题） ===== -->
     <View

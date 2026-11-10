@@ -151,6 +151,11 @@
     <string name="more_fill_answer">补录答案（手动逐题填）</string>
     <string name="action_import_answer">导入答案</string>
     <string name="pending_answer">待补答案</string>
+    <!-- 作答小结（解析块顶部那一栏） -->
+    <string name="answer_label_correct">正确答案：</string>
+    <string name="answer_label_mine">你的答案：</string>
+    <string name="answer_unanswered">未作答</string>
+    <string name="analysis_title">解析</string>
     <string name="pending_answer_empty">标准答案：未填写</string>
     <string name="pending_answer_hint">标准答案尚未填写，可在成绩报告右上角「补录答案」逐题填写后再对比</string>
     <string name="pending_answer_report_hint">本卷有 %1$d 题缺少标准答案，已从统计中排除。点右上角「补录答案」逐题填写（或「导入答案」选答案文件），会立即按你的作答重新判分。</string>

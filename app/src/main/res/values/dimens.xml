@@ -60,6 +60,10 @@
     <dimen name="fb_nav_text">10sp</dimen>
     <!-- 分组标题（比 caption 大一号，列表分组用） -->
     <dimen name="fb_text_group">13sp</dimen>
+    <!-- 作答小结里的答案值（B / D / 正确 这类）：比正文大一号、加粗，一眼先看到答案 -->
+    <dimen name="fb_answer_value_size">18sp</dimen>
+    <!-- 解析正文：比题干小一档、比正文大一档，长公式读起来不挤 -->
+    <dimen name="fb_text_analysis">15sp</dimen>
 
     <!-- ==================== ② 组件尺寸 ==================== -->
 
@@ -88,6 +92,8 @@
     <dimen name="fb_list_row_h">52dp</dimen>
     <dimen name="fb_icon_size">20dp</dimen>
     <dimen name="fb_icon_sm_size">16dp</dimen>
+    <!-- 「解析」标题前的双圆图标：比常规图标大一档，标题才压得住正文 -->
+    <dimen name="fb_icon_md_size">20dp</dimen>
     <!-- 笔迹颜色圆点（设置页） -->
     <dimen name="fb_pen_dot">32dp</dimen>
     <dimen name="fb_pen_dot_gap">14dp</dimen>

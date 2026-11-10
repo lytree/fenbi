@@ -46,17 +46,13 @@
         android:layout_marginTop="@dimen/fb_space_8"
         android:orientation="vertical" />
 
-    <TextView
-        android:id="@+id/tvAnalysis"
+    <!-- 作答小结 + 解析（与主卷面同一块，见 view_fb_answer_block.xml） -->
+    <include
+        android:id="@+id/answerBlock"
+        layout="@layout/view_fb_answer_block"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="@dimen/fb_space_12"
-        android:background="@drawable/bg_fb_note"
-        android:lineSpacingExtra="4dp"
-        android:padding="@dimen/fb_space_12"
-        android:textColor="@color/fb_text_primary"
-        android:textSize="@dimen/fb_text_body_sm"
-        android:visibility="gone" />
+        android:layout_marginTop="@dimen/fb_space_12" />
 
     <!-- 题间细线 -->
     <View

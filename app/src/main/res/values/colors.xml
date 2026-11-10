@@ -112,6 +112,9 @@
     <color name="fb_table_line">#D8DCE3</color>
     <!-- 解析 / 笔记这类浅底块 -->
     <color name="fb_note_bg">#F5F6F8</color>
+    <!-- 「解析」标题前的双圆图标：前一枚是主蓝，后一枚是同色系压淡 -->
+    <color name="fb_analysis_icon_front">#3C7CFC</color>
+    <color name="fb_analysis_icon_back">#AFC2F0</color>
 
     <!-- ==================== 6. 顶栏 / 导航 ==================== -->
     <color name="fb_bar_bg">#FFFFFF</color>
