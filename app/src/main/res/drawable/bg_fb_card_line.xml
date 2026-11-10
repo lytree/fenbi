@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  描边卡：白底 + 8dp 圆角 + 1dp 细描边。
+  页面底 #F9FAFC 与卡面 #FFFFFF 只差一档，纯白卡在列表里几乎看不出边界，
+  列表卡统一用它把轮廓画出来（描边色走 fb_border，比分割线重、比文字浅）。
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/fb_card_bg" />
+    <corners android:radius="@dimen/fb_card_radius" />
+    <stroke
+        android:width="1dp"
+        android:color="@color/fb_border" />
+</shape>

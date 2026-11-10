@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 试卷 / 记录卡：左侧标题 + 元信息，右侧强调数字（得分 / 正确率） -->
+<!--
+  组内试卷卡：标题 + 「N 题 · 限时」元信息，行尾缺答案胶囊 + chevron。
+  · 整卡可点，所以背景用描边 + 水波纹那一款，按下有反馈（原来是死卡，点了没动静）
+  · 行尾 chevron 是「点进去开练」的提示；缺答案时先在它左边挂一个橙色胶囊
+-->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    style="@style/FbListCard"
+    xmlns:tools="http://schemas.android.com/tools"
+    style="@style/FbListCardLinePressable"
     android:gravity="center_vertical"
     android:orientation="horizontal">
 
@@ -15,23 +20,31 @@
             android:id="@+id/title"
             style="@style/FbItemTitle"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
+            android:layout_height="wrap_content"
+            android:maxLines="2" />
 
         <TextView
             android:id="@+id/subtitle"
             style="@style/FbItemSub"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/fb_space_4" />
+            android:layout_marginTop="@dimen/fb_space_4"
+            android:maxLines="1" />
     </LinearLayout>
 
     <TextView
-        android:id="@+id/score"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="@dimen/fb_space_12"
-        android:includeFontPadding="false"
-        android:textColor="@color/fb_primary"
-        android:textSize="@dimen/fb_text_bar_title"
-        android:textStyle="bold" />
+        android:id="@+id/missing"
+        style="@style/FbPillWarning"
+        android:layout_marginStart="@dimen/fb_space_8"
+        android:visibility="gone"
+        tools:text="缺 3 答案"
+        tools:visibility="visible" />
+
+    <ImageView
+        android:id="@+id/chevron"
+        android:layout_width="18dp"
+        android:layout_height="18dp"
+        android:layout_marginStart="@dimen/fb_space_4"
+        android:contentDescription="@null"
+        android:src="@drawable/ic_fb_chevron" />
 </LinearLayout>

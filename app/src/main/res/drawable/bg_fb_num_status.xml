@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  报告页题号圆：纯色实心圆，没有描边。
+  底色不写死——按判分状态在代码里用 backgroundTintList 上色，
+  一个 drawable 覆盖答对 / 答错 / 部分得分 / 未作答 / 待补答案五种。
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="@color/fb_primary" />
+</shape>

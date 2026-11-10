@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  报告页「全部题目」里的一个题号：40dp 圆，底色按判分状态在代码里上色
+  （答对绿 / 答错红 / 部分得分橙 / 未作答灰 / 待补答案浅橙），点一下进解析并翻到这一题。
+  尺寸与答题卡圆形题号同一套 dimen，两处观感一致。
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:padding="@dimen/fb_card_num_pad">
+
+    <TextView
+        android:id="@+id/tvNum"
+        android:layout_width="@dimen/fb_card_num_size"
+        android:layout_height="@dimen/fb_card_num_size"
+        android:layout_gravity="center"
+        android:background="@drawable/bg_fb_num_status"
+        android:clickable="true"
+        android:focusable="true"
+        android:foreground="?attr/selectableItemBackgroundBorderless"
+        android:gravity="center"
+        android:includeFontPadding="false"
+        android:textColor="@color/fb_white"
+        android:textSize="@dimen/fb_card_num_text_size"
+        android:textStyle="bold"
+        tools:text="1" />
+</FrameLayout>

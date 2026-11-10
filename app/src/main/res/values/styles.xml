@@ -10,7 +10,8 @@
 
   版式规则（粉笔口径）：
   · 页面左右 16dp、卡间距 12dp、卡内 16dp、区块间距 24dp
-  · 卡片白底 8dp 圆角、无描边、无阴影（靠页面底色分层）
+  · 卡片白底 8dp 圆角、无阴影（靠页面底色分层）；首页「我的试卷」的列表卡例外：
+    页面底与白卡只差一档，导入分组卡 / 试卷卡统一加 1dp 描边（fb_border）把轮廓画出来
   · 主按钮 46dp 高 / 23dp 胶囊；次按钮同尺寸浅蓝底
   · 标签 3dp 小圆角、11sp；胶囊 chip 30dp 高 / 15dp 圆角
   · 顶栏 44dp 白底 + 0.5dp 底分割线；底栏白底 + 0.5dp 顶分割线 + 上下 10dp
@@ -52,6 +53,18 @@
         <item name="android:layout_marginStart">@dimen/fb_page_pad</item>
         <item name="android:layout_marginEnd">@dimen/fb_page_pad</item>
         <item name="android:layout_marginTop">@dimen/fb_card_gap_v</item>
+    </style>
+
+    <!-- 描边列表卡：列表卡片 + 1dp 细描边。页面底与白卡只差一档，密集列表里全靠它分界 -->
+    <style name="FbListCardLine" parent="FbListCard">
+        <item name="android:background">@drawable/bg_fb_card_line</item>
+    </style>
+
+    <!-- 可点的描边列表卡：同上，带水波纹（分组标题这类整行可点的列表项用） -->
+    <style name="FbListCardLinePressable" parent="FbListCardLine">
+        <item name="android:background">@drawable/bg_fb_card_line_ripple</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
     </style>
 
     <!-- 行内可点区域：统一用水波纹（列表项、可点行） -->
@@ -211,6 +224,26 @@
 
     <!-- 状态标签：略一档强调（「待补答案」这类橙色提示） -->
     <style name="FbTagWarning" parent="FbTag">
+        <item name="android:textColor">@color/fb_warning</item>
+    </style>
+
+    <!-- 列表行尾的小胶囊：数量 / 待补这类陪衬信息，灰底灰字，比正文弱一档 -->
+    <style name="FbPill">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:background">@drawable/bg_fb_pill_fill</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:paddingStart">@dimen/fb_tag_pad_h</item>
+        <item name="android:paddingTop">@dimen/fb_tag_pad_v</item>
+        <item name="android:paddingEnd">@dimen/fb_tag_pad_h</item>
+        <item name="android:paddingBottom">@dimen/fb_tag_pad_v</item>
+        <item name="android:textColor">@color/fb_text_meta</item>
+        <item name="android:textSize">@dimen/fb_text_tag</item>
+    </style>
+
+    <!-- 告警胶囊：缺答案这类「需要动手补」的状态，橙底橙字 -->
+    <style name="FbPillWarning" parent="FbPill">
+        <item name="android:background">@drawable/bg_fb_pill_warning</item>
         <item name="android:textColor">@color/fb_warning</item>
     </style>
 

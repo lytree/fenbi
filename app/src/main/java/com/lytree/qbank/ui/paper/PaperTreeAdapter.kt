@@ -78,13 +78,16 @@ class PaperTreeAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     private fun bindHeader(holder: SetVH, node: Node.Header) {
         val set = node.set
-        holder.binding.arrow.text = if (node.collapsed) "▸" else "▾"
+        // chevron 往右指 = 展开，往「下」指 = 收起，靠旋转同一个图标，不用备两张图
+        holder.binding.arrow.rotation = if (node.collapsed) -90f else 0f
         holder.binding.title.text = set.title
         holder.binding.subtitle.text = buildString {
             append("${set.paperCount} 份 · ${set.questionCount} 题")
-            if (set.missingAnswers > 0) append(" · ${set.missingAnswers} 题待补答案")
             dateText(set.createdAt)?.let { append(" · ").append(it) }
         }
+        // 缺答案从灰字里提出来做成橙色胶囊：扫列表时先看到「要补答案」的组
+        holder.binding.missing.text = "缺 ${set.missingAnswers} 答案"
+        holder.binding.missing.visibility = if (set.missingAnswers > 0) View.VISIBLE else View.GONE
         holder.binding.root.setOnClickListener {
             onToggleSet?.invoke(set, !node.collapsed)
         }
@@ -100,13 +103,13 @@ class PaperTreeAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
             val count = if (p.questionCount > 0) p.questionCount else p.questions.size
             append("$count 题")
             if (p.durationMin > 0) append(" · 限时 ${p.durationMin} 分钟")
-            // 还缺标准答案的卷子标出来，长按试卷可以补答案
-            if (p.missingAnswers > 0) append(" · ${p.missingAnswers} 题待补答案")
             // 导入生成的卷子占绝大多数，不必每题都挂个「导入」；
             // 只标注历史遗留的组卷来源，方便区分。
             if (p.mode.isNotBlank() && p.mode != QBankDb.MODE_IMPORT) append(" · ${p.mode}")
         }
-        holder.binding.score.text = ""
+        // 还缺标准答案的卷子标出来（长按试卷可以补答案）
+        holder.binding.missing.text = "缺 ${p.missingAnswers} 答案"
+        holder.binding.missing.visibility = if (p.missingAnswers > 0) View.VISIBLE else View.GONE
         indent(holder.binding.root)
         holder.binding.root.setOnClickListener { onPaperClick?.invoke(p) }
         holder.binding.root.setOnLongClickListener { onPaperLongClick?.invoke(p); true }
