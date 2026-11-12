@@ -83,6 +83,8 @@ class PaperListFragment : Fragment(), Refreshable {
             })
         }
         adapter.onPaperLongClick = { paper -> showPaperActions(paper) }
+        // 行尾「目录」：按层级开练（整卷 / 某一大类 / 某一则材料各算一张卷）
+        adapter.onPaperOutlineClick = { paper -> openOutline(paper) }
         adapter.onToggleSet = { set, fold -> toggle(set, fold) }
         adapter.onSetLongClick = { set -> showSetActions(set) }
         binding.emptyAction.setText(R.string.action_import)
@@ -162,9 +164,13 @@ class PaperListFragment : Fragment(), Refreshable {
 
     // ---------------------------------------------------------------- 试卷
 
-    /** 长按：查看题目 / 补录答案 / 导入答案 / 删除。导入的试卷常常没答案，补答案是这里的日常操作 */
+    /**
+     * 长按：试卷目录 / 查看题目 / 补录答案 / 导入答案 / 删除。
+     * 导入的试卷常常没答案，补答案是这里的日常操作；分模块答题的入口在「试卷目录」。
+     */
     private fun showPaperActions(paper: Paper) {
         val actions = arrayOf(
+            getString(R.string.action_outline),
             getString(R.string.action_view_questions),
             getString(R.string.action_fill_answer),
             getString(R.string.action_import_answer),
@@ -176,14 +182,15 @@ class PaperListFragment : Fragment(), Refreshable {
             items = actions,
             onPick = { which ->
                 when (which) {
-                    0 -> startActivity(Intent(requireContext(), PaperDetailActivity::class.java).apply {
+                    0 -> openOutline(paper)
+                    1 -> startActivity(Intent(requireContext(), PaperDetailActivity::class.java).apply {
                         putExtra(PaperDetailActivity.EXTRA_PAPER_ID, paper.id)
                         putExtra(PaperDetailActivity.EXTRA_PAPER_NAME, paper.name)
                     })
-                    1 -> startActivity(Intent(requireContext(), AnswerEntryActivity::class.java).apply {
+                    2 -> startActivity(Intent(requireContext(), AnswerEntryActivity::class.java).apply {
                         putExtra(AnswerEntryActivity.EXTRA_PAPER_ID, paper.id)
                     })
-                    2 -> {
+                    3 -> {
                         pendingPaper = paper
                         try {
                             answerPicker.launch(AnswerImportUi.MIME)
@@ -195,6 +202,14 @@ class PaperListFragment : Fragment(), Refreshable {
                 }
             }
         )
+    }
+
+    /** 试卷目录：整卷 / 大类 / 材料三级，点哪一层就只做哪一层 */
+    private fun openOutline(paper: Paper) {
+        startActivity(Intent(requireContext(), PaperOutlineActivity::class.java).apply {
+            putExtra(PaperOutlineActivity.EXTRA_PAPER_ID, paper.id)
+            putExtra(PaperOutlineActivity.EXTRA_PAPER_NAME, paper.name)
+        })
     }
 
     private fun confirmDelete(paperId: Long, name: String) {

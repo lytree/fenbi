@@ -26,7 +26,15 @@ package com.lytree.qbank.data.model
  *
  * 纯派生对象，不落库；题目集合变化（如补答案后重读整卷）就重建一个。
  */
-class PaperStructure(private val questions: List<Question>) {
+class PaperStructure(source: List<Question>) {
+
+    /**
+     * 卷面题目（构造时的快照，顺序即题号 1..N）。
+     *
+     * 存一份副本而不是直接引用调用方的列表：答题页持有的列表会在补答案后 `clear + addAll`，
+     * 那时结构早已重建，旧结构不该跟着变。分模块答题（[ExamScope]）也靠它取「整卷题目」。
+     */
+    val questions: List<Question> = source.toList()
 
     /**
      * 材料组：一则材料 + 它带的全部小题。

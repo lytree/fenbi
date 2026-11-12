@@ -31,6 +31,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         createV8Columns(db)
         createV10Tables(db)
         createV11Tables(db)
+        createV13Tables(db)
     }
 
     /**
@@ -139,6 +140,8 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         // v11：记录从「交卷才生成」改成「开始答题就生成」，并补上每题用时
         if (oldVersion < 11) createV11Tables(db)
         // v12：只改了未交卷进度串的编码（表结构不变），11 → 12 是空迁移，不重建、不清数据
+        // v13：分模块答题——记录与未交卷进度按「答题范围」分桶（整卷 / 一个大类 / 一则材料）
+        if (oldVersion < 13) createV13Tables(db)
     }
 
     /** v3：收藏表 + 答题进度表（对齐参考应用「收藏跨会话保留 / 中途退出可续做」） */
@@ -271,6 +274,42 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
             )""".trimIndent()
         )
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_rqt_record ON record_question_times(record_id)")
+    }
+
+    /**
+     * v13：**分模块答题**——同一份卷可以整卷做，也可以只做一个大类 / 一则材料。
+     *
+     * 两种「作答容器」都要按范围分开，否则「资料分析模块」会把整卷的未交卷进度和草稿记录抢走：
+     * - `records.scope`：一条记录属于哪个范围（空串 = 整卷，老记录就是这个口径）；
+     * - `exam_progress` 的主键从 `paper_id` 改成 `(paper_id, scope)`：每个范围各存一份进度。
+     *
+     * `exam_progress` 改主键只能重建表（SQLite 改不了主键），老数据按空串搬过去，
+     * 也就是「整卷的进度还在原来的位置」，升级后照旧能续做。
+     */
+    private fun createV13Tables(db: SQLiteDatabase) {
+        if (!hasColumn(db, "records", "scope")) {
+            db.execSQL("ALTER TABLE records ADD COLUMN scope TEXT DEFAULT ''")
+        }
+        // 「这份卷这个范围的进行中记录」是每进一次答题页都要查的，单独建个索引
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_record_scope ON records(paper_id, status, scope)")
+
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS exam_progress_v13(
+                paper_id INTEGER NOT NULL,
+                scope TEXT NOT NULL DEFAULT '',
+                answers TEXT DEFAULT '',
+                marked TEXT DEFAULT '',
+                elapsed_sec INTEGER DEFAULT 0,
+                updated_at INTEGER DEFAULT 0,
+                PRIMARY KEY(paper_id, scope)
+            )""".trimIndent()
+        )
+        db.execSQL(
+            """INSERT OR REPLACE INTO exam_progress_v13(paper_id, scope, answers, marked, elapsed_sec, updated_at)
+               SELECT paper_id, '', answers, marked, elapsed_sec, updated_at FROM exam_progress""".trimIndent()
+        )
+        db.execSQL("DROP TABLE IF EXISTS exam_progress")
+        db.execSQL("ALTER TABLE exam_progress_v13 RENAME TO exam_progress")
     }
 
     /** 旧卷子按来源文件回填成组：同一份「导入自 X」的卷归一组，没有来源的落到「历史试卷」 */
@@ -1144,22 +1183,30 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
      *
      * 标注也挂在它上面：`source` 存在 `mode` 列，用来区分答题页 / 分屏页各自的草稿，
      * 两个页面不会互相覆盖对方的笔迹。
+     *
+     * [scope] 是答题范围（见 [com.lytree.qbank.data.model.ExamScope]）：空串 = 整卷。
+     * 同一份卷的「整卷」和「资料分析模块」各挂各的未完成记录，互不抢占。
+     * [total] 是本范围的题量，<= 0 时按整卷题数兜底。
      */
     fun ensureDraftRecord(
         paperId: Long,
         source: String,
         startedAt: Long,
-        name: String = ""
+        name: String = "",
+        scope: String = "",
+        total: Int = 0
     ): Long {
         val db = writableDatabase
         // 「查有没有 + 没有就插」放进同一个事务：答题页与分屏页先后进入同一份卷时，
         // 不会各建一条未完成记录
         db.beginTransaction()
         try {
-            // 按试卷找「进行中」，不看来源：答题页与分屏页是同一场练习，不能各挂一条未完成
+            // 按试卷 + 范围找「进行中」，不看来源：答题页与分屏页是同一场练习，不能各挂一条未完成
             db.rawQuery(
-                "SELECT id FROM records WHERE paper_id = ? AND submitted_at = 0 AND status = ? ORDER BY id DESC LIMIT 1",
-                arrayOf(paperId.toString(), STATUS_ONGOING)
+                """SELECT id FROM records
+                   WHERE paper_id = ? AND IFNULL(scope, '') = ? AND submitted_at = 0 AND status = ?
+                   ORDER BY id DESC LIMIT 1""",
+                arrayOf(paperId.toString(), scope, STATUS_ONGOING)
             ).use { c ->
                 if (c.moveToFirst()) {
                     db.setTransactionSuccessful()
@@ -1171,9 +1218,10 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
                 put("paper_id", paperId)
                 put("name", name.ifBlank { paperName(paperId).ifBlank { "答题记录" } })
                 put("mode", source)
+                put("scope", scope)
                 put("started_at", startedAt)
                 put("submitted_at", 0)
-                put("total_count", countQuestions(paperId))
+                put("total_count", if (total > 0) total else countQuestions(paperId))
                 put("status", STATUS_ONGOING)
             }
             val id = db.insert("records", null, cv)
@@ -1205,14 +1253,21 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
      *
      * 「重新开始」时会走这里——上一轮已经花掉的时间、答过的题得留在记录里，
      * 但不能再被 `ensureDraftRecord` 当成「进行中」捡回来续做。
+     *
+     * [scope] 传空串以外的值时只动这个范围的那条：在「资料分析模块」点重新开始，
+     * 不该把整卷的草稿一起作废。
      */
-    fun abandonDraftRecords(paperId: Long, source: String? = null) {
+    fun abandonDraftRecords(paperId: Long, source: String? = null, scope: String? = null) {
         val cv = ContentValues().apply { put("status", STATUS_ABANDONED) }
         val where = StringBuilder("paper_id = ? AND submitted_at = 0 AND status = ?")
         val args = arrayListOf(paperId.toString(), STATUS_ONGOING)
         if (!source.isNullOrBlank()) {
             where.append(" AND mode = ?")
             args.add(source)
+        }
+        if (scope != null) {
+            where.append(" AND IFNULL(scope, '') = ?")
+            args.add(scope)
         }
         writableDatabase.update("records", cv, where.toString(), args.toTypedArray())
     }
@@ -1235,16 +1290,24 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
      * 丢弃未交卷的草稿（连同作答与笔迹）。只留给「这一轮彻底不要了」的场景，
      * 正常的「重新开始」走 [abandonDraftRecords]，记录本身要留下。
      */
-    fun discardDraftRecords(paperId: Long, source: String) {
+    fun discardDraftRecords(paperId: Long, source: String, scope: String? = null) {
         val db = writableDatabase
-        val args = arrayOf(paperId.toString(), source)
-        val where = "record_id IN (SELECT id FROM records WHERE paper_id = ? AND submitted_at = 0 AND mode = ?)"
+        val args = arrayListOf(paperId.toString(), source)
+        val recordWhere = StringBuilder("paper_id = ? AND submitted_at = 0 AND mode = ?")
+        if (scope != null) {
+            recordWhere.append(" AND IFNULL(scope, '') = ?")
+            args.add(scope)
+        }
+        val whereText = recordWhere.toString()
+        // 子查询版本：清笔迹 / 作答 / 每题用时都用「记录 id 属于这条草稿」
+        val inRecords = "record_id IN (SELECT id FROM records WHERE $whereText)"
+        val argArray = args.toTypedArray()
         db.beginTransaction()
         try {
-            db.delete("record_inks", where, args)
-            db.delete("record_answers", where, args)
-            db.delete("record_question_times", where, args)
-            db.delete("records", "paper_id = ? AND submitted_at = 0 AND mode = ?", args)
+            db.delete("record_inks", inRecords, argArray)
+            db.delete("record_answers", inRecords, argArray)
+            db.delete("record_question_times", inRecords, argArray)
+            db.delete("records", whereText, argArray)
             db.setTransactionSuccessful()
         } finally {
             db.endTransaction()
@@ -1318,7 +1381,8 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         paperId: Long,
         recordId: Long,
         record: ExamRecord,
-        results: List<com.lytree.qbank.data.model.AnswerResult>
+        results: List<com.lytree.qbank.data.model.AnswerResult>,
+        scope: String = ""
     ): Long {
         val db = writableDatabase
         db.beginTransaction()
@@ -1329,7 +1393,10 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
             } else {
                 finalizeRecordInTransaction(db, recordId, record, results)
             }
-            db.delete("exam_progress", "paper_id = ?", arrayOf(paperId.toString()))
+            // 只清本范围的进度：整卷交卷不该把「资料分析模块」的未交卷进度一起抹掉
+            db.delete(
+                "exam_progress", "paper_id = ? AND scope = ?", arrayOf(paperId.toString(), scope)
+            )
             db.setTransactionSuccessful()
             return rid
         } finally {
@@ -1401,6 +1468,8 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         put("paper_id", record.paperId)
         put("name", record.name)
         put("mode", record.mode)
+        // 答题范围（空串 = 整卷）：记录列表点回来续做时要靠它回到同一个范围
+        put("scope", record.scope)
         put("started_at", record.startedAt)
         put("submitted_at", record.submittedAt)
         put("duration_sec", record.durationSec)
@@ -1426,7 +1495,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
             """SELECT r.id, r.paper_id, r.name, r.mode, r.started_at, r.submitted_at,
                       r.duration_sec, r.total_count, r.answered_count, r.correct_count,
                       r.partial_count, r.score, r.full_score, r.marked,
-                      IFNULL(r.status, ''), IFNULL(p.name, '')
+                      IFNULL(r.status, ''), IFNULL(p.name, ''), IFNULL(r.scope, '')
                FROM records r LEFT JOIN papers p ON p.id = r.paper_id
                ORDER BY r.id DESC""",
             null
@@ -1441,7 +1510,8 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
                         score = c.getDouble(11), fullScore = c.getDouble(12),
                         marked = parseIdTextSet(c.getString(13) ?: ""),
                         status = c.getString(14).orEmpty().ifBlank { STATUS_DONE },
-                        paperName = c.getString(15) ?: ""
+                        paperName = c.getString(15) ?: "",
+                        scope = c.getString(16) ?: ""
                     )
                 )
             }
@@ -1635,17 +1705,21 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
 
     // ---------------- ExamProgress（答题进度，中途退出可续做） ----------------
 
-    /** 某份试卷的未交卷进度；无进度或进度为空时返回 null */
-    fun getProgress(paperId: Long): ExamProgress? {
+    /**
+     * 某份试卷某个范围的未交卷进度；无进度或进度为空时返回 null。
+     *
+     * [scope] 为空串 = 整卷；分模块答题时每个范围各存一份（见 [com.lytree.qbank.data.model.ExamScope]）。
+     */
+    fun getProgress(paperId: Long, scope: String = ""): ExamProgress? {
         readableDatabase.rawQuery(
-            "SELECT answers, marked, elapsed_sec FROM exam_progress WHERE paper_id = ?",
-            arrayOf(paperId.toString())
+            "SELECT answers, marked, elapsed_sec FROM exam_progress WHERE paper_id = ? AND scope = ?",
+            arrayOf(paperId.toString(), scope)
         ).use { c ->
             if (!c.moveToFirst()) return null
             val answers = decodeProgressAnswers(c.getString(0) ?: "")
             val marked = parseIdTextSet(c.getString(1) ?: "")
             if (answers.isEmpty() && marked.isEmpty()) return null
-            return ExamProgress(paperId, answers, marked, c.getInt(2))
+            return ExamProgress(paperId, answers, marked, c.getInt(2), scope)
         }
     }
 
@@ -1663,10 +1737,11 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         answers: Map<Long, String>,
         marked: Set<Long>,
         elapsedSec: Int,
-        merge: Boolean = false
+        merge: Boolean = false,
+        scope: String = ""
     ): Map<Long, String> {
         if (!merge) {
-            writeProgress(paperId, encodeProgressAnswers(answers), marked.joinToString(","), elapsedSec)
+            writeProgress(paperId, scope, encodeProgressAnswers(answers), marked.joinToString(","), elapsedSec)
             return answers
         }
 
@@ -1678,8 +1753,8 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         try {
             // 「读-合并-写」放在一个事务里，答题页与分屏页的两次保存不会互相覆盖
             db.rawQuery(
-                "SELECT answers, marked, elapsed_sec FROM exam_progress WHERE paper_id = ?",
-                arrayOf(paperId.toString())
+                "SELECT answers, marked, elapsed_sec FROM exam_progress WHERE paper_id = ? AND scope = ?",
+                arrayOf(paperId.toString(), scope)
             ).use { c ->
                 if (c.moveToFirst()) {
                     val allAnswers = HashMap<Long, String>()
@@ -1693,7 +1768,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
                     mergedElapsedSec = maxOf(elapsedSec, c.getInt(2))
                 }
             }
-            writeProgress(paperId, encodeProgressAnswers(mergedAnswers),
+            writeProgress(paperId, scope, encodeProgressAnswers(mergedAnswers),
                 mergedMarked.joinToString(","), mergedElapsedSec)
             db.setTransactionSuccessful()
         } finally {
@@ -1702,11 +1777,18 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         return mergedAnswers
     }
 
-    private fun writeProgress(paperId: Long, answersText: String, markedText: String, elapsedSec: Int) {
+    private fun writeProgress(
+        paperId: Long,
+        scope: String,
+        answersText: String,
+        markedText: String,
+        elapsedSec: Int
+    ) {
         writableDatabase.insertWithOnConflict(
             "exam_progress", null,
             ContentValues().apply {
                 put("paper_id", paperId)
+                put("scope", scope)
                 put("answers", answersText)
                 put("marked", markedText)
                 put("elapsed_sec", elapsedSec)
@@ -1716,8 +1798,10 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         )
     }
 
-    fun clearProgress(paperId: Long) {
-        writableDatabase.delete("exam_progress", "paper_id = ?", arrayOf(paperId.toString()))
+    fun clearProgress(paperId: Long, scope: String = "") {
+        writableDatabase.delete(
+            "exam_progress", "paper_id = ? AND scope = ?", arrayOf(paperId.toString(), scope)
+        )
     }
 
     private fun parseIdTextSet(raw: String): HashSet<Long> {
@@ -1738,7 +1822,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
          * （见 [encodeProgressAnswers]）。读旧串仍兼容，但**新串老版本读不了**，
          * 所以提一版，让老 App 在恢复 v12 备份时直接拒绝，而不是静默把进度读丢。
          */
-        const val DB_VERSION = 12
+        const val DB_VERSION = 13
 
         /** 重练卷统一挂的组名 */
         private const val RETRY_SET_TITLE = "错题重练"
@@ -1966,7 +2050,9 @@ data class ExamProgress(
     val answers: Map<Long, String>,
     val marked: Set<Long>,
     /** 已用掉的秒数（续做时从剩余时长继续倒计时） */
-    val elapsedSec: Int
+    val elapsedSec: Int,
+    /** 答题范围：空串 = 整卷；分模块答题时每个范围各存一份（见 ExamScope） */
+    val scope: String = ""
 )
 
 /** Option 便捷扩展 */

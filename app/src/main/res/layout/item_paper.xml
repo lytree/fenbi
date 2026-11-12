@@ -40,6 +40,16 @@
         tools:text="缺 3 答案"
         tools:visibility="visible" />
 
+    <!-- 「目录」：直接进试卷目录挑层级做（整卡仍是整卷开练，这一枚是分模块入口） -->
+    <TextView
+        android:id="@+id/outline"
+        style="@style/FbPill"
+        android:layout_marginStart="@dimen/fb_space_8"
+        android:clickable="true"
+        android:focusable="true"
+        android:foreground="?attr/selectableItemBackground"
+        android:text="@string/outline_short" />
+
     <ImageView
         android:id="@+id/chevron"
         android:layout_width="18dp"

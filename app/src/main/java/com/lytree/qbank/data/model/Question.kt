@@ -184,6 +184,11 @@ data class ExamRecord(
     val status: String = "done",
     /** 所属试卷名（记录列表拿它当标题，别让列表里全是「练习记录」） */
     val paperName: String = "",
+    /**
+     * 答题范围：空串 = 整卷，`s:<题 id>` = 一个大类，`m:<题 id>` = 一则材料。
+     * 分模块答题的记录点回来续做时，靠它回到同一个范围（见 [ExamScope]）。
+     */
+    val scope: String = "",
     val correctRate: Double = 0.0,
     val results: List<AnswerResult> = emptyList()
 ) {
@@ -196,7 +201,15 @@ data class ExamRecord(
     /** 还在做：可以从记录列表点回去接着答 */
     val isOngoing: Boolean get() = status == "ongoing"
 
-    /** 列表标题：优先用卷名，卷子被删了才退回记录自带的名称 */
+    /**
+     * 列表标题：默认用卷名；分模块答题的记录名是「卷名 · 资料分析」，比卷名更长且以卷名开头，
+     * 这时候整条用记录名——不然列表里三条「2024国考行测」谁也分不清是整卷还是哪个模块。
+     * 卷子删了才退回记录自带的名称。
+     */
     val displayTitle: String
-        get() = paperName.ifBlank { name.ifBlank { "练习记录" } }
+        get() = when {
+            paperName.isBlank() -> name.ifBlank { "练习记录" }
+            name.length > paperName.length && name.startsWith(paperName) -> name
+            else -> paperName
+        }
 }

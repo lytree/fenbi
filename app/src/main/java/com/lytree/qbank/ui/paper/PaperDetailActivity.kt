@@ -14,6 +14,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.lytree.qbank.R
 import com.lytree.qbank.data.db.QBankDb
 import com.lytree.qbank.data.model.AnswerResult
+import com.lytree.qbank.data.model.PaperStructure
 import com.lytree.qbank.data.model.Question
 import com.lytree.qbank.databinding.ActivityPaperDetailBinding
 import com.lytree.qbank.databinding.ItemQuestionBinding
@@ -67,7 +68,16 @@ class PaperDetailActivity : AppCompatActivity() {
         binding.list.adapter = adapter
 
         binding.btnStart.setOnClickListener { startExam() }
+        // 分模块：进试卷目录按大类 / 材料拆开做（每一层都能当成一张小卷）
+        binding.btnModules.setOnClickListener { openOutline() }
         reload()
+    }
+
+    private fun openOutline() {
+        startActivity(Intent(this, PaperOutlineActivity::class.java).apply {
+            putExtra(PaperOutlineActivity.EXTRA_PAPER_ID, paperId)
+            putExtra(PaperOutlineActivity.EXTRA_PAPER_NAME, paperName)
+        })
     }
 
     private fun startExam() {
@@ -106,6 +116,10 @@ class PaperDetailActivity : AppCompatActivity() {
             val questions = loaded.first
             adapter.submit(questions, loaded.second, focusQuestionId.takeIf { it > 0L })
             binding.empty.visibility = if (questions.isEmpty()) View.VISIBLE else View.GONE
+            // 只有「能拆」的卷才给分模块入口：一个大类且没有材料的卷，拆开会跟整卷一模一样
+            val structure = PaperStructure(questions)
+            val splittable = structure.sections.size > 1 || structure.groups.any { it.isMaterialGroup }
+            binding.btnModules.visibility = if (splittable) View.VISIBLE else View.GONE
             scrollToFocus(questions)
         }
     }

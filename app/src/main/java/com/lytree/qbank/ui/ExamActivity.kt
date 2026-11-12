@@ -18,6 +18,7 @@ import com.lytree.qbank.data.db.DbWrites
 import com.lytree.qbank.data.db.ExamProgress
 import com.lytree.qbank.data.db.QBankDb
 import com.lytree.qbank.data.model.ExamRecord
+import com.lytree.qbank.data.model.ExamScope
 import com.lytree.qbank.data.model.PaperStructure
 import com.lytree.qbank.data.model.Question
 import com.lytree.qbank.databinding.ActivityExamBinding
@@ -46,6 +47,14 @@ class ExamActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_PAPER_ID = "paper_id"
         const val EXTRA_PAPER_NAME = "paper_name"
+
+        /**
+         * 答题范围：空串 / 不带 = 整卷，`s:<题 id>` = 只做一个大类，`m:<题 id>` = 只做一则材料。
+         *
+         * 试卷目录（[com.lytree.qbank.ui.paper.PaperOutlineActivity]）按层级开练时带进来，
+         * 进来之后题号、答题卡、判分、记录都只看这一截；返回记录列表续做时也从记录里带回这个值。
+         */
+        const val EXTRA_SCOPE_KEY = "scope_key"
         private const val REQ_CARD = 1001
 
         private const val PREFS = "exam_prefs"
@@ -92,6 +101,12 @@ class ExamActivity : AppCompatActivity() {
     private var recordName = ""
     /** 卷名：进页面时随试卷一起读回，顶栏缺 EXTRA_PAPER_NAME 时用它兜底（不再为标题再查一次库） */
     private var paperName = ""
+    /** 答题范围（整卷 / 一个大类 / 一则材料）：题目、进度、记录都按它分桶 */
+    private var scope: ExamScope = ExamScope.FULL
+    /** 范围的落库短串，空串 = 整卷 */
+    private var scopeKey = ""
+    /** 顶栏 / 记录用的完整标题：卷名（· 范围） */
+    private var displayTitle = ""
     /** 每题用时：切题时把上一题的秒数累加进库 */
     private lateinit var questionTimer: QuestionTimer
     /** 判题规则：进页面时随启动批量读一起取回，卡片渲染与交卷判分都用它（不再每次绑定查库） */
@@ -105,6 +120,8 @@ class ExamActivity : AppCompatActivity() {
      */
     private class StartupData(
         val paperName: String,
+        /** 卷名（· 范围）：顶栏与记录标题都用它 */
+        val displayTitle: String,
         val questions: List<Question>,
         val durationMin: Int,
         val recordName: String,
@@ -220,31 +237,45 @@ class ExamActivity : AppCompatActivity() {
         loadPrefs()
 
         paperId = intent.getLongExtra(EXTRA_PAPER_ID, 0L)
+        scopeKey = intent.getStringExtra(EXTRA_SCOPE_KEY).orEmpty()
         // 启动时的必要读**合并成一批**放 IO：读卷 + 建/取草稿记录 + 首次开始时间 + 收藏 + 未交卷进度 + 判题规则。
         // 原来除了读卷以外都在主线程串行查库，进卷时首帧要等这几次查询；现在主线程只做装配。
         lifecycleScope.launch {
             val data = withContext(Dispatchers.IO) {
                 val paper = db.getPaper(paperId) ?: return@withContext null
                 if (paper.questions.isEmpty()) return@withContext null
+                // 答题范围：整卷 / 一个大类 / 一则材料。先按整卷建结构，再切出这次要做的那些题
+                // （范围对不上时 resolve() 会逐级退回，不会给出一张空卷）
+                val full = PaperStructure(paper.questions)
+                val scoped = ExamScope.fromKey(scopeKey)
+                val scopedQuestions = scoped.resolve(full)
+                val scopeTitle = scoped.label(full)
                 val wall = System.currentTimeMillis()
-                val name = intent.getStringExtra(EXTRA_PAPER_NAME)?.takeIf { it.isNotBlank() }
+                val base = intent.getStringExtra(EXTRA_PAPER_NAME)?.takeIf { it.isNotBlank() }
                     ?: paper.name.ifBlank { "练习记录" }
+                // 记录名带范围：「资料分析模块」在记录列表里能一眼看出只做了这一截
+                val name = if (scopeTitle.isBlank()) base else "$base · $scopeTitle"
                 // **一进卷就有记录**：先落一条「未完成」（status = ongoing），作答数 / 用时随答题回写，
-                // 中途退出也能在记录列表里看到并点回来接着做；标注与每题用时都挂在它上面
-                val rid = db.ensureDraftRecord(paperId, DRAFT_SOURCE, wall, name)
+                // 中途退出也能在记录列表里看到并点回来接着做；标注与每题用时都挂在它上面。
+                // 记录按「卷 + 范围」找：整卷与各模块各挂各的未完成，互不抢占
+                val rid = db.ensureDraftRecord(
+                    paperId, DRAFT_SOURCE, wall, name, scoped.key, scopedQuestions.size
+                )
                 // 续做时沿用最初那次的开始时间，别每进一次就把「开始时间」刷成今天
                 val firstStart = db.recordStartedAt(rid).takeIf { it > 0L } ?: wall
                 StartupData(
                     paperName = paper.name,
-                    questions = paper.questions,
-                    durationMin = paper.durationMin,
+                    displayTitle = name,
+                    questions = scopedQuestions,
+                    // 限时卷按题量折算：20 题的资料分析模块只给整卷时长的 20 分之一，别让「时间到」把模块卷逼死
+                    durationMin = scaledDuration(paper.durationMin, scopedQuestions.size, paper.questions.size),
                     recordName = name,
                     recordId = rid,
                     startedAt = firstStart,
                     sessionStartWall = wall,
                     // 收藏跨会话保留：从库里读出本卷题目的收藏状态（对齐参考应用「我的收藏」）
                     favorites = db.listFavoriteIds(),
-                    progress = db.getProgress(paperId),
+                    progress = db.getProgress(paperId, scoped.key),
                     policy = db.getPolicy()
                 )
             }
@@ -257,6 +288,9 @@ class ExamActivity : AppCompatActivity() {
             paperName = data.paperName
             questions.addAll(data.questions)
             structure = PaperStructure(questions)
+            // 范围的标题在 IO 批里按**整卷结构**算好（材料序号要数整卷里的第几则），这里直接用
+            scope = ExamScope.fromKey(scopeKey)
+            displayTitle = data.displayTitle
             durationMin = data.durationMin
             recordName = data.recordName
             recordId = data.recordId
@@ -289,6 +323,19 @@ class ExamActivity : AppCompatActivity() {
     }
 
     // ---------------- 装配 ----------------
+
+    /**
+     * 限时卷按题量折算时长。
+     *
+     * 整卷 120 分钟、只做其中 20/135 题时给 ~18 分钟——不然一进「资料分析模块」就顶着一张
+     * 两小时的倒计时，模块练习的节奏完全失真。不限时卷（[totalMin] <= 0）原样返回 0。
+     */
+    private fun scaledDuration(totalMin: Int, scopedCount: Int, totalCount: Int): Int {
+        if (totalMin <= 0 || scopedCount <= 0 || totalCount <= 0) return totalMin
+        if (scopedCount >= totalCount) return totalMin
+        // 向上取整到分钟，至少给 1 分钟
+        return ((totalMin.toLong() * scopedCount + totalCount - 1) / totalCount).toInt().coerceAtLeast(1)
+    }
 
     private fun setupList() {
         adapter = QuestionListAdapter(
@@ -521,18 +568,26 @@ class ExamActivity : AppCompatActivity() {
     }
 
     private fun importAnswers(uri: Uri) {
-        AnswerImportUi.handle(this, db, questions, uri) {
-            // 题目要在后台重读，读完回到主线程再刷新；「补完就交卷」必须排在这之后，否则判分拿到旧答案
-            reloadQuestions {
-                // 已交卷状态下补答案：题面解析区要跟着换成真正的标准答案
-                if (revealAnswers) {
-                    adapter.revealAnswers = true
-                    pagerAdapter.revealAnswers = true
-                }
-                refreshCards()
-                if (submitAfterImport) {
-                    submitAfterImport = false
-                    submit(auto = false)
+        // 答案文件是按**整卷题号**排的，匹配必须拿整卷题目来对——分模块答题时 pages 里只有一截，
+        // 拿它去匹配会把「第 21 题」套到模块的第 1 题上。所以这里单独读一次整卷（IO）。
+        lifecycleScope.launch {
+            val paperQuestions = withContext(Dispatchers.IO) {
+                db.getPaper(paperId)?.questions
+            } ?: questions.toList()
+            if (isFinishing || isDestroyed) return@launch
+            AnswerImportUi.handle(this@ExamActivity, db, paperQuestions, uri) {
+                // 题目要在后台重读，读完回到主线程再刷新；「补完就交卷」必须排在这之后，否则判分拿到旧答案
+                reloadQuestions {
+                    // 已交卷状态下补答案：题面解析区要跟着换成真正的标准答案
+                    if (revealAnswers) {
+                        adapter.revealAnswers = true
+                        pagerAdapter.revealAnswers = true
+                    }
+                    refreshCards()
+                    if (submitAfterImport) {
+                        submitAfterImport = false
+                        submit(auto = false)
+                    }
                 }
             }
         }
@@ -540,11 +595,15 @@ class ExamActivity : AppCompatActivity() {
 
     /**
      * 从库里重新读一遍题目（答案已更新），就地刷新共享列表。
+     * 分模块答题时先按整卷建结构、再把这次的范围切出来，否则补完答案整卷又全塞进来了。
      * [after] 在刷新完成、回到主线程后执行（调用方原来紧跟其后的 UI 动作放这里）。
      */
     private fun reloadQuestions(after: () -> Unit = {}) {
         lifecycleScope.launch {
-            val fresh = withContext(Dispatchers.IO) { db.getPaper(paperId)?.questions } ?: return@launch
+            val fresh = withContext(Dispatchers.IO) {
+                val all = db.getPaper(paperId)?.questions ?: return@withContext null
+                scope.resolve(PaperStructure(all))
+            } ?: return@launch
             if (isFinishing || isDestroyed) return@launch
             questions.clear()
             questions.addAll(fresh)
@@ -780,6 +839,8 @@ class ExamActivity : AppCompatActivity() {
             splitLauncher.launch(Intent(this, SplitExamActivity::class.java).apply {
                 putExtra(SplitExamActivity.EXTRA_PAPER_ID, paperId)
                 putExtra(SplitExamActivity.EXTRA_PAPER_NAME, paperName.ifBlank { "练习" })
+                // 范围跟着带过去：在「资料分析模块」里开分屏，判分与进度都只算这一截
+                putExtra(SplitExamActivity.EXTRA_SCOPE_KEY, scopeKey)
                 if (material.isNotBlank()) putExtra(SplitExamActivity.EXTRA_GROUP_KEY, material)
             })
         }
@@ -1174,8 +1235,10 @@ class ExamActivity : AppCompatActivity() {
     // ---------------- 顶栏状态 ----------------
 
     private fun updateHeader() {
-        // 卷名已在读卷时拿到，不再为顶栏标题再查一次库
-        val name = intent.getStringExtra(EXTRA_PAPER_NAME) ?: paperName.ifBlank { "练习" }
+        // 卷名（· 范围）已在读卷时拼好，不再为顶栏标题再查一次库
+        val name = displayTitle.ifBlank {
+            intent.getStringExtra(EXTRA_PAPER_NAME) ?: paperName.ifBlank { "练习" }
+        }
         binding.tvPaperName.text = getString(R.string.paper_title, name, questions.size)
     }
 
@@ -1292,7 +1355,8 @@ class ExamActivity : AppCompatActivity() {
         val answersCopy = answers.toMap()
         val markedCopy = marked.toSet()
         val elapsed = elapsedSec()
-        DbWrites.submit { db.saveProgress(paperId, answersCopy, markedCopy, elapsed) }
+        val scope = scopeKey
+        DbWrites.submit { db.saveProgress(paperId, answersCopy, markedCopy, elapsed, scope = scope) }
     }
 
     // ---------------- 续做（中途退出保存进度） ----------------
@@ -1319,7 +1383,9 @@ class ExamActivity : AppCompatActivity() {
             onOk = { restoreProgress(progress) },
             onCancel = {
                 // 清进度也走写队列；restartDraftRecord 会先 flush，保证「清进度」早于「中止旧记录 / 开新记录」
-                DbWrites.submit { db.clearProgress(paperId) }
+                // 只清本范围的进度：重新开始「资料分析模块」不该把整卷的进度一起清掉
+                val scope = scopeKey
+                DbWrites.submit { db.clearProgress(paperId, scope) }
                 restartDraftRecord()
                 startTimer()
             }
@@ -1337,10 +1403,13 @@ class ExamActivity : AppCompatActivity() {
         // 先把队列里排着的作答 / 进度写落完（含上面刚投递的 clearProgress），
         // 再中断旧记录、开新记录——否则旧的进度写可能晚到，下次进卷又弹「继续答题」
         DbWrites.flush()
-        // 不看来源：这份卷当前进行中的那条一律改成「未完成（已中断）」
-        db.abandonDraftRecords(paperId)
+        // 不看来源，但只看本范围：这份卷当前这个范围进行中的那条改成「未完成（已中断）」，
+        // 整卷 / 其它模块的草稿不受影响
+        db.abandonDraftRecords(paperId, scope = scopeKey)
         startedAt = System.currentTimeMillis()
-        recordId = db.ensureDraftRecord(paperId, DRAFT_SOURCE, startedAt, recordName)
+        recordId = db.ensureDraftRecord(
+            paperId, DRAFT_SOURCE, startedAt, recordName, scopeKey, questions.size
+        )
         questionTimer.bindRecord(recordId)
         binding.inkOverlay.recordId = recordId
         syncInkQuestion()
@@ -1366,7 +1435,8 @@ class ExamActivity : AppCompatActivity() {
         if (submitted || paperId <= 0L) return
         // 读库放后台；回来时页面已销毁 / 已交卷就丢弃这次结果
         lifecycleScope.launch {
-            val p = withContext(Dispatchers.IO) { db.getProgress(paperId) } ?: return@launch
+            val scope = scopeKey
+            val p = withContext(Dispatchers.IO) { db.getProgress(paperId, scope) } ?: return@launch
             if (isFinishing || isDestroyed || submitted) return@launch
             answers.putAll(p.answers)
             marked.addAll(p.marked)
@@ -1800,6 +1870,8 @@ class ExamActivity : AppCompatActivity() {
             paperId = paperId,
             name = recordName,
             mode = if (auto) "超时自动交卷" else "手动交卷",
+            // 答题范围：记录列表点回来续做时按它回到同一个范围
+            scope = scopeKey,
             startedAt = startedAt,
             submittedAt = now,
             // 用时取「实际做了多久」而不是墙上时间差：中途退出再进来续做时，
@@ -1819,7 +1891,7 @@ class ExamActivity : AppCompatActivity() {
         // 交卷收成一个事务：记录转正 + 逐题作答 + 清进度一起提交。
         // 失败就整体回滚（记录还是进行中、进度还在），把 submitted 放回去让用户重试，别把答案弄丢。
         val rid = try {
-            db.finishSubmission(paperId, recordId, record, results)
+            db.finishSubmission(paperId, recordId, record, results, scopeKey)
         } catch (e: Exception) {
             submitted = false
             // 计时接回去：倒计时按剩余时间重挂（到点自动交卷继续有效），每题用时也续上，

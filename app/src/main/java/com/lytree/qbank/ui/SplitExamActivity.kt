@@ -14,6 +14,7 @@ import com.lytree.qbank.data.db.DbWrites
 import com.lytree.qbank.data.db.ExamProgress
 import com.lytree.qbank.data.db.QBankDb
 import com.lytree.qbank.data.model.ExamRecord
+import com.lytree.qbank.data.model.ExamScope
 import com.lytree.qbank.data.model.Paper
 import com.lytree.qbank.data.model.PaperStructure
 import com.lytree.qbank.data.model.Question
@@ -43,6 +44,11 @@ class SplitExamActivity : AppCompatActivity() {
         const val EXTRA_PAPER_NAME = "paper_name"
         /** 只显示这组题（同一份材料）；为空则显示整卷 */
         const val EXTRA_GROUP_KEY = "group_key"
+        /**
+         * 答题范围：与答题页同一个口径（空串 = 整卷，`s:` 大类，`m:` 材料）。
+         * 从分模块答题里开分屏时带过来，判分 / 进度 / 记录都只算这一截。
+         */
+        const val EXTRA_SCOPE_KEY = "scope_key"
         /** 返回给答题页：本页已经交卷，答题页不要再拿内存里的旧作答覆盖这条记录 */
         const val EXTRA_SUBMITTED = "submitted"
         private const val REQ_CARD = 1001
@@ -55,13 +61,17 @@ class SplitExamActivity : AppCompatActivity() {
     private lateinit var db: QBankDb
 
     private var paperId = 0L
+    /** 答题范围（空串 = 整卷）：判分、进度、交卷都只看这一截 */
+    private var scopeKey = ""
+    /** 范围短标题（「资料分析 · 材料2」），整卷为空串；拼记录名用 */
+    private var scopeTitle = ""
     /** 本次分屏练习的记录 id（草稿）：一进来就落库，标注与每题用时都挂在它上面 */
     private var recordId = 0L
     /** 每题用时：切题时把上一题的秒数累加进库 */
     private lateinit var questionTimer: QuestionTimer
     /** 本页显示的题（可能只是整卷里的一个材料组） */
     private var questions: List<Question> = emptyList()
-    /** 整卷题目：交卷与进度统计都以整卷为准，分屏页只显示其中一组 */
+    /** 本次范围的题目：交卷与进度统计都以它为准，分屏页只显示其中一组 */
     private var allQuestions: List<Question> = emptyList()
     private lateinit var structure: PaperStructure
     private val answers = HashMap<Long, String>()
@@ -93,6 +103,10 @@ class SplitExamActivity : AppCompatActivity() {
      */
     private class StartupData(
         val paper: Paper,
+        /** 本次范围里的题目（整卷 = 全卷题目）：判分与统计都按它算 */
+        val questions: List<Question>,
+        /** 范围短标题；整卷为空串 */
+        val scopeTitle: String,
         val recordId: Long,
         val recordStartedAt: Long,
         val sessionStartWall: Long,
@@ -109,24 +123,37 @@ class SplitExamActivity : AppCompatActivity() {
         db = QBankDb.get(this)
 
         paperId = intent.getLongExtra(EXTRA_PAPER_ID, 0L)
+        scopeKey = intent.getStringExtra(EXTRA_SCOPE_KEY).orEmpty()
         // 启动批量读：读卷 + 建/取草稿 + 首次开始时间 + 整卷未交卷进度 + 判题规则，一次 IO 拿全
         lifecycleScope.launch {
             val data = withContext(Dispatchers.IO) {
                 val paper = db.getPaper(paperId) ?: return@withContext null
                 if (paper.questions.isEmpty()) return@withContext null
+                // 先把范围切出来：分模块答题时「整卷」其实是那一个模块的题
+                val full = PaperStructure(paper.questions)
+                val scoped = ExamScope.fromKey(scopeKey)
+                val questions = scoped.resolve(full)
+                val scopeTitle = scoped.label(full)
                 val wall = System.currentTimeMillis()
+                val title = intent.getStringExtra(EXTRA_PAPER_NAME)?.takeIf { it.isNotBlank() }
+                    ?: paper.name.ifBlank { "分屏练习记录" }
+                val name = if (scopeTitle.isBlank()) title else "$title · $scopeTitle"
                 // **一进来就有记录**：先落一条「未完成」，交卷时转成「已完成」；
                 // 标注与每题用时都按这条记录存
-                val rid = db.ensureDraftRecord(paperId, DRAFT_SOURCE, wall)
+                val rid = db.ensureDraftRecord(
+                    paperId, DRAFT_SOURCE, wall, name, scoped.key, questions.size
+                )
                 // 记录最初的开始时间单独留着：顶栏的正计时要从「进这一页」算起，
                 // 而记录上的「开始时间」得是最早那次进卷的时刻
                 val firstStart = db.recordStartedAt(rid).takeIf { it > 0L } ?: wall
                 StartupData(
                     paper = paper,
+                    questions = questions,
+                    scopeTitle = scopeTitle,
                     recordId = rid,
                     recordStartedAt = firstStart,
                     sessionStartWall = wall,
-                    progress = db.getProgress(paperId),
+                    progress = db.getProgress(paperId, scoped.key),
                     policy = db.getPolicy()
                 )
             }
@@ -140,7 +167,7 @@ class SplitExamActivity : AppCompatActivity() {
 
             // 按材料分组：直接用试卷结构里的材料组——同一材料跨大类会断成两组，
             // 按文本 filter 会把它们并成一组、题号也会错，这里取的正是这题所属的那一组
-            structure = PaperStructure(paper.questions)
+            structure = PaperStructure(data.questions)
             val groupKey = intent.getStringExtra(EXTRA_GROUP_KEY)?.trim().orEmpty()
             val group = if (groupKey.isEmpty()) {
                 null
@@ -149,8 +176,8 @@ class SplitExamActivity : AppCompatActivity() {
                     it.isMaterialGroup && it.material.material.trim() == groupKey
                 }
             }
-            allQuestions = paper.questions
-            questions = group?.questions ?: paper.questions
+            allQuestions = data.questions
+            questions = group?.questions ?: data.questions
             // 题号接着整卷往下排（参考应用分屏右栏显示的是 106./107./108.，不是 1./2./3.）
             indexOffset = group?.startIndex ?: 0
 
@@ -158,6 +185,7 @@ class SplitExamActivity : AppCompatActivity() {
             recordId = data.recordId
             recordStartedAt = data.recordStartedAt
             paperTitle = paper.name
+            scopeTitle = data.scopeTitle
             judgePolicy = data.policy
             // 与答题页共用同一份进度：进页面先把已作答的题读回来，
             // 否则「在答题页做的题」在这儿看不到、「在这儿改的答案」退出后也留不住
@@ -562,7 +590,7 @@ class SplitExamActivity : AppCompatActivity() {
      * 返回的合并结果用于统计整卷作答数与交卷判分。
      */
     private fun saveMergedProgress(): Map<Long, String> =
-        db.saveProgress(paperId, answers, marked, elapsedForRecord(), merge = true)
+        db.saveProgress(paperId, answers, marked, elapsedForRecord(), merge = true, scope = scopeKey)
 
     // ---------------- 交卷 ----------------
 
@@ -622,8 +650,14 @@ class SplitExamActivity : AppCompatActivity() {
 
             val record = ExamRecord(
                 paperId = paperId,
-                name = paperTitle.ifBlank { "分屏练习记录" },
+                // 记录名带范围：模块分屏的记录在列表里能一眼分清
+                name = if (scopeTitle.isBlank()) {
+                    paperTitle.ifBlank { "分屏练习记录" }
+                } else {
+                    "${paperTitle.ifBlank { "分屏练习" }} · $scopeTitle"
+                },
                 mode = "资料分析分屏",
+                scope = scopeKey,
                 startedAt = if (recordStartedAt > 0L) recordStartedAt else startedAt,
                 submittedAt = now,
                 durationSec = elapsed,
@@ -639,7 +673,7 @@ class SplitExamActivity : AppCompatActivity() {
                 status = QBankDb.STATUS_DONE
             )
             // 草稿转正 + 清未交卷进度是一个事务（记录 id 不变，挂在它上面的标注继续可用）
-            db.finishSubmission(paperId, recordId, record, results)
+            db.finishSubmission(paperId, recordId, record, results, scopeKey)
         } catch (e: Exception) {
             submitted = false
             resumeTimersAfterFailure(submitStartedAt)
@@ -711,8 +745,9 @@ class SplitExamActivity : AppCompatActivity() {
         val elapsed = elapsedForRecord()
         val rid = recordId
         val total = allQuestions.size
+        val scope = scopeKey
         DbWrites.submit {
-            val merged = db.saveProgress(paperId, answersCopy, markedCopy, elapsed, merge = true)
+            val merged = db.saveProgress(paperId, answersCopy, markedCopy, elapsed, merge = true, scope = scope)
             db.updateRecordLive(rid, merged.count { it.value.isNotBlank() }, total, elapsed)
         }
         // 页面离开前等队列落完，进程被回收也不会丢这一笔

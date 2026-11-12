@@ -106,7 +106,13 @@ class RecordListFragment : Fragment(), Refreshable {
             if (exists) {
                 startActivity(Intent(ctx, ExamActivity::class.java).apply {
                     putExtra(ExamActivity.EXTRA_PAPER_ID, record.paperId)
-                    putExtra(ExamActivity.EXTRA_PAPER_NAME, record.displayTitle)
+                    // 卷名不带范围，范围另外带：答题页自己拼「卷名 · 资料分析」，
+                    // 免得把记录标题里已经拼过一次的范围名再加一遍
+                    putExtra(
+                        ExamActivity.EXTRA_PAPER_NAME,
+                        record.paperName.ifBlank { record.displayTitle }
+                    )
+                    putExtra(ExamActivity.EXTRA_SCOPE_KEY, record.scope)
                 })
             } else {
                 FbDialog.alert(ctx, "这份试卷已经删掉了，这条记录只看得到当时做了多少题。")
@@ -121,7 +127,8 @@ class RecordListFragment : Fragment(), Refreshable {
             okText = getString(R.string.action_delete),
             onOk = {
                 // 未完成的记录删掉等于放弃这一轮：连进度一起清，别让下次进卷又弹「继续答题」
-                if (!record.isDone) db.clearProgress(record.paperId)
+                // 只清这条记录所属范围的那一份进度（整卷 / 某个模块各存一份）
+                if (!record.isDone) db.clearProgress(record.paperId, record.scope)
                 db.deleteRecord(record.id)
                 refresh()
                 Toast.makeText(requireContext(), R.string.record_deleted, Toast.LENGTH_SHORT).show()

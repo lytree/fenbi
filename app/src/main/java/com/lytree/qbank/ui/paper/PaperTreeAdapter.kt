@@ -32,6 +32,9 @@ class PaperTreeAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
     var onPaperClick: ((Paper) -> Unit)? = null
     var onPaperLongClick: ((Paper) -> Unit)? = null
 
+    /** 点行尾的「目录」胶囊：进试卷目录，按层级开练（整卡仍然是整卷开练） */
+    var onPaperOutlineClick: ((Paper) -> Unit)? = null
+
     /** 点了组标题：参数是这一组和「点完之后是否收起」 */
     var onToggleSet: ((PaperSet, Boolean) -> Unit)? = null
     var onSetLongClick: ((PaperSet) -> Unit)? = null
@@ -113,6 +116,8 @@ class PaperTreeAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
         indent(holder.binding.root)
         holder.binding.root.setOnClickListener { onPaperClick?.invoke(p) }
         holder.binding.root.setOnLongClickListener { onPaperLongClick?.invoke(p); true }
+        // 「目录」自己吃点击事件，不再冒泡到整卡（否则点目录会顺手开整卷）
+        holder.binding.outline.setOnClickListener { onPaperOutlineClick?.invoke(p) }
     }
 
     /** 组内卷子往里缩一格：靠缩进读出层级，不额外画连接线 */
