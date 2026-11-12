@@ -4,6 +4,11 @@
     <!-- 「从链接导入」需要联网下载试卷文件 -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- 局域网编辑器：手机里跑一个 HTTP 服务，前台服务常驻 + 通知栏（Android 13+ 要通知权限） -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:allowBackup="true"
         android:icon="@drawable/ic_launcher"
@@ -86,5 +91,19 @@
         <receiver
             android:name=".data.backup.AutoBackupReceiver"
             android:exported="false" />
+
+        <!--
+          局域网编辑器：前台服务托着 ServerSocket，电脑浏览器连上来加题。
+          dataSync 类型是 Android 14 的硬要求（本地服务没有更贴切的类型可选）。
+        -->
+        <service
+            android:name=".ui.laneditor.LanEditorService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <activity
+            android:name=".ui.laneditor.LanEditorActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
     </application>
 </manifest>

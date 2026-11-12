@@ -1,0 +1,27 @@
+{
+  "name": "fenbi-qbank-mcp",
+  "private": true,
+  "version": "0.1.0",
+  "description": "手机题库的 MCP server：AI 客户端经局域网直连「局域网编辑器」，读写题库",
+  "type": "module",
+  "bin": {
+    "fenbi-qbank-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "start": "node dist/index.js",
+    "test": "node --test \"dist/__tests__/*.test.js\""
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.9.3"
+  }
+}

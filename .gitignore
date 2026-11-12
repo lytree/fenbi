@@ -69,3 +69,14 @@ desktop.ini
 # ---- 本地环境 ----
 .env
 .env.local
+
+# ---- 局域网编辑器前端（Vue 3 + TSX，pnpm）----
+tools/webeditor/node_modules/
+tools/webeditor/dist/
+tools/webeditor/.pnpm-debug.log
+# 锁文件要提交：pnpm-lock.yaml / pnpm-workspace.yaml
+
+# ---- 题库 MCP server（Node + TS）----
+tools/qbank-mcp/node_modules/
+tools/qbank-mcp/dist/
+tools/qbank-mcp/.pnpm-debug.log

@@ -1,0 +1,254 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  局域网编辑器：手机里起一个网页服务，电脑浏览器加题。
+  版式沿用设置页的「分组卡 + 行」：状态 / 地址 / 端口三行，下面一个主按钮。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    style="@style/FbPage">
+
+    <com.lytree.qbank.ui.FbTitleBar
+        android:id="@+id/titleBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:scrollbars="none">
+
+        <LinearLayout
+            style="@style/FbPageColumn"
+            android:paddingBottom="@dimen/fb_space_32">
+
+            <TextView
+                style="@style/FbGroupTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/fb_space_20"
+                android:layout_marginBottom="@dimen/fb_space_8"
+                android:text="服务" />
+
+            <LinearLayout style="@style/FbCard">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            style="@style/FbRowTitle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="状态" />
+
+                        <TextView
+                            android:id="@+id/tvState"
+                            style="@style/FbRowSub"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="未启动" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/tvBadge"
+                        style="@style/FbPill"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="已停止" />
+                </LinearLayout>
+
+                <View style="@style/FbDividerInset" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        style="@style/FbRowTitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="电脑上打开这个地址" />
+
+                    <TextView
+                        android:id="@+id/tvUrl"
+                        style="@style/FbBodySm"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:fontFamily="monospace"
+                        android:textIsSelectable="true"
+                        android:text="—" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnCopy"
+                        style="@style/FbGhostButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="复制地址" />
+                </LinearLayout>
+
+                <View style="@style/FbDividerInset" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            style="@style/FbRowTitle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="端口" />
+
+                        <TextView
+                            style="@style/FbRowSub"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="默认 8777，被占用就换一个（1024–65535）" />
+                    </LinearLayout>
+
+                    <EditText
+                        android:id="@+id/etPort"
+                        android:layout_width="92dp"
+                        android:layout_height="wrap_content"
+                        android:background="@drawable/bg_fb_input"
+                        android:gravity="center"
+                        android:inputType="number"
+                        android:maxLength="5"
+                        android:paddingStart="8dp"
+                        android:paddingEnd="8dp"
+                        android:textSize="@dimen/fb_text_body_size"
+                        android:importantForAutofill="no" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnToggle"
+                style="@style/FbPrimaryButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/fb_space_16"
+                android:text="启动服务" />
+
+            <TextView
+                android:id="@+id/tvHint"
+                style="@style/FbBodySm"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/fb_space_12"
+                android:textColor="@color/fb_text_tertiary" />
+
+            <TextView
+                style="@style/FbGroupTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/fb_space_20"
+                android:layout_marginBottom="@dimen/fb_space_8"
+                android:text="怎么用" />
+
+            <LinearLayout style="@style/FbCard">
+
+                <TextView
+                    style="@style/FbBodySm"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:lineSpacingExtra="4dp"
+                    android:text="1. 手机和电脑连同一个 Wi-Fi（公司网络若开了「AP 隔离」，两台设备互相看不见，换手机热点最快）" />
+
+                <TextView
+                    style="@style/FbBodySm"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:lineSpacingExtra="4dp"
+                    android:text="2. 点上面的「启动服务」，把地址原样敲进电脑浏览器（那串 ?t= 是口令，别漏）" />
+
+                <TextView
+                    style="@style/FbBodySm"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:lineSpacingExtra="4dp"
+                    android:text="3. 在网页上新建一组、加题、点「发布到 App」，回到这里就能在试卷列表里看到它" />
+
+                <TextView
+                    style="@style/FbBodySm"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:lineSpacingExtra="4dp"
+                    android:text="4. 网页上点删除只是发个请求——会在这里弹确认框，点「确认删除」才真的删；不点，10 分钟后自动作废" />
+
+                <TextView
+                    style="@style/FbRowSub"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="提示：覆盖发布时旧卷的作答记录会清掉，但题目内容会自动存成一个版本，网页右侧「版本」里能回滚；加题过程中手机锁屏不影响服务。" />
+            </LinearLayout>
+
+            <TextView
+                style="@style/FbGroupTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/fb_space_20"
+                android:layout_marginBottom="@dimen/fb_space_8"
+                android:text="AI 接入（MCP）" />
+
+            <LinearLayout style="@style/FbCard">
+
+                <TextView
+                    style="@style/FbBodySm"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:lineSpacingExtra="4dp"
+                    android:text="给 Claude Desktop / Cursor 这类 AI 客户端用：把下面这段 JSON 粘进它的 MCP 配置，AI 就能直接列组、加题、改题、体检错题、批改作答、补解析——删除仍然要在这台手机上点确认。" />
+
+                <TextView
+                    android:id="@+id/tvMcp"
+                    style="@style/FbBodySm"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:background="@drawable/bg_fb_input"
+                    android:fontFamily="monospace"
+                    android:padding="10dp"
+                    android:textIsSelectable="true"
+                    android:textSize="11sp" />
+
+                <TextView
+                    style="@style/FbRowSub"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="args 里的路径要换成电脑上 tools/qbank-mcp/dist/index.js 的实际路径（Windows 用正斜杠更省事）。服务重启后口令会变，回来重新复制一次。" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnCopyMcp"
+                    style="@style/FbGhostButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="复制配置" />
+            </LinearLayout>
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>

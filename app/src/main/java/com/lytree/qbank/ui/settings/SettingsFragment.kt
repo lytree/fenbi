@@ -90,6 +90,13 @@ class SettingsFragment : Fragment(), Refreshable {
                 .replace(R.id.container, com.lytree.qbank.ui.backup.BackupFragment())
                 .commit()
         }
+
+        // 在电脑上加题：手机起个局域网服务，PC 浏览器直接改题库
+        binding.rowLanEditor.setOnClickListener {
+            startActivity(
+                android.content.Intent(requireContext(), com.lytree.qbank.ui.laneditor.LanEditorActivity::class.java)
+            )
+        }
     }
 
     // ---------------- 笔迹颜色 ----------------

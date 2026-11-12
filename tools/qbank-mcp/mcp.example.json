@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "fenbi-qbank": {
+      "command": "node",
+      "args": ["F:\Code\Android\fenbi\tools\qbank-mcp\dist\index.js"],
+      "env": {
+        "QBANK_URL": "http://192.168.1.23:8777/?t=把这里换成App里复制的口令"
+      }
+    }
+  }
+}

@@ -352,4 +352,7 @@
     <string name="recite_empty_favorite">还没有标为重点的考点\n点卡片右上角的星，重点就会收在这里</string>
     <string name="recite_updated">更新于 %1$s · 共 %2$d 个考点</string>
     <string name="recite_total_fmt">共 %1$d 个考点</string>
+    <string name="page_lan_editor">局域网编辑器</string>
+    <string name="lan_editor_title">电脑上加题</string>
+    <string name="lan_editor_sub">手机开一个网页服务，同一 Wi-Fi 的电脑浏览器加题，发布后直接进 App</string>
 </resources>

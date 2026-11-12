@@ -214,6 +214,41 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/fb_section_gap"
                 android:layout_marginBottom="@dimen/fb_space_8"
+                android:text="在电脑上加题" />
+
+            <LinearLayout style="@style/FbCard">
+
+                <LinearLayout
+                    android:id="@+id/rowLanEditor"
+                    style="@style/FbSwitchRow">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            style="@style/FbRowTitle"
+                            android:text="局域网编辑器" />
+
+                        <TextView
+                            style="@style/FbRowSub"
+                            android:text="手机开一个网页服务，同一 Wi-Fi 的电脑浏览器里加题、改题，发布后直接进 App" />
+                    </LinearLayout>
+
+                    <TextView
+                        style="@style/FbRowArrow"
+                        android:text="›" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <TextView
+                style="@style/FbGroupTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/fb_section_gap"
+                android:layout_marginBottom="@dimen/fb_space_8"
                 android:text="备份与恢复" />
 
             <LinearLayout style="@style/FbCard">
