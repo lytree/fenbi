@@ -67,7 +67,7 @@ class AnswerEntryActivity : AppCompatActivity() {
         // 读卷 + 读记录放后台，回来在主线程装配界面；Activity 销毁后 lifecycleScope 自动取消
         lifecycleScope.launch {
             val (paper, record) = withContext(Dispatchers.IO) {
-                db.getPaper(paperId) to if (recordId > 0) db.getRecord(recordId) else null
+                db.getPaperOrGroup(paperId) to if (recordId > 0) db.getRecord(recordId) else null
             }
             if (isFinishing || isDestroyed) return@launch
             // 题目优先取试卷当前版本；试卷被删了才退回记录里的快照

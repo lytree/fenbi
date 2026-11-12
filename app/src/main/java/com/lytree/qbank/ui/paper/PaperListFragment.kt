@@ -14,6 +14,8 @@ import com.lytree.qbank.R
 import com.lytree.qbank.data.db.PaperSet
 import com.lytree.qbank.data.db.QBankDb
 import com.lytree.qbank.data.model.Paper
+import com.lytree.qbank.data.model.PaperRef
+import com.lytree.qbank.data.model.PaperStructure
 import com.lytree.qbank.databinding.FragmentListBinding
 import com.lytree.qbank.ui.AnswerEntryActivity
 import com.lytree.qbank.ui.AnswerImportUi
@@ -28,10 +30,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * 试卷列表：**导入标题 → 试卷**两级树。
+ * 首页试卷树：**导入组 → 试卷 → 大类 → 材料**四级，**每层都能直接当一张卷来答**。
  *
- * 一次导入就是一个标题（组），组下面是那次导入拆出来的各份卷，点卷直接开练。
- * 组标题可折叠、可重命名、可整组删除；组内卷子右键（长按）仍是查看 / 补答案 / 删除。
+ * 一次导入就是一个组，组下面是那次导入拆出来的各份卷，卷里再按大类 / 材料往下摊。
+ * 组标题上的「整组作答」把整组合成一张卷、直接按试卷形式答题；行尾箭头只负责展开层级
+ * （懒加载，展开过的卷才读题）。组标题可折叠、可重命名、可整组删除；
+ * 组内卷子右键（长按）仍是查看 / 补答案 / 删除。
  *
  * 这是 App 的主页，也是唯一的导入入口——原本挂「题库」页的导入按钮随题库层一起并到这里。
  */
@@ -47,6 +51,18 @@ class PaperListFragment : Fragment(), Refreshable {
 
     /** 收起的组 id（存本地，切 Tab / 重进 App 都保持） */
     private val collapsed = HashSet<Long>()
+
+    /** 展开了层级的试卷 id（存本地）：层级是懒加载的，只有展开过的卷才会去读题 */
+    private val expandedPapers = HashSet<Long>()
+
+    /** 展开了材料的大类（键见 [PaperTreeAdapter.sectionKey]） */
+    private val expandedSections = HashSet<String>()
+
+    /** 已加载的试卷结构：展开过一次就留着，反复折叠不再读库 */
+    private val structures = HashMap<Long, PaperStructure>()
+
+    /** 最近一次读到的树数据：展开 / 折叠时只重排节点，不再查库 */
+    private var sets: List<PaperSet> = emptyList()
 
     /** 试卷列表直接补答案：不必进答题页，也不用重做 */
     private val answerPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -76,15 +92,13 @@ class PaperListFragment : Fragment(), Refreshable {
 
         binding.list.layoutManager = LinearLayoutManager(requireContext())
         binding.list.adapter = adapter
-        adapter.onPaperClick = { paper ->
-            startActivity(Intent(requireContext(), ExamActivity::class.java).apply {
-                putExtra(ExamActivity.EXTRA_PAPER_ID, paper.id)
-                putExtra(ExamActivity.EXTRA_PAPER_NAME, paper.name)
-            })
-        }
+        // 整张卡 = 整卷作答；行尾箭头才是展开层级
+        adapter.onPaperClick = { paper -> startExam(paper.id, paper.name) }
         adapter.onPaperLongClick = { paper -> showPaperActions(paper) }
-        // 行尾「目录」：按层级开练（整卷 / 某一大类 / 某一则材料各算一张卷）
-        adapter.onPaperOutlineClick = { paper -> openOutline(paper) }
+        adapter.onTogglePaper = { paper, expand -> togglePaper(paper, expand) }
+        adapter.onToggleSection = { key -> toggleSection(key) }
+        adapter.onAnswerScope = { paperId, scopeKey -> answerScope(paperId, scopeKey) }
+        adapter.onGroupAnswer = { set -> answerGroup(set) }
         adapter.onToggleSet = { set, fold -> toggle(set, fold) }
         adapter.onSetLongClick = { set -> showSetActions(set) }
         binding.emptyAction.setText(R.string.action_import)
@@ -96,29 +110,114 @@ class PaperListFragment : Fragment(), Refreshable {
             ?: startActivity(Intent(requireContext(), ImportActivity::class.java))
     }
 
+    // ---------------------------------------------------------------- 开练
+
+    /** 开一场答题：整卷 / 整组都走这里，范围（大类 / 材料）按需带过去 */
+    private fun startExam(paperId: Long, name: String, scopeKey: String = "") {
+        startActivity(Intent(requireContext(), ExamActivity::class.java).apply {
+            putExtra(ExamActivity.EXTRA_PAPER_ID, paperId)
+            // 卷名不带范围，范围单独带：答题页自己拼「卷名 · 资料分析」
+            putExtra(ExamActivity.EXTRA_PAPER_NAME, name)
+            putExtra(ExamActivity.EXTRA_SCOPE_KEY, scopeKey)
+        })
+    }
+
+    /**
+     * 整组作答：组里各份卷合成一张卷（虚拟卷 id = -组 id，见 [PaperRef]）。
+     *
+     * 组里只剩一份卷时直接开那份卷：合成出来的卷跟它一模一样，再开一个虚拟卷只会多出一条
+     * 换着名头的记录（「组名」和「组名」两套进度，看着像重复）。
+     */
+    private fun answerGroup(set: PaperSet) {
+        val only = set.papers.singleOrNull()
+        if (only != null) {
+            startExam(only.id, only.name)
+            return
+        }
+        if (set.papers.isEmpty()) {
+            FbDialog.alert(requireContext(), "这一组还没有试卷。")
+            return
+        }
+        startExam(PaperRef.groupPaperId(set.id), set.title)
+    }
+
+    /** 大类 / 材料：答题页按范围切题，记录与进度也按范围分桶 */
+    private fun answerScope(paperId: Long, scopeKey: String) {
+        val paper = sets.flatMap { it.papers }.firstOrNull { it.id == paperId } ?: return
+        startExam(paperId, paper.name, scopeKey)
+    }
+
+    // ---------------------------------------------------------------- 层级展开
+
+    /**
+     * 展开 / 收起一份卷的大类。
+     *
+     * 结构是**懒加载**的：第一次展开才读这份卷的题目、建 [PaperStructure]；
+     * 之后折叠再展开直接用缓存，首页不用一上来就把几十份卷的题目读进内存。
+     */
+    private fun togglePaper(paper: Paper, expand: Boolean) {
+        if (!expand) {
+            expandedPapers.remove(paper.id)
+            saveExpanded()
+            render()
+            return
+        }
+        expandedPapers.add(paper.id)
+        saveExpanded()
+        if (structures.containsKey(paper.id)) {
+            render()
+            return
+        }
+        viewLifecycleOwner.lifecycleScope.launch {
+            val structure = withContext(Dispatchers.IO) {
+                db.getPaper(paper.id)?.let { PaperStructure(it.questions) }
+            }
+            if (_binding == null) return@launch
+            if (structure != null) structures[paper.id] = structure
+            render()
+        }
+    }
+
+    /** 展开 / 收起某个大类的材料 */
+    private fun toggleSection(key: String) {
+        if (!expandedSections.remove(key)) expandedSections.add(key)
+        saveExpanded()
+        render()
+    }
+
     // ---------------------------------------------------------------- 组（标题）
 
     private fun toggle(set: PaperSet, fold: Boolean) {
         val key = adapter.keyOf(set)
         if (fold) collapsed.add(key) else collapsed.remove(key)
         saveCollapsed()
-        refresh()
+        // 折叠只是重排节点，不必回库再读一遍
+        render()
     }
 
-    /** 长按标题：重命名 / 删除整组（「未分组」是兜底伪组，只能删卷不能改名） */
+    /**
+     * 长按标题：整组作答 / 重命名 / 删除整组。
+     * 「未分组」是兜底伪组（没有组行），只能改名以外的删除，也没有整组作答。
+     */
     private fun showSetActions(set: PaperSet) {
-        val actions = if (set.id > 0) {
-            arrayOf("重命名标题", "删除这一组（${set.paperCount} 份试卷）")
-        } else {
-            arrayOf("删除这些试卷（${set.paperCount} 份）")
-        }
+        val canAnswerGroup = set.id > 0 && set.papers.isNotEmpty()
+        val items = ArrayList<String>()
+        if (canAnswerGroup) items.add(getString(R.string.tree_answer_group))
+        if (set.id > 0) items.add("重命名标题")
+        items.add(
+            if (set.id > 0) "删除这一组（${set.paperCount} 份试卷）"
+            else "删除这些试卷（${set.paperCount} 份）"
+        )
+        val answerIndex = if (canAnswerGroup) 0 else -1
+        val renameIndex = if (set.id > 0) items.lastIndex - 1 else -1
         FbDialog.list(
             context = requireContext(),
             title = set.title,
-            items = actions,
+            items = items.toTypedArray(),
             onPick = { which ->
-                if (set.id > 0 && which == 0) {
-                    FbDialog.input(
+                when (which) {
+                    answerIndex -> answerGroup(set)
+                    renameIndex -> FbDialog.input(
                         context = requireContext(),
                         title = "重命名标题",
                         initial = set.title,
@@ -137,8 +236,7 @@ class PaperListFragment : Fragment(), Refreshable {
                             }
                         }
                     )
-                } else {
-                    confirmDeleteSet(set)
+                    else -> confirmDeleteSet(set)
                 }
             }
         )
@@ -165,12 +263,11 @@ class PaperListFragment : Fragment(), Refreshable {
     // ---------------------------------------------------------------- 试卷
 
     /**
-     * 长按：试卷目录 / 查看题目 / 补录答案 / 导入答案 / 删除。
-     * 导入的试卷常常没答案，补答案是这里的日常操作；分模块答题的入口在「试卷目录」。
+     * 长按：查看题目 / 补录答案 / 导入答案 / 删除。
+     * 导入的试卷常常没答案，补答案是这里的日常操作；分模块答题在首页树上直接点层级。
      */
     private fun showPaperActions(paper: Paper) {
         val actions = arrayOf(
-            getString(R.string.action_outline),
             getString(R.string.action_view_questions),
             getString(R.string.action_fill_answer),
             getString(R.string.action_import_answer),
@@ -182,15 +279,14 @@ class PaperListFragment : Fragment(), Refreshable {
             items = actions,
             onPick = { which ->
                 when (which) {
-                    0 -> openOutline(paper)
-                    1 -> startActivity(Intent(requireContext(), PaperDetailActivity::class.java).apply {
+                    0 -> startActivity(Intent(requireContext(), PaperDetailActivity::class.java).apply {
                         putExtra(PaperDetailActivity.EXTRA_PAPER_ID, paper.id)
                         putExtra(PaperDetailActivity.EXTRA_PAPER_NAME, paper.name)
                     })
-                    2 -> startActivity(Intent(requireContext(), AnswerEntryActivity::class.java).apply {
+                    1 -> startActivity(Intent(requireContext(), AnswerEntryActivity::class.java).apply {
                         putExtra(AnswerEntryActivity.EXTRA_PAPER_ID, paper.id)
                     })
-                    3 -> {
+                    2 -> {
                         pendingPaper = paper
                         try {
                             answerPicker.launch(AnswerImportUi.MIME)
@@ -202,14 +298,6 @@ class PaperListFragment : Fragment(), Refreshable {
                 }
             }
         )
-    }
-
-    /** 试卷目录：整卷 / 大类 / 材料三级，点哪一层就只做哪一层 */
-    private fun openOutline(paper: Paper) {
-        startActivity(Intent(requireContext(), PaperOutlineActivity::class.java).apply {
-            putExtra(PaperOutlineActivity.EXTRA_PAPER_ID, paper.id)
-            putExtra(PaperOutlineActivity.EXTRA_PAPER_NAME, paper.name)
-        })
     }
 
     private fun confirmDelete(paperId: Long, name: String) {
@@ -232,15 +320,42 @@ class PaperListFragment : Fragment(), Refreshable {
         if (_binding == null) return
         refreshJob?.cancel()
         refreshJob = viewLifecycleOwner.lifecycleScope.launch {
-            val sets = withContext(Dispatchers.IO) { db.listPaperSets() }
+            val loaded = withContext(Dispatchers.IO) { db.listPaperSets() }
             if (_binding == null) return@launch
-            val empty = sets.all { it.papers.isEmpty() }
-            // 空组（卷都被删干净了）不占列表：db.deletePaper 已顺手清理，这里只兜个底
-            adapter.submit(if (empty) emptyList() else sets, collapsed)
-            binding.emptyBox.visibility = if (empty) View.VISIBLE else View.GONE
-            binding.emptyAction.visibility = if (empty) View.VISIBLE else View.GONE
-            binding.empty.setText(if (empty) getString(R.string.empty_papers) else "")
+            sets = loaded
+            // 卷被删 / 重组后，缓存里的结构与展开状态跟着失效，别在树上留下点不开的行
+            val ids = loaded.flatMap { set -> set.papers.map { it.id } }.toHashSet()
+            structures.keys.retainAll(ids)
+            expandedPapers.retainAll(ids)
+            // 上次退出时展开着的卷，回来要把结构补齐再排节点（结构是懒加载的缓存）
+            val missing = expandedPapers.filter { it !in structures }
+            if (missing.isNotEmpty()) {
+                val loadedStructures = withContext(Dispatchers.IO) {
+                    missing.mapNotNull { id -> db.getPaper(id)?.let { id to PaperStructure(it.questions) } }
+                }
+                if (_binding == null) return@launch
+                loadedStructures.forEach { (id, structure) -> structures[id] = structure }
+            }
+            binding.emptyBox.visibility = if (isTreeEmpty()) View.VISIBLE else View.GONE
+            binding.emptyAction.visibility = if (isTreeEmpty()) View.VISIBLE else View.GONE
+            binding.empty.setText(if (isTreeEmpty()) getString(R.string.empty_papers) else "")
+            render()
         }
+    }
+
+    /** 空组（卷都被删干净了）不占列表：db.deletePaper 已顺手清理，这里只兜个底 */
+    private fun isTreeEmpty(): Boolean = sets.all { it.papers.isEmpty() }
+
+    /** 按当前展开状态重排这棵树（不查库） */
+    private fun render() {
+        if (_binding == null) return
+        adapter.submit(
+            sets = if (isTreeEmpty()) emptyList() else sets,
+            collapsed = collapsed,
+            expandedPapers = expandedPapers,
+            expandedSections = expandedSections,
+            structures = structures
+        )
     }
 
     override fun onResume() {
@@ -255,10 +370,25 @@ class PaperListFragment : Fragment(), Refreshable {
         prefs().getString(KEY_COLLAPSED, "").orEmpty()
             .split(',')
             .forEach { it.trim().toLongOrNull()?.let(collapsed::add) }
+        expandedPapers.clear()
+        prefs().getString(KEY_EXPANDED, "").orEmpty()
+            .split(',')
+            .forEach { it.trim().toLongOrNull()?.let(expandedPapers::add) }
+        expandedSections.clear()
+        prefs().getString(KEY_SECTIONS, "").orEmpty()
+            .split(',')
+            .forEach { it.trim().takeIf(String::isNotEmpty)?.let(expandedSections::add) }
     }
 
     private fun saveCollapsed() {
         prefs().edit().putString(KEY_COLLAPSED, collapsed.joinToString(",")).apply()
+    }
+
+    private fun saveExpanded() {
+        prefs().edit()
+            .putString(KEY_EXPANDED, expandedPapers.joinToString(","))
+            .putString(KEY_SECTIONS, expandedSections.joinToString(","))
+            .apply()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -274,5 +404,11 @@ class PaperListFragment : Fragment(), Refreshable {
     companion object {
         private const val PREFS = "paper_tree"
         private const val KEY_COLLAPSED = "collapsed"
+
+        /** 展开了层级的试卷 id */
+        private const val KEY_EXPANDED = "expanded_papers"
+
+        /** 展开了材料的大类键（`paperId:startIndex`） */
+        private const val KEY_SECTIONS = "expanded_sections"
     }
 }

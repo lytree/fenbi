@@ -14,7 +14,6 @@ import androidx.recyclerview.widget.RecyclerView
 import com.lytree.qbank.R
 import com.lytree.qbank.data.db.QBankDb
 import com.lytree.qbank.data.model.AnswerResult
-import com.lytree.qbank.data.model.PaperStructure
 import com.lytree.qbank.data.model.Question
 import com.lytree.qbank.databinding.ActivityPaperDetailBinding
 import com.lytree.qbank.databinding.ItemQuestionBinding
@@ -27,6 +26,9 @@ import kotlinx.coroutines.withContext
 
 /**
  * 试卷详情：查看这份卷的题目清单，并直接开练。
+ *
+ * 也接「整组作答」的虚拟卷（id 为负 = 导入组，见 [com.lytree.qbank.data.model.PaperRef]）：
+ * 组记录的「看原题」跳进来时，列的是整组合起来的题目。
  *
  * 原本这页挂在「题库」下（题库详情），题库这一层取消后并到试卷上——
  * 题目清单本来就是这份卷的内容，没有第二个所有者。
@@ -68,22 +70,13 @@ class PaperDetailActivity : AppCompatActivity() {
         binding.list.adapter = adapter
 
         binding.btnStart.setOnClickListener { startExam() }
-        // 分模块：进试卷目录按大类 / 材料拆开做（每一层都能当成一张小卷）
-        binding.btnModules.setOnClickListener { openOutline() }
         reload()
-    }
-
-    private fun openOutline() {
-        startActivity(Intent(this, PaperOutlineActivity::class.java).apply {
-            putExtra(PaperOutlineActivity.EXTRA_PAPER_ID, paperId)
-            putExtra(PaperOutlineActivity.EXTRA_PAPER_NAME, paperName)
-        })
     }
 
     private fun startExam() {
         // 读卷放后台；回来在主线程校验后再开答题页，页面销毁后结果丢弃
         lifecycleScope.launch {
-            val paper = withContext(Dispatchers.IO) { QBankDb.get(this@PaperDetailActivity).getPaper(paperId) }
+            val paper = withContext(Dispatchers.IO) { QBankDb.get(this@PaperDetailActivity).getPaperOrGroup(paperId) }
             if (isFinishing || isDestroyed) return@launch
             if (paper == null || paper.questions.isEmpty()) {
                 Toast.makeText(this@PaperDetailActivity, "这份试卷没有题目", Toast.LENGTH_SHORT).show()
@@ -103,7 +96,7 @@ class PaperDetailActivity : AppCompatActivity() {
         lifecycleScope.launch {
             val db = QBankDb.get(this@PaperDetailActivity)
             val loaded = withContext(Dispatchers.IO) {
-                val questions = db.listQuestions(paperId)
+                val questions = db.getPaperOrGroup(paperId)?.questions ?: emptyList()
                 // 从报告页跳进来才有记录：按题目 id 取出这次的作答与判定
                 val mine = if (recordId > 0L) {
                     db.getRecord(recordId)?.results?.associateBy { it.question.id }.orEmpty()
@@ -116,10 +109,6 @@ class PaperDetailActivity : AppCompatActivity() {
             val questions = loaded.first
             adapter.submit(questions, loaded.second, focusQuestionId.takeIf { it > 0L })
             binding.empty.visibility = if (questions.isEmpty()) View.VISIBLE else View.GONE
-            // 只有「能拆」的卷才给分模块入口：一个大类且没有材料的卷，拆开会跟整卷一模一样
-            val structure = PaperStructure(questions)
-            val splittable = structure.sections.size > 1 || structure.groups.any { it.isMaterialGroup }
-            binding.btnModules.visibility = if (splittable) View.VISIBLE else View.GONE
             scrollToFocus(questions)
         }
     }

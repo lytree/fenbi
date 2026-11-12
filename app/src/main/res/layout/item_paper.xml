@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  组内试卷卡：标题 + 「N 题 · 限时」元信息，行尾缺答案胶囊 + chevron。
-  · 整卡可点，所以背景用描边 + 水波纹那一款，按下有反馈（原来是死卡，点了没动静）
-  · 行尾 chevron 是「点进去开练」的提示；缺答案时先在它左边挂一个橙色胶囊
+  组内试卷卡：标题 + 「N 题 · 限时」元信息，行尾缺答案胶囊 + 展开箭头。
+  · 整卡可点 = 整卷作答；行尾箭头单独吃点击，只负责展开 / 收起「大类 → 材料」
+  · 缺答案时箭头左边挂一个橙色胶囊
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
@@ -40,21 +40,14 @@
         tools:text="缺 3 答案"
         tools:visibility="visible" />
 
-    <!-- 「目录」：直接进试卷目录挑层级做（整卡仍是整卷开练，这一枚是分模块入口） -->
-    <TextView
-        android:id="@+id/outline"
-        style="@style/FbPill"
-        android:layout_marginStart="@dimen/fb_space_8"
-        android:clickable="true"
-        android:focusable="true"
-        android:foreground="?attr/selectableItemBackground"
-        android:text="@string/outline_short" />
-
+    <!-- 展开层级：默认朝右，展开后转 90° 朝下 -->
     <ImageView
-        android:id="@+id/chevron"
-        android:layout_width="18dp"
-        android:layout_height="18dp"
-        android:layout_marginStart="@dimen/fb_space_4"
-        android:contentDescription="@null"
+        android:id="@+id/expand"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
+        android:layout_marginStart="@dimen/fb_space_8"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/tree_expand"
+        android:padding="3dp"
         android:src="@drawable/ic_fb_chevron" />
 </LinearLayout>

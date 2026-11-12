@@ -304,16 +304,10 @@
     <string name="card_legend">共 %1$d 题　已答 %2$d 题　未答 %3$d 题　已标记 %4$d 题</string>
     <string name="paper_title">%1$s（%2$d题）</string>
 
-    <!-- ===== 试卷目录（分模块答题） ===== -->
-    <string name="outline_whole_paper">整卷作答</string>
-    <string name="outline_whole_sub">全部 %1$d 题 · 限时 %2$d 分钟</string>
-    <string name="outline_whole_sub_untimed">全部 %1$d 题 · 不限时</string>
-    <string name="outline_uncategorized">未分类</string>
-    <string name="outline_material">材料%1$d</string>
-    <string name="outline_count">%1$d 题</string>
-    <string name="action_modules">分模块</string>
-    <string name="outline_short">目录</string>
-    <string name="action_outline">试卷目录（分模块作答）</string>
+    <!-- ===== 首页试卷树（组 → 试卷 → 大类 → 材料，每层都能当一张卷做） ===== -->
+    <string name="tree_answer_group">整组作答</string>
+    <string name="tree_count">%1$d 题</string>
+    <string name="tree_expand">展开层级</string>
 
     <!-- ===== 背诵（政治 / 常识，两套独立内容） ===== -->
     <string name="title_recite_politics">政治背诵</string>

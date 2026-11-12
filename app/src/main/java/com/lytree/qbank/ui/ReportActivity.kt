@@ -360,7 +360,7 @@ class ReportActivity : AppCompatActivity() {
             val questions = withContext(Dispatchers.IO) {
                 val record = db.getRecord(recordId) ?: return@withContext null
                 // 优先按试卷当前题目匹配（答案可能刚被别的入口改过），试卷没了才退回记录里的快照
-                db.getPaper(record.paperId)?.questions ?: record.results.map { it.question }
+                db.getPaperOrGroup(record.paperId)?.questions ?: record.results.map { it.question }
             } ?: return@launch
             if (isFinishing || isDestroyed) return@launch
             AnswerImportUi.handle(this@ReportActivity, db, questions, uri) {

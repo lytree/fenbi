@@ -12,6 +12,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.lytree.qbank.R
 import com.lytree.qbank.data.db.QBankDb
 import com.lytree.qbank.data.model.ExamRecord
+import com.lytree.qbank.data.model.PaperRef
 import com.lytree.qbank.databinding.FragmentListBinding
 import com.lytree.qbank.ui.ExamActivity
 import com.lytree.qbank.ui.FbDialog
@@ -95,14 +96,14 @@ class RecordListFragment : Fragment(), Refreshable {
             })
             return
         }
-        if (record.paperId <= 0L) {
+        if (!PaperRef.isValid(record.paperId)) {
             FbDialog.alert(requireContext(), "这份试卷已经删掉了，这条记录只看得到当时做了多少题。")
             return
         }
         // 卷是否存在要查库：放后台查，回来再开页面；本页视图销毁后结果直接丢弃
         val ctx = requireContext()
         viewLifecycleOwner.lifecycleScope.launch {
-            val exists = withContext(Dispatchers.IO) { db.getPaper(record.paperId) != null }
+            val exists = withContext(Dispatchers.IO) { db.getPaperOrGroup(record.paperId) != null }
             if (exists) {
                 startActivity(Intent(ctx, ExamActivity::class.java).apply {
                     putExtra(ExamActivity.EXTRA_PAPER_ID, record.paperId)

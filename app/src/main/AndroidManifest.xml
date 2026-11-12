@@ -42,8 +42,6 @@
             </intent-filter>
         </activity>
         <activity android:name=".ui.paper.PaperDetailActivity" android:exported="false" />
-        <!-- 试卷目录：整卷 / 大类 / 材料三级清单，点哪一层就只做哪一层（分模块答题的入口） -->
-        <activity android:name=".ui.paper.PaperOutlineActivity" android:exported="false" />
         <!-- 词库导入：选文档 → 预览 → 入库；返回时 MainActivity 会回调 Refreshable 刷新词库列表 -->
         <activity android:name=".ui.word.WordImportActivity" android:exported="false" />
         <!--

@@ -46,6 +46,18 @@
             android:maxLines="1" />
     </LinearLayout>
 
+    <!-- 整组作答：把这一组的卷子合成一张卷，直接按试卷形式答（组里只有一份卷时不出现） -->
+    <TextView
+        android:id="@+id/groupAnswer"
+        style="@style/FbPill"
+        android:layout_marginStart="@dimen/fb_space_8"
+        android:clickable="true"
+        android:focusable="true"
+        android:foreground="?attr/selectableItemBackground"
+        android:text="@string/tree_answer_group"
+        android:visibility="gone"
+        tools:visibility="visible" />
+
     <TextView
         android:id="@+id/missing"
         style="@style/FbPillWarning"

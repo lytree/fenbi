@@ -19,6 +19,8 @@ import com.lytree.qbank.data.db.ExamProgress
 import com.lytree.qbank.data.db.QBankDb
 import com.lytree.qbank.data.model.ExamRecord
 import com.lytree.qbank.data.model.ExamScope
+import com.lytree.qbank.data.model.Paper
+import com.lytree.qbank.data.model.PaperRef
 import com.lytree.qbank.data.model.PaperStructure
 import com.lytree.qbank.data.model.Question
 import com.lytree.qbank.databinding.ActivityExamBinding
@@ -51,7 +53,7 @@ class ExamActivity : AppCompatActivity() {
         /**
          * 答题范围：空串 / 不带 = 整卷，`s:<题 id>` = 只做一个大类，`m:<题 id>` = 只做一则材料。
          *
-         * 试卷目录（[com.lytree.qbank.ui.paper.PaperOutlineActivity]）按层级开练时带进来，
+         * 首页树（[com.lytree.qbank.ui.paper.PaperListFragment]）点某一层时带进来，
          * 进来之后题号、答题卡、判分、记录都只看这一截；返回记录列表续做时也从记录里带回这个值。
          */
         const val EXTRA_SCOPE_KEY = "scope_key"
@@ -242,7 +244,7 @@ class ExamActivity : AppCompatActivity() {
         // 原来除了读卷以外都在主线程串行查库，进卷时首帧要等这几次查询；现在主线程只做装配。
         lifecycleScope.launch {
             val data = withContext(Dispatchers.IO) {
-                val paper = db.getPaper(paperId) ?: return@withContext null
+                val paper = db.getPaperOrGroup(paperId) ?: return@withContext null
                 if (paper.questions.isEmpty()) return@withContext null
                 // 答题范围：整卷 / 一个大类 / 一则材料。先按整卷建结构，再切出这次要做的那些题
                 // （范围对不上时 resolve() 会逐级退回，不会给出一张空卷）
@@ -468,7 +470,7 @@ class ExamActivity : AppCompatActivity() {
         // 读卷与写 xlsx 都是 IO：整段挪到后台，Toast 回到主线程
         lifecycleScope.launch {
             try {
-                val paper = withContext(Dispatchers.IO) { db.getPaper(paperId) } ?: return@launch
+                val paper = withContext(Dispatchers.IO) { db.getPaperOrGroup(paperId) } ?: return@launch
                 val dir = java.io.File(
                     getExternalFilesDir(null) ?: filesDir, "paper"
                 ).apply { mkdirs() }
@@ -572,7 +574,7 @@ class ExamActivity : AppCompatActivity() {
         // 拿它去匹配会把「第 21 题」套到模块的第 1 题上。所以这里单独读一次整卷（IO）。
         lifecycleScope.launch {
             val paperQuestions = withContext(Dispatchers.IO) {
-                db.getPaper(paperId)?.questions
+                db.getPaperOrGroup(paperId)?.questions
             } ?: questions.toList()
             if (isFinishing || isDestroyed) return@launch
             AnswerImportUi.handle(this@ExamActivity, db, paperQuestions, uri) {
@@ -601,7 +603,7 @@ class ExamActivity : AppCompatActivity() {
     private fun reloadQuestions(after: () -> Unit = {}) {
         lifecycleScope.launch {
             val fresh = withContext(Dispatchers.IO) {
-                val all = db.getPaper(paperId)?.questions ?: return@withContext null
+                val all = db.getPaperOrGroup(paperId)?.questions ?: return@withContext null
                 scope.resolve(PaperStructure(all))
             } ?: return@launch
             if (isFinishing || isDestroyed) return@launch
@@ -1351,7 +1353,7 @@ class ExamActivity : AppCompatActivity() {
 
     /** 把当前作答 / 标记 / 已用时长投递到写队列（顺序由队列保证，落库由 flush 保证） */
     private fun enqueueSaveProgress() {
-        if (paperId <= 0L) return
+        if (!PaperRef.isValid(paperId)) return
         val answersCopy = answers.toMap()
         val markedCopy = marked.toSet()
         val elapsed = elapsedSec()
@@ -1432,7 +1434,7 @@ class ExamActivity : AppCompatActivity() {
      * 这里只从库里读回来更新内存，不回写，避免用本页的旧值覆盖对方。
      */
     private fun applyProgressFromDb() {
-        if (submitted || paperId <= 0L) return
+        if (submitted || !PaperRef.isValid(paperId)) return
         // 读库放后台；回来时页面已销毁 / 已交卷就丢弃这次结果
         lifecycleScope.launch {
             val scope = scopeKey
@@ -1452,7 +1454,7 @@ class ExamActivity : AppCompatActivity() {
         // 笔迹是节流合并后再写的：离开页面前必须把没落库的最后一笔写出去，
         // 否则切后台 / 被系统回收就丢笔了（交卷后也照样 flush，标注不会因为交卷丢）
         binding.inkOverlay.flush()
-        if (!submitted && paperId > 0L) {
+        if (!submitted && PaperRef.isValid(paperId)) {
             // 先停表再落库：这一步之后的时间不该再算到「正在看的那道题」上
             if (::questionTimer.isInitialized) questionTimer.stop()
             syncLiveRecord()

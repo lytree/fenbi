@@ -42,17 +42,6 @@
             android:layout_height="wrap_content"
             android:orientation="horizontal">
 
-            <!-- 分模块：进试卷目录，按大类 / 材料拆开做 -->
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnModules"
-                style="@style/FbGhostButton"
-                android:layout_width="wrap_content"
-                android:text="@string/action_modules" />
-
-            <Space
-                android:layout_width="@dimen/fb_space_8"
-                android:layout_height="1dp" />
-
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnStart"
                 style="@style/FbPrimaryButton"

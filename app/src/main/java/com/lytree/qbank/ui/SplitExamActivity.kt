@@ -16,6 +16,7 @@ import com.lytree.qbank.data.db.QBankDb
 import com.lytree.qbank.data.model.ExamRecord
 import com.lytree.qbank.data.model.ExamScope
 import com.lytree.qbank.data.model.Paper
+import com.lytree.qbank.data.model.PaperRef
 import com.lytree.qbank.data.model.PaperStructure
 import com.lytree.qbank.data.model.Question
 import com.lytree.qbank.databinding.ActivitySplitExamBinding
@@ -127,7 +128,7 @@ class SplitExamActivity : AppCompatActivity() {
         // 启动批量读：读卷 + 建/取草稿 + 首次开始时间 + 整卷未交卷进度 + 判题规则，一次 IO 拿全
         lifecycleScope.launch {
             val data = withContext(Dispatchers.IO) {
-                val paper = db.getPaper(paperId) ?: return@withContext null
+                val paper = db.getPaperOrGroup(paperId) ?: return@withContext null
                 if (paper.questions.isEmpty()) return@withContext null
                 // 先把范围切出来：分模块答题时「整卷」其实是那一个模块的题
                 val full = PaperStructure(paper.questions)
@@ -737,7 +738,7 @@ class SplitExamActivity : AppCompatActivity() {
         binding.inkOverlay.flush()
         // 切后台就结算：当前题的秒数落库，作答进度与记录里的整卷计数一起刷新。
         // 只在这里写（不放 onStop），一次生命周期只落一次，避免重复写
-        if (submitted || paperId <= 0L) return
+        if (submitted || !PaperRef.isValid(paperId)) return
         if (::questionTimer.isInitialized) questionTimer.stop()
         // 整卷合并写 + 记录计数写都排进写队列（合并结果只在队列内使用），顺序与「退出前落库」都保住
         val answersCopy = answers.toMap()

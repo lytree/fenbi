@@ -13,6 +13,7 @@ import com.lytree.qbank.R
 import com.lytree.qbank.data.db.QBankDb
 import com.lytree.qbank.data.model.AnswerResult
 import com.lytree.qbank.data.model.ExamRecord
+import com.lytree.qbank.data.model.PaperRef
 import com.lytree.qbank.data.model.Question
 import com.lytree.qbank.databinding.ActivityQuestionReviewBinding
 import com.lytree.qbank.databinding.ItemQuestionPageBinding
@@ -154,7 +155,7 @@ class QuestionReviewActivity : AppCompatActivity() {
     private fun openInPaper(position: Int) {
         val rec = record ?: return
         val qid = rec.results.getOrNull(numbers.getOrNull(position) ?: -1)?.question?.id ?: return
-        if (rec.paperId <= 0L) {
+        if (!PaperRef.isValid(rec.paperId)) {
             Toast.makeText(this, R.string.report_paper_missing, Toast.LENGTH_SHORT).show()
             return
         }

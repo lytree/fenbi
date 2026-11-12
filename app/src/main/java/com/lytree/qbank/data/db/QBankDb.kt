@@ -8,6 +8,7 @@ import android.database.sqlite.SQLiteOpenHelper
 import com.lytree.qbank.data.model.ExamRecord
 import com.lytree.qbank.data.model.Option
 import com.lytree.qbank.data.model.Paper
+import com.lytree.qbank.data.model.PaperRef
 import com.lytree.qbank.data.model.Question
 import com.lytree.qbank.data.model.QuestionType
 import com.lytree.qbank.data.model.Word
@@ -930,7 +931,31 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         readableDatabase.rawQuery("SELECT id FROM papers WHERE set_id = ?", arrayOf(id.toString()))
             .use { c -> while (c.moveToNext()) paperIds.add(c.getLong(0)) }
         paperIds.forEach { deletePaper(it, keepSetCleanup = true) }
+        deleteGroupRecords(id)
         writableDatabase.delete("paper_sets", "id = ?", arrayOf(id.toString()))
+    }
+
+    /**
+     * 删掉「整组作答」留下的记录与进度（`paper_id = -组 id`）。
+     *
+     * 这些记录不挂在任何一份真实卷上，[deletePaper] 的清理语句扫不到；
+     * 组没了就该一起走，别在记录列表里留一条点不开的「整组练习」。
+     */
+    private fun deleteGroupRecords(setId: Long) {
+        if (setId <= 0L) return
+        val db = writableDatabase
+        val pid = arrayOf<Any>(PaperRef.groupPaperId(setId))
+        db.execSQL(
+            "DELETE FROM record_answers WHERE record_id IN (SELECT id FROM records WHERE paper_id = ?)", pid
+        )
+        db.execSQL(
+            "DELETE FROM record_inks WHERE record_id IN (SELECT id FROM records WHERE paper_id = ?)", pid
+        )
+        db.execSQL(
+            "DELETE FROM record_question_times WHERE record_id IN (SELECT id FROM records WHERE paper_id = ?)", pid
+        )
+        db.execSQL("DELETE FROM records WHERE paper_id = ?", pid)
+        db.execSQL("DELETE FROM exam_progress WHERE paper_id = ?", pid)
     }
 
     fun listPapers(): List<Paper> {
@@ -979,6 +1004,76 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
             arrayOf(id.toString())
         ).use { c -> while (c.moveToNext()) qs.add(readQuestion(c)) }
         return base.copy(questions = qs)
+    }
+
+    /**
+     * 读「一张卷」——正数是真实试卷，负数是导入组（「整组作答」）。见 [PaperRef]。
+     *
+     * 答题页 / 分屏页 / 报告 / 补答案 / 记录续做都走这一个入口，就不用在每处各自判断。
+     */
+    fun getPaperOrGroup(id: Long): Paper? =
+        if (PaperRef.isGroup(id)) getGroupPaper(PaperRef.setIdOf(id)) else getPaper(id)
+
+    /**
+     * 一个导入组合成一张卷：题目按组内各卷的建卷顺序首尾相接，用时按各卷时长累加。
+     *
+     * 组里各份卷本来就是同一套卷拆开的工作表，整组合起来才是「整卷」，
+     * 所以最顶层级也能直接按试卷形式作答，不用先进某一份卷。
+     *
+     * 同一道题可能同时挂在组内多份卷上（错题重练复用原卷题目行），**按题目 id 去重**：
+     * 作答、题号、每题用时都按题目 id 存，重复出现会把题号搅乱。
+     */
+    fun getGroupPaper(setId: Long): Paper? {
+        if (setId <= 0L) return null
+        val head = readableDatabase.rawQuery(
+            "SELECT title, created_at FROM paper_sets WHERE id = ? LIMIT 1",
+            arrayOf(setId.toString())
+        ).use { c ->
+            if (!c.moveToFirst()) return null
+            c.getString(0).orEmpty() to c.getLong(1)
+        }
+
+        var paperCount = 0
+        var duration = 0
+        readableDatabase.rawQuery(
+            "SELECT duration_min FROM papers WHERE set_id = ? ORDER BY id",
+            arrayOf(setId.toString())
+        ).use { c ->
+            while (c.moveToNext()) {
+                paperCount++
+                val d = c.getInt(0)
+                if (d > 0) duration += d
+            }
+        }
+        if (paperCount == 0) return null
+
+        val qs = ArrayList<Question>()
+        val seen = HashSet<Long>()
+        readableDatabase.rawQuery(
+            """SELECT q.* FROM paper_questions pq
+               JOIN papers p ON p.id = pq.paper_id
+               JOIN questions q ON q.id = pq.question_id
+               WHERE p.set_id = ? ORDER BY p.id, pq.position""",
+            arrayOf(setId.toString())
+        ).use { c ->
+            while (c.moveToNext()) {
+                val q = readQuestion(c)
+                if (seen.add(q.id)) qs.add(q)
+            }
+        }
+
+        return Paper(
+            id = PaperRef.groupPaperId(setId),
+            name = head.first.ifBlank { "整组练习" },
+            description = "整组作答 · ${paperCount} 份卷",
+            createdAt = head.second,
+            durationMin = duration,
+            mode = "",
+            setId = setId,
+            questionCount = qs.size,
+            missingAnswers = qs.count { q -> q.answer.isBlank() },
+            questions = qs
+        )
     }
 
     /** papers 基础列（0 id / 1 name / 2 description / 3 created_at / 4 duration_min / 5 mode）的行映射 */
@@ -1053,7 +1148,11 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
                 val left = db.rawQuery(
                     "SELECT COUNT(*) FROM papers WHERE set_id = ?", arrayOf(setId.toString())
                 ).use { c -> if (c.moveToFirst()) c.getInt(0) else 0 }
-                if (left == 0) db.delete("paper_sets", "id = ?", arrayOf(setId.toString()))
+                if (left == 0) {
+                    // 卷都删光了，组本身要清掉，整组作答的记录也一起清（见 deleteGroupRecords）
+                    deleteGroupRecords(setId)
+                    db.delete("paper_sets", "id = ?", arrayOf(setId.toString()))
+                }
             }
             db.setTransactionSuccessful()
         } finally {
@@ -1232,10 +1331,19 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         }
     }
 
-    /** 卷名（记录标题用它，别让列表里全是「练习记录」） */
-    fun paperName(paperId: Long): String =
-        readableDatabase.rawQuery("SELECT name FROM papers WHERE id = ?", arrayOf(paperId.toString()))
-            .use { c -> if (c.moveToFirst()) c.getString(0) ?: "" else "" }
+    /** 卷名（记录标题用它，别让列表里全是「练习记录」）；整组虚拟卷取组标题 */
+    fun paperName(paperId: Long): String {
+        if (PaperRef.isGroup(paperId)) {
+            return readableDatabase.rawQuery(
+                "SELECT title FROM paper_sets WHERE id = ?",
+                arrayOf(PaperRef.setIdOf(paperId).toString())
+            ).use { c -> if (c.moveToFirst()) c.getString(0) ?: "" else "" }
+        }
+        return readableDatabase.rawQuery(
+            "SELECT name FROM papers WHERE id = ?",
+            arrayOf(paperId.toString())
+        ).use { c -> if (c.moveToFirst()) c.getString(0) ?: "" else "" }
+    }
 
     /**
      * 一条记录**第一次开始**的时间。

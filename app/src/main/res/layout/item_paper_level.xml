@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  树上的「大类 / 材料」一行（试卷 → 大类 → 材料 的后两层）。
+  · 整行可点 = 只做这一层（进答题页，范围带过去）
+  · 不铺白卡：层级行只是试卷卡下面的纲目，一条条白卡套白卡会把树读成「一叠卡片」
+  · 行尾「N 题」胶囊 + chevron：有材料的大类才给箭头（收起 / 展开材料）；缩进由代码设 marginStart
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    style="@style/FbPressable"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="?attr/selectableItemBackground"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="@dimen/fb_space_12"
+    android:paddingTop="@dimen/fb_space_12"
+    android:paddingEnd="@dimen/fb_space_12"
+    android:paddingBottom="@dimen/fb_space_12">
+
+    <TextView
+        android:id="@+id/title"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:ellipsize="end"
+        android:maxLines="2"
+        android:textColor="@color/fb_text_title"
+        android:textSize="@dimen/fb_text_item_title"
+        tools:text="资料分析" />
+
+    <TextView
+        android:id="@+id/count"
+        style="@style/FbPill"
+        android:layout_marginStart="@dimen/fb_space_8"
+        tools:text="20 题" />
+
+    <ImageView
+        android:id="@+id/chevron"
+        android:layout_width="18dp"
+        android:layout_height="18dp"
+        android:layout_marginStart="@dimen/fb_space_4"
+        android:contentDescription="@null"
+        android:src="@drawable/ic_fb_chevron" />
+</LinearLayout>
