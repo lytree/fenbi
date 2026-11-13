@@ -19,6 +19,18 @@ const clip = (value: unknown, max = 160): string => {
   return text.length > max ? `${text.slice(0, max)}…` : text
 }
 
+/**
+ * 读题正文用：保留换行，超长才截断，而且**必须标出来**。
+ *
+ * 改题接口是无损的，模型很容易把截断后的文本当成原文回写，
+ * 一写就把长题干 / 长解析永久截短了——所以截断处要明确告诉它「这不是全文」。
+ */
+const clipText = (value: unknown, max: number, label: string): string => {
+  const text = String(value ?? '').trim()
+  if (text.length <= max) return text
+  return `${text.slice(0, max)}…（${label}原文 ${text.length} 字，已截断；要看全文用 qbank_get_set 加 full=true）`
+}
+
 const TYPE_LABEL: Record<string, string> = {
   single: '单选',
   multi: '多选',
@@ -28,9 +40,15 @@ const TYPE_LABEL: Record<string, string> = {
   subjective: '主观',
 }
 
-/** 手机端存的题目 → 可以回传的发布结构：剥掉 id 等字段，缺的补空 */
+/**
+ * 手机端存的题目 → 可以回传的发布结构：缺的字段补空。
+ *
+ * `id` 必须带回去：服务端按 id 判断「这题原来就在库里」，命中就原地 UPDATE。
+ * 丢了 id 等于整组题目全部重建，收藏 / 笔记 / 错题本会跟着一起没。
+ */
 export function toWire(q: StoredQuestion): WireQuestion {
   return {
+    id: typeof q.id === 'number' && q.id > 0 ? q.id : undefined,
     type: (q.type ?? 'single') as WireQuestion['type'],
     stem: q.stem ?? '',
     options: (q.options ?? []).map((o) => ({ key: String(o.key ?? ''), text: String(o.text ?? '') })),
@@ -51,10 +69,17 @@ export function toWire(q: StoredQuestion): WireQuestion {
 const toSheets = (detail: SetDetail): WireSheet[] =>
   detail.sheets.map((s) => ({ name: s.name, questions: (s.questions ?? []).map(toWire) }))
 
-/** 按 setId 或标题找组；找到就返回，找不到抛一句能直接给用户看的话 */
+/**
+ * 按 setId 或标题找组；找到就返回，找不到抛一句能直接给用户看的话。
+ *
+ * @param mode write = 改题 / 删题 / 补解析。写操作只认**完整组名**：
+ *   退化成「包含」匹配时，「2024国考」可能落到「2024国考真题」上，
+ *   而删改错组是不可逆的（删组虽然有手机确认，改题没有）。
+ */
 export async function findSet(
   client: QbankClient,
-  by: { setId?: number; title?: string }
+  by: { setId?: number; title?: string },
+  mode: 'read' | 'write' = 'read'
 ): Promise<SetSummary> {
   const { sets } = await client.listSets()
   if (by.setId) {
@@ -71,7 +96,16 @@ export async function findSet(
     return exact
   }
   const loose = sets.filter((s) => s.title.includes(title))
-  if (loose.length === 1) return loose[0]
+  if (mode === 'write') {
+    const hint = loose.length
+      ? `名字里含「${title}」的有：${loose.map((s) => s.title).join('、')}。`
+      : '先调 qbank_list_sets 看现有组名。'
+    throw new Error(`找不到组名为「${title}」的组。改题 / 删题只认完整组名，${hint}`)
+  }
+  if (loose.length === 1) {
+    if (!loose[0].editable) throw new Error(`「${loose[0].title}」是「未分组」里的卷，不支持在线编辑。`)
+    return loose[0]
+  }
   if (loose.length > 1) {
     throw new Error(
       `有 ${loose.length} 个组名包含「${title}」：${loose.map((s) => s.title).join('、')}。请写完整组名。`
@@ -98,19 +132,27 @@ export function formatSets(sets: SetSummary[], questionTotal: number): string {
   return lines.join('\n')
 }
 
-export function formatQuestion(q: StoredQuestion, sheet: string, index: number): string {
+export function formatQuestion(
+  q: StoredQuestion,
+  sheet: string,
+  index: number,
+  full = false
+): string {
   const type = TYPE_LABEL[String(q.type ?? 'single')] ?? String(q.type ?? '')
   const head = `【${sheet}】第 ${index + 1} 题 · ${type}${q.subject ? ` · ${q.subject}` : ''}`
   const lines = [head]
-  if (q.material?.trim()) lines.push(`材料：${clip(q.material, 200)}`)
-  lines.push(clip(q.stem, 400) || '（题干为空）')
+  // full = 原文照给；否则截断并在断点标出原文长度
+  const text = (v: unknown, max: number, label: string) =>
+    full ? String(v ?? '').trim() : clipText(v, max, label)
+  if (q.material?.trim()) lines.push(`材料：${text(q.material, 200, '材料')}`)
+  lines.push(text(q.stem, 400, '题干') || '（题干为空）')
   for (const o of q.options ?? []) {
     if (!String(o.text ?? '').trim()) continue
-    lines.push(`${o.key}. ${clip(o.text, 200)}`)
+    lines.push(`${o.key}. ${text(o.text, 200, '选项')}`)
   }
   const answer = String(q.answer ?? '').trim()
   lines.push(`答案：${answer || '（未填）'}`)
-  if (q.analysis?.trim()) lines.push(`解析：${clip(q.analysis, 240)}`)
+  if (q.analysis?.trim()) lines.push(`解析：${text(q.analysis, 240, '解析')}`)
   return lines.join('\n')
 }
 
@@ -122,6 +164,8 @@ export interface GetSetArgs {
   limit?: number
   /** 只看还没有解析的题——AI 批量补解析时的入口 */
   onlyMissingAnalysis?: boolean
+  /** 返回完整原文，不截断。要把读到的内容写回去时必须用它 */
+  full?: boolean
 }
 
 /** 读一组（可分页 / 只看某卷）。返回给模型看的紧凑文本。 */
@@ -164,10 +208,15 @@ export async function readSet(client: QbankClient, args: GetSetArgs): Promise<st
     `「${detail.title}」${scope}共 ${flat.length} 题，${range}` +
     `（共 ${detail.sheets.length} 卷、${detail.questionCount} 题；缺答案 ${detail.missingAnswers} 题）`
 
-  const body = page.map((it) => formatQuestion(it.q, it.sheet, it.index)).join('\n\n')
+  const body = page.map((it) => formatQuestion(it.q, it.sheet, it.index, args.full)).join('\n\n')
   const more: string[] = []
   if (offset + page.length < flat.length) {
-    more.push(`继续读：offset=${offset + page.length}, limit=${limit}${args.sheet ? `, sheet="${args.sheet}"` : ''}`)
+    // 翻页必须带上过滤条件，否则第二页会把已有解析的题混进来，offset 也跟着错位
+    more.push(
+      `继续读：offset=${offset + page.length}, limit=${limit}` +
+        `${args.sheet ? `, sheet="${args.sheet}"` : ''}` +
+        `${args.onlyMissingAnalysis ? ', onlyMissingAnalysis=true' : ''}`
+    )
   }
   if (!args.sheet && detail.sheets.length > 1) {
     more.push(`只看某一卷：sheet="${detail.sheets[0].name}"`)
@@ -217,12 +266,37 @@ export async function addQuestions(client: QbankClient, args: AddQuestionsArgs):
     target = { name, questions: [] }
     sheets.push(target)
   }
-  target.questions.push(...args.questions)
+
+  // 去重：上一次调用可能已经写进去了（比如超时后重试），同题干再加一遍就是双份。
+  // 按题干判定，和 App「重复题会被去掉」的导入口径一致。
+  const existingStems = new Set(
+    sheets.flatMap((s) => (s.questions ?? []).map((q) => String(q.stem ?? '').trim()))
+  )
+  const skipped: string[] = []
+  const fresh = args.questions.filter((q) => {
+    const stem = String(q.stem ?? '').trim()
+    if (stem && existingStems.has(stem)) {
+      skipped.push(stem.slice(0, 30))
+      return false
+    }
+    if (stem) existingStems.add(stem)
+    return true
+  })
+  if (!fresh.length) {
+    throw new Error(
+      `这 ${args.questions.length} 道题的题干在「${detail.title}」里都已经有了，没有新增。` +
+        '如果刚才那次调用超时了，写操作很可能已经生效，先用 qbank_get_set 核对，别重复加。'
+    )
+  }
+  target.questions.push(...fresh)
 
   const r = await client.publish(title, true, sheets)
   const version = r.version ? `\n覆盖前的旧版已存档（版本 ${r.version.id}，${r.version.questionCount} 题），可回滚。` : ''
+  const dup = skipped.length
+    ? `\n跳过了 ${skipped.length} 道题干重复的题（${skipped.join('、')}${skipped.length > 3 ? '…' : ''}）。`
+    : ''
   return [
-    `已给「${r.title} / ${name}」加 ${args.questions.length} 题，现在整组 ${r.questionCount} 题。`,
+    `已给「${r.title} / ${name}」加 ${fresh.length} 题，现在整组 ${r.questionCount} 题。${dup}`,
     `（手机端是整组重导：这次提交的是 ${r.papers.map((p) => `${p.name} ${p.questionCount} 题`).join('、')}）${version}`,
   ].join('\n')
 }
@@ -235,7 +309,7 @@ export interface UpdateQuestionArgs {
 }
 
 export async function updateQuestion(client: QbankClient, args: UpdateQuestionArgs): Promise<string> {
-  const set = await findSet(client, { title: args.title })
+  const set = await findSet(client, { title: args.title }, 'write')
   const detail = await client.getSet(set.id)
   const sheets = toSheets(detail)
 
@@ -246,6 +320,14 @@ export async function updateQuestion(client: QbankClient, args: UpdateQuestionAr
   const at = Math.trunc(args.index) - 1
   if (at < 0 || at >= target.questions.length) {
     throw new Error(`index 超范围：${name} 只有 ${target.questions.length} 题，收到 ${args.index}（从 1 开始数）`)
+  }
+
+  // patch 为空时整组会白重发一次（并清掉作答记录），却什么都不改——先拦住
+  if (!args.patch || !Object.keys(args.patch).length) {
+    throw new Error(
+      'patch 是空的：写上要改的字段（stem / options / answer / analysis / knowledge / difficulty …）。' +
+        '字段名写错时也会落到这里——拼错一个字母，模型会以为改成功了，其实什么都没动。'
+    )
   }
 
   const before = target.questions[at]
@@ -262,7 +344,7 @@ export interface DeleteQuestionArgs {
 }
 
 export async function deleteQuestion(client: QbankClient, args: DeleteQuestionArgs): Promise<string> {
-  const set = await findSet(client, { title: args.title })
+  const set = await findSet(client, { title: args.title }, 'write')
   const detail = await client.getSet(set.id)
   const sheets = toSheets(detail)
 
@@ -419,7 +501,7 @@ export interface SetAnalysisArgs {
  */
 export async function setAnalysis(client: QbankClient, args: SetAnalysisArgs): Promise<string> {
   if (!args.updates.length) throw new Error('updates 是空的，没东西可写')
-  const set = await findSet(client, { title: args.title })
+  const set = await findSet(client, { title: args.title }, 'write')
   const detail = await client.getSet(set.id)
   const sheets = toSheets(detail)
 
@@ -585,7 +667,7 @@ export async function batchUpdateQuestions(
   args: BatchUpdateArgs
 ): Promise<string> {
   if (!args.updates.length) throw new Error('updates 是空的，没东西可改')
-  const set = await findSet(client, { title: args.title })
+  const set = await findSet(client, { title: args.title }, 'write')
   const detail = await client.getSet(set.id)
   const sheets = toSheets(detail)
 
@@ -653,12 +735,23 @@ export async function restoreVersion(client: QbankClient, args: RestoreArgs): Pr
   let setId = 0
   if (args.title) {
     const sets = await client.listSets()
-    setId = sets.sets.find((s) => s.title === args.title)?.id ?? 0
+    const hit = sets.sets.find((s) => s.title === args.title)
+    if (!hit) {
+      // 组名打错时不能静默 setId=0：那会让服务端退回快照里的旧组名，
+      // 旧组名不存在时就成了「新建一组」——救火操作里凭空多出一组，比报错难查得多
+      throw new Error(
+        `找不到组「${args.title}」。组名要写完整（回滚不会替你新建组）；` +
+          `也可以先 qbank_list_versions 确认这份存档属于哪一组。`
+      )
+    }
+    setId = hit.id
   }
   const r = await client.restoreVersion(args.versionId, setId)
   return [
     `已回滚「${r.title}」到版本 ${args.versionId}：${r.papers.map((p) => `${p.name} ${p.questionCount} 题`).join('、')}，共 ${r.questionCount} 题。`,
-    '回滚前的当前内容也存了一版，需要的话可以再滚回来。',
+    r.replaced === false
+      ? '注意：这次是**新建**了一组（原本没有同名组），不是覆盖。'
+      : '回滚前的当前内容也存了一版，需要的话可以再滚回来。',
   ].join('\n')
 }
 
@@ -677,7 +770,7 @@ export interface DeleteSetArgs {
  * 去手机上点，再调一次 qbank_delete_set 不会重复发（服务端会复用同一条待确认请求）。
  */
 export async function deleteSet(client: QbankClient, args: DeleteSetArgs): Promise<string> {
-  const set = await findSet(client, { setId: args.setId, title: args.title })
+  const set = await findSet(client, { setId: args.setId, title: args.title }, 'write')
   const req = await client.requestDelete(set.id)
   const wait = Math.min(300, Math.max(0, Math.trunc(args.waitSeconds ?? 45)))
 

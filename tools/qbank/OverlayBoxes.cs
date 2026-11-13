@@ -6,20 +6,15 @@
 //   dotnet run tools/qbank/OverlayBoxes.cs -- --only 行测套卷9
 //
 // 依赖 build_summary.json 里的 items（该题分到的位图）与 boxes（裁剪框，画布坐标）。
-// 画布按 build_exam_packages.py 的 build_canvas 同样规则重拼：等比倍率 S、
+// 画布按 build_exam_packages.cs 的 build_canvas 同样规则重拼：等比倍率 S、
 // 最少留白 PAD=8，多块位图按 PDF 坐标对齐。
 //
 // 产出 audit_checks/overlay_N.png：每题一行，左侧原卷面（红框=A/B/C/D），右侧四张裁图。
 
-#:package SixLabors.ImageSharp@3.1.5
-#:package SixLabors.ImageSharp.Drawing@2.1.4
+#:package SkiaSharp@2.88.9
 
 using System.Text.Json;
-using SixLabors.Fonts;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Drawing.Processing;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
+using SkiaSharp;
 
 const int Pad = 8;
 
@@ -40,9 +35,12 @@ imgRoot = Path.GetFullPath(imgRoot);
 var outDir = Path.Combine(baseDir, "audit_checks");
 Directory.CreateDirectory(outDir);
 
-Font? font = null;
+SKTypeface? font = null;
 foreach (var fam in new[] { "Consolas", "Arial" })
-    if (SystemFonts.TryGet(fam, out var f)) { font = f.CreateFont(15); break; }
+{
+    font = SKTypeface.FromFamilyName(fam);
+    if (font != null) break;
+}
 
 var summary = JsonDocument.Parse(File.ReadAllText(Path.Combine(baseDir, "build_summary.json")));
 
@@ -83,33 +81,35 @@ var flagged = new List<string>();
 for (int s = 0; s < items.Count; s += PerSheet)
 {
     var grp = items.Skip(s).Take(PerSheet).ToList();
-    var rows = new List<(string tag, Image<Rgba32> canvas, Image<L8>[] crops)>();
+    var rows = new List<(string tag, SKBitmap canvas, SKBitmap[] crops)>();
     foreach (var q in grp)
     {
-        Image<L8>? cv;
+        SKBitmap? cv;
         try { cv = BuildCanvas(imgRoot, q.paper, q.parts); }
         catch (Exception ex) { Console.WriteLine($"{q.paper} {q.no} 重拼失败：{ex.Message}"); continue; }
 
-        var rgb = new Image<Rgba32>(cv.Width, cv.Height, new Rgba32(255, 255, 255));
-        rgb.Mutate(c => c.DrawImage(cv, new Point(0, 0), 1f));
-        foreach (var (k, b) in q.boxes)
+        var rgb = NewWhite(cv.Width, cv.Height);
+        using (var rc = new SKCanvas(rgb))
         {
-            var rect = new RectangleF(b[0], b[1], b[2] - b[0], b[3] - b[1]);
-            rgb.Mutate(c => c.Draw(Color.Red, 2f, rect));
-            if (font != null)
-                rgb.Mutate(c => c.DrawText(k, font, Color.Red, new PointF(b[0] + 2, Math.Max(0, b[1] - 18))));
-        }
-        // 框外 3px 内还有墨迹 -> 十有八九把图形切断了
-        var leftover = FindLeftover(cv, q.boxes, 3);
-        if (leftover.Count > 0)
-        {
-            foreach (var b in leftover)
-                rgb.Mutate(c => c.Draw(Color.Blue, 2f, new RectangleF(b[0], b[1], b[2] - b[0], b[3] - b[1])));
-            flagged.Add($"{q.paper} 第{q.no}题 框外残留 {leftover.Count} 块");
+            rc.DrawBitmap(cv, 0, 0);
+            foreach (var (k, b) in q.boxes)
+            {
+                DrawBox(rc, b, SKColors.Red, 2f);
+                if (font != null)
+                    DrawLabel(rc, k, b[0] + 2, Math.Max(0, b[1] - 18), font, SKColors.Red, 15);
+            }
+            // 框外 3px 内还有墨迹 -> 十有八九把图形切断了
+            var leftover = FindLeftover(cv, q.boxes, 3);
+            if (leftover.Count > 0)
+            {
+                foreach (var b in leftover)
+                    DrawBox(rc, b, SKColors.Blue, 2f);
+                flagged.Add($"{q.paper} 第{q.no}题 框外残留 {leftover.Count} 块");
+            }
         }
         cv.Dispose();
 
-        var crops = q.opts.Select(p => File.Exists(p) ? Image.Load<L8>(p) : new Image<L8>(8, 8, new L8(255))).ToArray();
+        var crops = q.opts.Select(p => File.Exists(p) ? LoadGray(p) : NewWhite(8, 8)).ToArray();
         rows.Add(($"{Short(q.paper)}-{q.no}", rgb, crops));
     }
     if (rows.Count == 0) continue;
@@ -118,34 +118,39 @@ for (int s = 0; s < items.Count; s += PerSheet)
     var scaled = rows.Select(r =>
     {
         double k = Math.Min(1.0, RowH / (double)r.canvas.Height);
-        var cv2 = r.canvas.Clone(c => c.Resize((int)(r.canvas.Width * k), (int)(r.canvas.Height * k), KnownResamplers.Lanczos3));
+        var cv2 = r.canvas.Resize(new SKSizeI((int)(r.canvas.Width * k), (int)(r.canvas.Height * k)), SKFilterQuality.High);
         r.canvas.Dispose();
         var cps = r.crops.Select(p => Fit(p, RowH / 2)).ToArray();
         return (r.tag, cv2, cps, k);
     }).ToList();
 
     int width = scaled.Max(r => LabelW + r.cv2.Width + 30 + r.cps.Sum(c => c.Width + 14) + 40);
-    using var sheet = new Image<Rgba32>(Math.Max(width, 600), scaled.Count * (RowH + 40) + 10, new Rgba32(255, 255, 255));
+    using var sheet = NewWhite(Math.Max(width, 600), scaled.Count * (RowH + 40) + 10);
+    using var canvas = new SKCanvas(sheet);
     int y = 5;
     foreach (var (tag, cv2, cps, _) in scaled)
     {
-        if (font != null) sheet.Mutate(c => c.DrawText(tag, font, Color.Black, new PointF(4, y + 4)));
+        if (font != null) DrawLabel(canvas, tag, 4, y + 4, font, SKColors.Black, 15);
         int x = LabelW;
-        sheet.Mutate(c => c.DrawImage(cv2, new Point(x, y), 1f));
+        canvas.DrawBitmap(cv2, x, y);
         x += cv2.Width + 30;
         foreach (var (cp, i) in cps.Select((v, i) => (v, i)))
         {
-            sheet.Mutate(c => c.DrawImage(cp, new Point(x, y), 1f));
-            if (font != null) sheet.Mutate(c => c.DrawText("ABCD"[i].ToString(), font, Color.Black, new PointF(x, y + cp.Height + 2)));
+            canvas.DrawBitmap(cp, x, y);
+            if (font != null) DrawLabel(canvas, "ABCD"[i].ToString(), x, y + cp.Height + 2, font, SKColors.Black, 15);
             x += cp.Width + 14;
             cp.Dispose();
         }
         cv2.Dispose();
-        sheet.Mutate(c => c.Draw(Color.Gray, 1f, new RectangleF(0, y + RowH + 20, sheet.Width, 1)));
+        using (var p = new SKPaint { Color = SKColors.Gray, Style = SKPaintStyle.Stroke, StrokeWidth = 1 })
+            canvas.DrawLine(0, y + RowH + 20, sheet.Width, y + RowH + 20, p);
         y += RowH + 40;
     }
     sheetIdx++;
-    sheet.SaveAsPng(Path.Combine(outDir, $"overlay_{sheetIdx}.png"));
+    using var image = SKImage.FromBitmap(sheet);
+    using var data = image.Encode(SKEncodedImageFormat.Png, 100);
+    using var fs = File.Create(Path.Combine(outDir, $"overlay_{sheetIdx}.png"));
+    data.SaveTo(fs);
 }
 Console.WriteLine($"叠加图 {sheetIdx} 张 -> {outDir}");
 Console.WriteLine("框外残留（蓝框标记）" + flagged.Count + " 题：");
@@ -160,29 +165,65 @@ static string Short(string paper)
     return i >= 0 && i + 1 < paper.Length ? "S" + paper[(i + 1)..] : paper;
 }
 
-static Image<L8> Fit(Image<L8> src, int maxH)
+static SKBitmap NewWhite(int w, int h)
+{
+    var b = new SKBitmap(w, h);
+    using (var c = new SKCanvas(b)) c.Clear(SKColors.White);
+    return b;
+}
+
+// 灰度位图统一用 Bgra8888 表示：R=G=B=灰度值、A=255（等价原 Image<L8> 单通道）。
+// 灰度仍用原 PIL 权重公式 (R*19595+G*38470+B*7471)>>16，不改用 SkiaSharp 内置色彩转换。
+static SKBitmap ToGray(SKBitmap src)
+{
+    var g = new SKBitmap(src.Width, src.Height);
+    for (int y = 0; y < src.Height; y++)
+        for (int x = 0; x < src.Width; x++)
+        {
+            var c = src.GetPixel(x, y);
+            byte v = (byte)((c.Red * 19595 + c.Green * 38470 + c.Blue * 7471) >> 16);
+            g.SetPixel(x, y, new SKColor(v, v, v, 255));
+        }
+    return g;
+}
+
+static SKBitmap LoadGray(string path)
+{
+    using var src = SKBitmap.Decode(path);
+    return ToGray(src);
+}
+
+// SkiaSharp 的 DrawText 以基线定位，原按左上角 PointF 定位，
+// 这里加一个字号偏移，保持视觉位置接近。
+static void DrawLabel(SKCanvas canvas, string text, float x, float y, SKTypeface tf, SKColor color, float size)
+{
+    using var paint = new SKPaint { Color = color, TextSize = size, IsAntialias = true, Typeface = tf };
+    canvas.DrawText(text, x, y + size, paint);
+}
+
+static void DrawBox(SKCanvas canvas, int[] b, SKColor color, float width)
+{
+    using var paint = new SKPaint { Color = color, Style = SKPaintStyle.Stroke, StrokeWidth = width };
+    canvas.DrawRect(new SKRect(b[0], b[1], b[2], b[3]), paint);
+}
+
+static SKBitmap Fit(SKBitmap src, int maxH)
 {
     if (src.Height <= maxH) return src;
     double k = maxH / (double)src.Height;
     int w = Math.Max(1, (int)Math.Round(src.Width * k));
-    var c = src.Clone(x => x.Resize(w, maxH, KnownResamplers.Lanczos3));
+    var c = src.Resize(new SKSizeI(w, maxH), SKFilterQuality.High);
     src.Dispose();
     return c;
 }
 
 // 框外 tol 像素内、且不属于任何框的墨迹块（形状被切断的痕迹）
-static List<int[]> FindLeftover(Image<L8> canvas, Dictionary<string, int[]> boxes, int tol)
+static List<int[]> FindLeftover(SKBitmap canvas, Dictionary<string, int[]> boxes, int tol)
 {
     int w = canvas.Width, h = canvas.Height;
     var ink = new bool[w * h];
-    canvas.ProcessPixelRows(a =>
-    {
-        for (int y = 0; y < h; y++)
-        {
-            var row = a.GetRowSpan(y);
-            for (int x = 0; x < w; x++) ink[y * w + x] = row[x].PackedValue < 160;
-        }
-    });
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++) ink[y * w + x] = canvas.GetPixel(x, y).Red < 160;
     // 框内（含 1px 容差）算已覆盖
     var inside = new bool[w * h];
     foreach (var b in boxes.Values)
@@ -242,10 +283,10 @@ static List<int[]> FindLeftover(Image<L8> canvas, Dictionary<string, int[]> boxe
     return res;
 }
 
-// 与 build_exam_packages.py 的 build_canvas 同规则重拼
-static Image<L8> BuildCanvas(string imgRoot, string paper, List<(string file, double[] bbox)> parts)
+// 与 build_exam_packages.cs 的 build_canvas 同规则重拼
+static SKBitmap BuildCanvas(string imgRoot, string paper, List<(string file, double[] bbox)> parts)
 {
-    var imgs = parts.Select(p => Image.Load<L8>(Path.Combine(imgRoot, paper, p.file))).ToList();
+    var imgs = parts.Select(p => LoadGray(Path.Combine(imgRoot, paper, p.file))).ToList();
     if (parts.Count == 1) return imgs[0];
 
     var scales = parts.Select((p, i) => imgs[i].Width / Math.Max(1e-6, p.bbox[2] - p.bbox[0])).OrderBy(v => v).ToArray();
@@ -253,18 +294,21 @@ static Image<L8> BuildCanvas(string imgRoot, string paper, List<(string file, do
     double x0 = parts.Min(p => p.bbox[0]), y0 = parts.Min(p => p.bbox[1]);
     int W = (int)((parts.Max(p => p.bbox[2]) - x0) * S) + 2 * Pad;
     int H = (int)((parts.Max(p => p.bbox[3]) - y0) * S) + 2 * Pad;
-    var canvas = new Image<L8>(W, H, new L8(255));
-    for (int i = 0; i < parts.Count; i++)
+    var canvas = NewWhite(W, H);
+    using (var cc = new SKCanvas(canvas))
     {
-        var p = parts[i];
-        int tw = Math.Max(1, (int)((p.bbox[2] - p.bbox[0]) * S));
-        int th = Math.Max(1, (int)((p.bbox[3] - p.bbox[1]) * S));
-        int px = (int)((p.bbox[0] - x0) * S) + Pad;
-        int py = (int)((p.bbox[1] - y0) * S) + Pad;
-        var piece = imgs[i].Clone(c => c.Resize(tw, th, KnownResamplers.Lanczos3));
-        canvas.Mutate(c => c.DrawImage(piece, new Point(px, py), 1f));
-        piece.Dispose();
-        imgs[i].Dispose();
+        for (int i = 0; i < parts.Count; i++)
+        {
+            var p = parts[i];
+            int tw = Math.Max(1, (int)((p.bbox[2] - p.bbox[0]) * S));
+            int th = Math.Max(1, (int)((p.bbox[3] - p.bbox[1]) * S));
+            int px = (int)((p.bbox[0] - x0) * S) + Pad;
+            int py = (int)((p.bbox[1] - y0) * S) + Pad;
+            var piece = imgs[i].Resize(new SKSizeI(tw, th), SKFilterQuality.High);
+            cc.DrawBitmap(piece, px, py);
+            piece.Dispose();
+            imgs[i].Dispose();
+        }
     }
     return canvas;
 }

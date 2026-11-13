@@ -9,8 +9,9 @@ import VersionPane from './components/VersionPane'
 import ModalHost from './components/ModalHost'
 import Toast from './components/Toast'
 import {
-  addQuestion, cancelWaiting, closeModal, issueCounts, loadSets, loadVersions,
-  openPasteDialog, openSet, publish, showErrors, state, toast, ui,
+  addQuestion, cancelWaiting, closeModal, flushDraft, issueCounts, loadSets, loadVersions,
+  maybeRestoreDraft, openPasteDialog, openSet, publish, showErrors, startDraftAutoSave, state,
+  stopDraftAutoSave, toast, ui,
 } from './store'
 import { handleFileInput } from './images'
 
@@ -22,24 +23,43 @@ export default defineComponent({
     onMounted(async () => {
       window.addEventListener('keydown', onKeydown)
       window.addEventListener('beforeunload', onBeforeUnload)
+      document.addEventListener('visibilitychange', onVisibility)
+      // 停手 700ms 存一次之外，每 30 秒再兜一次底；关页面时立刻落盘
+      startDraftAutoSave()
       try {
         await loadSets()
-        const first = state.sets.find((s) => s.id > 0)
-        if (first) await openSet(first.id, { force: true })
+        // 上次还有没发布的改动就问一句要不要接着改；不然就从手机上当前内容打开
+        const restored = await maybeRestoreDraft()
+        if (!restored) {
+          const first = state.sets.find((s) => s.id > 0)
+          if (first) await openSet(first.id, { force: true })
+        }
       } catch (e) {
+        // 这里也可能是「这组太大，超过单卷上限」这类业务错误，别一律说成连不上
         const msg = e instanceof Error ? e.message : '加载失败'
-        toast(`连不上手机端服务：${msg}`, 'err')
-        showErrors('连不上手机端服务', `${msg}\n\n确认手机上「局域网编辑器」还开着，再用它显示的地址重新打开这个页面。`)
+        toast(`打不开题库：${msg}`, 'err')
+        showErrors(
+          '打不开题库',
+          `${msg}\n\n如果是连不上：确认手机上「局域网编辑器」还开着，再用它显示的地址重新打开这个页面。`,
+        )
       }
     })
 
     onBeforeUnmount(() => {
       window.removeEventListener('keydown', onKeydown)
       window.removeEventListener('beforeunload', onBeforeUnload)
+      document.removeEventListener('visibilitychange', onVisibility)
+      stopDraftAutoSave()
     })
+
+    const onVisibility = () => {
+      // 切到后台（合盖子、切标签页）时手机可能被系统杀掉，先把草稿落地
+      if (document.visibilityState === 'hidden') flushDraft()
+    }
 
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
       if (!state.dirty) return
+      flushDraft()
       e.preventDefault()
       e.returnValue = ''
     }
@@ -65,6 +85,16 @@ export default defineComponent({
 
     const counts = () => issueCounts()
 
+    // 搜索防抖：过滤一次要扫整卷（逐题算校验），按字实时过滤在千题规模下会明显掉帧
+    const queryInput = ref(state.query)
+    let queryTimer: number | undefined
+    const onQueryInput = (e: Event) => {
+      const v = (e.target as HTMLInputElement).value
+      queryInput.value = v
+      window.clearTimeout(queryTimer)
+      queryTimer = window.setTimeout(() => { state.query = v }, 150)
+    }
+
     return () => (
       <div class="app-root">
         <TopBar />
@@ -78,10 +108,10 @@ export default defineComponent({
             <div class="toolbar">
               <input
                 class="search"
-                value={state.query}
+                value={queryInput.value}
                 spellcheck={false}
                 placeholder="搜索题干 / 材料 / 答案…"
-                onInput={(e) => { state.query = (e.target as HTMLInputElement).value }}
+                onInput={onQueryInput}
               />
               <select
                 class="select"

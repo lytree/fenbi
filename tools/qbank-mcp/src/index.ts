@@ -12,7 +12,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
-import { configFromEnv } from './config.js'
+import { configFromEnv, redact } from './config.js'
 import { QbankClient } from './client.js'
 import { questionSchema, sheetSchema } from './schema.js'
 import {
@@ -47,10 +47,11 @@ let configError: string | null = null
 try {
   client = new QbankClient(configFromEnv())
   process.stderr.write(`[fenbi-qbank-mcp] 目标手机：${client.host}\n`)
-} catch (e) {
-  configError = e instanceof Error ? e.message : String(e)
-  process.stderr.write(`[fenbi-qbank-mcp] ${configError}\n`)
-}
+  } catch (e) {
+    // 这里的字会进模型上下文、也会被用户整段贴出来排障，口令必须打码
+    configError = redact(e instanceof Error ? e.message : String(e))
+    process.stderr.write(`[fenbi-qbank-mcp] ${configError}\n`)
+  }
 
 function need(): QbankClient {
   if (!client) throw new Error(configError ?? '还没配置手机地址')
@@ -88,6 +89,8 @@ server.registerTool(
     description:
       '读某一组的题目（按卷、按卷面顺序），带题型、材料、选项、答案、解析。' +
       '默认每次 20 题，用 offset 翻页；题多的时候不要一次拉完，先看前 20 题。' +
+      '超长题干 / 解析会被截断并标出原文长度——要把内容原样写回题目时先加 full=true，' +
+      '不要拿截断后的文本当原文去改题。' +
       '返回里的「【卷名】第 N 题」就是改题 / 删题要用的 sheet + index。',
     inputSchema: {
       setId: z.number().int().positive().optional().describe('组 id；和 title 二选一'),
@@ -99,6 +102,10 @@ server.registerTool(
         .boolean()
         .optional()
         .describe('只看还没有解析的题；补解析时先用它把缺口找出来'),
+      full: z
+        .boolean()
+        .optional()
+        .describe('返回完整原文、不截断（默认会截断并标注字数）；要按读到的内容回写时必须传 true'),
     },
     annotations: { readOnlyHint: true },
   },

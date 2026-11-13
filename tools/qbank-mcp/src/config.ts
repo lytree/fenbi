@@ -18,6 +18,16 @@ export class ConfigError extends Error {
   }
 }
 
+/**
+ * 报错文案里不能出现完整口令。
+ *
+ * 这段字会进模型上下文，也会被用户整段贴到 issue / 聊天里；地址漏写 `http://`
+ * 是最常见的手误，而报错信息恰好会把整串（含 `t=`）原样吐出来。
+ */
+export function redact(text: string): string {
+  return text.replace(/([?&]\s*t=)[^&\s"'）)]*/gi, '$1***')
+}
+
 /** 把 App 里那串地址拆成 baseUrl + token */
 export function parseQbankUrl(raw: string): QbankConfig {
   const text = raw.trim()
@@ -27,7 +37,9 @@ export function parseQbankUrl(raw: string): QbankConfig {
   try {
     url = new URL(text)
   } catch {
-    throw new ConfigError(`地址不合法：「${text}」应该形如 http://192.168.1.23:8777/?t=口令`)
+    throw new ConfigError(
+      `地址不合法：「${redact(text)}」应该形如 http://192.168.1.23:8777/?t=口令`
+    )
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     throw new ConfigError(`只支持 http/https 地址，收到的是 ${url.protocol}`)

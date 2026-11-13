@@ -1,4 +1,4 @@
-import { reactive } from 'vue'
+import { computed, reactive } from 'vue'
 import { api } from './api'
 import type {
   EditorPaper, Filter, Group, Issue, PaperSetInfo, QIssue,
@@ -68,6 +68,8 @@ export const ui = reactive({
   busy: false,
   /** 正在等手机确认的删除请求 id（空 = 没在等） */
   waitingId: null as string | null,
+  /** 最近一次草稿落盘时间（0 = 当前没有草稿），顶栏据此显示「已自动保存」 */
+  draftSavedAt: 0,
 })
 
 let toastTimer: number | undefined
@@ -260,12 +262,22 @@ export function collectIssues(): Issue[] {
 }
 
 export function issueCounts(): { errors: number; warns: number } {
+  return issueStats.value
+}
+
+/**
+ * 校验计数按依赖缓存。
+ *
+ * 以前每次渲染都全量扫一遍（App 里两处各调一次 counts()），千题规模下
+ * 光是打字就一直在重算 —— 搜索框每敲一个字都会触发整页渲染。
+ */
+export const issueStats = computed(() => {
   const all = collectIssues()
   return {
     errors: all.filter((i) => i.level === 'error').length,
     warns: all.filter((i) => i.level === 'warn').length,
   }
-}
+})
 
 export function isExpanded(uid: number) {
   return state.expanded.includes(uid)
@@ -280,6 +292,7 @@ export function toggleExpand(uid: number) {
 
 export function markDirty() {
   state.dirty = true
+  scheduleDraftSave()
 }
 
 /* ------------------------------------------------------------------ 载入 / 发布 */
@@ -309,6 +322,7 @@ export async function openSet(id: number, opts: { force?: boolean } = {}): Promi
   state.expanded = []
   state.focused = null
   state.dirty = false
+  clearDraft()
   refreshGroups()
   const first = currentQuestions()[0]
   if (first) {
@@ -326,6 +340,7 @@ export function newPaper(name: string) {
   state.focused = null
   state.dirty = true
   state.versions = []
+  clearDraft()
   refreshGroups()
 }
 
@@ -355,6 +370,7 @@ export async function publish(opts: { replace?: boolean } = {}): Promise<boolean
     const r = await api.publish(title, !!opts.replace, sheets)
     paper.id = r.setId
     state.dirty = false
+    clearDraft()
     await loadSets()
     await loadVersions()
     const archived = r.version ? ' · 旧内容已存为版本' : ''
@@ -549,7 +565,8 @@ export function switchSheet(index: number) {
 
 /* ------------------------------------------------------------------ 筛选 */
 
-export function visibleIndexes(): number[] {
+/** 筛选结果按依赖缓存：列表每次渲染都要这份索引，直接算等于每帧扫全卷 */
+const visibleCache = computed(() => {
   const qs = currentQuestions()
   const groups = state.groups
   const kw = state.query.trim().toLowerCase()
@@ -573,6 +590,10 @@ export function visibleIndexes(): number[] {
     out.push(i)
   })
   return out
+})
+
+export function visibleIndexes(): number[] {
+  return visibleCache.value
 }
 
 
@@ -737,8 +758,10 @@ export async function cancelWaiting(): Promise<void> {
   if (!id) return
   finishWaiting()
   try {
-    await api.cancelDelete(id)
-    toast('已撤回，手机上不会再问', 'ok')
+    const r = await api.cancelDelete(id)
+    // 手机上刚点过「确认删除」的话，服务端会明确回 ok=false——这时候别说「已撤回」
+    if (r.ok === false) toast('手机上已经点了确认，删不回来了', 'err')
+    else toast('已撤回，手机上不会再问', 'ok')
   } catch {
     toast('请求可能已经被手机处理过了', '')
   }
@@ -792,4 +815,134 @@ async function pollDelete(id: string, setId: number, title: string, ttlSec: numb
     }
     return
   }
+}
+
+/* ------------------------------------------------------------------ 草稿（防丢） */
+
+const DRAFT_KEY = 'fenbi.lan-editor.draft.v2'
+
+/** 停手 700ms 落一份，另外每 30 秒兜底存一次（有的改动不经过 markDirty） */
+const DRAFT_DEBOUNCE_MS = 700
+export const DRAFT_INTERVAL_MS = 30_000
+
+interface Draft {
+  setId: number
+  name: string
+  sheets: WireSheet[]
+  savedAt: number
+}
+
+let draftTimer: number | undefined
+let draftInterval: number | undefined
+
+/**
+ * 把当前内容写进 localStorage。
+ *
+ * 以前只有 beforeunload 一句「确定离开吗」：关掉标签页、电脑休眠、浏览器崩了，
+ * 一下午的改动就没了。这里落一份草稿，下次打开还能捡回来。
+ *
+ * **草稿不设过期时间**：只要还没发布、也没主动丢弃，它就一直在，
+ * 隔几天回来打开照样能接着改（旧版本是 3 天过期，删掉了）。
+ */
+function saveDraftNow() {
+  const paper = state.paper
+  if (!paper || !state.dirty) return
+  const savedAt = Date.now()
+  try {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({
+      setId: paper.id,
+      name: paper.name,
+      sheets: serialize(),
+      savedAt,
+    } satisfies Draft))
+    ui.draftSavedAt = savedAt
+  } catch {
+    // 隐私模式 / 配额满：存不下就算了，别打断编辑
+    ui.draftSavedAt = 0
+  }
+}
+
+export function scheduleDraftSave() {
+  window.clearTimeout(draftTimer)
+  draftTimer = window.setTimeout(saveDraftNow, DRAFT_DEBOUNCE_MS)
+}
+
+/** 立刻落盘（关页面 / 切到后台时用，不留最后一次改动在内存里） */
+export function flushDraft() {
+  window.clearTimeout(draftTimer)
+  saveDraftNow()
+}
+
+/** 开始定期兜底保存；重复调用只保留一个定时器 */
+export function startDraftAutoSave() {
+  if (draftInterval !== undefined) return
+  draftInterval = window.setInterval(saveDraftNow, DRAFT_INTERVAL_MS)
+}
+
+export function stopDraftAutoSave() {
+  window.clearInterval(draftInterval)
+  draftInterval = undefined
+  window.clearTimeout(draftTimer)
+}
+
+/** 发布成功、或用户明确选择丢弃时才清；草稿本身不会因为时间久了被删 */
+export function clearDraft() {
+  window.clearTimeout(draftTimer)
+  ui.draftSavedAt = 0
+  try { localStorage.removeItem(DRAFT_KEY) } catch { /* 忽略 */ }
+}
+
+function readDraft(): Draft | null {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY)
+    if (!raw) return null
+    const d = JSON.parse(raw) as Draft
+    if (!d?.name || !Array.isArray(d.sheets)) return null
+    return d
+  } catch {
+    return null
+  }
+}
+
+/** 草稿是否存在（给「本地草稿」入口用，不弹任何东西） */
+export function hasDraft(): boolean {
+  return readDraft() !== null
+}
+
+/**
+ * 启动时问一句要不要接着上次改。
+ *
+ * 只在「上次退出时还有没发布的改动」时才有草稿；恢复出来的内容照旧按未发布处理，
+ * 点「发布到 App」才算落库。草稿没有过期时间，隔几天回来一样能捡。
+ */
+export async function maybeRestoreDraft(): Promise<boolean> {
+  const d = readDraft()
+  if (!d) return false
+  const age = Date.now() - (d.savedAt ?? 0)
+  const when = age > 24 * 3600_000
+    ? `${formatTime(d.savedAt)}（${Math.floor(age / 86_400_000)} 天前）`
+    : formatTime(d.savedAt)
+  const ok = await askConfirm(
+    '接着上次改？',
+    `本地存着一份 ${when} 的未发布改动：「${d.name}」共 ${d.sheets.length} 卷。\n\n` +
+      '恢复后再点「发布到 App」才会写进手机；不要的话就从手机上的当前内容打开（选「不要」会删掉这份草稿）。',
+    '接着改',
+  )
+  if (!ok) { clearDraft(); return false }
+  state.paper = {
+    id: d.setId ?? 0,
+    name: d.name,
+    sheets: d.sheets.map((s) => ({
+      name: s.name,
+      questions: (s.questions ?? []).map((q) => ({ ...q, _uid: nextUid(), _issues: null })),
+    })),
+  }
+  if (!state.paper.sheets.length) state.paper.sheets = [{ name: '试卷', questions: [] }]
+  state.sheet = 0
+  state.expanded = []
+  state.focused = null
+  state.dirty = true
+  ui.draftSavedAt = d.savedAt ?? 0
+  refreshGroups()
+  return true
 }

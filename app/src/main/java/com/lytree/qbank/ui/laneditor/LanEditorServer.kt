@@ -9,10 +9,13 @@ import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.Inet4Address
+import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.URLDecoder
+import java.util.Collections
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlin.random.Random
 
@@ -63,7 +66,13 @@ class LanEditorServer(
 
     private var serverSocket: ServerSocket? = null
     private var acceptThread: Thread? = null
-    private val workers = Executors.newFixedThreadPool(4) { r ->
+    private var workers: ExecutorService = newWorkers()
+
+    /** 已经接进来、还没走完的请求；停止服务时要一并掐掉，否则它们会继续往库里写 */
+    private val clients: MutableSet<Socket> = Collections.synchronizedSet(HashSet())
+
+    /** stop() 会把线程池 shutdownNow，重启时得换一个新的 */
+    private fun newWorkers(): ExecutorService = Executors.newFixedThreadPool(4) { r ->
         Thread(r, "lan-editor-worker").apply { isDaemon = true }
     }
 
@@ -74,8 +83,12 @@ class LanEditorServer(
     fun start(): Result<Unit> {
         if (isRunning) return Result.success(Unit)
         return try {
-            val socket = ServerSocket(port)
-            socket.reuseAddress = true
+            val socket = ServerSocket().apply {
+                // SO_REUSEADDR 必须在 bind 之前设：建完 socket 再设是无效的，
+                // 停止后马上重启会撞上上一轮遗留的 TIME_WAIT，报「端口被占用」误导人去换端口
+                reuseAddress = true
+                bind(InetSocketAddress(port))
+            }
             serverSocket = socket
             isRunning = true
             acceptThread = Thread({ acceptLoop(socket) }, "lan-editor-accept").apply {
@@ -98,6 +111,11 @@ class LanEditorServer(
         serverSocket = null
         acceptThread?.interrupt()
         acceptThread = null
+        // 在途请求也要断：点了「停止」就该立刻停，不能还有 publish 在后台写库
+        synchronized(clients) { clients.toList() }.forEach { runCatching { it.close() } }
+        clients.clear()
+        runCatching { workers.shutdownNow() }
+        workers = newWorkers()
     }
 
     // ---------------------------------------------------------------- 连接
@@ -116,20 +134,36 @@ class LanEditorServer(
     }
 
     private fun handle(client: Socket) {
-        client.use { s ->
-            s.soTimeout = 20_000
-            val input = BufferedInputStream(s.getInputStream())
-            val output = BufferedOutputStream(s.getOutputStream())
-            val req = readRequest(input) ?: return
-            lastRequest = "${req.method} ${req.path}"
-            val resp = try {
-                dispatch(req)
-            } catch (e: Exception) {
-                jsonError(500, e.message ?: "服务器出错")
+        clients.add(client)
+        try {
+            client.use { s ->
+                s.soTimeout = 20_000
+                val input = BufferedInputStream(s.getInputStream())
+                val output = BufferedOutputStream(s.getOutputStream())
+                val req = try {
+                    readRequest(input)
+                } catch (e: RequestTooLarge) {
+                    // 超限要回一句 413 再断开，否则前端只看到「连接被重置」，查不出原因
+                    writeResponse(output, jsonError(413, e.message ?: "请求体太大"))
+                    return
+                } ?: return
+                lastRequest = "${req.method} ${req.path}"
+                val resp = try {
+                    dispatch(req)
+                } catch (e: IllegalArgumentException) {
+                    // 参数/校验类错误对客户端是「你的请求不对」，不是服务器崩了
+                    jsonError(400, e.message ?: "请求参数不对")
+                } catch (e: Exception) {
+                    jsonError(500, e.message ?: "服务器出错")
+                }
+                writeResponse(output, resp)
             }
-            writeResponse(output, resp)
+        } finally {
+            clients.remove(client)
         }
     }
+
+    private class RequestTooLarge(message: String) : Exception(message)
 
     private fun readRequest(input: InputStream): Req? {
         val line = readLine(input)?.trim() ?: return null
@@ -145,7 +179,8 @@ class LanEditorServer(
             if (i > 0) headers[h.substring(0, i).trim().lowercase()] = h.substring(i + 1).trim()
         }
         val len = headers["content-length"]?.toIntOrNull() ?: 0
-        require(len <= MAX_BODY) { "请求体过大（上限 32MB）" }
+        if (len < 0) throw RequestTooLarge("Content-Length 不合法")
+        if (len > MAX_BODY) throw RequestTooLarge("请求体太大（上限 ${MAX_BODY / 1024 / 1024}MB）")
         val body = if (len > 0) readFully(input, len) else ByteArray(0)
 
         val target = parts[1]
@@ -312,8 +347,13 @@ class LanEditorServer(
 
             "/api/delete/cancel" -> {
                 val body = readJson(req) ?: return jsonError(400, "请求不是合法 JSON")
-                LanEditorConfirm.reject(context, body.optString("id"))
-                json(JSONObject().put("ok", true))
+                val ok = LanEditorConfirm.reject(context, body.optString("id"))
+                // 手机上已经点了确认时不能回 ok：否则网页会显示「已撤回」，题库却已经被删了
+                json(
+                    JSONObject()
+                        .put("ok", ok)
+                        .put("error", if (ok) JSONObject.NULL else "手机上已经点了确认，删除正在执行，撤不回来了")
+                )
             }
 
             "/api/image" -> {
@@ -326,7 +366,7 @@ class LanEditorServer(
             "/api/img" -> {
                 val p = req.query["p"] ?: return jsonError(400, "缺少图片路径")
                 val file = store.resolveImage(p) ?: return jsonError(404, "图片不存在：$p")
-                Resp(200, mimeOf(file.name), file.readBytes())
+                Resp(200, imageMimeOf(file.name), file.readBytes())
             }
 
             else -> jsonError(404, "接口不存在：$path")
@@ -387,6 +427,7 @@ class LanEditorServer(
         401 -> "Unauthorized"
         403 -> "Forbidden"
         404 -> "Not Found"
+        413 -> "Payload Too Large"
         500 -> "Internal Server Error"
         else -> "OK"
     }
@@ -407,6 +448,22 @@ class LanEditorServer(
         <p>直接扫端口是进不来的——这串口令就是用来挡住同一 Wi-Fi 下的其他人的。</p>
         </div></body></html>
     """.trimIndent().toByteArray(Charsets.UTF_8)
+
+    /**
+     * 图片接口只回真图片的 MIME。
+     *
+     * [mimeOf] 会把 `.html` 当 `text/html`、`.svg` 当 `image/svg+xml` 回给浏览器——
+     * 用在 `/web/` 静态资源上没问题，用在用户上传的文件上就是同源 XSS：
+     * 传一个带脚本的 html 上来，脚本能拿着 Cookie 调 `/api/publish`。
+     * 所以这里非白名单一律当二进制下载，`nosniff` 已在响应头里加过。
+     */
+    private fun imageMimeOf(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {
+        "png" -> "image/png"
+        "jpg", "jpeg" -> "image/jpeg"
+        "gif" -> "image/gif"
+        "webp" -> "image/webp"
+        else -> "application/octet-stream"
+    }
 
     private fun mimeOf(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {
         "html", "htm" -> HTML_TYPE

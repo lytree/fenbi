@@ -6,7 +6,7 @@
 //         clip = pymupdf.Rect(172*72/150, 0, 240*72/150, doc[i].rect.height)
 //         doc[i].get_pixmap(dpi=400, clip=clip).save(f"tmp/margin/p{i+1:03d}.png")
 // Run this script from a directory that has tesseract.js installed (npm i tesseract.js).
-// Output: <repo>/qbank_out/ocr_margin.json  (consumed by build_qbank_v6.py)
+// Output: <repo>/qbank_out/ocr_margin.json  (consumed by build_qbank_v6.cs)
 const { createWorker } = require('tesseract.js');
 const path = require('path');
 const fs = require('fs');

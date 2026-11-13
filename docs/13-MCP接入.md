@@ -117,7 +117,7 @@ pnpm build
 测试不依赖真机：`src/__tests__/mock-server.ts` 用 `node:http` 复刻了手机端的
 `/api/papers`、`/api/paper`、`/api/publish`（含「同名必须 replace」「题干不能空」），
 `src/__tests__/mcp.test.ts` 则真的 spawn `dist/index.js`、用官方 SDK 的 Client 走 stdio 调工具，
-断言「客户端看得到 9 个工具」「加题后 mock 里真的多了一题」「报错以 isError 返回」。
+断言「客户端看得到 14 个工具」「加题后 mock 里真的多了一题」「报错以 isError 返回」。
 
 写协议时记住：**stdout 只跑 MCP 协议**，日志一律 `console.error`。
 

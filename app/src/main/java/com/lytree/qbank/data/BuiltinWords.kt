@@ -13,7 +13,7 @@ import kotlin.concurrent.thread
  *
  * 数据是 `assets/builtin/words.csv`（表头：词条/拼音/分类/细分/释义/出处），
  * 打底由 `tools/BuildBuiltinWords.cs`（.NET file-based app，`dotnet run` 直接跑）从合并版 docx 生成；
- * 分组标签与 244 条新词由 `tools/extract_word_tags.py`（uv + python-docx）读四海 800 词上下册补上。
+ * 分组标签与 244 条新词由 `tools/extract_word_tags.cs` 读四海 800 词上下册补上。
  * 改词库请改源文档后重跑脚本，不要手改这份 csv。
  *
  * 只在**首次**自动灌一次（SharedPreferences 记标记）：

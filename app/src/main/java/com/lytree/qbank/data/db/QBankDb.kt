@@ -723,7 +723,19 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
      * [replace] 为真时先清掉**同标题**的旧组（连同组里的卷、题目、作答记录），
      * 于是同一个文件重导一次不会越堆越多，也不会把别的组误删。
      */
-    fun importSets(sets: List<SetImport>, replace: Boolean = true): List<SetImportResult> {
+    /**
+     * 批量导入一组（或多组）。
+     *
+     * @param replace 同标题的旧组先拆掉再重建
+     * @param reuseQuestionIds 覆盖时按题目 id 复用旧行，而不是删掉重建。
+     *   收藏 / 笔记 / 错题本都挂在 `questions.id` 上，题目行重建一次它们就整批消失；
+     *   网页编辑器每点一次「发布」都走这条路，所以必须复用。
+     */
+    fun importSets(
+        sets: List<SetImport>,
+        replace: Boolean = true,
+        reuseQuestionIds: Boolean = false,
+    ): List<SetImportResult> {
         val usable = sets
             .map { s -> s.copy(papers = s.papers.filter { it.questions.isNotEmpty() }) }
             .filter { it.papers.isNotEmpty() }
@@ -732,18 +744,31 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         val db = writableDatabase
         db.beginTransaction()
         try {
+            // 旧组里可以复用的题目 id：先记下来，重建完再把这次没用上的收尾
+            val reusable = HashMap<String, Set<Long>>()
             if (replace) {
                 val titles = usable.map { it.title }.toSet()
                 listPaperSets(withPapers = false)
                     .filter { it.id > 0 && it.title in titles }
-                    .forEach { deletePaperSet(it.id) }
+                    .forEach { old ->
+                        if (reuseQuestionIds) {
+                            reusable[old.title] = questionIdsOfSet(old.id)
+                            dropSetStructure(old.id)
+                        } else {
+                            deletePaperSet(old.id)
+                        }
+                    }
             }
             val out = ArrayList<SetImportResult>(usable.size)
             usable.forEach { s ->
+                val oldIds = reusable[s.title].orEmpty()
+                val usedIds = HashSet<Long>()
                 val setId = db.insert("paper_sets", null, setValues(s.title, s.source))
                 val papers = s.papers.map { p ->
-                    insertPaper(db, setId, p.name, p.description, p.durationMin, p.questions)
+                    insertPaper(db, setId, p.name, p.description, p.durationMin, p.questions, oldIds, usedIds)
                 }
+                // 网页上删掉的题：确认它不再属于任何卷之后才真正删掉（顺带清收藏 / 笔记）
+                pruneOrphanQuestions(db, oldIds - usedIds)
                 out.add(SetImportResult(setId, s.title, papers))
             }
             db.setTransactionSuccessful()
@@ -753,14 +778,71 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         }
     }
 
-    /** 建卷 + 挂题（不开事务，由调用方决定事务边界） */
+    /** 组里所有卷出现过的题目 id（覆盖发布时用来复用旧题目行） */
+    fun questionIdsOfSet(setId: Long): Set<Long> {
+        val out = HashSet<Long>()
+        readableDatabase.rawQuery(
+            """SELECT DISTINCT pq.question_id FROM paper_questions pq
+               JOIN papers p ON p.id = pq.paper_id WHERE p.set_id = ?""",
+            arrayOf(setId.toString())
+        ).use { c -> while (c.moveToNext()) out.add(c.getLong(0)) }
+        return out
+    }
+
+    /**
+     * 覆盖发布专用：拆掉组里的卷结构，但**保留题目行**。
+     *
+     * [deletePaperSet] 会把只属于这些卷的题目一并删掉，收藏和笔记就跟着没了；
+     * 这里只清卷、卷-题关系与作答记录，题目行留给 [insertPaper] 按 id 原地更新。
+     */
+    private fun dropSetStructure(setId: Long) {
+        val db = writableDatabase
+        val paperIds = ArrayList<Long>()
+        db.rawQuery("SELECT id FROM papers WHERE set_id = ?", arrayOf(setId.toString()))
+            .use { c -> while (c.moveToNext()) paperIds.add(c.getLong(0)) }
+        paperIds.forEach { paperId ->
+            val args = arrayOf<Any>(paperId)
+            db.execSQL("DELETE FROM record_answers WHERE record_id IN (SELECT id FROM records WHERE paper_id = ?)", args)
+            db.execSQL("DELETE FROM record_inks WHERE record_id IN (SELECT id FROM records WHERE paper_id = ?)", args)
+            db.execSQL("DELETE FROM record_question_times WHERE record_id IN (SELECT id FROM records WHERE paper_id = ?)", args)
+            db.execSQL("DELETE FROM records WHERE paper_id = ?", args)
+            db.execSQL("DELETE FROM exam_progress WHERE paper_id = ?", args)
+            db.delete("paper_questions", "paper_id = ?", arrayOf(paperId.toString()))
+            db.delete("papers", "id = ?", arrayOf(paperId.toString()))
+        }
+        deleteGroupRecords(setId)
+        db.delete("paper_sets", "id = ?", arrayOf(setId.toString()))
+    }
+
+    /** 删掉已经不属于任何卷的旧题，并清掉挂在它们身上的收藏 / 笔记 */
+    private fun pruneOrphanQuestions(db: SQLiteDatabase, candidates: Set<Long>) {
+        if (candidates.isEmpty()) return
+        // 分批：一次塞几千个 id 会让 SQL 长得离谱
+        candidates.chunked(400).forEach { chunk ->
+            val inClause = chunk.joinToString(",")
+            val orphan = "SELECT id FROM questions WHERE id IN ($inClause) " +
+                "AND id NOT IN (SELECT question_id FROM paper_questions)"
+            db.execSQL("DELETE FROM favorites WHERE question_id IN ($orphan)")
+            db.execSQL("DELETE FROM notes WHERE question_id IN ($orphan)")
+            db.execSQL("DELETE FROM questions WHERE id IN ($orphan)")
+        }
+    }
+
+    /**
+     * 建卷 + 挂题（不开事务，由调用方决定事务边界）。
+     *
+     * @param reusable 允许原地复用的旧题目 id（覆盖发布时传旧组里的题）
+     * @param usedIds 本次已经复用过的 id，同一道题出现在多个位置时只复用一次
+     */
     private fun insertPaper(
         db: SQLiteDatabase,
         setId: Long,
         name: String,
         description: String,
         durationMin: Int,
-        questions: List<Question>
+        questions: List<Question>,
+        reusable: Set<Long> = emptySet(),
+        usedIds: MutableSet<Long> = HashSet(),
     ): ImportResult {
         val paperId = db.insert(
             "papers", null,
@@ -768,7 +850,15 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         )
         val ids = ArrayList<Long>(questions.size)
         for (q in questions) {
-            val qid = db.insert("questions", null, questionValues(q))
+            var reused = -1L
+            if (q.id > 0 && q.id in reusable && q.id !in usedIds) {
+                // 原地更新：题目 id 不变，收藏 / 笔记 / 错题标记才能留下来
+                if (db.update("questions", questionValues(q), "id = ?", arrayOf(q.id.toString())) > 0) {
+                    usedIds.add(q.id)
+                    reused = q.id
+                }
+            }
+            val qid = if (reused > 0) reused else db.insert("questions", null, questionValues(q))
             if (qid != -1L) ids.add(qid)
         }
         ids.forEachIndexed { i, qid ->

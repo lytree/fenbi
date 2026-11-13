@@ -14,7 +14,7 @@ import java.io.File
  * 且**每个选项是一张独立小图**（题干图裁掉选项，4 个选项各拆一张图嵌入选项列）。
  *
  * 数据来自 Anki 导入包（一张整图一道题：题干图形 + A–D 四个选项都画在一起），
- * 由 `tools/qbank/build_app_package.py` + `split_options.py` 把整图拆成
+ * 由 `tools/qbank/build_app_package.cs`（内联 `split_options.cs` 的拆分逻辑）把整图拆成
  * 「题干 + 4 张选项图」再组包。这里不自己造 xlsx，直接拿生成好的真实包走一遍完整
  * 导入链路（QbankPackage 解压 → XlsxReader 多表 → PaperSplitter 拆卷 →
  * Normalizer 规范化 → 图片相对路径改写为解压后的绝对路径）。

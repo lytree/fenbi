@@ -30,6 +30,9 @@ object LanEditorConfirm {
     const val STATUS_REJECTED = "rejected"
     const val STATUS_EXPIRED = "expired"
 
+    /** 手机已点确认、删除正在跑。对网页仍显示 pending，但拒绝「撤回」 */
+    const val STATUS_DELETING = "deleting"
+
     /** 等待时间：够人从电脑前拿起手机，又不至于让网页无限转圈 */
     private const val TTL_MS = 10 * 60 * 1000L
     private const val CHANNEL_ID = "lan_editor_confirm"
@@ -97,19 +100,26 @@ object LanEditorConfirm {
             req.status = STATUS_EXPIRED
             pending.postValue(pendingOf())
         }
-        req.status
+        // 「正在删」对网页来说还没有结论，仍然回 pending，别让它以为请求已作废
+        if (req.status == STATUS_DELETING) STATUS_PENDING else req.status
     }
 
     fun errorOf(id: String): String? = synchronized(items) { items[id] }?.error
 
     /** 手机上点了「确认删除」：后台线程真删，删完再改状态，网页那头的轮询自然拿到结果 */
     fun approve(context: Context, id: String) {
-        val req = synchronized(items) { items[id] } ?: return
-        if (req.status != STATUS_PENDING) return
-        if (req.expired) {
-            req.status = STATUS_EXPIRED
-            publish()
-            return
+        // 「检查 + 占位」必须一次做完：手机点确认和网页点撤回可能同时到达，
+        // 分成两步会出现「网页提示没删、库里其实已经删了」
+        val req = synchronized(items) {
+            val r = items[id] ?: return
+            if (r.status != STATUS_PENDING) return
+            if (r.expired) {
+                r.status = STATUS_EXPIRED
+                publish()
+                return
+            }
+            r.status = STATUS_DELETING
+            r
         }
         val ctx = context.applicationContext
         appContext = ctx
@@ -117,6 +127,8 @@ object LanEditorConfirm {
         Thread({
             val r = runCatching { LanEditorStore(ctx).deleteSet(req.setId) }
             synchronized(items) {
+                // 服务被停掉、clear() 已经把状态改掉的话，就别再写回了
+                if (req.status != STATUS_DELETING) return@synchronized
                 req.error = r.exceptionOrNull()?.message
                 req.status = if (r.isSuccess) STATUS_APPROVED else STATUS_REJECTED
             }
@@ -127,21 +139,29 @@ object LanEditorConfirm {
         }
     }
 
-    /** 手机上点了「不删」，或网页上撤回了请求 */
-    fun reject(context: Context?, id: String) {
-        synchronized(items) {
-            val req = items[id] ?: return
-            if (req.status != STATUS_PENDING) return
+    /**
+     * 手机上点了「不删」，或网页上撤回了请求。
+     *
+     * @return false = 手机上已经确认、删除正在执行，撤不回来了
+     */
+    fun reject(context: Context?, id: String): Boolean {
+        val ok = synchronized(items) {
+            val req = items[id] ?: return false
+            if (req.status != STATUS_PENDING) return false
             req.status = STATUS_REJECTED
+            true
         }
         publish()
         cancelNotify(context ?: appContext)
+        return ok
     }
 
     /** 服务停止时清空：还在等的请求一律作废 */
     fun clear() {
         synchronized(items) {
-            items.values.forEach { if (it.status == STATUS_PENDING) it.status = STATUS_EXPIRED }
+            items.values.forEach {
+                if (it.status == STATUS_PENDING || it.status == STATUS_DELETING) it.status = STATUS_EXPIRED
+            }
             items.clear()
         }
         pending.postValue(emptyList())

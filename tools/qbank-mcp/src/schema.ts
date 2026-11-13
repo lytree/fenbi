@@ -39,7 +39,14 @@ export const sheetSchema = z.object({
   questions: z.array(questionSchema).min(1).describe('这份卷的题目，按卷面顺序'),
 })
 
-export type WireQuestion = z.infer<typeof questionSchema>
+/**
+ * 回传给手机端的题目结构。
+ *
+ * 比输入 schema 多一个可选 `id`：手机用它判断「这道题原来就在库里」，
+ * 命中就原地 UPDATE，收藏 / 笔记才不会被一次改题清空。
+ * 输入侧（新建题目）不接受 id，所以挂在类型上而不是 zod schema 上。
+ */
+export type WireQuestion = z.infer<typeof questionSchema> & { id?: number }
 export type WireSheet = z.infer<typeof sheetSchema>
 
 /** 手机端返回的题目：比输入多了 id，可能带旧字段 */

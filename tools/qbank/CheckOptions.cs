@@ -17,15 +17,10 @@
 //   · border-ink —— 某条边上有粗墨迹长段（≥ 8px 且 3px 深），提示这道边把图形切断了，
 //                   需要人眼确认（裁紧的图正常也会在极值点碰到边，但只有 1~2px）。
 
-#:package SixLabors.ImageSharp@3.1.5
-#:package SixLabors.ImageSharp.Drawing@2.1.4
+#:package SkiaSharp@2.88.9
 
 using System.Text.Json;
-using SixLabors.Fonts;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Drawing.Processing;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
+using SkiaSharp;
 
 var baseDir = "qbank_out/超格行测套卷";
 for (int i = 0; i < args.Length; i++)
@@ -59,18 +54,18 @@ Directory.CreateDirectory(outDir);
 foreach (var f in Directory.GetFiles(outDir, "audit_*.png")) File.Delete(f);
 
 // ---------- 字体（只画 ASCII 标签） ----------
-Font? labelFont = null;
+SKTypeface? labelFont = null;
 foreach (var fam in new[] { "Consolas", "Arial", "Segoe UI" })
 {
-    if (SystemFonts.TryGet(fam, out var fam2)) { labelFont = fam2.CreateFont(18); break; }
+    labelFont = SKTypeface.FromFamilyName(fam);
+    if (labelFont != null) break;
 }
 if (labelFont == null)
 {
-    var coll = new FontCollection();
     foreach (var fp in new[] { @"C:\Windows\Fonts\consola.ttf", @"C:\Windows\Fonts\arial.ttf" })
-        if (File.Exists(fp)) { labelFont = coll.Add(fp).CreateFont(18); break; }
+        if (File.Exists(fp)) { labelFont = SKTypeface.FromFile(fp); break; }
 }
-Console.WriteLine("标签字体：" + (labelFont?.Family.Name ?? "无"));
+Console.WriteLine("标签字体：" + (labelFont?.FamilyName ?? "无"));
 
 // ---------- 收集题目 ----------
 var records = new List<QRec>();
@@ -166,13 +161,14 @@ for (int s = 0; s < records.Count; s += PerSheet)
     }
     int height = rows.Count * (RowH + 48) + 10;
 
-    using var sheet = new Image<L8>(width, height, new L8(255));
+    using var sheet = new SKBitmap(width, height);
+    using var canvas = new SKCanvas(sheet);
+    canvas.Clear(SKColors.White);
     int y = 6;
     foreach (var r in rows)
     {
         string tag = $"{Short(r.q.Paper)}-{r.q.No}";
-        if (labelFont != null)
-            sheet.Mutate(c => c.DrawText(tag, labelFont, Color.Black, new PointF(5, y + 8)));
+        if (labelFont != null) DrawLabel(canvas, tag, 5, y + 8, labelFont);
 
         int x = LabelW;
         if (r.stem != null)
@@ -182,22 +178,25 @@ for (int s = 0; s < records.Count; s += PerSheet)
         }
         // 题干与选项之间的分隔线
         for (int yy = y; yy < y + RowH; yy++)
-            for (int k = 0; k < 2; k++) sheet[Math.Max(0, x - 15 + k), yy] = new L8(150);
+            for (int k = 0; k < 2; k++)
+                sheet.SetPixel(Math.Max(0, x - 15 + k), yy, new SKColor(150, 150, 150));
         x += 8;
         for (int i = 0; i < 4; i++)
         {
             if (labelFont != null)
-                sheet.Mutate(c => c.DrawText("#" + "ABCD"[i], labelFont, Color.Black,
-                                             new PointF(x, y + RowH + 4)));
+                DrawLabel(canvas, "#" + "ABCD"[i], x, y + RowH + 4, labelFont);
             x = Paste(sheet, r.opts[i], x, y);
             x += 24;
         }
         for (int xx = 0; xx < width; xx++)
-            for (int k = 0; k < 1; k++) sheet[xx, y + RowH + 30] = new L8(200);
+            for (int k = 0; k < 1; k++) sheet.SetPixel(xx, y + RowH + 30, new SKColor(200, 200, 200));
         y += RowH + 48;
     }
     sheetIdx++;
-    sheet.SaveAsPng(Path.Combine(outDir, $"audit_{sheetIdx}.png"));
+    using var image = SKImage.FromBitmap(sheet);
+    using var data = image.Encode(SKEncodedImageFormat.Png, 100);
+    using var fs = File.Create(Path.Combine(outDir, $"audit_{sheetIdx}.png"));
+    data.SaveTo(fs);
 }
 
 Console.WriteLine($"\n共 {records.Count} 题，可疑 {flagged} 题；核对表 {sheetIdx} 张 -> {outDir}");
@@ -211,47 +210,65 @@ static string Short(string paper)
     return i >= 0 && i + 1 < paper.Length ? "S" + paper[(i + 1)..] : paper;
 }
 
-static Image<L8> LoadGray(string path)
+// SkiaSharp 的 DrawText 以基线定位，原按左上角 PointF 定位，
+// 这里加一个字号（18）偏移，保持视觉位置接近。
+static void DrawLabel(SKCanvas canvas, string text, float x, float y, SKTypeface tf)
 {
-    var img = Image.Load<L8>(path);
-    return img;
+    using var paint = new SKPaint { Color = SKColors.Black, TextSize = 18, IsAntialias = true, Typeface = tf };
+    canvas.DrawText(text, x, y + 18, paint);
 }
 
-static Image<L8> Fit(Image<L8> src, int maxH)
+// 灰度位图统一用 Bgra8888 表示：R=G=B=灰度值、A=255（等价原 Image<L8> 单通道）。
+// 灰度仍用原 PIL 权重公式 (R*19595+G*38470+B*7471)>>16，不改用 SkiaSharp 内置色彩转换。
+static SKBitmap ToGray(SKBitmap src)
+{
+    var g = new SKBitmap(src.Width, src.Height);
+    for (int y = 0; y < src.Height; y++)
+        for (int x = 0; x < src.Width; x++)
+        {
+            var c = src.GetPixel(x, y);
+            byte v = (byte)((c.Red * 19595 + c.Green * 38470 + c.Blue * 7471) >> 16);
+            g.SetPixel(x, y, new SKColor(v, v, v, 255));
+        }
+    return g;
+}
+
+static SKBitmap LoadGray(string path)
+{
+    using var src = SKBitmap.Decode(path);
+    return ToGray(src);
+}
+
+static SKBitmap Fit(SKBitmap src, int maxH)
 {
     if (src.Height <= maxH) return src;
     double k = maxH / (double)src.Height;
     int w = Math.Max(1, (int)Math.Round(src.Width * k));
-    var c = src.Clone(x => x.Resize(w, maxH, KnownResamplers.Lanczos3));
+    var c = src.Resize(new SKSizeI(w, maxH), SKFilterQuality.High);
     src.Dispose();
     return c;
 }
 
-static int Paste(Image<L8> sheet, Image<L8> src, int x, int y)
+static int Paste(SKBitmap sheet, SKBitmap src, int x, int y)
 {
     for (int yy = 0; yy < src.Height && y + yy < sheet.Height; yy++)
         for (int xx = 0; xx < src.Width && x + xx < sheet.Width; xx++)
-            sheet[x + xx, y + yy] = src[xx, yy];
+            sheet.SetPixel(x + xx, y + yy, src.GetPixel(xx, yy));
     return x + src.Width;
 }
 
-static double InkFraction(Image<L8> img)
+static double InkFraction(SKBitmap img)
 {
     long ink = 0;
-    img.ProcessPixelRows(a =>
-    {
-        for (int y = 0; y < a.Height; y++)
-        {
-            var row = a.GetRowSpan(y);
-            for (int x = 0; x < row.Length; x++) if (row[x].PackedValue < 160) ink++;
-        }
-    });
+    for (int y = 0; y < img.Height; y++)
+        for (int x = 0; x < img.Width; x++)
+            if (img.GetPixel(x, y).Red < 160) ink++;
     return ink / (double)(img.Width * img.Height);
 }
 
 // 细线条在灰度下采样里会被抹平（四张不同的柱状图会显得一样），
 // 所以按「块内只要有墨迹就算有」的方式池化，再比不重合比例。
-static double Diff(Image<L8> a, Image<L8> b)
+static double Diff(SKBitmap a, SKBitmap b)
 {
     const int N = 96;
     bool[] pa = InkPool(a, N), pb = InkPool(b, N);
@@ -265,7 +282,7 @@ static double Diff(Image<L8> a, Image<L8> b)
     return ink == 0 ? 0 : diff / (double)ink;
 }
 
-static bool[] InkPool(Image<L8> img, int n)
+static bool[] InkPool(SKBitmap img, int n)
 {
     var res = new bool[n * n];
     for (int y = 0; y < n; y++)
@@ -276,19 +293,19 @@ static bool[] InkPool(Image<L8> img, int n)
             bool on = false;
             for (int sy = sy0; sy < sy1 && !on; sy++)
                 for (int sx = sx0; sx < sx1; sx++)
-                    if (img[sx, sy].PackedValue < 160) { on = true; break; }
+                    if (img.GetPixel(sx, sy).Red < 160) { on = true; break; }
             res[y * n + x] = on;
         }
     return res;
 }
 
 // 贴边孤立小块数（卷面字母残留）
-static int LetterBlobs(Image<L8> img)
+static int LetterBlobs(SKBitmap img)
 {
     int w = img.Width, h = img.Height;
     var m = new bool[w * h];
     for (int y = 0; y < h; y++)
-        for (int x = 0; x < w; x++) m[y * w + x] = img[x, y].PackedValue < 160;
+        for (int x = 0; x < w; x++) m[y * w + x] = img.GetPixel(x, y).Red < 160;
 
     var label = new int[w * h];
     var comps = new List<(int area, int x0, int y0, int x1, int y1)>();

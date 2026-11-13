@@ -1,5 +1,6 @@
 import { defineComponent } from 'vue'
 import { issueCounts, markDirty, publish, state, toast, ui } from '../store'
+import { formatTime } from '../util'
 
 /** 顶栏：组名（发布后就是 App 首页那个标题）+ 校验 + 发布 */
 export default defineComponent({
@@ -43,6 +44,13 @@ export default defineComponent({
             }}
           />
           {state.dirty ? <span class="dirty">未发布</span> : null}
+          {state.dirty && ui.draftSavedAt
+            ? (
+              <span class="draft-saved" title="改动已存到本机浏览器，关掉页面也不会丢；草稿不设过期时间">
+                已自动保存 {formatTime(ui.draftSavedAt)}
+              </span>
+            )
+            : null}
         </div>
 
         <div class="top-actions">

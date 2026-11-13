@@ -70,15 +70,29 @@ class LanEditorStore(private val context: Context) {
             .put("paperTotal", sets.sumOf { it.paperCount })
     }
 
-    /** 打开一组：组里的每份卷 → 一张工作表 → 逐题 */
-    fun loadSet(setId: Long): JSONObject {
+    /**
+     * 打开一组：组里的每份卷 → 一张工作表 → 逐题。
+     *
+     * @param limit 单卷最多读多少题。读和写必须是同一批数据——`listQuestions` 有 5000 条上限，
+     *   如果读的时候被截断、发布时又整卷写回去，后面那些题就被冲掉了。所以宁可整卷拒绝编辑，
+     *   也不能让用户在不知情的情况下保存。版本快照传 `Int.MAX_VALUE`（存档必须全量）。
+     */
+    fun loadSet(setId: Long, limit: Int = MAX_EDIT_QUESTIONS): JSONObject {
         require(setId > 0) { "「未分组」里的卷不支持在线编辑，请先在 App 里把它们归到某个标题下" }
         val set = db.listPaperSets(withPapers = true).firstOrNull { it.id == setId }
             ?: throw IllegalArgumentException("找不到这组试卷（可能已在 App 里被删掉）")
 
         val sheets = JSONArray()
         set.papers.forEach { p ->
-            val questions = db.listQuestions(p.id)
+            val total = db.countQuestions(p.id)
+            if (total > limit) {
+                throw IllegalStateException(
+                    "「${p.name}」有 $total 题，超过网页编辑器单卷 $limit 题的上限。" +
+                        "在线读只能读到前 $limit 题，保存时会把后面的题冲掉——" +
+                        "请先在 App 里把这份卷拆成几份，再回来编辑。"
+                )
+            }
+            val questions = db.listQuestions(p.id, limit)
             sheets.put(
                 JSONObject()
                     .put("name", p.name)
@@ -215,6 +229,14 @@ class LanEditorStore(private val context: Context) {
         if (existing != null && !replace) {
             throw IllegalArgumentException("已经有同名的组「$title」，确认覆盖请点「覆盖发布」")
         }
+        // 卷描述 / 限时 / 组来源都是 App 侧的东西，编辑器不显示也不该顺手改掉：
+        // 按卷名把旧值继承回来，只有真正新增的卷才用默认值
+        val oldPapers = if (existing != null) {
+            db.listPapers().filter { it.setId == existing.id }.associateBy { it.name }
+        } else {
+            emptyMap()
+        }
+        val oldSource = existing?.source?.takeIf { it.isNotBlank() }
 
         val errors = ArrayList<String>()
         val papers = ArrayList<PaperImport>()
@@ -227,7 +249,15 @@ class LanEditorStore(private val context: Context) {
                 toQuestion(rawQs.getJSONObject(qi), name, qi, errors)?.let { list.add(it) }
             }
             if (list.isEmpty()) throw IllegalArgumentException("「$name」里一道题都没有，先加题再发布")
-            papers.add(PaperImport(name = name, description = "局域网编辑器", durationMin = 0, questions = list))
+            val old = oldPapers[name]
+            papers.add(
+                PaperImport(
+                    name = name,
+                    description = old?.description?.takeIf { it.isNotBlank() } ?: "局域网编辑器",
+                    durationMin = old?.durationMin ?: 0,
+                    questions = list,
+                )
+            )
         }
         if (errors.isNotEmpty()) {
             throw IllegalArgumentException(
@@ -236,14 +266,21 @@ class LanEditorStore(private val context: Context) {
             )
         }
 
-        // 校验都过了再留底：被拦下的发布不该在版本列表里留一条空记录
+        // 校验都过了再留底：被拦下的发布不该在版本列表里留一条空记录。
+        // 存档是唯一的后悔药——存不下来就不能覆盖，否则旧内容真的没了。
         val version = existing?.let {
-            runCatching { archive.save(it.title, it.id, reason, loadSet(it.id).getJSONArray("sheets")) }.getOrNull()
+            try {
+                archive.save(it.title, it.id, reason, loadSet(it.id, limit = Int.MAX_VALUE).getJSONArray("sheets"))
+            } catch (e: Exception) {
+                throw IllegalStateException("旧内容存档失败，已取消覆盖：${e.message ?: "未知原因"}", e)
+            }
         }
 
         val result = db.importSets(
-            listOf(SetImport(title = title, source = "局域网编辑器", papers = papers)),
-            replace = replace || existing != null
+            listOf(SetImport(title = title, source = oldSource ?: "局域网编辑器", papers = papers)),
+            replace = replace || existing != null,
+            // 原地更新题目行：收藏 / 笔记挂在题目 id 上，重建就等于把它们清空了
+            reuseQuestionIds = true,
         ).firstOrNull() ?: throw IllegalStateException("写入失败：没有生成任何试卷")
 
         return JSONObject()
@@ -377,6 +414,10 @@ class LanEditorStore(private val context: Context) {
         val difficulty = o.optString("difficulty").trim().toIntOrNull()?.coerceIn(0, 3) ?: 0
 
         return Question(
+            // 前端会把打开时拿到的题目 id 原样带回来。带回来是为了让发布走「原地更新」，
+            // 收藏 / 笔记挂在题目 id 上，删了重建就等于把用户攒的东西清空。
+            // 只认旧组里真实存在的 id（校验在 importSets 里做），伪造的 id 不会命中别的组。
+            id = o.optLong("id", 0L).coerceAtLeast(0L),
             type = type,
             stem = stem,
             material = localizeImages(o.optString("material")),
@@ -417,24 +458,45 @@ class LanEditorStore(private val context: Context) {
 
     // ---------------------------------------------------------------- 图片
 
-    /** 存一张上传的图，返回题目里该写的相对路径 `images/xxx.png` */
+    /**
+     * 存一张上传的图，返回题目里该写的相对路径 `images/xxx.png`。
+     *
+     * 类型按文件头判断，不信客户端给的扩展名——网页按扩展名回吐 Content-Type，
+     * 传个 .html 上来就变成同源脚本了。体积也在这里卡住，别让大请求体落盘。
+     */
     fun saveImage(rawName: String, bytes: ByteArray): String {
-        imageDir.mkdirs()
-        val safe = rawName.substringAfterLast('/').substringAfterLast('\\')
-            .replace(Regex("""[\\/:*?"<>|\s]+"""), "_")
-            .ifBlank { "image.png" }
-        val dot = safe.lastIndexOf('.')
-        val stem = if (dot > 0) safe.substring(0, dot) else safe
-        val ext = if (dot > 0) safe.substring(dot) else ".png"
+        require(bytes.isNotEmpty()) { "图片内容为空" }
+        require(bytes.size <= MAX_IMAGE_BYTES) { "图片太大了，单张上限 ${MAX_IMAGE_BYTES / 1024 / 1024}MB" }
+        val ext = sniffImageExt(bytes) ?: throw IllegalArgumentException("只支持 png / jpg / gif / webp 图片")
 
-        var candidate = "$stem$ext"
+        imageDir.mkdirs()
+        val base = rawName.substringAfterLast('/').substringAfterLast('\\')
+        val stem = base.substringBeforeLast('.', base)
+            .replace(Regex("""[\\/:*?"<>|\s]+"""), "_")
+            .take(60)
+            .ifBlank { "image" }
+
+        var candidate = "$stem.$ext"
         var n = 1
         while (File(imageDir, candidate).exists()) {
-            candidate = "$stem-$n$ext"
+            candidate = "$stem-$n.$ext"
             n++
         }
         File(imageDir, candidate).writeBytes(bytes)
         return "images/$candidate"
+    }
+
+    /** 认文件头，不认扩展名 */
+    private fun sniffImageExt(b: ByteArray): String? {
+        fun at(i: Int): Int = if (i < b.size) b[i].toInt() and 0xFF else -1
+        return when {
+            at(0) == 0x89 && at(1) == 0x50 && at(2) == 0x4E && at(3) == 0x47 -> "png"
+            at(0) == 0xFF && at(1) == 0xD8 && at(2) == 0xFF -> "jpg"
+            at(0) == 0x47 && at(1) == 0x49 && at(2) == 0x46 && at(3) == 0x38 -> "gif"
+            at(0) == 0x52 && at(1) == 0x49 && at(2) == 0x46 && at(3) == 0x46 &&
+                at(8) == 0x57 && at(9) == 0x45 && at(10) == 0x42 && at(11) == 0x50 -> "webp"
+            else -> null
+        }
     }
 
     /**
@@ -444,18 +506,30 @@ class LanEditorStore(private val context: Context) {
     fun resolveImage(path: String): File? {
         val p = path.trim()
         if (p.isEmpty()) return null
-        val file = if (p.startsWith("images/") || p.startsWith("./images/")) {
-            File(imageDir, p.substringAfter("images/"))
+        val cleaned = p.removePrefix("./")
+        val file = if (cleaned.startsWith("images/")) {
+            val rel = cleaned.substringAfter("images/")
+            // `images/../../databases/qbank.db` 能一路翻到数据库和备份包，先把 .. 挡掉
+            if (rel.isEmpty() || rel.contains("..") || rel.contains('\\') || rel.startsWith("/")) return null
+            File(imageDir, rel)
         } else {
             File(p)
         }
         if (!file.isFile) return null
-        val allowedRoot = context.filesDir.absolutePath
-        val absolute = file.absolutePath
-        return if (absolute.startsWith(allowedRoot)) file else null
+        // absolutePath 只是拼字符串，`..` 不会被消掉；规范化之后再判断有没有跑出私有目录
+        val root = context.filesDir.canonicalFile
+        val target = file.canonicalFile
+        val inside = target == root || target.path.startsWith(root.path + File.separator)
+        return if (inside) target else null
     }
 
     private companion object {
+        /** 网页编辑器单卷最多读多少题。再大就只读一部分，发布时会把剩下的冲掉 */
+        const val MAX_EDIT_QUESTIONS = 5000
+
+        /** 单张上传图的上限 */
+        const val MAX_IMAGE_BYTES = 5 * 1024 * 1024
+
         /**
          * `./images/x.png` / `images/子目录/x.png`。
          *
