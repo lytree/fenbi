@@ -18,8 +18,8 @@ import java.io.File
  * 与 App 的数据模型对齐，没有第二套结构：
  * - **一级标题 = 导入组 `paper_sets`**，Web 端的「保存」就是按标题重导这一组；
  * - **组里的每份卷 = 一张工作表**（Web 端顶部的卷标签），题按卷面顺序落 `paper_questions`；
- * - 图片统一放 `filesDir/lan_editor/images/`，题目里写 `images/xxx.png`，**入库时才换成绝对路径**
- *   （App 的 MaterialRenderer 认绝对路径，换机备份也跟着走）。
+ * - 图片按组编号分目录放 `filesDir/lan_editor/images/<组编号>/`，题目里写 `images/<组编号>/xxx.png`，
+ *   **入库时才换成绝对路径**（App 的 MaterialRenderer 认绝对路径，换机备份也跟着走）。
  *
  * 覆盖同一标题会走 `importSets(replace = true)`——那一组的旧卷连同作答记录一起被替换，
  * 这是「重新导入同一份卷」的既定口径。但**旧内容不会被白白冲掉**：覆盖前先由
@@ -96,7 +96,7 @@ class LanEditorStore(private val context: Context) {
             sheets.put(
                 JSONObject()
                     .put("name", p.name)
-                    .put("questions", JSONArray().apply { questions.forEach { put(questionToJson(it)) } })
+                    .put("questions", JSONArray().apply { questions.forEach { put(questionToJson(it, setId)) } })
             )
         }
         return JSONObject()
@@ -107,21 +107,25 @@ class LanEditorStore(private val context: Context) {
             .put("missingAnswers", set.missingAnswers)
     }
 
-    private fun questionToJson(q: Question): JSONObject = JSONObject().apply {
+    /**
+     * @param setId 当前打开的组；大于 0 时把题目里的图片搬进 `images/<setId>/` 并改写成该相对路径。
+     *              作答记录（[loadRecord]）不传，图片路径保持库里的原样。
+     */
+    private fun questionToJson(q: Question, setId: Long = 0): JSONObject = JSONObject().apply {
         put("type", typeKey(q.type))
         put("subject", q.subject)
-        put("material", q.material)
+        put("material", editorText(q.material, setId))
         put("images", "")
-        put("stem", q.stem)
+        put("stem", editorText(q.stem, setId))
         put(
             "options", JSONArray().apply {
                 q.options.forEach { o ->
-                    put(JSONObject().put("key", o.key).put("text", o.text))
+                    put(JSONObject().put("key", o.key).put("text", editorText(o.text, setId)))
                 }
             }
         )
         put("answer", answerForEditor(q))
-        put("analysis", q.analysis)
+        put("analysis", editorText(q.analysis, setId))
         put("knowledge", q.knowledge)
         put("difficulty", if (q.difficulty > 0) q.difficulty.toString() else "")
         put("region", q.region)
@@ -350,6 +354,8 @@ class LanEditorStore(private val context: Context) {
         val set = db.listPaperSets(withPapers = true).firstOrNull { it.id == setId }
             ?: throw IllegalArgumentException("这组已经不存在了")
         db.deletePaperSet(setId)
+        // 图是按组编号分目录存的，组没了就一并清掉，不留孤儿文件
+        runCatching { imageDirFor(setId).deleteRecursively() }
         return JSONObject()
             .put("ok", true)
             .put("title", set.title)
@@ -459,17 +465,34 @@ class LanEditorStore(private val context: Context) {
     // ---------------------------------------------------------------- 图片
 
     /**
-     * 存一张上传的图，返回题目里该写的相对路径 `images/xxx.png`。
+     * 存一张上传的图，返回题目里该写的相对路径 `images/<组编号>/<文件名>`。
+     *
+     * 图按试卷组（`paper_sets.id`）分目录：一组一个文件夹，同名图不会互相顶掉，
+     * 删组时也能连图一起清。还没发布的组没有编号，先放 `images/draft/`，
+     * 下次打开这一组时由 [editorText] 搬进正式目录。
      *
      * 类型按文件头判断，不信客户端给的扩展名——网页按扩展名回吐 Content-Type，
      * 传个 .html 上来就变成同源脚本了。体积也在这里卡住，别让大请求体落盘。
+     *
+     * @param replacePath 传了就原地换掉这张图（题目里的引用不用改），否则存成新文件。
      */
-    fun saveImage(rawName: String, bytes: ByteArray): String {
+    fun saveImage(setId: Long, rawName: String, bytes: ByteArray, replacePath: String? = null): String {
         require(bytes.isNotEmpty()) { "图片内容为空" }
         require(bytes.size <= MAX_IMAGE_BYTES) { "图片太大了，单张上限 ${MAX_IMAGE_BYTES / 1024 / 1024}MB" }
         val ext = sniffImageExt(bytes) ?: throw IllegalArgumentException("只支持 png / jpg / gif / webp 图片")
 
-        imageDir.mkdirs()
+        val dir = imageDirFor(setId)
+        if (!replacePath.isNullOrBlank()) {
+            val old = imageFile(replacePath)
+                ?: throw IllegalArgumentException("要替换的图片不在资源目录里")
+            if (old.parentFile?.canonicalFile != dir.canonicalFile) {
+                throw IllegalArgumentException("只能替换本组目录里的图片")
+            }
+            old.writeBytes(bytes)
+            return relativeImagePath(old)
+        }
+
+        dir.mkdirs()
         val base = rawName.substringAfterLast('/').substringAfterLast('\\')
         val stem = base.substringBeforeLast('.', base)
             .replace(Regex("""[\\/:*?"<>|\s]+"""), "_")
@@ -478,12 +501,42 @@ class LanEditorStore(private val context: Context) {
 
         var candidate = "$stem.$ext"
         var n = 1
-        while (File(imageDir, candidate).exists()) {
+        while (File(dir, candidate).exists()) {
             candidate = "$stem-$n.$ext"
             n++
         }
-        File(imageDir, candidate).writeBytes(bytes)
-        return "images/$candidate"
+        File(dir, candidate).writeBytes(bytes)
+        return relativeImagePath(File(dir, candidate))
+    }
+
+    /** 资源列表：这一组目录下已有的图（网页右栏「资源」页签用） */
+    fun listResources(setId: Long): JSONObject {
+        val dir = imageDirFor(setId)
+        val files = dir.listFiles()?.filter { it.isFile }?.sortedBy { it.name } ?: emptyList()
+        return JSONObject()
+            .put("setId", setId)
+            .put("dir", "$IMAGE_PREFIX/${dir.name}")
+            .put(
+                "files", JSONArray().apply {
+                    files.forEach { f ->
+                        put(
+                            JSONObject()
+                                .put("path", relativeImagePath(f))
+                                .put("name", f.name)
+                                .put("size", f.length())
+                                .put("mtime", f.lastModified())
+                        )
+                    }
+                }
+            )
+    }
+
+    /** 删一张图；删完题目里的引用会显示成掉的图，正好提醒去补 */
+    fun deleteResource(path: String): JSONObject {
+        val file = imageFile(path) ?: throw IllegalArgumentException("只能删资源目录里的图片")
+        if (!file.isFile) throw IllegalArgumentException("这张图已经不在手机里了")
+        if (!file.delete()) throw IllegalStateException("删除失败：文件可能被占用")
+        return JSONObject().put("ok", true).put("path", path)
     }
 
     /** 认文件头，不认扩展名 */
@@ -499,31 +552,98 @@ class LanEditorStore(private val context: Context) {
         }
     }
 
+    /** 解析要回给浏览器的图片：只认资源目录里的 `images/…`，绝对路径一律不服务 */
+    fun resolveImage(path: String): File? = imageFile(path)?.takeIf { it.isFile }
+
+    /** 一组一个图片文件夹；还没发布的组先落在 draft */
+    private fun imageDirFor(setId: Long): File =
+        File(imageDir, if (setId > 0) setId.toString() else DRAFT_DIR)
+
+    private fun relativeImagePath(file: File): String {
+        val rel = file.canonicalFile.relativeTo(imageDir.canonicalFile).invariantSeparatorsPath
+        return "$IMAGE_PREFIX/$rel"
+    }
+
     /**
-     * 解析要回给浏览器的图片路径：只允许 `images/…`（编辑器上传的）
-     * 和 App 私有目录里的绝对路径（导入试卷包解出来的图），别的一律拒绝。
+     * `images/…` → 资源目录里的真实文件。
+     *
+     * `images/../../databases/qbank.db` 能一路翻到数据库和备份包，先把 `..` 挡掉；
+     * 规范化之后再确认没跑出图片根目录。
      */
-    fun resolveImage(path: String): File? {
-        val p = path.trim()
-        if (p.isEmpty()) return null
-        val cleaned = p.removePrefix("./")
-        val file = if (cleaned.startsWith("images/")) {
-            val rel = cleaned.substringAfter("images/")
-            // `images/../../databases/qbank.db` 能一路翻到数据库和备份包，先把 .. 挡掉
-            if (rel.isEmpty() || rel.contains("..") || rel.contains('\\') || rel.startsWith("/")) return null
-            File(imageDir, rel)
-        } else {
-            File(p)
+    private fun imageFile(path: String): File? {
+        val p = path.trim().removePrefix("./")
+        if (!p.startsWith("$IMAGE_PREFIX/")) return null
+        val rel = p.substringAfter("$IMAGE_PREFIX/")
+        if (rel.isEmpty() || rel.contains("..") || rel.contains('\\') || rel.startsWith("/")) return null
+        val root = imageDir.canonicalFile
+        val target = File(imageDir, rel).canonicalFile
+        return if (target.path.startsWith(root.path + File.separator)) target else null
+    }
+
+    /**
+     * 题目正文 → 编辑器里的写法：图片一律落成 `images/<setId>/<文件名>`。
+     *
+     * 老数据有两种来源要搬：平铺的 `images/x.png`、导入试卷包留下的绝对路径。
+     * 搬不动的（文件已经丢了）原样留着，预览会显示成掉的图，一眼能看出问题。
+     */
+    private fun editorText(text: String, setId: Long): String {
+        if (text.isBlank() || setId <= 0) return text
+        var out = text
+        if (out.contains("$IMAGE_PREFIX/")) {
+            out = IMAGE_REF.replace(out) { m ->
+                val file = File(imageDir, m.groupValues[1])
+                importIntoSet(file, setId) ?: m.value
+            }
         }
+        val root = context.filesDir.absolutePath.trimEnd('/')
+        if (out.contains(root)) {
+            out = Regex("""${Regex.escape(root)}[^\s)"'<>]+""").replace(out) { m ->
+                val file = File(m.value)
+                if (file.isFile) importIntoSet(file, setId) ?: m.value else m.value
+            }
+        }
+        return out
+    }
+
+    /**
+     * 把一张图搬进 `images/<setId>/`，返回题目里该写的路径。
+     * 已经在目标目录里就直接给相对路径；找不到文件返回 null。
+     */
+    private fun importIntoSet(file: File, setId: Long): String? {
         if (!file.isFile) return null
-        // absolutePath 只是拼字符串，`..` 不会被消掉；规范化之后再判断有没有跑出私有目录
-        val root = context.filesDir.canonicalFile
-        val target = file.canonicalFile
-        val inside = target == root || target.path.startsWith(root.path + File.separator)
-        return if (inside) target else null
+        val dir = imageDirFor(setId)
+        if (file.parentFile?.canonicalFile == dir.canonicalFile) return relativeImagePath(file)
+        val target = uniqueTarget(dir, file)
+        if (!target.exists()) {
+            dir.mkdirs()
+            if (runCatching { file.copyTo(target) }.isFailure) return null
+        }
+        return relativeImagePath(target)
+    }
+
+    /** 同名同大小当作同一张图；内容不同就加 `-1` `-2` 后缀，别把别人的图顶掉 */
+    private fun uniqueTarget(dir: File, source: File): File {
+        var candidate = File(dir, source.name)
+        if (!candidate.exists()) return candidate
+        if (candidate.length() == source.length()) return candidate
+        val stem = source.name.substringBeforeLast('.', source.name)
+        val ext = source.name.substringAfterLast('.', "")
+        var n = 1
+        while (true) {
+            candidate = File(dir, if (ext.isEmpty()) "$stem-$n" else "$stem-$n.$ext")
+            if (!candidate.exists()) return candidate
+            if (candidate.length() == source.length()) return candidate
+            n++
+        }
     }
 
     private companion object {
+        /** 题目里引用图片统一用这个前缀，后面跟组编号 */
+        const val IMAGE_PREFIX = "images"
+
+        /** 还没发布的组没有编号，图片先落这里，下次打开时搬进正式目录 */
+        const val DRAFT_DIR = "draft"
+
         /** 网页编辑器单卷最多读多少题。再大就只读一部分，发布时会把剩下的冲掉 */
         const val MAX_EDIT_QUESTIONS = 5000
 

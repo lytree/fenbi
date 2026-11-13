@@ -24,6 +24,8 @@ export default defineComponent({
     question: { type: Object as PropType<Question>, required: true },
     index: { type: Number, required: true },
     group: { type: Object as PropType<Group | null>, default: null },
+    /** 题目列表里才给拖拽把手：其它视图（材料模式）拖动会和编辑操作打架 */
+    sortable: { type: Boolean, default: false },
   },
   setup(props) {
     const root = ref<HTMLElement | null>(null)
@@ -36,7 +38,7 @@ export default defineComponent({
     onUpdated(growThis)
 
     const onHeadClick = (e: MouseEvent) => {
-      if ((e.target as HTMLElement).closest('button, input, textarea, select, details, summary')) return
+      if ((e.target as HTMLElement).closest('button, input, textarea, select, details, summary, .qgrip')) return
       toggleExpand(props.question._uid)
     }
 
@@ -101,6 +103,15 @@ export default defineComponent({
           data-uid={q._uid}
         >
           <div class="qhead" onClick={onHeadClick}>
+            {props.sortable
+              ? (
+                <span
+                  class="qgrip"
+                  title="按住拖动调整顺序；拖到材料组头上可并入该材料"
+                  draggable={true}
+                >⠿</span>
+              )
+              : null}
             <span class="qno">{props.index + 1}</span>
             {hasTypeTree
               ? (

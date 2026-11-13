@@ -7,7 +7,7 @@ import { nextUid } from './util'
  * 本地 JSON 的字段口径与 App 导入模板一致：题型写中文（单选 / 多选 / 判断…），
  * 选项是 `{ A: "…" }` 对象。编辑器内部统一用 `single` / `multi` 等 code 和
  * `[{ key, text }]` 数组，所以两头各转一次；图片路径原样保留（`images/x.png`），
- * 由开发服务器的 `/local/img` 按试卷包目录解析。
+ * 本地模式不再解析这些图，预览只显示占位。
  */
 
 export interface LocalOptionMap {

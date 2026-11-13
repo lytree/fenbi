@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import App from '../App'
+import { state } from '../store'
 
 /**
  * 冒烟测试：不连手机也能验证「打开一组 → 加题 → 发布」这条主链路。
@@ -67,19 +68,32 @@ const VERSIONS = {
   ],
 }
 
+const RESOURCES = [
+  { path: 'images/1/used.png', name: 'used.png', size: 2048, mtime: 1 },
+  { path: 'images/1/unused.png', name: 'unused.png', size: 4096, mtime: 2 },
+  { path: 'images/1/other.png', name: 'other.png', size: 512, mtime: 3 },
+]
+
 let published: any = null
 let deleteRequested: number[] = []
 let deleteCancelled: string[] = []
+let resourceDeleted: string[] = []
 
 function mockFetch() {
   published = null
   deleteRequested = []
   deleteCancelled = []
+  resourceDeleted = []
   const fn = vi.fn(async (input: any, init?: RequestInit) => {
     const url = String(input)
     if (url.startsWith('/api/papers')) return json(SETS)
     if (url.startsWith('/api/paper')) return json(PAPER)
     if (url.startsWith('/api/versions')) return json(VERSIONS)
+    if (url.startsWith('/api/resources')) return json({ setId: 1, dir: 'images/1', files: RESOURCES })
+    if (url.startsWith('/api/resource')) {
+      resourceDeleted.push(new URL(url, 'http://localhost').searchParams.get('p') || '')
+      return json({ ok: true, path: resourceDeleted[resourceDeleted.length - 1] })
+    }
     if (url.startsWith('/api/publish')) {
       published = JSON.parse(String(init?.body))
       return json({
@@ -464,6 +478,39 @@ describe('局域网题库编辑器', () => {
     wrapper.unmount()
   })
 
+  it('资源页签：按组编号列出图片，标出未引用与缺失，可删图', async () => {
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+
+    // 第 1 题引用一张已有的图、一张手机里没有的图
+    state.paper!.sheets[0].questions[0].stem +=
+      '\n![x](images/1/used.png)\n![y](images/1/gone.png)'
+
+    await wrapper.find('[data-pane="resource"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findAll('.res-item')).toHaveLength(3)
+    expect(wrapper.find('.res-total').text()).toContain('共 3 张')
+    expect(wrapper.find('.res-total').text()).toContain('引用 2 次')
+    expect(wrapper.text()).toContain('引用 1 次')
+    expect(wrapper.text()).toContain('未引用')
+    expect(wrapper.find('.res-missing').text()).toContain('images/1/gone.png')
+
+    const unused = wrapper.findAll('.res-item').find((n) => n.text().includes('unused.png'))!
+    const del = unused.findAll('button').find((b) => b.text() === '删')!
+    await del.trigger('click')
+    await flushPromises()
+
+    const confirm = wrapper.findAll('button').find((b) => b.text() === '删图')
+    expect(confirm).toBeTruthy()
+    await confirm!.trigger('click')
+    await flushPromises()
+
+    expect(resourceDeleted).toEqual(['images/1/unused.png'])
+    expect(wrapper.findAll('.res-item')).toHaveLength(2)
+    wrapper.unmount()
+  })
+
   it('删除只发请求给手机，网页上不直接删', async () => {
     const wrapper = mount(App, { attachTo: document.body })
     await flushPromises()
@@ -590,6 +637,93 @@ describe('局域网题库编辑器', () => {
     expect(focused.exists()).toBe(true)
     expect(focused.text()).toContain('第一题：没有语病的一项')
     expect(wrapper.findAll('.bgroup .btile')).toHaveLength(2)
+    wrapper.unmount()
+  })
+
+  it('拖动预览左侧的分隔条可以调整预览宽度，且有上下限', async () => {
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+
+    const split = wrapper.find('.pane-split')
+    expect(split.exists()).toBe(true)
+
+    // jsdom 没有布局：面板实测宽度是 0，按默认 360 起算；左拖 200 像素 → 560
+    split.element.dispatchEvent(new MouseEvent('pointerdown', { clientX: 1000, button: 0, bubbles: true }))
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 800 }))
+    await flushPromises()
+    expect(wrapper.find('.layout').attributes('style')).toContain('--preview-w: 560px')
+    expect(document.body.classList.contains('pane-dragging')).toBe(true)
+
+    // 拖过头也不让预览把编辑区挤没，右边限住
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 2000 }))
+    await flushPromises()
+    expect(wrapper.find('.layout').attributes('style')).toContain('--preview-w: 280px')
+
+    window.dispatchEvent(new MouseEvent('pointerup'))
+    await flushPromises()
+    expect(document.body.classList.contains('pane-dragging')).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('题目列表：拖动把手可以把题插到别的题前 / 后', async () => {
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+    // 前面的用例可能把编辑区停在分组板，先切回题目列表
+    await wrapper.find('[data-view="list"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findAll('.qcard .qgrip')).toHaveLength(3)
+
+    // 第 1 题拖到第 3 题下半区 = 插到它后面；落进材料组就跟着共用同一段材料
+    await wrapper.findAll('.qcard .qgrip')[0].trigger('dragstart')
+    await wrapper.findAll('.qwrap')[2].trigger('dragover', { clientY: 10 })
+    expect(wrapper.findAll('.qwrap')[2].classes()).toContain('drop-after')
+    await wrapper.findAll('.qwrap')[2].trigger('drop', { clientY: 10 })
+    await flushPromises()
+
+    const stems = wrapper.findAll('.qcard .stem-preview').map((n) => n.text())
+    expect(stems[0]).toContain('第二题：同比增加多少')
+    expect(stems[2]).toContain('第一题：没有语病的一项')
+    // 变成材料组最后一题：组从第 1 题起，三题共用
+    expect(wrapper.find('.gh-count').text()).toContain('3 题共用')
+    wrapper.unmount()
+  })
+
+  it('题目列表：把题拖到材料组头上即并入该材料', async () => {
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+    await wrapper.find('[data-view="list"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.findAll('.qcard .qgrip')[0].trigger('dragstart')
+    await wrapper.find('.group-head').trigger('dragover')
+    expect(wrapper.find('.group-head').classes()).toContain('drop-on')
+
+    await wrapper.find('.group-head').trigger('drop')
+    await flushPromises()
+
+    expect(wrapper.find('.gh-count').text()).toContain('第 1–3 题')
+    expect(wrapper.find('.gh-count').text()).toContain('3 题共用')
+
+    const publishBtn = wrapper.findAll('button').find((b) => b.text().includes('发布到 App'))
+    await publishBtn!.trigger('click')
+    await flushPromises()
+
+    const questions = published.sheets[0].questions
+    expect(questions[2].stem).toBe('第一题：没有语病的一项')
+    expect(questions[2].material).toBe('2025年1—2月，总收入5280.0亿元。')
+    wrapper.unmount()
+  })
+
+  it('材料模式不显示排序把手（拖动会和选字冲突）', async () => {
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+
+    await wrapper.find('[data-view="material"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findAll('.qcard').length).toBeGreaterThan(0)
+    expect(wrapper.findAll('.qgrip')).toHaveLength(0)
     wrapper.unmount()
   })
 

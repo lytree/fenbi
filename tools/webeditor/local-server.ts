@@ -2,14 +2,13 @@
  * 本地试卷包的资源服务器（只在 `pnpm dev` 下生效）。
  *
  * 编辑器平时读写手机里的题库；没有手机时，用这个中间件直接读写仓库里的
- * JSON 试卷（`qbank_out/`、`sample/`、`templates/`），并提供 `images/…` 图片，
- * 这样分组板在电脑上就能完整跑起来，不用先导入 App。
+ * JSON 试卷（`qbank_out/`、`sample/`、`templates/`），这样分组板在电脑上就能完整跑起来，
+ * 不用先导入 App。图片只走手机端的资源目录，本地模式不读试卷包里的图。
  *
  * 路由（都挂在 /local 下，仅开发服务器）：
  *   GET  /local/packages          列出所有带 questions 的 JSON 试卷包
  *   GET  /local/package?id=…      读一份试卷包（原样返回 JSON，附 id / path / dir）
  *   POST /local/save              写回同一份 JSON（保留未知顶层字段）
- *   GET  /local/img?p=…&base=…    读图片（相对路径按试卷包目录解析）
  */
 
 import fs from 'node:fs'
@@ -19,7 +18,6 @@ import type { Plugin } from 'vite'
 const REPO_ROOT = path.resolve(process.cwd(), '../..')
 const PACKAGE_ROOTS = ['qbank_out', 'sample', 'templates'].map((r) => path.join(REPO_ROOT, r))
 const MAX_DEPTH = 4
-const IMAGE_EXT = /\.(png|jpe?g|webp|gif|bmp)$/i
 
 interface PackageEntry {
   id: string
@@ -92,49 +90,6 @@ function packageFile(id: string): string | null {
   return file
 }
 
-function mimeOf(file: string): string {
-  const ext = path.extname(file).toLowerCase()
-  if (ext === '.png') return 'image/png'
-  if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg'
-  if (ext === '.webp') return 'image/webp'
-  if (ext === '.gif') return 'image/gif'
-  if (ext === '.bmp') return 'image/bmp'
-  return 'application/octet-stream'
-}
-
-/** 示例包里用 `asset://samples/x.png` 引用内置图，开发服务器按文件名在 sample 下找一遍 */
-function assetCandidates(src: string): string[] {
-  const rest = src.replace(/^asset:\/\/samples?\//i, '')
-  const names = [rest, path.basename(rest)]
-  const dirs = [
-    path.join(REPO_ROOT, 'sample'),
-    path.join(REPO_ROOT, 'sample', '资料分析试卷包', 'images'),
-    path.join(REPO_ROOT, 'sample', 'images'),
-  ]
-  const out: string[] = []
-  for (const dir of dirs) for (const name of names) out.push(path.join(dir, name))
-  return out
-}
-
-function resolveImage(rawPath: string, base: string): string | null {
-  const p = (rawPath || '').trim()
-  if (!p || p.startsWith('data:')) return null
-
-  if (/^asset:\/\//i.test(p)) {
-    for (const file of assetCandidates(p)) {
-      if (fs.existsSync(file) && fs.statSync(file).isFile()) return file
-    }
-    return null
-  }
-
-  const absolute = path.isAbsolute(p) || /^[A-Za-z]:[\\/]/.test(p)
-  const file = absolute ? p : path.resolve(base || REPO_ROOT, p)
-  if (!insideRepo(file)) return null
-  if (!IMAGE_EXT.test(file)) return null
-  if (!fs.existsSync(file) || !fs.statSync(file).isFile()) return null
-  return file
-}
-
 function sendJson(res: any, status: number, body: unknown) {
   const text = JSON.stringify(body)
   res.statusCode = status
@@ -199,20 +154,9 @@ export function localServer(): Plugin {
           }
 
           if (route === '/img' && req.method === 'GET') {
-            const file = resolveImage(
-              url.searchParams.get('p') || '',
-              url.searchParams.get('base') || '',
-            )
-            if (!file) {
-              res.statusCode = 404
-              res.setHeader('Content-Type', 'text/plain; charset=utf-8')
-              res.end('图片不存在')
-              return
-            }
-            res.statusCode = 200
-            res.setHeader('Content-Type', mimeOf(file))
-            res.setHeader('Cache-Control', 'no-store')
-            res.end(fs.readFileSync(file))
+            res.statusCode = 404
+            res.setHeader('Content-Type', 'text/plain; charset=utf-8')
+            res.end('本地模式不读试卷包里的图片，请用手机端资源目录')
             return
           }
 

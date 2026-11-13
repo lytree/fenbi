@@ -1,8 +1,8 @@
 import { computed, reactive } from 'vue'
-import { api, setImageBase } from './api'
+import { api } from './api'
 import type {
   DataSource, EditorPaper, EditorView, Filter, Group, Issue, LocalPackageInfo, PaperSetInfo,
-  QIssue, Question, QuestionType, Sheet, SubjectFilter, TypeFilter, VersionInfo, WireSheet,
+  QIssue, Question, QuestionType, ResourceFile, Sheet, SubjectFilter, TypeFilter, VersionInfo, WireSheet,
 } from './types'
 import { formatTime, nextUid, sleep } from './util'
 import { parsePasted } from './paste'
@@ -72,9 +72,14 @@ export const state = reactive({
   subjectFilter: 'all' as SubjectFilter,
   /** 二级题型筛（值取归一后的知识点名） */
   subTopicFilter: 'all' as SubjectFilter,
-  pane: 'preview' as 'preview' | 'issue' | 'version',
+  pane: 'preview' as 'preview' | 'issue' | 'version' | 'resource',
   versions: [] as VersionInfo[],
   versionLoading: false,
+  /** 当前这组的图片资源（右栏「资源」页签） */
+  resources: [] as ResourceFile[],
+  resourceLoading: false,
+  /** 资源列表对应的组；换组后旧列表不能拿来当新组的计数 */
+  resourceSetId: 0,
   focused: null as number | null,
   groups: [] as Group[],
 })
@@ -361,7 +366,6 @@ export async function openSet(id: number, opts: { force?: boolean } = {}): Promi
   const p = await api.paper(id)
   state.source = 'phone'
   state.local = null
-  setImageBase('')
   state.paper = {
     id: p.id,
     name: p.title,
@@ -370,6 +374,8 @@ export async function openSet(id: number, opts: { force?: boolean } = {}): Promi
       questions: (s.questions ?? []).map((q) => ({ ...q, _uid: nextUid(), _issues: null })),
     })),
   }
+  state.resources = []
+  state.resourceSetId = 0
   if (!state.paper.sheets.length) state.paper.sheets = [{ name: '试卷', questions: [] }]
   state.sheet = 0
   state.expanded = []
@@ -425,7 +431,8 @@ export async function switchSource(src: DataSource): Promise<void> {
   clearSelection()
   // 没改动时别动草稿：启动自动切本地时，手机那份未发布草稿还要留着
   if (hadChanges) clearDraft()
-  setImageBase('')
+  state.resources = []
+  state.resourceSetId = 0
   if (src === 'phone') {
     await loadSets()
     const first = state.sets.find((s) => s.id > 0)
@@ -450,7 +457,6 @@ export async function openLocalPackage(id: string, opts: { force?: boolean } = {
     dir: raw.dir ?? '',
     description: String(raw.description ?? ''),
   }
-  setImageBase(state.local.dir)
   state.paper = {
     id: 0,
     name: String(raw.bank || raw.title || raw.id),
@@ -823,14 +829,65 @@ export function ungroupMaterial(q: Question) {
   refreshGroups()
 }
 
-export async function uploadImage(file: File): Promise<string | null> {
+/** 当前打开的组编号；新建还没发布的组是 0（图片先落手机端的 draft 目录） */
+export function currentSetId(): number {
+  const id = state.paper?.id ?? 0
+  return id > 0 ? id : 0
+}
+
+export async function uploadImage(file: File, replacePath?: string): Promise<string | null> {
+  if (state.source === 'local') {
+    toast('本地试卷包模式不支持上传图片：图片请直接放进试卷包的 images/ 目录', 'err')
+    return null
+  }
   try {
-    const path = await api.upload(file)
-    toast(`图片已存进手机：${path}`, 'ok')
+    const path = await api.upload(file, currentSetId(), replacePath)
+    toast(replacePath ? `已替换这张图：${path}` : `图片已存进手机：${path}`, 'ok')
+    // 资源面板开着时顺手刷新，别让新图要手动点「刷新」才出现
+    if (state.resourceSetId === currentSetId()) void loadResources()
     return path
   } catch (e) {
     toast(e instanceof Error ? e.message : '图片上传失败', 'err')
     return null
+  }
+}
+
+/* ------------------------------------------------------------------ 图片资源（按组编号分目录） */
+
+/** 拉当前这组的图片列表；新组（id=0）读的是手机端的 draft 目录 */
+export async function loadResources(): Promise<void> {
+  const setId = currentSetId()
+  if (!state.paper || state.source !== 'phone') {
+    state.resources = []
+    state.resourceSetId = setId
+    return
+  }
+  state.resourceLoading = true
+  try {
+    const r = await api.resources(setId)
+    state.resources = r.files ?? []
+    state.resourceSetId = setId
+  } catch {
+    state.resources = []
+    state.resourceSetId = setId
+  } finally {
+    state.resourceLoading = false
+  }
+}
+
+export async function deleteResource(file: ResourceFile): Promise<void> {
+  const ok = await askConfirm(
+    '删掉这张图？',
+    `${file.path}\n\n题目里引用它的地方会显示成掉的图；要换图可以重新上传。`,
+    '删图',
+  )
+  if (!ok) return
+  try {
+    await api.deleteResource(file.path)
+    state.resources = state.resources.filter((x) => x.path !== file.path)
+    toast('图片已删', 'ok')
+  } catch (e) {
+    toast(e instanceof Error ? e.message : '删图失败', 'err')
   }
 }
 
@@ -1334,7 +1391,6 @@ export async function maybeRestoreDraft(): Promise<boolean> {
   if (!ok) { clearDraft(); return false }
   state.source = d.source ?? 'phone'
   state.local = d.local ?? null
-  setImageBase(state.local?.dir ?? '')
   state.paper = {
     id: d.setId ?? 0,
     name: d.name,

@@ -28,7 +28,7 @@ import kotlin.random.Random
  * 安全：
  * - 只有带上 App 里那串 token（`/?t=xxx`，打开一次写 Cookie）才放行 `/api` 下的接口，
  *   同 Wi-Fi 的其他人扫到端口也改不了数据；
- * - 只暴露四件事：读题库、发布一组卷、传图片、**申请删除一组**；
+ * - 只暴露这几件事：读题库、发布一组卷、传图 / 列资源 / 删图、**申请删除一组**；
  *   删除请求不会直接执行，必须由手机上的 [LanEditorActivity] 点「确认删除」才动库；
  * - 服务由前台 Service 拉起，用户点停止或杀掉 App 就结束，不会常驻。
  *
@@ -357,10 +357,23 @@ class LanEditorServer(
             }
 
             "/api/image" -> {
+                val setId = req.query["setId"]?.toLongOrNull() ?: 0L
                 val name = req.query["name"] ?: "image.png"
                 if (req.body.isEmpty()) return jsonError(400, "图片内容为空")
-                val rel = store.saveImage(name, req.body)
+                val rel = store.saveImage(setId, name, req.body, req.query["replace"])
                 json(JSONObject().put("path", rel))
+            }
+
+            // ---- 资源管理：按组编号列图 / 删图 ----
+            "/api/resources" -> {
+                val setId = req.query["setId"]?.toLongOrNull() ?: 0L
+                json(store.listResources(setId))
+            }
+
+            "/api/resource" -> {
+                if (req.method != "DELETE") return jsonError(400, "删图片请用 DELETE")
+                val p = req.query["p"] ?: return jsonError(400, "缺少图片路径")
+                json(store.deleteResource(p))
             }
 
             "/api/img" -> {

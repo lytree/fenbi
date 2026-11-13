@@ -8,6 +8,7 @@ import GroupBoard from './components/GroupBoard'
 import PreviewPane from './components/PreviewPane'
 import IssuePane from './components/IssuePane'
 import VersionPane from './components/VersionPane'
+import ResourcePane from './components/ResourcePane'
 import ModalHost from './components/ModalHost'
 import Toast from './components/Toast'
 import {
@@ -35,6 +36,36 @@ export default defineComponent({
     const setPreviewHidden = (hidden: boolean) => {
       previewManual = hidden
       previewHidden.value = hidden
+    }
+
+    /** 拖过左侧分隔条后按像素记住预览宽度；没拖过就交给 CSS 的 clamp 自适应 */
+    const PREVIEW_MIN = 280
+    const previewW = ref<number | null>(null)
+
+    const onSplitDown = (e: PointerEvent) => {
+      if (e.button !== 0) return
+      e.preventDefault()
+      const pane = (e.currentTarget as HTMLElement).parentElement as HTMLElement | null
+      if (!pane) return
+      const startX = e.clientX
+      const startW = pane.getBoundingClientRect().width || previewW.value || 360
+
+      const onMove = (ev: PointerEvent) => {
+        // 左边侧栏宽度是随窗口伸缩的，拖的时候按它实际占位算，别把编辑区挤没
+        const sidebar = document.querySelector('.layout > .sidebar') as HTMLElement | null
+        const max = Math.max(PREVIEW_MIN, window.innerWidth - (sidebar?.offsetWidth ?? 0) - 360)
+        previewW.value = Math.min(Math.max(Math.round(startW + (startX - ev.clientX)), PREVIEW_MIN), max)
+      }
+      const onUp = () => {
+        window.removeEventListener('pointermove', onMove)
+        window.removeEventListener('pointerup', onUp)
+        window.removeEventListener('pointercancel', onUp)
+        document.body.classList.remove('pane-dragging')
+      }
+      document.body.classList.add('pane-dragging')
+      window.addEventListener('pointermove', onMove)
+      window.addEventListener('pointerup', onUp)
+      window.addEventListener('pointercancel', onUp)
     }
 
     onMounted(async () => {
@@ -141,7 +172,10 @@ export default defineComponent({
       <div class="app-root">
         <TopBar />
 
-        <main class={['layout', previewHidden.value && 'no-preview']}>
+        <main
+          class={['layout', previewHidden.value && 'no-preview']}
+          style={previewW.value === null ? undefined : { '--preview-w': `${previewW.value}px` }}
+        >
           <Sidebar />
 
           <section class="editor">
@@ -279,6 +313,7 @@ export default defineComponent({
             ? null
             : (
               <aside class="preview">
+                <div class="pane-split" title="拖动调整预览宽度" onPointerdown={onSplitDown}></div>
                 <div class="ptabs">
                   <button
                     class={['ptab', state.pane === 'preview' && 'active']}
@@ -302,6 +337,13 @@ export default defineComponent({
                     版本
                     <span class="pill">{state.versions.length}</span>
                   </button>
+                  <button
+                    class={['ptab', state.pane === 'resource' && 'active']}
+                    data-pane="resource"
+                    onClick={() => { state.pane = 'resource' }}
+                  >
+                    资源
+                  </button>
                   <span class="grow"></span>
                   <button class="icon-btn" title="收起预览" onClick={() => setPreviewHidden(true)}>⟩</button>
                 </div>
@@ -309,7 +351,9 @@ export default defineComponent({
                   ? <PreviewPane />
                   : state.pane === 'issue'
                     ? <IssuePane />
-                    : <VersionPane />}
+                    : state.pane === 'resource'
+                      ? <ResourcePane />
+                      : <VersionPane />}
               </aside>
             )}
 

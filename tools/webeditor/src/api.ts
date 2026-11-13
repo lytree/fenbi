@@ -1,21 +1,7 @@
 import type {
-  ConfirmStatus, EditorPaper, LocalPackageInfo, PaperSetInfo, Sheet, VersionInfo, WireSheet,
+  ConfirmStatus, EditorPaper, LocalPackageInfo, PaperSetInfo, ResourceFile, Sheet, VersionInfo, WireSheet,
 } from './types'
 import type { LocalPackageResponse, LocalQuestionRaw } from './local'
-
-/**
- * 本地试卷包的图片基目录。空串 = 手机模式（走 /api/img）；
- * 非空 = 本地模式，图片由开发服务器的 `/local/img` 按试卷包目录解析。
- */
-let imageBase = ''
-
-export function setImageBase(dir: string) {
-  imageBase = dir
-}
-
-export function imageBaseDir(): string {
-  return imageBase
-}
 
 export class ApiError extends Error {
   constructor(message: string, readonly status: number) {
@@ -84,6 +70,13 @@ export interface DeleteRequestResponse {
   ttlSec: number
 }
 
+export interface ResourcesResponse {
+  setId: number
+  /** 这一组的图片目录，形如 images/12 */
+  dir: string
+  files: ResourceFile[]
+}
+
 export const api = {
   sets: () => request<SetsResponse>('/api/papers'),
 
@@ -92,13 +85,17 @@ export const api = {
   publish: (title: string, replace: boolean, sheets: WireSheet[]) =>
     request<PublishResponse>('/api/publish', jsonPost({ title, replace, sheets })),
 
-  /** 上传一张图，返回题目里该写的相对路径 `images/xxx.png` */
-  upload: async (file: File): Promise<string> => {
-    if (imageBase) {
-      throw new ApiError('本地模式暂不支持上传图片：把图片放进试卷包的 images/ 目录，再写 images/文件名', 400)
-    }
+  /**
+   * 上传一张图，返回题目里该写的相对路径 `images/<组编号>/xxx.png`。
+   *
+   * `setId` 是当前打开的组；新建还没发布的组传 0，手机端先存在 `images/draft/`，
+   * 下次打开这一组时会自动搬进正式目录。
+   */
+  upload: async (file: File, setId: number, replacePath?: string): Promise<string> => {
     const name = file.name || `paste-${Date.now()}.png`
-    const res = await fetch(`/api/image?name=${encodeURIComponent(name)}`, {
+    const query = new URLSearchParams({ name, setId: String(setId) })
+    if (replacePath) query.set('replace', replacePath)
+    const res = await fetch(`/api/image?${query.toString()}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/octet-stream' },
       body: file,
@@ -108,9 +105,17 @@ export const api = {
     return data.path as string
   },
 
-  imgUrl: (path: string) => imageBase
-    ? `/local/img?p=${encodeURIComponent(path)}&base=${encodeURIComponent(imageBase)}`
-    : `/api/img?p=${encodeURIComponent(path)}`,
+  imgUrl: (path: string) => `/api/img?p=${encodeURIComponent(path)}`,
+
+  /** 一组已上传的图片（按组编号分目录） */
+  resources: (setId: number) =>
+    request<ResourcesResponse>(`/api/resources?setId=${setId}`),
+
+  deleteResource: (path: string) =>
+    request<{ ok: boolean; path: string }>(
+      `/api/resource?p=${encodeURIComponent(path)}`,
+      { method: 'DELETE' },
+    ),
 
   // ---- 本地试卷包（只在 vite 开发服务器下可用） ----
   localPackages: () => request<{ packages: LocalPackageInfo[] }>('/local/packages'),

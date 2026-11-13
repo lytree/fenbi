@@ -121,3 +121,12 @@ export interface VersionInfo {
 
 /** 删除请求在手机上的处理结果 */
 export type ConfirmStatus = 'pending' | 'approved' | 'rejected' | 'expired'
+
+/** 一组试卷的图片资源（按组编号分目录） */
+export interface ResourceFile {
+  /** 题目里的相对路径，如 images/12/xxx.png */
+  path: string
+  name: string
+  size: number
+  mtime: number
+}
