@@ -131,20 +131,268 @@ describe('局域网题库编辑器', () => {
     wrapper.unmount()
   })
 
-  it('按科目 / 题型筛选，选项里带各分类的题数', async () => {
+  it('切到材料模式：同一材料的小题收进一个材料块，独立题单独列出', async () => {
     const wrapper = mount(App, { attachTo: document.body })
     await flushPromises()
 
-    // 工具栏上的 状态 / 题型 / 科目 三个下拉（题目卡里还有自己的 select，别混进来）
-    const selects = wrapper.findAll('.toolbar select')
-    expect(selects).toHaveLength(3)
+    await wrapper.find('[data-view="material"]').trigger('click')
+    await flushPromises()
 
-    // 科目选项从当前这卷的 subject 原文现算：言语理解 1 题、资料分析 2 题
+    expect(wrapper.findAll('.mat-block')).toHaveLength(1)
+    expect(wrapper.findAll('.mat-solo')).toHaveLength(1)
+    expect(wrapper.find('.mat-block .mb-meta').text()).toContain('第 2–3 题')
+    expect(wrapper.find('.mat-block .mb-subhead').text()).toContain('小题 2 道')
+    expect(wrapper.findAll('.mat-block .qcard')).toHaveLength(2)
+    // 材料只维护一份，输入框里就是组内共用的那段
+    expect((wrapper.find('.mb-text').element as HTMLTextAreaElement).value)
+      .toBe('2025年1—2月，总收入5280.0亿元。')
+    wrapper.unmount()
+  })
+
+  it('材料模式下「＋ 加小题」：新题自动共用材料，发布时逐题写入', async () => {
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+
+    await wrapper.find('[data-view="material"]').trigger('click')
+    await flushPromises()
+
+    const add = wrapper.findAll('.mat-block button').find((b) => b.text().includes('＋ 加小题'))
+    expect(add).toBeTruthy()
+    await add!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findAll('.mat-block .qcard')).toHaveLength(3)
+    expect(wrapper.find('.mat-block .mb-subhead').text()).toContain('小题 3 道')
+
+    const publishBtn = wrapper.findAll('button').find((b) => b.text().includes('发布到 App'))
+    await publishBtn!.trigger('click')
+    await flushPromises()
+
+    const questions = published.sheets[0].questions
+    expect(questions).toHaveLength(4)
+    // 新加的小题落在材料组末尾，材料与组内其他题完全一致
+    expect(questions[3].material).toBe('2025年1—2月，总收入5280.0亿元。')
+    wrapper.unmount()
+  })
+
+  it('材料模式下改材料正文，组内每道小题一起更新', async () => {
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+
+    await wrapper.find('[data-view="material"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.find('.mb-text').setValue('新的材料正文')
+    await flushPromises()
+
+    const publishBtn = wrapper.findAll('button').find((b) => b.text().includes('发布到 App'))
+    await publishBtn!.trigger('click')
+    await flushPromises()
+
+    const questions = published.sheets[0].questions
+    expect(questions[0].material).toBe('')
+    expect(questions[1].material).toBe('新的材料正文')
+    expect(questions[2].material).toBe('新的材料正文')
+    wrapper.unmount()
+  })
+
+  it('材料模式下清空材料正文时输入框不会当场消失，可以接着重写', async () => {
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+
+    await wrapper.find('[data-view="material"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.find('.mb-text').setValue('')
+    await flushPromises()
+    // 重写材料时通常先全选删掉：此时组不能立刻解散，否则输入框和焦点一起没了
+    expect(wrapper.find('.mb-text').exists()).toBe(true)
+
+    await wrapper.find('.mb-text').setValue('重写后的材料')
+    await flushPromises()
+
+    const publishBtn = wrapper.findAll('button').find((b) => b.text().includes('发布到 App'))
+    await publishBtn!.trigger('click')
+    await flushPromises()
+
+    const questions = published.sheets[0].questions
+    expect(questions[1].material).toBe('重写后的材料')
+    expect(questions[2].material).toBe('重写后的材料')
+    wrapper.unmount()
+  })
+
+  it('材料正文留空并失焦后，这一组解散、小题回到独立题', async () => {
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+
+    await wrapper.find('[data-view="material"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.find('.mb-text').setValue('')
+    await wrapper.find('.mb-text').trigger('blur')
+    await flushPromises()
+
+    expect(wrapper.findAll('.mat-block')).toHaveLength(0)
+    expect(wrapper.findAll('.mat-solo')).toHaveLength(3)
+    wrapper.unmount()
+  })
+
+  it('材料删空后不失焦直接发布，发布后按最新内容重算分组', async () => {
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+
+    await wrapper.find('[data-view="material"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.find('.mb-text').setValue('')
+    // 不点别处、不失焦，直接点发布（对应 Ctrl+S 的场景）
+    const publishBtn = wrapper.findAll('button').find((b) => b.text().includes('发布到 App'))
+    await publishBtn!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findAll('.mat-block')).toHaveLength(0)
+    expect(wrapper.findAll('.mat-solo')).toHaveLength(3)
+    const questions = published.sheets[0].questions
+    expect(questions[1].material).toBe('')
+    expect(questions[2].material).toBe('')
+    wrapper.unmount()
+  })
+
+  it('材料模式下连续输入不会被旧值回写', async () => {
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+
+    await wrapper.find('[data-view="material"]').trigger('click')
+    await flushPromises()
+
+    const ta = wrapper.find('.mb-text')
+    await ta.setValue('甲')
+    await wrapper.find('.mb-text').setValue('甲乙')
+    await wrapper.find('.mb-text').setValue('甲乙丙')
+    await flushPromises()
+
+    expect((wrapper.find('.mb-text').element as HTMLTextAreaElement).value).toBe('甲乙丙')
+
+    const publishBtn = wrapper.findAll('button').find((b) => b.text().includes('发布到 App'))
+    await publishBtn!.trigger('click')
+    await flushPromises()
+    const questions = published.sheets[0].questions
+    expect(questions[1].material).toBe('甲乙丙')
+    expect(questions[2].material).toBe('甲乙丙')
+    wrapper.unmount()
+  })
+
+  it('材料模式下改材料，右侧卷面预览同步更新', async () => {
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+
+    await wrapper.find('[data-view="material"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.pv-mat').text()).toContain('总收入5280')
+
+    await wrapper.find('.mb-text').setValue('新的材料正文')
+    await flushPromises()
+    expect(wrapper.find('.pv-mat').text()).toContain('新的材料正文')
+
+    // 删空时右侧按数据实时去掉材料，左侧块保留到失焦
+    await wrapper.find('.mb-text').setValue('')
+    await flushPromises()
+    expect(wrapper.find('.pv-mat').exists()).toBe(false)
+    expect(wrapper.find('.mat-block').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('材料块的排版预览随材料编辑实时更新', async () => {
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+
+    await wrapper.find('[data-view="material"]').trigger('click')
+    await flushPromises()
+
+    const previewBtn = wrapper.findAll('.mat-block button').find((b) => b.text().includes('排版预览'))
+    await previewBtn!.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.mb-preview').text()).toContain('总收入5280')
+
+    await wrapper.find('.mb-text').setValue('| 项目 | 金额 |\n| --- | --- |\n| 收入 | 100 |')
+    await flushPromises()
+    expect(wrapper.find('.mb-preview').find('table').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('材料模式下点小题卡片，右侧卷面预览滚到并高亮同一题', async () => {
+    const scrolled: Element[] = []
+    Element.prototype.scrollIntoView = function (this: Element) { scrolled.push(this) }
+
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+
+    await wrapper.find('[data-view="material"]').trigger('click')
+    await flushPromises()
+
+    scrolled.length = 0
+    // 组内第二道小题（第 3 题）默认折叠，点标题等于选中它
+    const cards = wrapper.findAll('.mat-block .qcard .qhead')
+    await cards[1].trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.pv-q.focus').text()).toContain('第三题')
+    expect(scrolled.some((el) => el.classList.contains('pv-q'))).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('材料模式下可以切回题目列表，材料组头仍然只在组首出现一次', async () => {
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+
+    await wrapper.find('[data-view="material"]').trigger('click')
+    await flushPromises()
+    await wrapper.find('[data-view="list"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findAll('.group-head')).toHaveLength(1)
+    expect(wrapper.findAll('.qcard')).toHaveLength(3)
+    wrapper.unmount()
+  })
+
+  it('左侧选中题目时，右侧卷面预览跟着滚到同一题', async () => {
+    const scrolled: Element[] = []
+    Element.prototype.scrollIntoView = function (this: Element) { scrolled.push(this) }
+
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+
+    scrolled.length = 0
+    // 第 3 题初始是折叠的，点它的标题等于选中这一题
+    await wrapper.findAll('.qcard .qhead')[2].trigger('click')
+    await flushPromises()
+
+    const hit = scrolled.find((el) => el.classList.contains('pv-q'))
+    expect(hit).toBeTruthy()
+    expect(hit!.textContent).toContain('第三题')
+    // 预览里同一题也要高亮
+    expect(wrapper.find('.pv-q.focus').text()).toContain('第三题')
+    wrapper.unmount()
+  })
+
+  it('按一级 / 二级题型、作答形式筛选，选项里带各分类的题数', async () => {
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+
+    // 工具栏上的 状态 / 作答形式 / 一级题型 / 二级题型 四个下拉（题目卡里还有自己的 select，别混进来）
+    const selects = wrapper.findAll('.toolbar select')
+    expect(selects).toHaveLength(4)
+
+    // 一级题型选项从当前这卷的 subject 归一后现算：言语理解 1 题、资料分析 2 题
     const subjects = selects[2].findAll('option').map((o) => o.text())
     expect(subjects).toContain('言语理解（1）')
     expect(subjects).toContain('资料分析（2）')
 
-    // 题型下拉也带题数
+    // 二级题型取知识点，这卷都没填 → 合成一项「未填二级」
+    const topics = selects[3].findAll('option').map((o) => o.text())
+    expect(topics).toContain('未填二级（3）')
+
+    // 作答形式下拉也带题数
     const types = selects[1].findAll('option').map((o) => o.text())
     expect(types).toContain('单选（3）')
 
@@ -152,6 +400,8 @@ describe('局域网题库编辑器', () => {
     await flushPromises()
     expect(wrapper.findAll('.qcard')).toHaveLength(2)
     expect(wrapper.text()).toContain('筛出 2 / 3 题')
+    // 二级候选跟着一级收窄
+    expect(selects[3].findAll('option').map((o) => o.text())).toContain('未填二级（2）')
 
     const clear = wrapper.findAll('button').find((b) => b.text() === '清除筛选')
     expect(clear).toBeTruthy()

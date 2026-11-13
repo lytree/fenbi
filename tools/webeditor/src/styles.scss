@@ -381,7 +381,140 @@ button {
 }
 .filter-info { font-size: 11.5px; color: var(--muted); white-space: nowrap; }
 
+/* 编辑视图切换：题目（按题平铺）/ 材料（按材料成块） */
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--panel-2);
+
+  .seg-btn {
+    height: 30px;
+    padding: 0 11px;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    color: var(--muted);
+    font-size: 12px;
+    white-space: nowrap;
+
+    & + .seg-btn { border-left: 1px solid var(--line-strong); }
+    &:hover { color: var(--accent-ink); background: var(--accent-soft); }
+    &.on { background: var(--accent); color: #fff; }
+  }
+}
+
 .qlist { flex: 1; overflow-y: auto; padding: 12px 12px 80px; min-height: 0; }
+
+/* ---------------- 材料模式：一片材料 → 多道小题 ---------------- */
+.mat-hint {
+  margin: 0 0 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+.mb-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mb-meta { font-size: 11px; color: var(--muted); }
+.mb-meta.sift { color: var(--warn); }
+
+.mat-block {
+  margin-bottom: 14px;
+  padding: 8px 10px 10px;
+  border: 1px solid $accent-line-2;
+  border-radius: 10px;
+  background: #fbfcff;
+
+  .mb-no {
+    padding: 1px 7px;
+    border-radius: 5px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 11.5px;
+    font-weight: 700;
+  }
+
+  .mb-text {
+    width: 100%;
+    margin-top: 7px;
+    padding: 7px 9px;
+    border: 1px solid $accent-line;
+    border-radius: 7px;
+    background: #fff;
+    resize: none;
+    overflow: hidden;
+    font-size: 12.5px;
+    line-height: 1.65;
+    color: var(--ink-2);
+
+    &:hover { border-color: var(--accent); }
+    &:focus { outline: none; border-color: var(--accent); }
+  }
+
+  .mb-tools {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 6px;
+
+    .t { font-size: 11px; font-weight: 700; color: var(--accent-ink); }
+
+    button {
+      padding: 2px 8px;
+      font-size: 11px;
+      border-radius: 6px;
+      background: #fff;
+      color: var(--ink-2);
+
+      &:hover { background: var(--accent-soft); border-color: $accent-line-2; color: var(--accent-ink); }
+    }
+  }
+
+  .mb-preview {
+    margin-top: 8px;
+    padding: 8px 10px;
+    border: 1px dashed $accent-line;
+    border-radius: 7px;
+    background: #fff;
+  }
+
+  .mb-subhead {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin: 10px 0 6px;
+    padding-top: 8px;
+    border-top: 1px dashed $accent-line;
+
+    .t { font-size: 11.5px; font-weight: 700; color: var(--accent-ink); }
+  }
+}
+
+.mat-solo {
+  margin-bottom: 10px;
+
+  .mb-head { margin: 0 0 5px 2px; }
+
+  .ms-no {
+    padding: 1px 7px;
+    border-radius: 5px;
+    background: #eef2f8;
+    color: var(--ink-2);
+    font-size: 11px;
+    font-weight: 700;
+  }
+}
 
 /* ---------------- 题目卡 ---------------- */
 .group-head {
@@ -474,6 +607,10 @@ button {
   &.truefalse { background: #f3eefe; color: #6d28d9; }
   &.uncertain { background: #eef7ea; color: #3f6212; }
   &.fill, &.subjective { background: #f2f4f7; color: var(--ink-2); }
+
+  /* 行测题型：一级沿用主蓝，二级压成灰蓝，未分类再淡一档 */
+  &.lv2 { background: #eef2f8; color: var(--ink-2); font-weight: 500; }
+  &.none { background: #f2f4f7; color: var(--muted); font-weight: 500; }
 }
 .qsum { flex: 1; min-width: 0; }
 .stem-preview {
@@ -780,6 +917,8 @@ button {
   border-radius: 4px;
   background: var(--accent-soft);
   color: var(--accent-ink);
+
+  &.lv2 { background: #eef2f8; color: var(--ink-2); font-weight: 500; }
 }
 .pv-no { font-size: 11px; color: var(--muted); }
 .pv-mat {

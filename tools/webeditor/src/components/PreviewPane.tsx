@@ -1,25 +1,48 @@
-import { defineComponent } from 'vue'
+import { defineComponent, nextTick, onMounted, ref, watch } from 'vue'
 import type { Question } from '../types'
 import { ansSet, currentQuestions, focusQuestion, groupsOf, state, TYPE_LABEL } from '../store'
 import { esc } from '../util'
 import { renderInline, renderMaterial } from '../markdown'
+import { LEVEL_NONE, level1Of, level2Of } from '../xingce'
 
 /**
  * 右侧卷面预览：尽量贴近 App 答题页的样子——材料在首题通栏、题型小标、圆形选项徽标。
- * 只读，但点任意一块会跳到左边对应的题目，改完顺手核对。
+ * 双向联动：点预览里的题会跳到左边对应卡片；左边选中哪题，预览也滚到同一题并高亮。
  */
 export default defineComponent({
   name: 'PreviewPane',
   setup() {
+    const pane = ref<HTMLElement | null>(null)
+
+    /** 把预览里当前选中（state.focused）的那题滚到面板中间 */
+    const scrollToFocused = (smooth: boolean) => {
+      const uid = state.focused
+      if (uid === null) return
+      const hit = pane.value?.querySelector(`.pv-q[data-uid="${uid}"]`) as HTMLElement | null
+      hit?.scrollIntoView({ block: 'center', behavior: smooth ? 'smooth' : 'auto' })
+    }
+
+    // 预览内容每次都是整段 innerHTML 重建的，聚焦项的高亮类跟着重建，
+    // 所以等这一帧渲染完再去滚（否则拿到的是旧的节点）
+    watch(() => state.focused, () => { void nextTick(() => scrollToFocused(true)) })
+    // 从「校验 / 版本」切回预览时组件才挂载，先直接定位到当前选中的题，不做平滑滚动
+    onMounted(() => { void nextTick(() => scrollToFocused(false)) })
+
     const blockHtml = (q: Question, index: number, material: string): string => {
       const focus = state.focused === q._uid ? ' focus' : ''
       const opts = q.options.filter((o) => o.text.trim())
       const chosen = ansSet(q)
 
       let h = `<div class="pv-q${focus}" data-uid="${q._uid}">`
-      h += `<div class="pv-tagrow"><span class="pv-tag">${TYPE_LABEL[q.type]}</span>`
+      // 卷面题型小标：有行测两级题型就按「一级 · 二级」显示，否则退回作答形式（单选 / 多选…）
+      const lv1 = level1Of(q)
+      const lv2 = level2Of(q)
+      const hasTypeTree = !!lv1 || !!lv2
+      h += `<div class="pv-tagrow"><span class="pv-tag">${
+        hasTypeTree ? esc(lv1 || LEVEL_NONE) : TYPE_LABEL[q.type]
+      }</span>`
+      if (hasTypeTree) h += `<span class="pv-tag lv2">${esc(lv2 || LEVEL_NONE)}</span>`
       h += `<span class="pv-no">第 ${index + 1} 题</span>`
-      if (q.subject) h += `<span class="pv-no">· ${esc(q.subject)}</span>`
       h += '</div>'
 
       if (material) h += `<div class="pv-mat"><div class="mh">材料</div>${renderMaterial(material)}</div>`
@@ -76,7 +99,7 @@ export default defineComponent({
     }
 
     return () => (
-      <div class="ppane" innerHTML={html()} onClick={onClick}></div>
+      <div class="ppane" ref={pane} innerHTML={html()} onClick={onClick}></div>
     )
   },
 })

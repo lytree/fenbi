@@ -3,6 +3,7 @@ import TopBar from './components/TopBar'
 import Sidebar from './components/Sidebar'
 import SheetBar from './components/SheetBar'
 import QuestionList from './components/QuestionList'
+import MaterialList from './components/MaterialList'
 import PreviewPane from './components/PreviewPane'
 import IssuePane from './components/IssuePane'
 import VersionPane from './components/VersionPane'
@@ -10,9 +11,9 @@ import ModalHost from './components/ModalHost'
 import Toast from './components/Toast'
 import {
   TYPE_SHORT, addQuestion, cancelWaiting, closeModal, currentQuestions, filtersActive, flushDraft,
-  issueCounts, loadSets, loadVersions, maybeRestoreDraft, openPasteDialog, openSet, publish,
-  resetFilters, showErrors, startDraftAutoSave, state, stopDraftAutoSave, subjectOptions, toast,
-  typeCounts, ui, visibleIndexes,
+  issueCounts, level1Options, level2Options, loadSets, loadVersions, maybeRestoreDraft,
+  openPasteDialog, openSet, publish, resetFilters, showErrors, startDraftAutoSave, state,
+  stopDraftAutoSave, toast, typeCounts, ui, visibleIndexes,
 } from './store'
 import type { QuestionType } from './types'
 import { handleFileInput } from './images'
@@ -110,6 +111,22 @@ export default defineComponent({
 
               <div class="editor-main">
                 <div class="toolbar">
+                  <div class="seg" title="编辑视图：按题平铺 / 按材料成块">
+                    <button
+                      class={['seg-btn', state.view === 'list' && 'on']}
+                      data-view="list"
+                      onClick={() => { state.view = 'list' }}
+                    >
+                      题目 {currentQuestions().length}
+                    </button>
+                    <button
+                      class={['seg-btn', state.view === 'material' && 'on']}
+                      data-view="material"
+                      onClick={() => { state.view = 'material' }}
+                    >
+                      材料 {state.groups.length}
+                    </button>
+                  </div>
                   <input
                     class="search"
                     value={queryInput.value}
@@ -147,12 +164,27 @@ export default defineComponent({
                   </select>
                   <select
                     class="select"
-                    title="按科目分类筛（科目取自当前这卷）"
+                    title="按一级题型筛（科目归一后的大类）"
                     value={state.subjectFilter}
-                    onChange={(e) => { state.subjectFilter = (e.target as HTMLSelectElement).value }}
+                    onChange={(e) => {
+                      state.subjectFilter = (e.target as HTMLSelectElement).value
+                      // 换一级后二级的候选跟着变，留着上一级的二级只会筛出空列表
+                      state.subTopicFilter = 'all'
+                    }}
                   >
-                    <option value="all">全部科目</option>
-                    {subjectOptions().map((o) => (
+                    <option value="all">全部一级题型</option>
+                    {level1Options().map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}（{o.count}）</option>
+                    ))}
+                  </select>
+                  <select
+                    class="select"
+                    title="按二级题型筛（知识点，跟一级联动）"
+                    value={state.subTopicFilter}
+                    onChange={(e) => { state.subTopicFilter = (e.target as HTMLSelectElement).value }}
+                  >
+                    <option value="all">全部二级题型</option>
+                    {level2Options().map((o) => (
                       <option key={o.value} value={o.value}>{o.label}（{o.count}）</option>
                     ))}
                   </select>
@@ -172,7 +204,7 @@ export default defineComponent({
                 </div>
 
                 <div class="qlist">
-                  <QuestionList />
+                  {state.view === 'material' ? <MaterialList /> : <QuestionList />}
                 </div>
               </div>
             </div>

@@ -1,11 +1,12 @@
 import { computed, reactive } from 'vue'
 import { api } from './api'
 import type {
-  EditorPaper, Filter, Group, Issue, PaperSetInfo, QIssue,
+  EditorPaper, EditorView, Filter, Group, Issue, PaperSetInfo, QIssue,
   Question, QuestionType, Sheet, SubjectFilter, TypeFilter, VersionInfo, WireSheet,
 } from './types'
 import { formatTime, nextUid, sleep } from './util'
 import { parsePasted } from './paste'
+import { typeName } from './xingce'
 
 /* ------------------------------------------------------------------ 常量 */
 
@@ -49,12 +50,17 @@ export const state = reactive({
   questionTotal: 0,
   paper: null as EditorPaper | null,
   sheet: 0,
+  /** 题目列表 / 材料模式；只影响编辑区呈现，不改数据 */
+  view: 'list' as EditorView,
   dirty: false,
   expanded: [] as number[],
   query: '',
   filter: 'all' as Filter,
   typeFilter: 'all' as TypeFilter,
+  /** 一级题型筛（值取归一后的科目名，不取科目原文） */
   subjectFilter: 'all' as SubjectFilter,
+  /** 二级题型筛（值取归一后的知识点名） */
+  subTopicFilter: 'all' as SubjectFilter,
   pane: 'preview' as 'preview' | 'issue' | 'version',
   versions: [] as VersionInfo[],
   versionLoading: false,
@@ -374,6 +380,8 @@ export async function publish(opts: { replace?: boolean } = {}): Promise<boolean
     const r = await api.publish(title, !!opts.replace, sheets)
     paper.id = r.setId
     state.dirty = false
+    // 材料编辑区可能还没失焦就按了 Ctrl+S，发布后按最新内容重算一次分组
+    refreshGroups()
     clearDraft()
     await loadSets()
     await loadVersions()
@@ -410,6 +418,20 @@ export function addQuestion(afterIndex?: number, type: QuestionType = 'single') 
   state.expanded = [q._uid]
   state.focused = q._uid
   markDirty()
+  refreshGroups()
+  return q
+}
+
+/**
+ * 在材料组末尾加一道小题：材料文本直接复制，落进去就是同一组，
+ * 不用再点「沿用上一题材料」。
+ */
+export function addQuestionToGroup(startIndex: number) {
+  const g = state.groups.find((x) => x.start === startIndex)
+  if (!g) return
+  const q = addQuestion(g.end)
+  // 取题上的当前文本而不是组快照：材料编辑区可能刚改过、还没重新分组
+  q.material = currentQuestions()[g.start]?.material ?? g.material
   refreshGroups()
   return q
 }
@@ -489,7 +511,13 @@ export function removeOption(q: Question, key: string) {
   markDirty()
 }
 
-export function setGroupMaterial(startIndex: number, text: string) {
+/**
+ * 改材料组正文：写回组内每一题。
+ *
+ * `refresh = false` 供材料编辑区连续输入时用——分组要等失焦再重算，
+ * 否则材料被删空的瞬间这一组就没了，输入框和焦点会一起消失。
+ */
+export function setGroupMaterial(startIndex: number, text: string, refresh = true) {
   const qs = currentQuestions()
   const g = state.groups.find((x) => x.start === startIndex)
   if (!g) return
@@ -498,7 +526,7 @@ export function setGroupMaterial(startIndex: number, text: string) {
     qs[i]._issues = null
   }
   markDirty()
-  refreshGroups()
+  if (refresh) refreshGroups()
 }
 
 /** 把上一题的材料沿用过来（这两题就并成一个材料组了） */
@@ -570,48 +598,78 @@ export function switchSheet(index: number) {
 
 /* ------------------------------------------------------------------ 筛选 */
 
-/** 「没填科目」在下拉里单独列一项：这些题恰恰最该被筛出来补 */
-export const SUBJECT_NONE = '__none__'
+/** 「没填一级 / 二级题型」在下拉里单独列一项：这些题恰恰最该被筛出来补 */
+export const TYPE_NONE_VALUE = '__none__'
 
-/** 当前这卷各题型的题数，下拉里直接带出来，省得盲选 */
+/** 当前这卷各作答形式的题数，下拉里直接带出来，省得盲选 */
 export function typeCounts(): Partial<Record<QuestionType, number>> {
   const out: Partial<Record<QuestionType, number>> = {}
   for (const q of currentQuestions()) out[q.type] = (out[q.type] ?? 0) + 1
   return out
 }
 
-/** 科目下拉：科目是导入时的自由文本（「行测·资料分析」…），只能从当前这卷现算 */
-export function subjectOptions(): { value: string; label: string; count: number }[] {
+/**
+ * 一级题型下拉：值取归一后的科目名（`行测·资料分析` → `资料分析`），
+ * 所以同一大类的不同写法会并成一项；认不出的自由文本原样列出来。
+ */
+export function level1Options(): { value: string; label: string; count: number }[] {
   const map = new Map<string, number>()
   let missing = 0
   for (const q of currentQuestions()) {
-    const s = (q.subject || '').trim()
+    const s = typeName(q.subject)
     if (!s) { missing++; continue }
     map.set(s, (map.get(s) ?? 0) + 1)
   }
   const out = [...map.entries()]
     .map(([value, count]) => ({ value, label: value, count }))
     .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, 'zh'))
-  if (missing) out.push({ value: SUBJECT_NONE, label: '未填科目', count: missing })
-  // 选中的科目在这卷里已经不存在时（改过名 / 换过卷）补一条空计数，
+  if (missing) out.push({ value: TYPE_NONE_VALUE, label: '未填一级', count: missing })
+  // 选中的一级在这卷里已经不存在时（改过名 / 换过卷）补一条空计数，
   // 否则 select 找不到对应 option 会显示成空白，看着像筛选坏了
   const cur = state.subjectFilter
   if (cur !== 'all' && !out.some((o) => o.value === cur)) {
-    out.push({ value: cur, label: cur === SUBJECT_NONE ? '未填科目' : cur, count: 0 })
+    out.push({ value: cur, label: cur === TYPE_NONE_VALUE ? '未填一级' : cur, count: 0 })
+  }
+  return out
+}
+
+/** 二级题型下拉：一级筛选生效时只列这一级下的二级，否则列全卷的二级 */
+export function level2Options(): { value: string; label: string; count: number }[] {
+  const level1 = state.subjectFilter
+  const map = new Map<string, number>()
+  let missing = 0
+  for (const q of currentQuestions()) {
+    if (level1 !== 'all') {
+      const s = typeName(q.subject)
+      if (level1 === TYPE_NONE_VALUE ? s !== '' : s !== level1) continue
+    }
+    const t = typeName(q.knowledge)
+    if (!t) { missing++; continue }
+    map.set(t, (map.get(t) ?? 0) + 1)
+  }
+  const out = [...map.entries()]
+    .map(([value, count]) => ({ value, label: value, count }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, 'zh'))
+  if (missing) out.push({ value: TYPE_NONE_VALUE, label: '未填二级', count: missing })
+  const cur = state.subTopicFilter
+  if (cur !== 'all' && !out.some((o) => o.value === cur)) {
+    out.push({ value: cur, label: cur === TYPE_NONE_VALUE ? '未填二级' : cur, count: 0 })
   }
   return out
 }
 
 /** 除搜索外还有筛选条件生效（工具栏据此显示筛出题数和「清除筛选」） */
 export function filtersActive(): boolean {
-  return state.filter !== 'all' || state.typeFilter !== 'all' || state.subjectFilter !== 'all'
+  return state.filter !== 'all' || state.typeFilter !== 'all' ||
+    state.subjectFilter !== 'all' || state.subTopicFilter !== 'all'
 }
 
-/** 切卷 / 换组时清掉筛选项：科目每卷各算各的，留着上一卷的科目只会筛出空列表 */
+/** 切卷 / 换组时清掉筛选项：题型每一卷各算各的，留着上一卷的选项只会筛出空列表 */
 export function resetFilters() {
   state.filter = 'all'
   state.typeFilter = 'all'
   state.subjectFilter = 'all'
+  state.subTopicFilter = 'all'
 }
 
 /** 筛选结果按依赖缓存：列表每次渲染都要这份索引，直接算等于每帧扫全卷 */
@@ -621,12 +679,17 @@ const visibleCache = computed(() => {
   const kw = state.query.trim().toLowerCase()
   const type = state.typeFilter
   const subject = state.subjectFilter
+  const topic = state.subTopicFilter
   const out: number[] = []
   qs.forEach((q, i) => {
     if (type !== 'all' && q.type !== type) return
     if (subject !== 'all') {
-      const s = (q.subject || '').trim()
-      if (subject === SUBJECT_NONE ? s !== '' : s !== subject) return
+      const s = typeName(q.subject)
+      if (subject === TYPE_NONE_VALUE ? s !== '' : s !== subject) return
+    }
+    if (topic !== 'all') {
+      const t = typeName(q.knowledge)
+      if (topic === TYPE_NONE_VALUE ? t !== '' : t !== topic) return
     }
     if (state.filter !== 'all') {
       const hasIssue = localIssues(q).length > 0

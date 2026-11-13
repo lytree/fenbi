@@ -11,6 +11,7 @@ import { askText } from '../store'
 import { grow, growAll, insertAtCursor } from '../util'
 import { plain } from '../markdown'
 import { pickImage, insertPastedImage } from '../images'
+import { LEVEL1_NAMES, LEVEL_NONE, level1Of, level2NamesOf, level2Of } from '../xingce'
 
 /**
  * 一道题的卡片。折叠时只有一行摘要（几百道题也不卡），展开才长出输入框。
@@ -86,6 +87,12 @@ export default defineComponent({
       const typeOptions = (Object.keys(TYPE_LABEL) as (keyof typeof TYPE_LABEL)[]).map((t) => (
         <option value={t} selected={q.type === t}>{TYPE_LABEL[t]}</option>
       ))
+      // 行测题型两级：一级取科目（行测·资料分析 → 资料分析），二级取知识点
+      const lv1 = level1Of(q)
+      const lv2 = level2Of(q)
+      const hasTypeTree = !!lv1 || !!lv2
+      const lv1ListId = `xc-lv1-${q._uid}`
+      const lv2ListId = `xc-lv2-${q._uid}`
 
       return (
         <article
@@ -95,7 +102,14 @@ export default defineComponent({
         >
           <div class="qhead" onClick={onHeadClick}>
             <span class="qno">{props.index + 1}</span>
-            <span class={['qtype', q.type]}>{TYPE_SHORT[q.type]}</span>
+            {hasTypeTree
+              ? (
+                <>
+                  <span class="qtype lv1">{lv1 || LEVEL_NONE}</span>
+                  <span class={['qtype', 'lv2', !lv2 && 'none']}>{lv2 || LEVEL_NONE}</span>
+                </>
+              )
+              : <span class={['qtype', q.type]}>{TYPE_SHORT[q.type]}</span>}
             <div class="qsum">
               <div class="stem-preview">
                 {q.stem.trim() ? plain(q.stem, 120) : <span class="ph">（题干还没写）</span>}
@@ -105,7 +119,7 @@ export default defineComponent({
                   ? <span class="ans">答案 {q.answer}</span>
                   : <span class="ans empty">待补答案</span>}
                 {optCount ? <span>{optCount} 选项</span> : null}
-                {q.subject ? <span class="chip">{q.subject}</span> : null}
+                {hasTypeTree ? <span class="chip">{TYPE_SHORT[q.type]}</span> : null}
                 {group ? <span class="chip">材料组</span> : null}
                 {hasImage ? <span class="chip">有图</span> : null}
               </div>
@@ -128,18 +142,24 @@ export default defineComponent({
             ? (
               <div class="qbody">
                 <div class="row">
-                  <label>题型</label>
+                  <label>作答</label>
                   <select
                     class="field small" style="max-width:110px"
                     onChange={(e) => setQuestionType(q, (e.target as HTMLSelectElement).value as Question['type'])}
                   >
                     {typeOptions}
                   </select>
-                  <label>科目</label>
+                  <label>一级题型</label>
                   <input
-                    class="field small" style="max-width:220px" value={q.subject}
-                    placeholder="如 言语理解 / 资料分析，卷面上按它分大类"
+                    class="field small" style="max-width:180px" value={q.subject} list={lv1ListId}
+                    placeholder="如 言语理解与表达 / 资料分析"
                     onInput={field('subject')}
+                  />
+                  <label>二级题型</label>
+                  <input
+                    class="field small" style="max-width:160px" value={q.knowledge} list={lv2ListId}
+                    placeholder="如 逻辑填空 / 增长量"
+                    onInput={field('knowledge')}
                   />
                   <label>难度</label>
                   <select
@@ -151,6 +171,12 @@ export default defineComponent({
                     <option value="2">中</option>
                     <option value="3">难</option>
                   </select>
+                  <datalist id={lv1ListId}>
+                    {LEVEL1_NAMES.map((n) => <option value={n} />)}
+                  </datalist>
+                  <datalist id={lv2ListId}>
+                    {level2NamesOf(q.subject).map((n) => <option value={n} />)}
+                  </datalist>
                 </div>
 
                 {group
@@ -271,9 +297,8 @@ export default defineComponent({
                 </div>
 
                 <details class="more">
-                  <summary>更多字段（知识点 / 地区 / 来源 / 年份 / 分值 / 得分点）</summary>
+                  <summary>更多字段（地区 / 来源 / 年份 / 分值 / 得分点）</summary>
                   <div class="grid">
-                    <input class="field" value={q.knowledge} placeholder="知识点" onInput={field('knowledge')} />
                     <input class="field" value={q.region} placeholder="地区" onInput={field('region')} />
                     <input class="field" value={q.source} placeholder="来源" onInput={field('source')} />
                     <input class="field" value={q.year} placeholder="年份" onInput={field('year')} />
