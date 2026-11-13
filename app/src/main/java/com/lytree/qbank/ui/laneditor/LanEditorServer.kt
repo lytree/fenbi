@@ -376,6 +376,12 @@ class LanEditorServer(
                 json(store.deleteResource(p))
             }
 
+            // 图片迁移：把老散图按组编号归位，路径写回题库；body 里 setId=0 表示全库
+            "/api/images/migrate" -> {
+                val body = readJson(req)
+                json(store.migrateImages(body?.optLong("setId") ?: 0L))
+            }
+
             "/api/img" -> {
                 val p = req.query["p"] ?: return jsonError(400, "缺少图片路径")
                 val file = store.resolveImage(p) ?: return jsonError(404, "图片不存在：$p")

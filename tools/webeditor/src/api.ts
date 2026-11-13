@@ -1,5 +1,6 @@
 import type {
-  ConfirmStatus, EditorPaper, LocalPackageInfo, PaperSetInfo, ResourceFile, Sheet, VersionInfo, WireSheet,
+  ConfirmStatus, EditorPaper, LocalPackageInfo, MigrationReport, PaperSetInfo, ResourceFile, Sheet,
+  VersionInfo, WireSheet,
 } from './types'
 import type { LocalPackageResponse, LocalQuestionRaw } from './local'
 
@@ -116,6 +117,13 @@ export const api = {
       `/api/resource?p=${encodeURIComponent(path)}`,
       { method: 'DELETE' },
     ),
+
+  /**
+   * 把老的散图整理进 `images/<组编号>/`，改写题库里的图片路径并返回统计。
+   * `setId = 0` 表示全库整理（MCP / 调试脚本用）。
+   */
+  migrateImages: (setId: number) =>
+    request<MigrationReport>('/api/images/migrate', jsonPost({ setId })),
 
   // ---- 本地试卷包（只在 vite 开发服务器下可用） ----
   localPackages: () => request<{ packages: LocalPackageInfo[] }>('/local/packages'),

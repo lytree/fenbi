@@ -1,7 +1,7 @@
 import { computed, defineComponent, onMounted, ref, watch } from 'vue'
 import { api } from '../api'
 import {
-  currentSetId, deleteResource, loadResources, state, toast, uploadImage,
+  currentSetId, deleteResource, loadResources, migrateImages, state, toast, uploadImage,
 } from '../store'
 import type { Question } from '../types'
 
@@ -119,6 +119,14 @@ export default defineComponent({
 
           <div class="res-actions">
             <button class="primary sm" onClick={() => pick()}>＋ 上传图片</button>
+            <button
+              class="ghost sm"
+              disabled={unpublished.value}
+              title="把老的散图复制进本组目录，并改写题库里的图片路径"
+              onClick={() => migrateImages()}
+            >
+              整理图片
+            </button>
             <span class="res-total">
               共 {state.resources.length} 张 · 引用 {[...counts.value.values()].reduce((a, b) => a + b, 0)} 次
             </span>

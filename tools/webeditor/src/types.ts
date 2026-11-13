@@ -130,3 +130,22 @@ export interface ResourceFile {
   size: number
   mtime: number
 }
+
+/** 图片迁移的结果统计 */
+export interface MigrationReport {
+  ok: boolean
+  /** 整理了几个组 */
+  sets: number
+  /** 扫了多少道题 */
+  questions: number
+  /** 实际改写并写回题库的题数 */
+  updated: number
+  /** 复制进组目录的图片张数 */
+  moved: number
+  /** 本来就在组目录里的引用数 */
+  reused: number
+  /** 引用找不到文件的处数 */
+  missing: number
+  /** 图片根目录下没被任何题引用的散图数量（不搬，留给人工判断） */
+  orphans: number
+}

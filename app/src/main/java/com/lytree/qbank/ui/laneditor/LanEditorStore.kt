@@ -637,6 +637,148 @@ class LanEditorStore(private val context: Context) {
         }
     }
 
+    // ---------------------------------------------------------------- 图片迁移
+
+    /**
+     * 把题目里引用的图片整理进 `images/<组编号>/`，并把库里的路径改成新位置。
+     *
+     * 迁什么：
+     * - 老的平铺图 `images/x.png`、导入试卷包留下的任意绝对路径，只要被题目引用就复制一份
+     *   进本组目录（同名同大小视为同一张，不重复复制）；
+     * - 只搬「有引用」的图：没人引用的散图判断不了归属，留在原处，报告里给出 `orphans`。
+     *
+     * 不改题目内容：只重写题干 / 材料 / 解析 / 选项里的图片路径，答案、难度、收藏都不动。
+     * 源文件也不删——网页草稿、其他组、历史版本可能还指着它；删除整组时才清该组目录。
+     *
+     * 打开网页编辑器时本来就会按组迁移引用，这里补的是**不改题也能整理**的全库入口：
+     * 老题库升级后跑一次，磁盘上的图就都按组编号归位了。
+     *
+     * @param setId 只整理这一组；传 0 整理所有组。
+     */
+    fun migrateImages(setId: Long = 0): JSONObject {
+        val all = db.listPaperSets(withPapers = true)
+        val sets = all.filter { it.id > 0 && (setId <= 0 || it.id == setId) }
+        if (setId > 0 && sets.isEmpty()) {
+            throw IllegalArgumentException("找不到这组试卷（可能已在 App 里被删掉）")
+        }
+
+        val stats = MigrationStats()
+        // 同一道题可能同时挂在多份卷上（错题重练），只迁一次
+        val seen = HashSet<Long>()
+
+        sets.forEach { set ->
+            val changed = ArrayList<Question>()
+            set.papers.forEach { paper ->
+                db.listQuestions(paper.id, Int.MAX_VALUE).forEach { q ->
+                    if (!seen.add(q.id)) return@forEach
+                    stats.questions++
+                    migrateQuestion(q, set.id, stats)?.let { changed.add(it) }
+                }
+            }
+            if (changed.isNotEmpty()) stats.updated += db.updateQuestionTexts(changed)
+        }
+
+        stats.orphans = imageDir.listFiles()?.count { it.isFile } ?: 0
+        return JSONObject()
+            .put("ok", true)
+            .put("sets", sets.size)
+            .put("questions", stats.questions)
+            .put("updated", stats.updated)
+            .put("moved", stats.moved)
+            .put("reused", stats.reused)
+            .put("missing", stats.missing)
+            .put("orphans", stats.orphans)
+    }
+
+    /**
+     * 逐题迁移：返回改写后的题目，没变化返回 null（不白写一遍库）。
+     *
+     * 走的是「复制 + 改路径」而不是「移动」：源文件可能是导入包解出来的共享图，
+     * 直接移走会让别处引用它的题一起断图。
+     */
+    private fun migrateQuestion(q: Question, setId: Long, stats: MigrationStats): Question? {
+        var changed = false
+        fun fix(text: String): String {
+            val next = migrateText(text, setId, stats)
+            if (next != text) changed = true
+            return next
+        }
+
+        val stem = fix(q.stem)
+        val material = fix(q.material)
+        val analysis = fix(q.analysis)
+        val options = q.options.map { o ->
+            val text = fix(o.text)
+            if (text == o.text) o else Option(o.key, text)
+        }
+        if (!changed) return null
+        return q.copy(stem = stem, material = material, analysis = analysis, options = options)
+    }
+
+    /** 相对路径和绝对路径各扫一遍；认不出的（文件已丢）原样留着并计数 */
+    private fun migrateText(text: String, setId: Long, stats: MigrationStats): String {
+        if (text.isBlank()) return text
+        var out = text
+
+        if (out.contains("$IMAGE_PREFIX/")) {
+            out = IMAGE_REF.replace(out) { m ->
+                val rel = m.groupValues[1]
+                val file = File(imageDir, rel)
+                if (!IMAGE_EXT.containsMatchIn(rel)) {
+                    m.value
+                } else {
+                    val target = importIntoSet(file, setId)
+                    if (target == null) {
+                        stats.missing++
+                        m.value
+                    } else {
+                        if (isInSetDir(file, setId)) stats.reused++ else stats.moved++
+                        absoluteImagePath(target)
+                    }
+                }
+            }
+        }
+
+        val root = context.filesDir.absolutePath.trimEnd('/')
+        if (out.contains(root)) {
+            out = Regex("""${Regex.escape(root)}[^\s)"'<>]+""").replace(out) { m ->
+                val file = File(m.value)
+                if (!file.isFile || !IMAGE_EXT.containsMatchIn(file.name)) {
+                    if (!file.isFile) stats.missing++
+                    m.value
+                } else if (isInSetDir(file, setId)) {
+                    // 上一遍刚写进本组目录的绝对路径，或是本来就归好位的图，保持原样
+                    m.value
+                } else {
+                    val rel = importIntoSet(file, setId)
+                    if (rel == null) {
+                        stats.missing++
+                        m.value
+                    } else {
+                        stats.moved++
+                        absoluteImagePath(rel)
+                    }
+                }
+            }
+        }
+        return out
+    }
+
+    private fun isInSetDir(file: File, setId: Long): Boolean =
+        file.isFile && file.parentFile?.canonicalFile == imageDirFor(setId).canonicalFile
+
+    private fun absoluteImagePath(rel: String): String =
+        File(imageDir, rel.removePrefix("$IMAGE_PREFIX/")).absolutePath
+
+    private class MigrationStats {
+        var questions = 0
+        var updated = 0
+        var moved = 0
+        var reused = 0
+        var missing = 0
+        var orphans = 0
+    }
+
     private companion object {
         /** 题目里引用图片统一用这个前缀，后面跟组编号 */
         const val IMAGE_PREFIX = "images"
@@ -657,5 +799,8 @@ class LanEditorStore(private val context: Context) {
          * 前面是 `/`，不能被当成相对路径改写，否则老题里的图会全部指错地方。
          */
         val IMAGE_REF = Regex("""(?<![\w./\\-])(?:\./)?images/([^)\s"'<>]+)""")
+
+        /** 迁移时只认图片文件，别把正文里出现的其他路径也搬进图片目录 */
+        val IMAGE_EXT = Regex("""\.(png|jpe?g|gif|webp|bmp)$""", RegexOption.IGNORE_CASE)
     }
 }

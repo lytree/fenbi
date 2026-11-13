@@ -672,6 +672,34 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         ).use { c -> return if (c.moveToFirst()) c.getInt(0) else 0 }
     }
 
+    /**
+     * 只改题干 / 材料 / 解析 / 选项（图片迁移用）。
+     *
+     * 不整行覆盖：答案、难度、来源这些字段不参与迁移，也不该因为一次图片路径整理被重写。
+     * 一批题目放在一个事务里，避免中途失败只迁了一半。
+     */
+    fun updateQuestionTexts(questions: List<Question>): Int {
+        if (questions.isEmpty()) return 0
+        val db = writableDatabase
+        var n = 0
+        db.beginTransaction()
+        try {
+            questions.forEach { q ->
+                val cv = ContentValues().apply {
+                    put("stem", q.stem)
+                    put("material", q.material)
+                    put("analysis", q.analysis)
+                    put("options", q.optionsJson())
+                }
+                n += db.update("questions", cv, "id = ?", arrayOf(q.id.toString()))
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        return n
+    }
+
     fun getQuestion(id: Long): Question? {
         readableDatabase.rawQuery("SELECT * FROM questions WHERE id = ?", arrayOf(id.toString()))
             .use { c -> return if (c.moveToFirst()) readQuestion(c) else null }

@@ -78,17 +78,26 @@ let published: any = null
 let deleteRequested: number[] = []
 let deleteCancelled: string[] = []
 let resourceDeleted: string[] = []
+let migrateCalls: number[] = []
 
 function mockFetch() {
   published = null
   deleteRequested = []
   deleteCancelled = []
   resourceDeleted = []
+  migrateCalls = []
   const fn = vi.fn(async (input: any, init?: RequestInit) => {
     const url = String(input)
     if (url.startsWith('/api/papers')) return json(SETS)
     if (url.startsWith('/api/paper')) return json(PAPER)
     if (url.startsWith('/api/versions')) return json(VERSIONS)
+    if (url.startsWith('/api/images/migrate')) {
+      const body = JSON.parse(String(init?.body))
+      migrateCalls.push(body.setId)
+      return json({
+        ok: true, sets: 1, questions: 3, updated: 1, moved: 2, reused: 1, missing: 0, orphans: 0,
+      })
+    }
     if (url.startsWith('/api/resources')) return json({ setId: 1, dir: 'images/1', files: RESOURCES })
     if (url.startsWith('/api/resource')) {
       resourceDeleted.push(new URL(url, 'http://localhost').searchParams.get('p') || '')
@@ -508,6 +517,28 @@ describe('局域网题库编辑器', () => {
 
     expect(resourceDeleted).toEqual(['images/1/unused.png'])
     expect(wrapper.findAll('.res-item')).toHaveLength(2)
+    wrapper.unmount()
+  })
+
+  it('资源页签：可以把老的散图整理进本组目录', async () => {
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+
+    await wrapper.find('[data-pane="resource"]').trigger('click')
+    await flushPromises()
+
+    const btn = wrapper.findAll('button').find((b) => b.text() === '整理图片')
+    expect(btn).toBeTruthy()
+    await btn!.trigger('click')
+    await flushPromises()
+
+    const confirm = wrapper.findAll('button').find((b) => b.text() === '开始整理')
+    expect(confirm).toBeTruthy()
+    await confirm!.trigger('click')
+    await flushPromises()
+
+    expect(migrateCalls).toEqual([1])
+    expect(wrapper.text()).toContain('搬了 2 张')
     wrapper.unmount()
   })
 

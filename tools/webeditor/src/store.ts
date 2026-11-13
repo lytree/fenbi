@@ -891,6 +891,50 @@ export async function deleteResource(file: ResourceFile): Promise<void> {
   }
 }
 
+/**
+ * 整理本组图片：把老的平铺图、导入试卷包留下的绝对路径复制进 `images/<组编号>/`，
+ * 并让手机端把题库里的图片路径改过去。
+ *
+ * 有未发布改动时不做：迁移会重写题目行，库里改完而网页上还留着草稿，
+ * 两边的图片路径就对不上了。先发布再整理。
+ */
+export async function migrateImages(): Promise<boolean> {
+  const setId = currentSetId()
+  if (state.source !== 'phone') {
+    toast('本地试卷包模式没有手机端图片目录，用不了整理', 'err')
+    return false
+  }
+  if (setId <= 0) {
+    toast('这一组还没发布：先把图片存进手机、发布之后再整理', 'err')
+    return false
+  }
+  if (state.dirty) {
+    toast('先把当前改动发布到 App，再整理图片', 'err')
+    return false
+  }
+  const ok = await askConfirm(
+    '把图片整理进本组目录？',
+    '会把题目引用到的散图复制进 images/<组编号>/，并把题库里的路径改成新位置。\n\n' +
+      '题目内容不变；源文件不删，没人引用的散图也不会动。',
+    '开始整理',
+  )
+  if (!ok) return false
+
+  ui.busy = true
+  try {
+    const r = await api.migrateImages(setId)
+    await openSet(setId, { force: true })
+    const tail = r.missing ? ` · ${r.missing} 处引用找不到文件` : ''
+    toast(`整理完成：搬了 ${r.moved} 张，已在组目录 ${r.reused} 张${tail}`, r.missing ? '' : 'ok')
+    return true
+  } catch (e) {
+    toast(e instanceof Error ? e.message : '整理图片失败', 'err')
+    return false
+  } finally {
+    ui.busy = false
+  }
+}
+
 /* ------------------------------------------------------------------ 工作表 */
 
 export function addSheet(name: string) {
