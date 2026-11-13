@@ -71,6 +71,15 @@ export interface Issue {
 
 export type Filter = 'all' | 'issue' | 'noanswer' | 'image' | 'group'
 
+/** 按题型筛（单选 / 判断 / 填空 …） */
+export type TypeFilter = 'all' | QuestionType
+
+/**
+ * 按科目筛。科目是导入时的自由文本（「行测·资料分析」「行测·常识判断」…），
+ * 所以选项只能从当前这卷里现算；'all' = 不限，SUBJECT_NONE = 没填科目的那些题。
+ */
+export type SubjectFilter = string
+
 export interface Group {
   start: number
   end: number

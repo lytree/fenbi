@@ -2,7 +2,7 @@ import { computed, reactive } from 'vue'
 import { api } from './api'
 import type {
   EditorPaper, Filter, Group, Issue, PaperSetInfo, QIssue,
-  Question, QuestionType, Sheet, VersionInfo, WireSheet,
+  Question, QuestionType, Sheet, SubjectFilter, TypeFilter, VersionInfo, WireSheet,
 } from './types'
 import { formatTime, nextUid, sleep } from './util'
 import { parsePasted } from './paste'
@@ -53,6 +53,8 @@ export const state = reactive({
   expanded: [] as number[],
   query: '',
   filter: 'all' as Filter,
+  typeFilter: 'all' as TypeFilter,
+  subjectFilter: 'all' as SubjectFilter,
   pane: 'preview' as 'preview' | 'issue' | 'version',
   versions: [] as VersionInfo[],
   versionLoading: false,
@@ -322,6 +324,7 @@ export async function openSet(id: number, opts: { force?: boolean } = {}): Promi
   state.expanded = []
   state.focused = null
   state.dirty = false
+  resetFilters()
   clearDraft()
   refreshGroups()
   const first = currentQuestions()[0]
@@ -340,6 +343,7 @@ export function newPaper(name: string) {
   state.focused = null
   state.dirty = true
   state.versions = []
+  resetFilters()
   clearDraft()
   refreshGroups()
 }
@@ -560,18 +564,70 @@ export function switchSheet(index: number) {
   state.sheet = index
   state.expanded = []
   state.focused = null
+  resetFilters()
   refreshGroups()
 }
 
 /* ------------------------------------------------------------------ 筛选 */
+
+/** 「没填科目」在下拉里单独列一项：这些题恰恰最该被筛出来补 */
+export const SUBJECT_NONE = '__none__'
+
+/** 当前这卷各题型的题数，下拉里直接带出来，省得盲选 */
+export function typeCounts(): Partial<Record<QuestionType, number>> {
+  const out: Partial<Record<QuestionType, number>> = {}
+  for (const q of currentQuestions()) out[q.type] = (out[q.type] ?? 0) + 1
+  return out
+}
+
+/** 科目下拉：科目是导入时的自由文本（「行测·资料分析」…），只能从当前这卷现算 */
+export function subjectOptions(): { value: string; label: string; count: number }[] {
+  const map = new Map<string, number>()
+  let missing = 0
+  for (const q of currentQuestions()) {
+    const s = (q.subject || '').trim()
+    if (!s) { missing++; continue }
+    map.set(s, (map.get(s) ?? 0) + 1)
+  }
+  const out = [...map.entries()]
+    .map(([value, count]) => ({ value, label: value, count }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, 'zh'))
+  if (missing) out.push({ value: SUBJECT_NONE, label: '未填科目', count: missing })
+  // 选中的科目在这卷里已经不存在时（改过名 / 换过卷）补一条空计数，
+  // 否则 select 找不到对应 option 会显示成空白，看着像筛选坏了
+  const cur = state.subjectFilter
+  if (cur !== 'all' && !out.some((o) => o.value === cur)) {
+    out.push({ value: cur, label: cur === SUBJECT_NONE ? '未填科目' : cur, count: 0 })
+  }
+  return out
+}
+
+/** 除搜索外还有筛选条件生效（工具栏据此显示筛出题数和「清除筛选」） */
+export function filtersActive(): boolean {
+  return state.filter !== 'all' || state.typeFilter !== 'all' || state.subjectFilter !== 'all'
+}
+
+/** 切卷 / 换组时清掉筛选项：科目每卷各算各的，留着上一卷的科目只会筛出空列表 */
+export function resetFilters() {
+  state.filter = 'all'
+  state.typeFilter = 'all'
+  state.subjectFilter = 'all'
+}
 
 /** 筛选结果按依赖缓存：列表每次渲染都要这份索引，直接算等于每帧扫全卷 */
 const visibleCache = computed(() => {
   const qs = currentQuestions()
   const groups = state.groups
   const kw = state.query.trim().toLowerCase()
+  const type = state.typeFilter
+  const subject = state.subjectFilter
   const out: number[] = []
   qs.forEach((q, i) => {
+    if (type !== 'all' && q.type !== type) return
+    if (subject !== 'all') {
+      const s = (q.subject || '').trim()
+      if (subject === SUBJECT_NONE ? s !== '' : s !== subject) return
+    }
     if (state.filter !== 'all') {
       const hasIssue = localIssues(q).length > 0
       if (state.filter === 'issue' && !hasIssue) return

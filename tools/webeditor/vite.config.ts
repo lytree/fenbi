@@ -12,6 +12,12 @@ import vueJsx from 'vue-jsx/vite'
 export default defineConfig({
   base: '/web/',
   plugins: [vueJsx()],
+  css: {
+    preprocessorOptions: {
+      // 用现代编译 API：sass 1.8x 起旧 API 会打一堆弃用警告
+      scss: { api: 'modern-compiler' },
+    },
+  },
   build: {
     outDir: '../../app/src/main/assets/webeditor',
     emptyOutDir: true,
@@ -22,5 +28,14 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     include: ['src/**/*.spec.ts', 'src/**/*.spec.tsx'],
+    // 测试不需要真的处理样式：关掉 CSS/资源转换，vitest 就不会往系统临时目录里写文件
+    // （Windows 上临时目录常被安全软件锁住，写失败会整轮测试报错）
+    css: false,
+    deps: {
+      web: {
+        transformCss: false,
+        transformAssets: false,
+      },
+    },
   },
 })

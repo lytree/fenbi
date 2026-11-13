@@ -9,10 +9,12 @@ import VersionPane from './components/VersionPane'
 import ModalHost from './components/ModalHost'
 import Toast from './components/Toast'
 import {
-  addQuestion, cancelWaiting, closeModal, flushDraft, issueCounts, loadSets, loadVersions,
-  maybeRestoreDraft, openPasteDialog, openSet, publish, showErrors, startDraftAutoSave, state,
-  stopDraftAutoSave, toast, ui,
+  TYPE_SHORT, addQuestion, cancelWaiting, closeModal, currentQuestions, filtersActive, flushDraft,
+  issueCounts, loadSets, loadVersions, maybeRestoreDraft, openPasteDialog, openSet, publish,
+  resetFilters, showErrors, startDraftAutoSave, state, stopDraftAutoSave, subjectOptions, toast,
+  typeCounts, ui, visibleIndexes,
 } from './store'
+import type { QuestionType } from './types'
 import { handleFileInput } from './images'
 
 export default defineComponent({
@@ -103,34 +105,76 @@ export default defineComponent({
           <Sidebar />
 
           <section class="editor">
-            <SheetBar />
+            <div class="editor-body">
+              <SheetBar />
 
-            <div class="toolbar">
-              <input
-                class="search"
-                value={queryInput.value}
-                spellcheck={false}
-                placeholder="搜索题干 / 材料 / 答案…"
-                onInput={onQueryInput}
-              />
-              <select
-                class="select"
-                value={state.filter}
-                onChange={(e) => { state.filter = (e.target as HTMLSelectElement).value as typeof state.filter }}
-              >
-                <option value="all">全部题目</option>
-                <option value="issue">只看有问题</option>
-                <option value="noanswer">只看缺答案</option>
-                <option value="image">只看带图</option>
-                <option value="group">只看材料组</option>
-              </select>
-              <span class="grow"></span>
-              <button class="ghost sm" disabled={!state.paper} onClick={openPasteDialog}>批量粘贴</button>
-              <button class="primary sm" disabled={!state.paper} onClick={() => addQuestion()}>＋ 新题</button>
-            </div>
+              <div class="editor-main">
+                <div class="toolbar">
+                  <input
+                    class="search"
+                    value={queryInput.value}
+                    spellcheck={false}
+                    placeholder="搜索题干 / 材料 / 答案…"
+                    onInput={onQueryInput}
+                  />
+                  <select
+                    class="select"
+                    title="按状态筛"
+                    value={state.filter}
+                    onChange={(e) => { state.filter = (e.target as HTMLSelectElement).value as typeof state.filter }}
+                  >
+                    <option value="all">全部题目</option>
+                    <option value="issue">只看有问题</option>
+                    <option value="noanswer">只看缺答案</option>
+                    <option value="image">只看带图</option>
+                    <option value="group">只看材料组</option>
+                  </select>
+                  <select
+                    class="select"
+                    title="按题型筛"
+                    value={state.typeFilter}
+                    onChange={(e) => { state.typeFilter = (e.target as HTMLSelectElement).value as typeof state.typeFilter }}
+                  >
+                    <option value="all">全部题型</option>
+                    {(Object.keys(TYPE_SHORT) as QuestionType[]).map((t) => {
+                      const n = typeCounts()[t] ?? 0
+                      return (
+                        <option key={t} value={t} disabled={!n}>
+                          {TYPE_SHORT[t]}（{n}）
+                        </option>
+                      )
+                    })}
+                  </select>
+                  <select
+                    class="select"
+                    title="按科目分类筛（科目取自当前这卷）"
+                    value={state.subjectFilter}
+                    onChange={(e) => { state.subjectFilter = (e.target as HTMLSelectElement).value }}
+                  >
+                    <option value="all">全部科目</option>
+                    {subjectOptions().map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}（{o.count}）</option>
+                    ))}
+                  </select>
+                {filtersActive()
+                  ? (
+                    <>
+                      <span class="filter-info">
+                        筛出 {visibleIndexes().length} / {currentQuestions().length} 题
+                      </span>
+                      <button class="ghost sm" onClick={resetFilters}>清除筛选</button>
+                    </>
+                  )
+                  : null}
+                <span class="grow"></span>
+                <button class="ghost sm" disabled={!state.paper} onClick={openPasteDialog}>批量粘贴</button>
+                <button class="primary sm" disabled={!state.paper} onClick={() => addQuestion()}>＋ 新题</button>
+                </div>
 
-            <div class="qlist">
-              <QuestionList />
+                <div class="qlist">
+                  <QuestionList />
+                </div>
+              </div>
             </div>
 
             {!state.paper
@@ -139,7 +183,7 @@ export default defineComponent({
                   <div class="empty-card">
                     <h2>左边选一组，或者新建一组</h2>
                     <p>
-                      「一组」就是 App 首页最上面那一层标题，组里的每份卷对应顶部一个标签页。
+                      「一组」就是 App 首页最上面那一层标题，组里的每份卷对应工作表列表里的一项。
                       改完点<strong>发布到 App</strong>，题目直接入库，手机上就能刷。
                     </p>
                   </div>

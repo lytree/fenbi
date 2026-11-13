@@ -1,9 +1,22 @@
 import { computed, defineComponent } from 'vue'
 import QuestionCard from './QuestionCard'
+import type { Group } from '../types'
 import {
   currentQuestions, groupAt, setGroupMaterial, state, visibleIndexes,
 } from '../store'
 import { grow } from '../util'
+
+/** 图文排版按钮：值与 App 的 MaterialRenderer.FigureLayout 一致 */
+const FIGURE_LAYOUTS: [string, string][] = [
+  ['left', '左图右文'],
+  ['right', '右图左文'],
+  ['top', '图在上'],
+  ['bottom', '图在下'],
+  ['row', '多图并排'],
+]
+
+/** 材料输入框：按组首下标记，排版按钮要用它的光标位置包块 */
+const areas = new Map<number, HTMLTextAreaElement>()
 
 /**
  * 题目列表：折叠卡片 + 材料组头。
@@ -15,6 +28,23 @@ import { grow } from '../util'
 export default defineComponent({
   name: 'QuestionList',
   setup() {
+    /**
+     * 把选中的那段材料包成 `:::figure` 图文块。
+     * 不选就插一段「图 + 字」的示例——手写围栏容易漏结束行，给个能跑的样板更省事。
+     */
+    const applyFigure = (g: Group, layout: string) => {
+      const el = areas.get(g.start)
+      const text = g.material || ''
+      const from = el ? el.selectionStart : text.length
+      const to = el ? el.selectionEnd : text.length
+      const picked = text.slice(from, to).trim()
+      const body = picked || '![说明](images/示例.png)\n这里的文字会和图片并排显示'
+      const block = `:::figure\nlayout: ${layout}\nwidth: 38%\n${body}\n:::`
+      const head = text.slice(0, from)
+      const tail = text.slice(to)
+      setGroupMaterial(g.start, `${head}${head && !head.endsWith('\n') ? '\n' : ''}${block}${tail}`)
+    }
+
     return () => {
       if (!state.paper) return null
       const qs = currentQuestions()
@@ -52,13 +82,27 @@ export default defineComponent({
                 rows={1}
                 value={g.material}
                 spellcheck={false}
-                placeholder="材料正文：支持 Markdown 表格、图片、:::chart"
+                ref={(el: any) => {
+                  if (el) areas.set(g.start, el as HTMLTextAreaElement)
+                  else areas.delete(g.start)
+                }}
+                placeholder="材料正文：支持 Markdown 表格、图片、:::chart、:::figure 图文排版"
                 onInput={(e) => {
                   const el = e.target as HTMLTextAreaElement
                   setGroupMaterial(g.start, el.value)
                   grow(el)
                 }}
               />
+              <div class="gh-tools">
+                <span class="t">图文排版</span>
+                {FIGURE_LAYOUTS.map(([key, label]) => (
+                  <button key={key} title={`把选中的图文包成 :::figure（layout: ${key}）`}
+                    onClick={() => applyFigure(g, key)}>
+                    {label}
+                  </button>
+                ))}
+                <span class="mini-hint">选中要和图排在一起的那段字再点；没选就插一段示例</span>
+              </div>
             </div>,
           )
           lastGroupStart = g.start

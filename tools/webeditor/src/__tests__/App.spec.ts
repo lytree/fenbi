@@ -131,6 +131,49 @@ describe('局域网题库编辑器', () => {
     wrapper.unmount()
   })
 
+  it('按科目 / 题型筛选，选项里带各分类的题数', async () => {
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+
+    // 工具栏上的 状态 / 题型 / 科目 三个下拉（题目卡里还有自己的 select，别混进来）
+    const selects = wrapper.findAll('.toolbar select')
+    expect(selects).toHaveLength(3)
+
+    // 科目选项从当前这卷的 subject 原文现算：言语理解 1 题、资料分析 2 题
+    const subjects = selects[2].findAll('option').map((o) => o.text())
+    expect(subjects).toContain('言语理解（1）')
+    expect(subjects).toContain('资料分析（2）')
+
+    // 题型下拉也带题数
+    const types = selects[1].findAll('option').map((o) => o.text())
+    expect(types).toContain('单选（3）')
+
+    await selects[2].setValue('资料分析')
+    await flushPromises()
+    expect(wrapper.findAll('.qcard')).toHaveLength(2)
+    expect(wrapper.text()).toContain('筛出 2 / 3 题')
+
+    const clear = wrapper.findAll('button').find((b) => b.text() === '清除筛选')
+    expect(clear).toBeTruthy()
+    await clear!.trigger('click')
+    await flushPromises()
+    expect(wrapper.findAll('.qcard')).toHaveLength(3)
+    wrapper.unmount()
+  })
+
+  it('工作表竖排成列表，不提供「全部」这种合并项', async () => {
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+
+    const items = wrapper.findAll('.sb-item')
+    expect(items).toHaveLength(1)
+    expect(items[0].text()).toContain('行测')
+    expect(items[0].text()).toContain('3')
+    // 一份一份列出来，不给「全部工作表」这种把多卷并在一起的选项
+    expect(wrapper.find('.sheetbar').text()).not.toContain('全部')
+    wrapper.unmount()
+  })
+
   it('加一道题后发布，JSON 里带上新题', async () => {
     const wrapper = mount(App, { attachTo: document.body })
     await flushPromises()
