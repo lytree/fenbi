@@ -23,6 +23,9 @@
 
 * { box-sizing: border-box; }
 html, body { height: 100%; }
+/* 挂载点必须撑满视口，否则 .app-root 的 height:100% 会退化成 auto，
+   整页高度随内容无限增长、被 body 的 overflow:hidden 裁掉，看起来就是"滚不动" */
+#app { height: 100%; overflow: hidden; }
 body {
   margin: 0;
   font: 13px/1.55 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
@@ -87,6 +90,8 @@ button kbd { margin-left: 6px; padding: 0 4px; font-size: 10.5px; border-radius:
 .layout {
   height: calc(100% - 56px); display: grid;
   grid-template-columns: 236px minmax(0, 1fr) 404px;
+  /* 单行高度必须被容器夹住，否则题目一多行高被内容撑开，内部 .qlist 的 overflow 永远不触发 */
+  grid-template-rows: minmax(0, 1fr);
 }
 body.no-preview .layout { grid-template-columns: 236px minmax(0, 1fr); }
 body.no-preview .preview { display: none; }

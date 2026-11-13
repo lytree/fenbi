@@ -8,19 +8,18 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "typecheck": "vue-tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run"
   },
   "dependencies": {
-    "vue": "^3.5.13"
+    "vue": "3.6.0-rc.14",
+    "vue-jsx": "3.3.0-rc.6"
   },
   "devDependencies": {
     "@vue/test-utils": "^2.5.1",
     "jsdom": "^25.0.1",
     "typescript": "^5.7.2",
     "vite": "^5.4.11",
-    "vitest": "^2.1.9",
-    "vue-jsx": "3.3.0-rc.6",
-    "vue-tsc": "^2.1.10"
+    "vitest": "^2.1.9"
   }
 }
