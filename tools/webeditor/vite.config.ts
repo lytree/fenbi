@@ -28,14 +28,20 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     include: ['src/**/*.spec.ts', 'src/**/*.spec.tsx'],
-    // 测试不需要真的处理样式：关掉 CSS/资源转换，vitest 就不会往系统临时目录里写文件
-    // （Windows 上临时目录常被安全软件锁住，写失败会整轮测试报错）
+    // 测试不需要真的处理样式：关掉 CSS/资源转换
     css: false,
     deps: {
       web: {
         transformCss: false,
         transformAssets: false,
       },
+    },
+    // 单进程跑：多个测试文件并发时，vitest 会同时往同一个临时文件写转换结果，
+    // Windows 直接甩 EPERM（EPERM: operation not permitted, open ...\Temp\<id>\web\<hash>），
+    // 表现为随机一轮测试报错。串行跑就没有这个竞争。
+    pool: 'forks',
+    poolOptions: {
+      forks: { singleFork: true },
     },
   },
 })
