@@ -1,7 +1,7 @@
 {
   "name": "fenbi-lan-editor",
   "private": true,
-  "version": "0.0.34",
+  "version": "0.0.35",
   "packageManager": "pnpm@12.18.0",
   "type": "module",
   "description": "局域网题库编辑器前端（Vue 3 + TSX，禁模板），构建产物直接打进 App assets",
