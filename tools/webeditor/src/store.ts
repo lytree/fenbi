@@ -1,12 +1,15 @@
 import { computed, reactive } from 'vue'
-import { api } from './api'
+import { api, setImageBase } from './api'
 import type {
-  EditorPaper, EditorView, Filter, Group, Issue, PaperSetInfo, QIssue,
-  Question, QuestionType, Sheet, SubjectFilter, TypeFilter, VersionInfo, WireSheet,
+  DataSource, EditorPaper, EditorView, Filter, Group, Issue, LocalPackageInfo, PaperSetInfo,
+  QIssue, Question, QuestionType, Sheet, SubjectFilter, TypeFilter, VersionInfo, WireSheet,
 } from './types'
 import { formatTime, nextUid, sleep } from './util'
 import { parsePasted } from './paste'
 import { typeName } from './xingce'
+import {
+  localToQuestions, questionsToLocal, type LocalPackageResponse,
+} from './local'
 
 /* ------------------------------------------------------------------ 常量 */
 
@@ -50,8 +53,16 @@ export const state = reactive({
   questionTotal: 0,
   paper: null as EditorPaper | null,
   sheet: 0,
-  /** 题目列表 / 材料模式；只影响编辑区呈现，不改数据 */
+  /** 题目列表 / 材料模式 / 分组板；只影响编辑区呈现，不改数据 */
   view: 'list' as EditorView,
+  /** 数据源：手机局域网题库 / 本地试卷包 */
+  source: 'phone' as DataSource,
+  /** 本地试卷包列表（source = local 时左侧栏用） */
+  localPackages: [] as LocalPackageInfo[],
+  /** 当前打开的本地试卷包；path 是磁盘上的 JSON 文件 */
+  local: null as { id: string; path: string; dir: string; description: string } | null,
+  /** 分组板里多选的题目（_uid） */
+  selected: [] as number[],
   dirty: false,
   expanded: [] as number[],
   query: '',
@@ -303,6 +314,37 @@ export function markDirty() {
   scheduleDraftSave()
 }
 
+/* ------------------------------------------------------------------ 多选 */
+
+export function isSelected(uid: number): boolean {
+  return state.selected.includes(uid)
+}
+
+export function toggleSelected(uid: number) {
+  state.selected = isSelected(uid)
+    ? state.selected.filter((x) => x !== uid)
+    : [...state.selected, uid]
+}
+
+export function selectOnly(uid: number) {
+  state.selected = [uid]
+}
+
+export function selectMany(uids: number[]) {
+  state.selected = [...new Set(uids)]
+}
+
+export function clearSelection() {
+  state.selected = []
+}
+
+/** 按卷面顺序返回选中的 uid（拖动 / 批量操作都按卷面顺序处理） */
+export function selectedUids(): number[] {
+  return currentQuestions()
+    .filter((q) => state.selected.includes(q._uid))
+    .map((q) => q._uid)
+}
+
 /* ------------------------------------------------------------------ 载入 / 发布 */
 
 export async function loadSets() {
@@ -317,6 +359,9 @@ export async function openSet(id: number, opts: { force?: boolean } = {}): Promi
     if (!ok) return false
   }
   const p = await api.paper(id)
+  state.source = 'phone'
+  state.local = null
+  setImageBase('')
   state.paper = {
     id: p.id,
     name: p.title,
@@ -330,6 +375,7 @@ export async function openSet(id: number, opts: { force?: boolean } = {}): Promi
   state.expanded = []
   state.focused = null
   state.dirty = false
+  clearSelection()
   resetFilters()
   clearDraft()
   refreshGroups()
@@ -349,9 +395,107 @@ export function newPaper(name: string) {
   state.focused = null
   state.dirty = true
   state.versions = []
+  clearSelection()
   resetFilters()
   clearDraft()
   refreshGroups()
+}
+
+/* ------------------------------------------------------------------ 本地试卷包 */
+
+export async function loadLocalPackages() {
+  const r = await api.localPackages()
+  state.localPackages = r.packages ?? []
+}
+
+export async function switchSource(src: DataSource): Promise<void> {
+  if (state.source === src) return
+  const hadChanges = state.dirty
+  if (hadChanges) {
+    const ok = await askConfirm('当前改动还没保存', '切换数据源会丢掉这些改动，确定吗？', '丢掉改动')
+    if (!ok) return
+  }
+  state.source = src
+  state.paper = null
+  state.local = null
+  state.versions = []
+  state.expanded = []
+  state.focused = null
+  state.dirty = false
+  clearSelection()
+  // 没改动时别动草稿：启动自动切本地时，手机那份未发布草稿还要留着
+  if (hadChanges) clearDraft()
+  setImageBase('')
+  if (src === 'phone') {
+    await loadSets()
+    const first = state.sets.find((s) => s.id > 0)
+    if (first) await openSet(first.id, { force: true })
+  } else {
+    await loadLocalPackages()
+  }
+}
+
+/** 打开一份本地 JSON 试卷包（只在开发服务器下可用） */
+export async function openLocalPackage(id: string, opts: { force?: boolean } = {}): Promise<boolean> {
+  if (!opts.force && state.dirty) {
+    const ok = await askConfirm('当前改动还没保存', '切换会丢掉刚才的改动，确定吗？', '丢掉改动')
+    if (!ok) return false
+  }
+  const raw: LocalPackageResponse = await api.localPackage(id)
+  const questions = localToQuestions(raw)
+  state.source = 'local'
+  state.local = {
+    id: raw.id,
+    path: raw.path,
+    dir: raw.dir ?? '',
+    description: String(raw.description ?? ''),
+  }
+  setImageBase(state.local.dir)
+  state.paper = {
+    id: 0,
+    name: String(raw.bank || raw.title || raw.id),
+    sheets: [{ name: '试卷', questions }],
+  }
+  state.sheet = 0
+  state.expanded = []
+  state.focused = questions[0]?._uid ?? null
+  state.dirty = false
+  state.versions = []
+  clearSelection()
+  resetFilters()
+  clearDraft()
+  refreshGroups()
+  return true
+}
+
+/** 保存回本地 JSON：多工作表按顺序拼成一份 questions（本地格式没有工作表概念） */
+export async function saveLocal(): Promise<boolean> {
+  const paper = state.paper
+  if (!paper || !state.local) return false
+  const title = (paper.name || '').trim()
+  if (!title) { toast('先给这份试卷起个名字', 'err'); return false }
+  const all = paper.sheets.flatMap((s) => s.questions)
+  if (!all.length) { toast('还一道题都没有，先加题', 'err'); return false }
+
+  ui.busy = true
+  try {
+    const r = await api.localSave(
+      state.local.path,
+      title,
+      state.local.description,
+      questionsToLocal(all),
+    )
+    state.dirty = false
+    clearDraft()
+    toast(`已保存到本地：${r.path} · ${r.questionCount} 题`, 'ok')
+    await loadLocalPackages()
+    return true
+  } catch (e) {
+    await showErrors('保存到本地失败', e instanceof Error ? e.message : '保存失败')
+    return false
+  } finally {
+    ui.busy = false
+  }
 }
 
 export function serialize(): WireSheet[] {
@@ -365,6 +509,8 @@ export function serialize(): WireSheet[] {
 }
 
 export async function publish(opts: { replace?: boolean } = {}): Promise<boolean> {
+  // 本地模式没有手机端，发布 = 写回磁盘上的 JSON 试卷包
+  if (state.source === 'local') return saveLocal()
   const paper = state.paper
   if (!paper) return false
   const title = (paper.name || '').trim()
@@ -442,6 +588,7 @@ export function removeQuestion(uid: number) {
   if (i < 0) return
   qs.splice(i, 1)
   state.expanded = state.expanded.filter((x) => x !== uid)
+  state.selected = state.selected.filter((x) => x !== uid)
   if (state.focused === uid) state.focused = null
   markDirty()
   refreshGroups()
@@ -468,6 +615,135 @@ export function moveQuestion(uid: number, delta: number) {
   if (i < 0 || j < 0 || j >= qs.length) return
   const [q] = qs.splice(i, 1)
   qs.splice(j, 0, q)
+  markDirty()
+  refreshGroups()
+}
+
+/* ------------------------------------------------------------------ 分组板：拖拽与批量操作 */
+
+export type DropTarget =
+  | { kind: 'pool' }
+  | { kind: 'group'; start: number }
+  | { kind: 'index'; uid: number; position: 'before' | 'after' }
+
+/**
+ * 把题目移动到池子或材料组。
+ *
+ * 数据口径不变：材料仍然「连续 + 全文相等」才算一组，所以拖进材料组时不能只改
+ * `material`——必须把题挪到组内（拖到组尾 / 某道小题前），否则卷面上会裂成两组。
+ * 拖进池子则清空材料、挪到卷尾。
+ */
+export function moveQuestionsTo(uids: number[], target: DropTarget) {
+  const qs = currentQuestions()
+  if (!qs.length) return
+  const moving = qs.filter((q) => uids.includes(q._uid))
+  if (!moving.length) return
+  const movingSet = new Set(moving.map((q) => q._uid))
+
+  let material = ''
+  let anchorUid: number | null = null
+  let beforeAnchor = false
+
+  if (target.kind === 'group') {
+    const g = state.groups.find((x) => x.start === target.start)
+    if (!g) return
+    material = qs[g.start]?.material ?? g.material
+    // 组尾若也在拖动集合里，退到组内最后一道没被拖走的题，别把整批甩到卷末
+    for (let i = g.end; i >= g.start; i--) {
+      if (!movingSet.has(qs[i]._uid)) { anchorUid = qs[i]._uid; break }
+    }
+    // 整组都在拖：没有可依附的锚点，当作原地不动
+    if (anchorUid === null) return
+  } else if (target.kind === 'index') {
+    const idx = qs.findIndex((q) => q._uid === target.uid)
+    if (idx < 0) return
+    const g = groupAt(state.groups, idx)
+    material = g ? (qs[g.start]?.material ?? g.material) : ''
+    anchorUid = target.uid
+    beforeAnchor = target.position === 'before'
+    if (movingSet.has(target.uid)) {
+      // 目标本身也在拖动集合里：插到它前面最近一道没被拖走的题后面
+      anchorUid = null
+      beforeAnchor = false
+      for (let i = idx - 1; i >= 0; i--) {
+        if (!movingSet.has(qs[i]._uid)) { anchorUid = qs[i]._uid; break }
+      }
+    }
+  }
+
+  // 拖到自己身上：什么都不做，避免题在数组里「原地转一圈」
+  if (anchorUid !== null && movingSet.has(anchorUid)) {
+    if (moving.length === 1) return
+  }
+
+  const block = moving.slice()
+  // 只有「独立题」才在数组里单独占位；按卷面顺序取出后整体插入
+  const rest = qs.filter((q) => !movingSet.has(q._uid))
+  for (const q of block) {
+    q.material = material
+    q._issues = null
+  }
+
+  let at = rest.length
+  if (anchorUid !== null && !movingSet.has(anchorUid)) {
+    const anchor = rest.findIndex((q) => q._uid === anchorUid)
+    if (anchor >= 0) at = beforeAnchor ? anchor : anchor + 1
+  }
+  rest.splice(at, 0, ...block)
+  qs.splice(0, qs.length, ...rest)
+
+  state.focused = block[block.length - 1]._uid
+  markDirty()
+  refreshGroups()
+}
+
+/** 整组拖动：把一则材料连同它的小题一起移动到另一组前 / 后 */
+export function moveGroupTo(start: number, targetStart: number, position: 'before' | 'after' = 'before') {
+  if (start === targetStart) return
+  const qs = currentQuestions()
+  const from = state.groups.find((g) => g.start === start)
+  const to = state.groups.find((g) => g.start === targetStart)
+  if (!from || !to) return
+
+  const block = qs.slice(from.start, from.end + 1)
+  const rest = [...qs.slice(0, from.start), ...qs.slice(from.end + 1)]
+  const anchorUid = position === 'before' ? qs[to.start]?._uid : qs[to.end]?._uid
+  const anchor = rest.findIndex((q) => q._uid === anchorUid)
+  const at = anchor < 0 ? rest.length : position === 'before' ? anchor : anchor + 1
+  rest.splice(at, 0, ...block)
+  qs.splice(0, qs.length, ...rest)
+
+  markDirty()
+  refreshGroups()
+}
+
+/** 把选中的题并进某个材料组（追加到组尾） */
+export function assignSelectedToGroup(start: number) {
+  const uids = selectedUids()
+  if (!uids.length) return
+  moveQuestionsTo(uids, { kind: 'group', start })
+  clearSelection()
+}
+
+/** 把选中的题移出材料组，回到「未分组」 */
+export function ungroupSelected() {
+  const uids = selectedUids()
+  if (!uids.length) return
+  moveQuestionsTo(uids, { kind: 'pool' })
+  clearSelection()
+}
+
+/** 批量删除选中的题 */
+export function removeSelected() {
+  const uids = new Set(state.selected)
+  if (!uids.size) return
+  const qs = currentQuestions()
+  for (let i = qs.length - 1; i >= 0; i--) {
+    if (uids.has(qs[i]._uid)) qs.splice(i, 1)
+  }
+  state.expanded = state.expanded.filter((x) => !uids.has(x))
+  if (state.focused !== null && uids.has(state.focused)) state.focused = null
+  clearSelection()
   markDirty()
   refreshGroups()
 }
@@ -592,6 +868,7 @@ export function switchSheet(index: number) {
   state.sheet = index
   state.expanded = []
   state.focused = null
+  clearSelection()
   resetFilters()
   refreshGroups()
 }
@@ -949,6 +1226,8 @@ interface Draft {
   name: string
   sheets: WireSheet[]
   savedAt: number
+  source?: DataSource
+  local?: { id: string; path: string; dir: string; description: string } | null
 }
 
 let draftTimer: number | undefined
@@ -973,6 +1252,8 @@ function saveDraftNow() {
       name: paper.name,
       sheets: serialize(),
       savedAt,
+      source: state.source,
+      local: state.local ? { ...state.local } : null,
     } satisfies Draft))
     ui.draftSavedAt = savedAt
   } catch {
@@ -1037,17 +1318,23 @@ export function hasDraft(): boolean {
 export async function maybeRestoreDraft(): Promise<boolean> {
   const d = readDraft()
   if (!d) return false
+  // 草稿是「手机题库」还是「本地试卷包」的，不能串台
+  if ((d.source ?? 'phone') !== state.source) return false
   const age = Date.now() - (d.savedAt ?? 0)
   const when = age > 24 * 3600_000
     ? `${formatTime(d.savedAt)}（${Math.floor(age / 86_400_000)} 天前）`
     : formatTime(d.savedAt)
+  const local = d.source === 'local'
   const ok = await askConfirm(
     '接着上次改？',
-    `本地存着一份 ${when} 的未发布改动：「${d.name}」共 ${d.sheets.length} 卷。\n\n` +
-      '恢复后再点「发布到 App」才会写进手机；不要的话就从手机上的当前内容打开（选「不要」会删掉这份草稿）。',
+    `本地存着一份 ${when} 的${local ? '未保存' : '未发布'}改动：「${d.name}」共 ${d.sheets.length} 卷。\n\n` +
+      `恢复后再点「${local ? '保存到本地' : '发布到 App'}」才会落盘；不要的话就从当前内容打开（选「不要」会删掉这份草稿）。`,
     '接着改',
   )
   if (!ok) { clearDraft(); return false }
+  state.source = d.source ?? 'phone'
+  state.local = d.local ?? null
+  setImageBase(state.local?.dir ?? '')
   state.paper = {
     id: d.setId ?? 0,
     name: d.name,
@@ -1061,6 +1348,7 @@ export async function maybeRestoreDraft(): Promise<boolean> {
   state.expanded = []
   state.focused = null
   state.dirty = true
+  clearSelection()
   ui.draftSavedAt = d.savedAt ?? 0
   refreshGroups()
   return true

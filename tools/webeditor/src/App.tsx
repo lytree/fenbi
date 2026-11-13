@@ -4,6 +4,7 @@ import Sidebar from './components/Sidebar'
 import SheetBar from './components/SheetBar'
 import QuestionList from './components/QuestionList'
 import MaterialList from './components/MaterialList'
+import GroupBoard from './components/GroupBoard'
 import PreviewPane from './components/PreviewPane'
 import IssuePane from './components/IssuePane'
 import VersionPane from './components/VersionPane'
@@ -13,7 +14,7 @@ import {
   TYPE_SHORT, addQuestion, cancelWaiting, closeModal, currentQuestions, filtersActive, flushDraft,
   issueCounts, level1Options, level2Options, loadSets, loadVersions, maybeRestoreDraft,
   openPasteDialog, openSet, publish, resetFilters, showErrors, startDraftAutoSave, state,
-  stopDraftAutoSave, toast, typeCounts, ui, visibleIndexes,
+  stopDraftAutoSave, switchSource, toast, typeCounts, ui, visibleIndexes,
 } from './store'
 import type { QuestionType } from './types'
 import { handleFileInput } from './images'
@@ -21,19 +22,56 @@ import { handleFileInput } from './images'
 export default defineComponent({
   name: 'App',
   setup() {
-    const previewHidden = ref(false)
+    /** 低于这个宽度默认收起预览，把地方让给编辑区；手动开合后按手动来 */
+    const NARROW_PREVIEW = 1180
+    const previewHidden = ref(typeof window !== 'undefined' && window.innerWidth < NARROW_PREVIEW)
+    let previewManual: boolean | null = null
+
+    const syncViewport = () => {
+      const narrow = window.innerWidth < NARROW_PREVIEW
+      previewHidden.value = previewManual ?? narrow
+    }
+
+    const setPreviewHidden = (hidden: boolean) => {
+      previewManual = hidden
+      previewHidden.value = hidden
+    }
 
     onMounted(async () => {
       window.addEventListener('keydown', onKeydown)
       window.addEventListener('beforeunload', onBeforeUnload)
+      window.addEventListener('resize', syncViewport)
       document.addEventListener('visibilitychange', onVisibility)
+      syncViewport()
       // 停手 700ms 存一次之外，每 30 秒再兜一次底；关页面时立刻落盘
       startDraftAutoSave()
+      let sourceReady = false
       try {
         await loadSets()
+        sourceReady = true
+      } catch {
+        // 手机没连上时退回本地试卷包：开发服务器会扫描 qbank_out / sample / templates
+        try {
+          await switchSource('local')
+          sourceReady = true
+          toast('手机题库没连上，已切到本地试卷包', '')
+        } catch {
+          // 两边都打不开，下面统一报错
+        }
+      }
+      if (!sourceReady) {
+        showErrors(
+          '连不上题库',
+          '手机上的「局域网编辑器」没开，本地试卷包也没读到。\n\n' +
+            '用手机重新打开带口令的地址，或者在 tools/webeditor 下跑 pnpm dev 使用本地试卷包。',
+        )
+        return
+      }
+      try {
         // 上次还有没发布的改动就问一句要不要接着改；不然就从手机上当前内容打开
         const restored = await maybeRestoreDraft()
-        if (!restored) {
+        if (restored) return
+        if (state.source === 'phone') {
           const first = state.sets.find((s) => s.id > 0)
           if (first) await openSet(first.id, { force: true })
         }
@@ -51,6 +89,7 @@ export default defineComponent({
     onBeforeUnmount(() => {
       window.removeEventListener('keydown', onKeydown)
       window.removeEventListener('beforeunload', onBeforeUnload)
+      window.removeEventListener('resize', syncViewport)
       document.removeEventListener('visibilitychange', onVisibility)
       stopDraftAutoSave()
     })
@@ -102,7 +141,7 @@ export default defineComponent({
       <div class="app-root">
         <TopBar />
 
-        <main class="layout" style={previewHidden.value ? 'grid-template-columns:236px minmax(0,1fr)' : undefined}>
+        <main class={['layout', previewHidden.value && 'no-preview']}>
           <Sidebar />
 
           <section class="editor">
@@ -125,6 +164,14 @@ export default defineComponent({
                       onClick={() => { state.view = 'material' }}
                     >
                       材料 {state.groups.length}
+                    </button>
+                    <button
+                      class={['seg-btn', state.view === 'board' && 'on']}
+                      data-view="board"
+                      title="拖拽题目分配材料组"
+                      onClick={() => { state.view = 'board' }}
+                    >
+                      分组 {state.groups.length}
                     </button>
                   </div>
                   <input
@@ -204,7 +251,11 @@ export default defineComponent({
                 </div>
 
                 <div class="qlist">
-                  {state.view === 'material' ? <MaterialList /> : <QuestionList />}
+                  {state.view === 'material'
+                    ? <MaterialList />
+                    : state.view === 'board'
+                      ? <GroupBoard />
+                      : <QuestionList />}
                 </div>
               </div>
             </div>
@@ -252,7 +303,7 @@ export default defineComponent({
                     <span class="pill">{state.versions.length}</span>
                   </button>
                   <span class="grow"></span>
-                  <button class="icon-btn" title="收起预览" onClick={() => { previewHidden.value = true }}>⟩</button>
+                  <button class="icon-btn" title="收起预览" onClick={() => setPreviewHidden(true)}>⟩</button>
                 </div>
                 {state.pane === 'preview'
                   ? <PreviewPane />
@@ -263,7 +314,7 @@ export default defineComponent({
             )}
 
           {previewHidden.value
-            ? <button class="preview-fab" title="展开预览" onClick={() => { previewHidden.value = false }}>⟨</button>
+            ? <button class="preview-fab" title="展开预览" onClick={() => setPreviewHidden(false)}>⟨</button>
             : null}
         </main>
 

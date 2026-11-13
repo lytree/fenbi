@@ -114,6 +114,8 @@ function json(body: unknown, status = 200) {
 
 beforeEach(() => {
   Element.prototype.scrollIntoView = () => {}
+  // jsdom 默认 1024 宽会触发窄屏逻辑（自动收起预览），这里按常见桌面宽度跑
+  Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 1440 })
   mockFetch()
 })
 
@@ -494,5 +496,118 @@ describe('局域网题库编辑器', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('题干为空')
     wrapper.unmount()
+  })
+
+  it('分组板：材料组、未分组池与统计一览', async () => {
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+
+    await wrapper.find('[data-view="board"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findAll('.bgroup')).toHaveLength(1)
+    expect(wrapper.findAll('.btile')).toHaveLength(3)
+    expect(wrapper.findAll('.board-pool .btile')).toHaveLength(1)
+    expect(wrapper.find('.board-stats').text()).toContain('材料组')
+    expect(wrapper.find('.board-stats').text()).toContain('未分组')
+    expect(wrapper.find('.bgroup .bg-material').text()).toContain('总收入5280')
+    wrapper.unmount()
+  })
+
+  it('分组板：勾选题目后批量并入材料组，材料逐题写入', async () => {
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+
+    await wrapper.find('[data-view="board"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.find('.board-pool .btile input[type="checkbox"]').setValue(true)
+    await flushPromises()
+    expect(wrapper.find('.board-batch').text()).toContain('已选 1 题')
+
+    await wrapper.find('.board-batch select').setValue('1')
+    await flushPromises()
+
+    expect(wrapper.findAll('.bgroup .btile')).toHaveLength(3)
+    expect(wrapper.findAll('.board-pool .btile')).toHaveLength(0)
+    expect(wrapper.find('.board-batch').exists()).toBe(false)
+
+    const publishBtn = wrapper.findAll('button').find((b) => b.text().includes('发布到 App'))
+    await publishBtn!.trigger('click')
+    await flushPromises()
+
+    const questions = published.sheets[0].questions
+    // 拖进组尾：第三题带上同一段材料，卷面上仍连续
+    expect(questions[2].stem).toBe('第一题：没有语病的一项')
+    expect(questions[2].material).toBe('2025年1—2月，总收入5280.0亿元。')
+    wrapper.unmount()
+  })
+
+  it('分组板：拖题进材料块即并入，拖回未分组池即移出', async () => {
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+
+    await wrapper.find('[data-view="board"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.find('.board-pool .btile').trigger('dragstart')
+    await wrapper.find('.bgroup').trigger('drop')
+    await flushPromises()
+    expect(wrapper.findAll('.bgroup .btile')).toHaveLength(3)
+    expect(wrapper.findAll('.board-pool .btile')).toHaveLength(0)
+
+    await wrapper.findAll('.bgroup .btile')[0].trigger('dragstart')
+    await wrapper.find('.board-pool').trigger('drop')
+    await flushPromises()
+    expect(wrapper.findAll('.board-pool .btile')).toHaveLength(1)
+
+    const publishBtn = wrapper.findAll('button').find((b) => b.text().includes('发布到 App'))
+    await publishBtn!.trigger('click')
+    await flushPromises()
+
+    const questions = published.sheets[0].questions
+    const movedOut = questions.find((q: any) => q.stem === '第二题：同比增加多少')
+    expect(movedOut.material).toBe('')
+    wrapper.unmount()
+  })
+
+  it('分组板：点题目选中后右侧预览显示同一题详情', async () => {
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+
+    await wrapper.find('[data-view="board"]').trigger('click')
+    await flushPromises()
+
+    // 前面的用例可能把右栏切到「校验」，先切回卷面预览
+    const previewTab = wrapper.findAll('button').find((b) => b.text().includes('卷面预览'))
+    await previewTab!.trigger('click')
+    await flushPromises()
+
+    await wrapper.find('.board-pool .btile').trigger('click')
+    await flushPromises()
+
+    const focused = wrapper.find('.pv-q.focus')
+    expect(focused.exists()).toBe(true)
+    expect(focused.text()).toContain('第一题：没有语病的一项')
+    expect(wrapper.findAll('.bgroup .btile')).toHaveLength(2)
+    wrapper.unmount()
+  })
+
+  it('窄窗口默认收起预览，可手动展开', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 900 })
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+
+    expect(wrapper.find('.layout').classes()).toContain('no-preview')
+    expect(wrapper.find('.preview').exists()).toBe(false)
+    expect(wrapper.find('.preview-fab').exists()).toBe(true)
+
+    await wrapper.find('.preview-fab').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.layout').classes()).not.toContain('no-preview')
+    expect(wrapper.find('.preview').exists()).toBe(true)
+
+    wrapper.unmount()
+    Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 1440 })
   })
 })

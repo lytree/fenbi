@@ -194,9 +194,15 @@ button {
 .layout {
   height: calc(100% - 56px);
   display: grid;
-  grid-template-columns: 236px minmax(0, 1fr) 404px;
+  /* 侧栏 / 编辑区 / 预览都随窗口收缩，避免中等宽度下把编辑区挤没 */
+  grid-template-columns: clamp(190px, 15vw, 236px) minmax(0, 1fr) clamp(320px, 25vw, 404px);
   /* 单行高度必须被容器夹住，否则题目一多行高被内容撑开，内部 .qlist 的 overflow 永远不触发 */
   grid-template-rows: minmax(0, 1fr);
+  min-width: 0;
+
+  &.no-preview {
+    grid-template-columns: clamp(190px, 15vw, 236px) minmax(0, 1fr);
+  }
 }
 .preview-fab {
   position: fixed;
@@ -287,7 +293,7 @@ button {
 
 /* ---------------- 编辑区 ---------------- */
 .editor { display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; }
-.editor-body { flex: 1; display: grid; grid-template-columns: 176px minmax(0, 1fr); min-height: 0; }
+.editor-body { flex: 1; display: grid; grid-template-columns: clamp(126px, 11vw, 176px) minmax(0, 1fr); min-height: 0; }
 .editor-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 
 /* 工作表列表：竖排一份一份列出来，卷多也不挤成一条细横条 */
@@ -1242,8 +1248,402 @@ button {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ---------------- 窄屏 ---------------- */
+/* ---------------- 窄屏（统一在文件末尾的响应式区） ---------------- */
+
+/* ---------------- 数据源切换 ---------------- */
+.source-seg {
+  display: flex;
+  gap: 4px;
+  padding: 10px 10px 0;
+}
+
+.source-btn {
+  flex: 1;
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 11.5px;
+
+  &:hover { border-color: var(--accent); color: var(--accent-ink); }
+  &.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+}
+
+/* ---------------- 分组板：拖拽分配材料 ---------------- */
+.board {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 100%;
+}
+
+.board-hint {
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+.board-stats {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel);
+
+  .bs-title {
+    padding: 1px 8px;
+    border-radius: 5px;
+    background: #eef2f8;
+    color: var(--ink-2);
+    font-size: 11.5px;
+    font-weight: 700;
+  }
+
+  .bs-item {
+    font-size: 11.5px;
+    color: var(--muted);
+
+    b { color: var(--ink); }
+    b.warn { color: var(--warn); }
+  }
+}
+
+.board-cols {
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.board-pool {
+  position: sticky;
+  top: 0;
+  min-height: 120px;
+  padding: 8px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 10px;
+  background: var(--panel-2);
+
+  &.drop-on {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+}
+
+.bp-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.bp-title { font-size: 12px; font-weight: 700; color: var(--ink-2); }
+.bp-count { font-size: 11px; color: var(--muted); }
+.bp-tip { font-size: 10.5px; color: var(--muted); }
+.bp-empty { padding: 18px 8px; text-align: center; color: var(--muted); font-size: 11.5px; }
+
+.board-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.bgroup {
+  padding: 8px 10px 10px;
+  border: 1px solid $accent-line-2;
+  border-radius: 10px;
+  background: #fbfcff;
+
+  &.drop-on {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+  }
+
+  &.drop-on .bdrop {
+    border-color: var(--accent);
+    color: var(--accent-ink);
+    background: #fff;
+  }
+}
+
+.bg-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.bg-grip {
+  cursor: grab;
+  color: var(--muted);
+  font-size: 14px;
+  user-select: none;
+
+  &:active { cursor: grabbing; }
+}
+
+.bg-no {
+  padding: 1px 7px;
+  border-radius: 5px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.bg-meta { font-size: 11px; color: var(--muted); }
+.bg-meta.sift { color: var(--warn); }
+
+.bg-material {
+  max-height: 160px;
+  margin-top: 6px;
+  padding: 7px 9px;
+  overflow: auto;
+  border: 1px solid $accent-line;
+  border-radius: 7px;
+  background: #fff;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-2);
+
+  &:empty { display: none; }
+}
+
+.btiles {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.btile {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  cursor: pointer;
+  transition: .12s;
+
+  &:hover { border-color: var(--accent); }
+  &.focused { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+  &.sel { background: var(--accent-soft); border-color: $accent-line-2; }
+  &.drop-line { border-top: 2px solid var(--accent); }
+}
+
+.bt-check { display: flex; align-items: center; }
+.bt-no { min-width: 20px; text-align: right; font-size: 10.5px; color: var(--muted); }
+
+.bt-type {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #eef2f8;
+  color: var(--ink-2);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.bt-main { flex: 1; min-width: 0; }
+
+.bt-stem {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bt-meta {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+  font-size: 10.5px;
+  color: var(--muted);
+
+  .ans { color: var(--ok); font-weight: 600; }
+  .warn { color: var(--warn); }
+  .chip { padding: 0 4px; border-radius: 3px; background: #eef2f8; }
+}
+
+.bt-img {
+  width: 52px;
+  height: 40px;
+  object-fit: cover;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+}
+
+.bdrop {
+  padding: 6px;
+  border: 1px dashed transparent;
+  border-radius: 6px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+.board-batch {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid $accent-line-2;
+  border-radius: 9px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+/* ------------- 分组板的窄屏布局见文件末尾响应式区 ------------- */
+
+/* ---------------- 响应式：宽屏 / 笔记本 / 平板 / 窄窗 ---------------- */
+/* 中宽：侧栏、预览随窗口收一点，给编辑区留空间 */
 @media (max-width: 1320px) {
-  .editor-body { grid-template-columns: 150px minmax(0, 1fr); }
   .search { width: 180px; }
+  .topbar .brand { min-width: 170px; }
+  .topbar .paper-name { flex-basis: 320px; }
+}
+
+/* 低于 1180：默认收起预览（App 里同步），侧栏再窄一点；手动展开时预览改为浮层 */
+@media (max-width: 1180px) {
+  .layout,
+  .layout.no-preview {
+    grid-template-columns: clamp(168px, 18vw, 200px) minmax(0, 1fr);
+  }
+
+  .layout:not(.no-preview) .preview {
+    position: fixed;
+    top: 56px;
+    right: 0;
+    bottom: 0;
+    z-index: 45;
+    width: min(420px, 94vw);
+    border-left: 1px solid var(--line);
+    box-shadow: -14px 0 34px rgba(15, 23, 42, .16);
+  }
+
+  .board-cols { grid-template-columns: minmax(200px, 250px) minmax(0, 1fr); }
+  .toolbar { gap: 6px; }
+  .search { flex: 1 1 160px; width: auto; }
+  .select { max-width: 150px; }
+}
+
+/* 平板 / 窄窗：侧栏变顶部横条，编辑区占满，分组板单列 */
+@media (max-width: 900px) {
+  .layout,
+  .layout.no-preview {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .sidebar {
+    flex-direction: row;
+    align-items: stretch;
+    max-height: 132px;
+    padding: 6px 8px;
+    overflow: hidden;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+  }
+  .sidebar .source-seg {
+    flex: 0 0 auto;
+    flex-direction: column;
+    padding: 0 8px 0 0;
+    border-right: 1px solid var(--line);
+  }
+  .sidebar .side-head {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 0 8px 0 0;
+    border-right: 1px solid var(--line);
+    border-bottom: none;
+  }
+  .sidebar .side-head button { white-space: nowrap; }
+  .sidebar .side-list {
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+    gap: 6px;
+    padding: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .sidebar .side-item { min-width: 168px; max-width: 230px; margin-bottom: 0; }
+  .sidebar .side-foot { display: none; }
+
+  .editor-body { grid-template-columns: 120px minmax(0, 1fr); }
+  .board-cols { grid-template-columns: minmax(0, 1fr); }
+  .board-pool { position: static; }
+  .board-hint { font-size: 11px; }
+
+  .topbar {
+    height: auto;
+    min-height: 56px;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    padding: 6px 10px;
+  }
+  .topbar .brand { min-width: 0; }
+  .topbar .brand-text .ws { display: none; }
+  .topbar .title-wrap { order: 3; flex: 1 0 100%; }
+  .topbar .paper-name { flex: 1; max-width: none; }
+  .topbar .top-actions { margin-left: auto; }
+
+  .layout:not(.no-preview) .preview { top: 84px; }
+  .preview-fab { top: 92px; }
+}
+
+/* 手机 / 很窄的窗口：工作表改成上方横条，分组板进一步压缩 */
+@media (max-width: 640px) {
+  .topbar .brand-text b { font-size: 12.5px; }
+  .topbar .top-actions .ghost { display: none; }
+
+  .editor-body { display: flex; flex-direction: column; }
+  .editor-body > .editor-main { flex: 1; min-height: 0; }
+  .sheetbar {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+  }
+  .sheetbar .sb-head { flex: 0 0 auto; padding: 0 4px 0 0; }
+  .sheetbar .sb-list {
+    flex: 1;
+    flex-direction: row;
+    gap: 4px;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .sheetbar .sb-item { min-width: 92px; max-width: 140px; }
+  .sheetbar .sheet-add { flex: 0 0 auto; white-space: nowrap; }
+
+  .board-stats { gap: 6px 10px; }
+  .bp-tip { display: none; }
+  .btile { padding: 5px 6px; gap: 6px; }
+  .bt-img { width: 40px; height: 32px; }
+  .bt-type { display: none; }
+  .bg-head { gap: 6px; }
+  .board-batch { flex-wrap: wrap; }
+  .board-batch .select { max-width: 100%; }
+
+  .layout:not(.no-preview) .preview { top: 84px; width: 100vw; }
 }

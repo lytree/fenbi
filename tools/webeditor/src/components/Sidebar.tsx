@@ -1,6 +1,7 @@
 import { defineComponent } from 'vue'
 import {
-  askConfirm, askText, loadSets, newPaper, openSet, requestDeleteSet, state, toast,
+  askConfirm, askText, loadLocalPackages, loadSets, newPaper, openLocalPackage, openSet,
+  requestDeleteSet, state, switchSource, toast,
 } from '../store'
 
 /** 左侧：App 里现有的「导入组」列表。点一组就打开它，改完发布回去 */
@@ -51,54 +52,140 @@ export default defineComponent({
       }
     }
 
-    return () => (
-      <aside class="sidebar">
-        <div class="side-head">
-          <button class="primary sm" onClick={create}>＋ 新建一组</button>
-          <button class="ghost sm" onClick={refresh}>刷新列表</button>
-        </div>
+    const pickLocal = async (id: string) => {
+      if (state.local?.id === id) return
+      try {
+        await openLocalPackage(id)
+      } catch (e) {
+        toast(e instanceof Error ? e.message : '打开本地试卷包失败', 'err')
+      }
+    }
 
+    const refreshLocal = async () => {
+      try {
+        await loadLocalPackages()
+        toast(`找到 ${state.localPackages.length} 份本地试卷包`, 'ok')
+      } catch (e) {
+        toast(e instanceof Error ? e.message : '读取本地试卷包失败', 'err')
+      }
+    }
+
+    const changeSource = async (src: 'phone' | 'local') => {
+      try {
+        await switchSource(src)
+      } catch (e) {
+        toast(e instanceof Error ? e.message : '切换数据源失败', 'err')
+      }
+    }
+
+    const sourceBar = () => (
+      <div class="source-seg">
+        <button
+          class={['source-btn', state.source === 'phone' && 'on']}
+          data-source="phone"
+          onClick={() => changeSource('phone')}
+        >
+          手机题库
+        </button>
+        <button
+          class={['source-btn', state.source === 'local' && 'on']}
+          data-source="local"
+          onClick={() => changeSource('local')}
+        >
+          本地试卷包
+        </button>
+      </div>
+    )
+
+    const localSidebar = () => (
+      <>
+        <div class="side-head">
+          <button class="ghost sm" onClick={refreshLocal}>刷新本地列表</button>
+        </div>
         <div class="side-list">
-          {state.sets.length === 0
-            ? <div class="side-empty">App 里还没有试卷<br />点上面「新建一组」开始</div>
-            : state.sets.map((s) => (
+          {state.localPackages.length === 0
+            ? (
+              <div class="side-empty">
+                没找到本地 JSON 试卷包<br />
+                把文件放到 qbank_out / sample / templates 下
+              </div>
+            )
+            : state.localPackages.map((p) => (
               <div
-                key={s.id}
-                class={['side-item', state.paper?.id === s.id && 'active']}
-                title={s.title}
-                onClick={() => pick(s.id, s.editable)}
+                key={p.id}
+                class={['side-item', state.local?.id === p.id && 'active']}
+                title={p.path}
+                onClick={() => pickLocal(p.id)}
               >
                 <div>
-                  <div class="nm">{s.title}</div>
-                  <div class="mt">
-                    {s.paperCount} 卷 · {s.questionCount} 题
-                    {s.missingAnswers ? ` · 缺 ${s.missingAnswers} 答案` : ''}
-                    {s.editable ? null : <span class="tag">未归组</span>}
-                  </div>
+                  <div class="nm">{p.title}</div>
+                  <div class="mt">{p.questionCount} 题 · 本地 JSON</div>
                 </div>
-                {s.editable
-                  ? (
-                    <div class="ops">
-                      <button
-                        title="删除这一组：请求会发到手机上确认"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          requestDeleteSet(s.id, s.title)
-                        }}
-                      >
-                        删除
-                      </button>
-                    </div>
-                  )
-                  : null}
               </div>
             ))}
         </div>
-
         <div class="side-foot">
           <span class="dot"></span>
-          <span>{state.sets.length} 组 · 共 {state.questionTotal} 题</span>
+          <span>{state.localPackages.length} 份本地试卷</span>
         </div>
+      </>
+    )
+
+    return () => (
+      <aside class="sidebar">
+        {sourceBar()}
+        {state.source === 'local'
+          ? localSidebar()
+          : (
+            <>
+              <div class="side-head">
+                <button class="primary sm" onClick={create}>＋ 新建一组</button>
+                <button class="ghost sm" onClick={refresh}>刷新列表</button>
+              </div>
+
+              <div class="side-list">
+                {state.sets.length === 0
+                  ? <div class="side-empty">App 里还没有试卷<br />点上面「新建一组」开始</div>
+                  : state.sets.map((s) => (
+                    <div
+                      key={s.id}
+                      class={['side-item', state.paper?.id === s.id && 'active']}
+                      title={s.title}
+                      onClick={() => pick(s.id, s.editable)}
+                    >
+                      <div>
+                        <div class="nm">{s.title}</div>
+                        <div class="mt">
+                          {s.paperCount} 卷 · {s.questionCount} 题
+                          {s.missingAnswers ? ` · 缺 ${s.missingAnswers} 答案` : ''}
+                          {s.editable ? null : <span class="tag">未归组</span>}
+                        </div>
+                      </div>
+                      {s.editable
+                        ? (
+                          <div class="ops">
+                            <button
+                              title="删除这一组：请求会发到手机上确认"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                requestDeleteSet(s.id, s.title)
+                              }}
+                            >
+                              删除
+                            </button>
+                          </div>
+                        )
+                        : null}
+                    </div>
+                  ))}
+              </div>
+
+              <div class="side-foot">
+                <span class="dot"></span>
+                <span>{state.sets.length} 组 · 共 {state.questionTotal} 题</span>
+              </div>
+            </>
+          )}
       </aside>
     )
   },

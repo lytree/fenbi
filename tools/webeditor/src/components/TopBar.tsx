@@ -20,47 +20,52 @@ export default defineComponent({
       await publish()
     }
 
-    return () => (
-      <header class="topbar">
-        <div class="brand">
-          <span class="logo">题</span>
-          <div class="brand-text">
-            <b>题库编辑器</b>
-            <span class="ws">手机里的题库 · 局域网直连</span>
+    return () => {
+      const local = state.source === 'local'
+      return (
+        <header class="topbar">
+          <div class="brand">
+            <span class="logo">题</span>
+            <div class="brand-text">
+              <b>题库编辑器</b>
+              <span class="ws">{local ? '本地试卷包 · 开发服务器' : '手机里的题库 · 局域网直连'}</span>
+            </div>
           </div>
-        </div>
 
-        <div class="title-wrap">
-          <input
-            class="paper-name"
-            value={state.paper?.name ?? ''}
-            readonly={!state.paper}
-            spellcheck={false}
-            placeholder="这一组叫什么（会成为 App 首页的标题）"
-            onInput={(e) => {
-              if (!state.paper) return
-              state.paper.name = (e.target as HTMLInputElement).value
-              markDirty()
-            }}
-          />
-          {state.dirty ? <span class="dirty">未发布</span> : null}
-          {state.dirty && ui.draftSavedAt
-            ? (
-              <span class="draft-saved" title="改动已存到本机浏览器，关掉页面也不会丢；草稿不设过期时间">
-                已自动保存 {formatTime(ui.draftSavedAt)}
-              </span>
-            )
-            : null}
-        </div>
+          <div class="title-wrap">
+            <input
+              class="paper-name"
+              value={state.paper?.name ?? ''}
+              readonly={!state.paper}
+              spellcheck={false}
+              placeholder={local ? '这份本地试卷叫什么' : '这一组叫什么（会成为 App 首页的标题）'}
+              onInput={(e) => {
+                if (!state.paper) return
+                state.paper.name = (e.target as HTMLInputElement).value
+                markDirty()
+              }}
+            />
+            {state.dirty ? <span class="dirty">{local ? '未保存' : '未发布'}</span> : null}
+            {state.dirty && ui.draftSavedAt
+              ? (
+                <span class="draft-saved" title="改动已存到本机浏览器，关掉页面也不会丢；草稿不设过期时间">
+                  已自动保存 {formatTime(ui.draftSavedAt)}
+                </span>
+              )
+              : null}
+          </div>
 
-        <div class="top-actions">
-          <button class="ghost" disabled={!state.paper} onClick={check}>校验</button>
-          <button class="primary" disabled={!state.paper || ui.busy} onClick={runPublish}>
-            {ui.busy ? '发布中…' : '发布到 App'}
-            <kbd>Ctrl S</kbd>
-          </button>
-        </div>
-      </header>
-    )
+          <div class="top-actions">
+            <button class="ghost" disabled={!state.paper} onClick={check}>校验</button>
+            <button class="primary" disabled={!state.paper || ui.busy} onClick={runPublish}>
+              {ui.busy
+                ? (local ? '保存中…' : '发布中…')
+                : (local ? '保存到本地' : '发布到 App')}
+              <kbd>Ctrl S</kbd>
+            </button>
+          </div>
+        </header>
+      )
+    }
   },
 })
