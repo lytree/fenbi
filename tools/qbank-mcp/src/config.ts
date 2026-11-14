@@ -1,14 +1,19 @@
 /**
- * 连接信息：从 App 里复制的那串地址就是全部配置。
+ * 连接信息：手机地址 + 写入口令。
  *
- *   http://192.168.1.23:8777/?t=k3m9x2q7ab4c
- *   └──────── baseUrl ────────┘ └─ token ─┘
+ *   QBANK_URL = http://192.168.1.23:8777
+ *   QBANK_KEY = k3m9x2q7ab4c          ← 只走请求头 X-Lan-Key，不进 URL
  *
- * token 是服务每次启动新生成的，所以这里不缓存、不落盘——换一次服务就换一次配置。
+ * 网页地址不再带口令，所以这里也不用再拆 `?t=`。老配置里如果还带着 `?t=xxx`，
+ * 会被当成 key 继续用——升级一次不用改配置。
+ *
+ * 没配 key 也能连：读接口照样通，只是发布会变成「等手机上点确认」。
+ * key 每次手机重启服务都会变，所以不缓存、不落盘。
  */
 export interface QbankConfig {
   baseUrl: string
-  token: string
+  /** 写入口令（请求头 X-Lan-Key）；空字符串 = 网页同级权限，发布要手机确认 */
+  key: string
 }
 
 export class ConfigError extends Error {
@@ -28,65 +33,68 @@ export function redact(text: string): string {
   return text.replace(/([?&]\s*t=)[^&\s"'）)]*/gi, '$1***')
 }
 
-/** 把 App 里那串地址拆成 baseUrl + token */
-export function parseQbankUrl(raw: string): QbankConfig {
+function normalizeBase(url: URL): string {
+  url.search = ''
+  url.hash = ''
+  return url.toString().replace(/\/+$/, '')
+}
+
+/** 把 App 里复制的地址拆成 baseUrl（兼容老链接里的 `?t=口令`） */
+export function parseQbankUrl(raw: string, key = ''): QbankConfig {
   const text = raw.trim()
-  if (!text) throw new ConfigError('没有配置地址：把 App 里「局域网编辑器」显示的完整链接填进来')
+  if (!text) throw new ConfigError('没有配置地址：填 http://手机IP:8777（App「局域网编辑器」页面上显示的那个）')
 
   let url: URL
   try {
     url = new URL(text)
   } catch {
     throw new ConfigError(
-      `地址不合法：「${redact(text)}」应该形如 http://192.168.1.23:8777/?t=口令`
+      `地址不合法：「${redact(text)}」应该形如 http://192.168.1.23:8777`
     )
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     throw new ConfigError(`只支持 http/https 地址，收到的是 ${url.protocol}`)
   }
 
-  const token = url.searchParams.get('t')?.trim() ?? ''
-  if (!token) {
-    throw new ConfigError(
-      '地址里没有口令（?t=…）。回手机上点「复制地址」重新复制一次——服务重启后口令会变，旧链接会失效。'
-    )
-  }
+  // 老配置里那串 `?t=` 继续当 key 用，不用为了升级重配一遍
+  const legacyKey = url.searchParams.get('t')?.trim() ?? ''
+  return { baseUrl: normalizeBase(url), key: (key.trim() || legacyKey) }
+}
 
-  url.search = ''
-  url.hash = ''
-  const baseUrl = url.toString().replace(/\/+$/, '')
-  return { baseUrl, token }
+function argValue(argv: string[], names: string[]): string | undefined {
+  const i = argv.findIndex((a) => names.includes(a))
+  if (i < 0) return undefined
+  const value = argv[i + 1]
+  if (!value || value.startsWith('-')) throw new ConfigError(`${names[0]} 后面要跟一个值`)
+  return value
 }
 
 /**
  * 依次找：
- *   1. 命令行 `--url http://…/?t=…`
- *   2. 环境变量 `QBANK_URL`
- *   3. 环境变量 `QBANK_HOST` + `QBANK_TOKEN`
+ *   1. 命令行 `--url http://…` + `--key …`
+ *   2. 环境变量 `QBANK_URL` + `QBANK_KEY`
+ *   3. 环境变量 `QBANK_HOST` / `QBANK_TOKEN`（老写法）
  */
 export function configFromEnv(
   env: NodeJS.ProcessEnv = process.env,
   argv: string[] = process.argv.slice(2)
 ): QbankConfig {
-  const flagIndex = argv.findIndex((a) => a === '--url' || a === '-u')
-  if (flagIndex >= 0) {
-    const value = argv[flagIndex + 1]
-    if (!value) throw new ConfigError('--url 后面要跟完整地址（带 ?t=口令）')
-    return parseQbankUrl(value)
-  }
+  const key = argValue(argv, ['--key', '-k']) ?? env.QBANK_KEY?.trim() ?? ''
+
+  const flagUrl = argValue(argv, ['--url', '-u'])
+  if (flagUrl) return parseQbankUrl(flagUrl, key)
 
   const fromEnv = env.QBANK_URL?.trim()
-  if (fromEnv) return parseQbankUrl(fromEnv)
+  if (fromEnv) return parseQbankUrl(fromEnv, key)
 
   const host = env.QBANK_HOST?.trim()
-  const token = env.QBANK_TOKEN?.trim()
-  if (host && token) {
+  if (host) {
     const base = host.includes('://') ? host : `http://${host}`
-    return parseQbankUrl(`${base.replace(/\/+$/, '')}/?t=${encodeURIComponent(token)}`)
+    return parseQbankUrl(base, key || env.QBANK_TOKEN?.trim() || '')
   }
 
   throw new ConfigError(
-    '还没配置手机地址。设置环境变量 QBANK_URL（App 里「局域网编辑器」页面上的完整链接，含 ?t=口令），' +
-      '或在启动时传 --url http://192.168.x.x:8777/?t=…'
+    '还没配置手机地址。设置环境变量 QBANK_URL（App「局域网编辑器」页面上的地址，形如 http://192.168.1.23:8777），' +
+      '或在启动时传 --url http://192.168.x.x:8777；写题还要配 QBANK_KEY（同一页面的「AI 接入」里有现成配置）。'
   )
 }

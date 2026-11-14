@@ -37,9 +37,6 @@ class LanEditorService : Service() {
 
         private const val CHANNEL_ID = "lan_editor"
         private const val NOTIF_ID = 4201
-        private const val PREFS = "lan_editor"
-        private const val KEY_PORT = "port"
-        const val DEFAULT_PORT = 8777
 
         @Volatile
         private var server: LanEditorServer? = null
@@ -48,15 +45,29 @@ class LanEditorService : Service() {
 
         fun pageUrl(): String = server?.pageUrl.orEmpty()
 
+        /** 随机写入口令：只在**没设密码**时给 AI 用 */
+        fun accessKey(): String = server?.accessKey.orEmpty()
+
+        /**
+         * AI 配置里该写的口令：设了密码就是密码（重启也不变），没设才用随机码。
+         * 两种情况都能让 MCP 直发；网页端永远拿不到这串。
+         */
+        fun aiKey(context: Context): String =
+            LanEditorPrefs.password(context) ?: accessKey()
+
         fun lastRequest(): String = server?.lastRequest.orEmpty()
 
-        fun savedPort(context: Context): Int =
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .getInt(KEY_PORT, DEFAULT_PORT)
+        fun savedPort(context: Context): Int = LanEditorPrefs.port(context)
 
-        fun savePort(context: Context, port: Int) {
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .edit().putInt(KEY_PORT, port).apply()
+        fun savePort(context: Context, port: Int) = LanEditorPrefs.savePort(context, port)
+
+        /**
+         * 改访问密码：先落盘，服务在跑就热更新（会话全部失效，网页要重新登录）。
+         * 传 null / 空串表示取消密码，网页回到「打开就能用」。
+         */
+        fun updatePassword(context: Context, password: String?) {
+            LanEditorPrefs.savePassword(context, password)
+            server?.updatePassword(password)
         }
 
         fun start(context: Context, port: Int) {
@@ -137,7 +148,7 @@ class LanEditorService : Service() {
     private fun shutdown() {
         server?.stop()
         server = null
-        // 还在等手机确认的删除请求一并作废：服务都没了，网页那头也不用再等
+        // 还在等手机确认的请求（发布 / 回滚 / 删除）一并作废：服务都没了，网页那头也不用再等
         LanEditorConfirm.clear()
         LanEditorStatus.running.postValue(false)
         LanEditorStatus.url.postValue("")

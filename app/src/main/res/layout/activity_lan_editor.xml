@@ -162,6 +162,82 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/fb_space_20"
                 android:layout_marginBottom="@dimen/fb_space_8"
+                android:text="访问密码" />
+
+            <LinearLayout style="@style/FbCard">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        style="@style/FbRowTitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="网页登录密码" />
+
+                    <TextView
+                        android:id="@+id/tvPasswordState"
+                        style="@style/FbRowSub"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="未设置——同一 Wi-Fi 打开地址就能用" />
+                </LinearLayout>
+
+                <EditText
+                    android:id="@+id/etPassword"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:background="@drawable/bg_fb_input"
+                    android:hint="输入新密码（至少 4 位）"
+                    android:importantForAutofill="no"
+                    android:inputType="textPassword"
+                    android:paddingStart="12dp"
+                    android:paddingTop="10dp"
+                    android:paddingEnd="12dp"
+                    android:paddingBottom="10dp"
+                    android:textSize="@dimen/fb_text_body_size" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnSavePassword"
+                        style="@style/FbPrimaryButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="保存密码" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnClearPassword"
+                        style="@style/FbGhostButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:layout_weight="1"
+                        android:text="清除密码" />
+                </LinearLayout>
+
+                <TextView
+                    style="@style/FbRowSub"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="设置后，电脑打开网页要先输这串密码；AI 配置里的 QBANK_KEY 也用同一串，服务重启不用重新复制。改密码会让已登录的浏览器重新登录。" />
+            </LinearLayout>
+
+            <TextView
+                style="@style/FbGroupTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/fb_space_20"
+                android:layout_marginBottom="@dimen/fb_space_8"
                 android:text="怎么用" />
 
             <LinearLayout style="@style/FbCard">
@@ -179,7 +255,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="10dp"
                     android:lineSpacingExtra="4dp"
-                    android:text="2. 点上面的「启动服务」，把地址原样敲进电脑浏览器（那串 ?t= 是口令，别漏）" />
+                    android:text="2. 点上面的「启动服务」，把地址敲进电脑浏览器；设了访问密码的话，先在登录页输一次（一周内不用再输）" />
 
                 <TextView
                     style="@style/FbBodySm"
@@ -187,7 +263,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="10dp"
                     android:lineSpacingExtra="4dp"
-                    android:text="3. 在网页上新建一组、加题、点「发布到 App」，回到这里就能在试卷列表里看到它" />
+                    android:text="3. 在网页上新建一组、加题，点「发布到 App」——会在这里弹确认框，点「确认发布」才写进题库" />
 
                 <TextView
                     style="@style/FbBodySm"
@@ -195,7 +271,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="10dp"
                     android:lineSpacingExtra="4dp"
-                    android:text="4. 网页上点删除只是发个请求——会在这里弹确认框，点「确认删除」才真的删；不点，10 分钟后自动作废" />
+                    android:text="4. 回滚和删除也一样：网页上只是发请求，要在这里点确认才真的动库；不点，10 分钟后自动作废" />
 
                 <TextView
                     style="@style/FbRowSub"
@@ -220,7 +296,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:lineSpacingExtra="4dp"
-                    android:text="给 Claude Desktop / Cursor 这类 AI 客户端用：把下面这段 JSON 粘进它的 MCP 配置，AI 就能直接列组、加题、改题、体检错题、批改作答、补解析——删除仍然要在这台手机上点确认。" />
+                    android:text="给 Claude Desktop / Cursor 这类 AI 客户端用：把下面这段 JSON 粘进它的 MCP 配置，AI 就能直接列组、加题、改题、体检错题、批改作答、补解析。QBANK_KEY 是写入口令，只放在配置里、不出现在网页地址上；有了它 AI 发布不用再点手机，删除仍然要确认。" />
 
                 <TextView
                     android:id="@+id/tvMcp"
@@ -239,7 +315,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:text="args 里的路径要换成电脑上 tools/qbank-mcp/dist/index.js 的实际路径（Windows 用正斜杠更省事）。服务重启后口令会变，回来重新复制一次。" />
+                    android:text="args 里的路径要换成电脑上 tools/qbank-mcp/dist/index.js 的实际路径（Windows 用正斜杠更省事）。QBANK_KEY 每次启动都会变，重启后回来重新复制一次。" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnCopyMcp"

@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import App from '../App'
-import { state } from '../store'
+import { state, ui } from '../store'
 
 /**
  * 冒烟测试：不连手机也能验证「打开一组 → 加题 → 发布」这条主链路。
@@ -103,11 +103,21 @@ function mockFetch() {
       resourceDeleted.push(new URL(url, 'http://localhost').searchParams.get('p') || '')
       return json({ ok: true, path: resourceDeleted[resourceDeleted.length - 1] })
     }
+    if (url.startsWith('/api/publish/status')) {
+      return json({
+        status: 'approved',
+        result: {
+          ok: true, setId: 1, title: published?.title ?? '', questionCount: 99,
+          replaced: false, version: null, papers: [],
+        },
+      })
+    }
     if (url.startsWith('/api/publish')) {
       published = JSON.parse(String(init?.body))
+      // 网页没有写权限：先登记，手机上点确认后才写库
       return json({
-        ok: true, setId: 1, title: published.title, questionCount: 99,
-        replaced: false, version: null, papers: [],
+        needConfirm: true, requestId: 'p1', title: published.title,
+        detail: '共 1 份卷、4 道题。', ttlSec: 600, replaced: false,
       })
     }
     if (url.startsWith('/api/delete/request')) {
@@ -139,6 +149,11 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = () => {}
   // jsdom 默认 1024 宽会触发窄屏逻辑（自动收起预览），这里按常见桌面宽度跑
   Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 1440 })
+  // store 是模块级单例：上一个用例没走完的「等手机确认」会拦住下一次发布
+  ui.waitingId = null
+  ui.waitingKind = null
+  ui.modal = null
+  ui.busy = false
   mockFetch()
 })
 

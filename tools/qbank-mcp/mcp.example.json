@@ -4,7 +4,8 @@
       "command": "node",
       "args": ["<换成你的仓库绝对路径>/tools/qbank-mcp/dist/index.js"],
       "env": {
-        "QBANK_URL": "http://192.168.1.23:8777/?t=把这里换成App里复制的口令"
+        "QBANK_URL": "http://192.168.1.23:8777",
+        "QBANK_KEY": "把这里换成 App「AI 接入」里复制的那串口令"
       }
     }
   }

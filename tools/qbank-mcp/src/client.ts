@@ -23,12 +23,24 @@ export interface DeleteRequestResult {
   ttlSec: number
 }
 
+/** 服务端要求「手机点确认」时的响应（网页同级权限会走这条路） */
+export interface ConfirmRequired {
+  needConfirm: true
+  requestId: string
+  title: string
+  detail: string
+  ttlSec: number
+}
+
 export type ConfirmStatus = 'pending' | 'approved' | 'rejected' | 'expired'
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
 /**
  * 手机端 HTTP API 的薄封装。
  *
- * 认证靠 query 里的 `t=`（服务端只认 Cookie 或这个参数，MCP 这种无 Cookie 的场景只能用它）。
+ * 认证走请求头 `X-Lan-Key: <口令>`——口令不放进 URL，网页那边也就拿不到写权限。
+ * 没配 key 时读接口照常，发布会被服务端转成「等手机确认」。
  * 所有写操作最终都落到 `/api/publish`——和网页上点「发布到 App」是同一条路。
  */
 export class QbankClient {
@@ -48,9 +60,18 @@ export class QbankClient {
 
   private url(path: string, query: Record<string, string | number> = {}): string {
     const url = new URL(this.base + path)
-    url.searchParams.set('t', this.cfg.token)
     for (const [k, v] of Object.entries(query)) url.searchParams.set(k, String(v))
     return url.toString()
+  }
+
+  /** 有 key 才带写权限；没 key 就是普通浏览器身份 */
+  private headers(init?: RequestInit['headers']): Record<string, string> {
+    const out: Record<string, string> = {}
+    if (init instanceof Headers) init.forEach((v, k) => { out[k] = v })
+    else if (Array.isArray(init)) init.forEach(([k, v]) => { out[k] = v })
+    else if (init) Object.assign(out, init)
+    if (this.cfg.key) out['X-Lan-Key'] = this.cfg.key
+    return out
   }
 
   private async call<T>(
@@ -64,6 +85,7 @@ export class QbankClient {
     try {
       res = await fetch(this.url(path, query), {
         ...init,
+        headers: this.headers(init.headers),
         signal: AbortSignal.timeout(timeoutMs),
       })
     } catch (e) {
@@ -75,7 +97,7 @@ export class QbankClient {
           ? `手机 ${timeout} 秒内没有返回（${this.host}）。请求**可能已经在手机上执行了**——` +
               '先用 qbank_get_set 核对结果，别直接重试（重试可能重复写一遍）。'
           : `连不上手机（${this.host}）：${reason}。确认手机和电脑在同一个 Wi-Fi、App 里的服务还开着，` +
-              '并且地址是最近一次启动生成的那串（服务重启后口令会变）。'
+              '地址端口对（默认 8777）。'
       )
     }
 
@@ -96,7 +118,8 @@ export class QbankClient {
       const message =
         (body as { error?: string } | null)?.error ||
         (res.status === 401
-          ? '口令不对或已失效：回 App 里重新复制一次地址（服务重启后口令会变）'
+          ? '口令不对或没有登录权限：手机上设了访问密码的话，QBANK_KEY 要用那串密码——' +
+            '回 App「局域网编辑器 → AI 接入」整段复制一次配置'
           : `手机返回 HTTP ${res.status}`)
       throw new QbankError(message, res.status)
     }
@@ -107,6 +130,39 @@ export class QbankClient {
       )
     }
     return body as T
+  }
+
+  /**
+   * 服务端要求手机确认时：有 key 说明 key 已经过期（否则不会走到这里）；
+   * 没 key 就当网页用，等手机点，最多等 2 分钟。
+   */
+  private async awaitConfirm<T>(req: ConfirmRequired, what: string): Promise<T> {
+    if (this.cfg.key) {
+      throw new QbankError(
+        `手机重新启动过服务，QBANK_KEY 已经失效：回 App「局域网编辑器 → AI 接入」重新复制一次配置。` +
+          `（这次${what}没有执行）`
+      )
+    }
+    const deadline = Date.now() + Math.min(req.ttlSec, 120) * 1000
+    while (Date.now() < deadline) {
+      await sleep(1500)
+      const s = await this.call<{ status: ConfirmStatus; result: T | null; error?: string | null }>(
+        '/api/publish/status',
+        {},
+        { id: req.requestId }
+      )
+      if (s.status === 'pending') continue
+      if (s.status === 'approved' && s.result) return s.result
+      throw new QbankError(
+        s.error
+          ? `手机上确认了，但${what}没成功：${s.error}`
+          : `手机上拒绝了这次${what}，「${req.title}」没有动`
+      )
+    }
+    throw new QbankError(
+      `手机上 2 分钟内没有确认，这次${what}已作废。` +
+        '要 AI 直接写库，请在 MCP 配置里加上 QBANK_KEY（App「AI 接入」里能整段复制）。'
+    )
   }
 
   // ---------------------------------------------------------------- 读
@@ -143,10 +199,10 @@ export class QbankClient {
 
   // ---------------------------------------------------------------- 写
 
-  publish(title: string, replace: boolean, sheets: WireSheet[]): Promise<PublishResult> {
+  async publish(title: string, replace: boolean, sheets: WireSheet[]): Promise<PublishResult> {
     // 整组重导：上千题要写 SQLite、再存一份版本快照，20 秒不够，低端机上容易假超时。
     // 客户端 abort 只断了本端，服务端还在写——所以宁可多等，也别让它半路以为失败。
-    return this.call<PublishResult>(
+    const r = await this.call<PublishResult | ConfirmRequired>(
       '/api/publish',
       {
         method: 'POST',
@@ -156,19 +212,23 @@ export class QbankClient {
       {},
       90_000
     )
+    if (!('needConfirm' in r)) return r
+    return this.awaitConfirm<PublishResult>(r, '发布')
   }
 
-  restoreVersion(id: string, setId = 0): Promise<PublishResult> {
-    return this.call<PublishResult>(
+  async restoreVersion(id: string, setId = 0, title = ''): Promise<PublishResult> {
+    const r = await this.call<PublishResult | ConfirmRequired>(
       '/api/version/restore',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, setId }),
+        body: JSON.stringify({ id, setId, title }),
       },
       {},
       90_000
     )
+    if (!('needConfirm' in r)) return r
+    return this.awaitConfirm<PublishResult>(r, '回滚')
   }
 
   deleteVersion(id: string): Promise<{ ok: boolean }> {

@@ -35,6 +35,15 @@ class LanEditorStore(private val context: Context) {
 
     // ---------------------------------------------------------------- 读
 
+    /**
+     * 按标题查组 id；没有就是 null。
+     *
+     * 发布前先用它判「是不是覆盖」：网页拿不到写权限，得在**登记确认请求之前**
+     * 就把「已有同名组」告诉它，否则等手机点了确认才报错，白等一分钟。
+     */
+    fun findSetIdByTitle(title: String): Long? =
+        db.listPaperSets(withPapers = false).firstOrNull { it.title == title }?.id
+
     /** 组列表：左侧栏用，只带计数，不带题目正文 */
     fun listSets(): JSONObject {
         val sets = db.listPaperSets(withPapers = true)

@@ -177,8 +177,10 @@ export async function startMockServer(state = createState()): Promise<MockServer
     const url = new URL(req.url ?? '/', 'http://localhost')
     const path = url.pathname
 
-    if (!url.searchParams.get('t')) {
-      return json(res, 401, { error: '未授权' })
+    // 写入口令只在请求头里；等于别的值就当口令过期
+    const key = String(req.headers['x-lan-key'] ?? '')
+    if (key && key !== 'test-key') {
+      return json(res, 401, { error: '写入口令不对' })
     }
 
     if (path === '/api/papers' && req.method === 'GET') {
@@ -292,7 +294,7 @@ export async function startMockServer(state = createState()): Promise<MockServer
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const { port } = server.address() as AddressInfo
   return {
-    url: `http://127.0.0.1:${port}/?t=test-token`,
+    url: `http://127.0.0.1:${port}`,
     state,
     close: () =>
       new Promise<void>((resolve, reject) =>

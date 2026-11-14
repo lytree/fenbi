@@ -1,5 +1,6 @@
 import { computed, reactive } from 'vue'
 import { api } from './api'
+import type { ConfirmRequired, PublishResponse } from './api'
 import type {
   DataSource, EditorPaper, EditorView, Filter, Group, Issue, LocalPackageInfo, PaperSetInfo,
   QIssue, Question, QuestionType, ResourceFile, Sheet, SubjectFilter, TypeFilter, VersionInfo, WireSheet,
@@ -34,10 +35,13 @@ export const TYPE_SHORT: Record<QuestionType, string> = {
 export const CHOICE: QuestionType[] = ['single', 'multi', 'uncertain', 'truefalse']
 export const LETTERS = 'ABCDEFGH'.split('')
 
+/** 等手机确认的动作；发布和回滚共用一套轮询 */
+type WaitingKind = 'publish' | 'restore' | 'delete'
+
 /* ------------------------------------------------------------------ 状态 */
 
 export interface ModalState {
-  /** waiting = 等手机确认（删除请求），没有输入框，只有状态文案 */
+  /** waiting = 等手机确认（发布 / 回滚 / 删除），没有输入框，只有状态文案 */
   kind: 'text' | 'confirm' | 'errors' | 'paste' | 'waiting'
   title: string
   label?: string
@@ -90,8 +94,10 @@ export const ui = reactive({
   toastShow: false,
   modal: null as ModalState | null,
   busy: false,
-  /** 正在等手机确认的删除请求 id（空 = 没在等） */
+  /** 正在等手机确认的请求 id（空 = 没在等） */
   waitingId: null as string | null,
+  /** 等的是哪一类：撤回时调不同接口，文案也不同 */
+  waitingKind: null as WaitingKind | null,
   /** 最近一次草稿落盘时间（0 = 当前没有草稿），顶栏据此显示「已自动保存」 */
   draftSavedAt: 0,
 })
@@ -514,6 +520,12 @@ export function serialize(): WireSheet[] {
   }))
 }
 
+/**
+ * 发布到手机题库。
+ *
+ * 网页没有写权限：点「发布到 App」只是把内容送过去登记，手机那边弹「确认发布」，
+ * 点了才真正写库。这里一直等到手机给结论——成功 / 拒绝 / 超时。
+ */
 export async function publish(opts: { replace?: boolean } = {}): Promise<boolean> {
   // 本地模式没有手机端，发布 = 写回磁盘上的 JSON 试卷包
   if (state.source === 'local') return saveLocal()
@@ -526,22 +538,25 @@ export async function publish(opts: { replace?: boolean } = {}): Promise<boolean
     toast('还一道题都没有，先加题', 'err')
     return false
   }
+  if (ui.waitingId) {
+    toast('还有一条请求在等手机处理，等它结束再发', 'err')
+    return false
+  }
 
   ui.busy = true
   try {
     const r = await api.publish(title, !!opts.replace, sheets)
-    paper.id = r.setId
-    state.dirty = false
-    // 材料编辑区可能还没失焦就按了 Ctrl+S，发布后按最新内容重算一次分组
-    refreshGroups()
-    clearDraft()
-    await loadSets()
-    await loadVersions()
-    const archived = r.version ? ' · 旧内容已存为版本' : ''
-    toast(
-      `已发布「${title}」· ${r.questionCount} 题${r.replaced ? ' · 覆盖了同名组' : ''}${archived}，回手机就能看到`,
-      'ok',
-    )
+    // 不带 needConfirm 就是服务端直发了（只有带 X-Lan-Key 的 AI 客户端会走到这里）
+    const result = 'needConfirm' in r
+      ? await waitPhone(
+        'publish',
+        r,
+        `发布「${r.title}」`,
+        r.replaced ? '这次是覆盖发布，旧内容会先存一版。' : '确认后写进手机题库，App 首页就能看到。',
+      )
+      : r
+    if (!result) return false
+    await afterPublished(paper, title, result)
     return true
   } catch (e) {
     const msg = e instanceof Error ? e.message : '发布失败'
@@ -558,6 +573,82 @@ export async function publish(opts: { replace?: boolean } = {}): Promise<boolean
   } finally {
     ui.busy = false
   }
+}
+
+/** 发布成功后统一收尾：记住组 id、清掉未发布标记和草稿、刷新列表与版本 */
+async function afterPublished(paper: EditorPaper, title: string, r: PublishResponse): Promise<void> {
+  paper.id = r.setId
+  state.dirty = false
+  // 材料编辑区可能还没失焦就按了 Ctrl+S，发布后按最新内容重算一次分组
+  refreshGroups()
+  clearDraft()
+  await loadSets()
+  await loadVersions()
+  const archived = r.version ? ' · 旧内容已存为版本' : ''
+  toast(
+    `已发布「${title}」· ${r.questionCount} 题${r.replaced ? ' · 覆盖了同名组' : ''}${archived}，回手机就能看到`,
+    'ok',
+  )
+}
+
+/**
+ * 等手机点确认：弹一层「等待中」，轮询到结论为止。
+ *
+ * 先查一次再睡，手机上已经点过的话不用白等一轮；撤回时会清掉 ui.waitingId，
+ * 循环自己就退出了。
+ */
+async function waitPhone(
+  kind: WaitingKind,
+  req: ConfirmRequired,
+  message: string,
+  extra: string,
+): Promise<PublishResponse | null> {
+  ui.busy = false
+  ui.waitingId = req.requestId
+  ui.waitingKind = kind
+  ui.modal = {
+    kind: 'waiting',
+    title: '等手机上点「确认」',
+    message,
+    label: '手机「局域网编辑器」里会弹确认框（不在那个页面时会收到通知）；不想发了可以在这里撤回。'
+      + (extra ? '\n' + extra : ''),
+    resolve: () => {},
+  }
+
+  const deadline = Date.now() + Math.max(30, req.ttlSec) * 1000
+  while (ui.waitingId === req.requestId) {
+    let s
+    try {
+      s = await api.publishStatus(req.requestId)
+    } catch {
+      await sleep(1200)
+      continue
+    }
+    if (s.status === 'pending') {
+      if (Date.now() > deadline) {
+        finishWaiting()
+        toast('等太久没确认，请求已作废；要发就再点一次', 'err')
+        return null
+      }
+      if (ui.modal?.kind === 'waiting') {
+        const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000))
+        ui.modal.label =
+          `还剩 ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}，手机上点「确认」才会执行。`
+      }
+      await sleep(1200)
+      continue
+    }
+
+    finishWaiting()
+    if (s.status === 'approved' && s.result) return s.result
+    if (s.status === 'rejected') {
+      toast(s.error ? `手机上确认了，但没成功：${s.error}` : '手机上点了「不」，题库没动', s.error ? 'err' : '')
+    } else {
+      toast('请求已作废，要发就再点一次', 'err')
+    }
+    return null
+  }
+  return null
 }
 
 /* ------------------------------------------------------------------ 题目操作 */
@@ -1172,16 +1263,27 @@ export async function restoreVersion(v: VersionInfo): Promise<void> {
   const ok = await askConfirm(
     '回滚到这一版？',
     `${formatTime(v.savedAt)} · ${v.paperCount} 卷 ${v.questionCount} 题` + '\n\n' +
-      '回滚会覆盖现在这一组；现在的内容也会先存一版，滚错了还能再滚回来。旧卷的作答记录不会跟着回来。',
-    '回滚到这一版',
+      '回滚会覆盖现在这一组；现在的内容也会先存一版，滚错了还能再滚回来。旧卷的作答记录不会跟着回来。' + '\n\n' +
+      '和发布一样，要等手机点确认才会执行。',
+    '发到手机确认',
   )
   if (!ok) return
+  if (ui.waitingId) { toast('还有一条请求在等手机处理，等它结束再发', 'err'); return }
   ui.busy = true
   try {
-    const r = await api.restoreVersion(v.id, state.paper?.id ?? 0)
+    const r = await api.restoreVersion(v.id, state.paper?.id ?? 0, state.paper?.name ?? '')
+    const result = 'needConfirm' in r
+      ? await waitPhone(
+        'restore',
+        r,
+        `回滚「${r.title}」`,
+        '回滚会把这一组换成选中的那一版；换之前的内容也会先存一版。',
+      )
+      : r
+    if (!result) return
     await loadSets()
-    if (state.paper) await openSet(r.setId, { force: true })
-    toast(`已回滚到 ${formatTime(v.savedAt)} 那一版 · ${r.questionCount} 题`, 'ok')
+    if (state.paper) await openSet(result.setId, { force: true })
+    toast(`已回滚到 ${formatTime(v.savedAt)} 那一版 · ${result.questionCount} 题`, 'ok')
   } catch (e) {
     toast(e instanceof Error ? e.message : '回滚失败', 'err')
   } finally {
@@ -1231,6 +1333,7 @@ export async function requestDeleteSet(setId: number, title: string): Promise<vo
   try {
     const r = await api.requestDelete(setId)
     ui.waitingId = r.requestId
+    ui.waitingKind = 'delete'
     ui.modal = {
       kind: 'waiting',
       title: '等手机上点「确认删除」',
@@ -1246,6 +1349,7 @@ export async function requestDeleteSet(setId: number, title: string): Promise<vo
 
 function finishWaiting() {
   ui.waitingId = null
+  ui.waitingKind = null
   if (ui.modal?.kind === 'waiting') closeModal()
 }
 
@@ -1253,11 +1357,12 @@ function finishWaiting() {
 export async function cancelWaiting(): Promise<void> {
   const id = ui.waitingId
   if (!id) return
+  const kind = ui.waitingKind
   finishWaiting()
   try {
-    const r = await api.cancelDelete(id)
-    // 手机上刚点过「确认删除」的话，服务端会明确回 ok=false——这时候别说「已撤回」
-    if (r.ok === false) toast('手机上已经点了确认，删不回来了', 'err')
+    const r = kind === 'delete' ? await api.cancelDelete(id) : await api.cancelPublish(id)
+    // 手机上刚点过确认的话，服务端会明确回 ok=false——这时候别说「已撤回」
+    if (r.ok === false) toast('手机上已经点了确认，撤不回来了', 'err')
     else toast('已撤回，手机上不会再问', 'ok')
   } catch {
     toast('请求可能已经被手机处理过了', '')

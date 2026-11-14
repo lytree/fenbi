@@ -57,7 +57,12 @@ export default defineComponent({
 
           <div class="top-actions">
             <button class="ghost" disabled={!state.paper} onClick={check}>校验</button>
-            <button class="primary" disabled={!state.paper || ui.busy} onClick={runPublish}>
+            <button
+              class="primary"
+              disabled={!state.paper || ui.busy}
+              title={local ? '写回磁盘上的试卷包' : '点完还要在手机上点「确认发布」才会写进题库'}
+              onClick={runPublish}
+            >
               {ui.busy
                 ? (local ? '保存中…' : '发布中…')
                 : (local ? '保存到本地' : '发布到 App')}

@@ -8,7 +8,7 @@
 和你在电脑浏览器里点「发布到 App」走的是同一条路。
 
 ```
-AI 客户端 ──stdio──▶ dist/index.js ──HTTP(+?t=口令)──▶ 手机 App（LanEditorServer）──▶ SQLite
+AI 客户端 ──stdio──▶ dist/index.js ──HTTP + X-Lan-Key──▶ 手机 App（LanEditorServer）──▶ SQLite
 ```
 
 ---
@@ -16,10 +16,9 @@ AI 客户端 ──stdio──▶ dist/index.js ──HTTP(+?t=口令)──▶ 
 ## 一、准备
 
 1. 手机打开 **设置 → 在电脑上加题 → 局域网编辑器 → 启动服务**。
-2. 点「复制地址」，形如：`http://192.168.1.23:8777/?t=k3m9x2q7ab4c`。
-   地址里那串 `?t=` 是口令，**每次启动都会变**。
+2. 点「复制地址」，形如：`http://192.168.1.23:8777/`。**地址里没有口令**，服务重启也不变。
 3. 手机和跑 AI 客户端的电脑在同一个 Wi-Fi。
-4. 同页面往下拉到 **AI 接入（MCP）**，点「复制配置」——里面已经带好当前地址和口令，
+4. 同页面往下拉到 **AI 接入（MCP）**，点「复制配置」——里面已经带好地址和 `QBANK_KEY`，
    粘到客户端配置里只要改一处路径（见下一节）。
 
 ```bash
@@ -28,8 +27,12 @@ pnpm install
 pnpm build          # 产物在 dist/
 ```
 
-> 配置从哪来：手拼也行，但口令每次启动都变，**从 App 页面直接复制最省事**。
-> 未启动服务时页面显示的是一份带占位地址的样例，方便先看清结构。
+> `QBANK_KEY` 是**写权限**：请求时放在请求头 `X-Lan-Key` 里，不进 URL。
+> 手机上设了访问密码时它就是那串密码（重启不变，推荐）；没设时是每次启动随机生成的 12 位码。
+> 网页那边没有这串 key，所以网页发布要手机点确认；AI 带了 key 就直接写库。
+>
+> 设了访问密码之后，**不带 key 连读都不行**（所有 `/api` 都要登录态或 key）；
+> 没设密码时不带 key 也能读，只是发布会变成「等手机点确认」。
 
 ## 二、接到客户端
 
@@ -45,7 +48,8 @@ Claude Desktop（`claude_desktop_config.json`）：
       "command": "node",
       "args": ["F:\\Code\\Android\\fenbi\\tools\\qbank-mcp\\dist\\index.js"],
       "env": {
-        "QBANK_URL": "http://192.168.1.23:8777/?t=k3m9x2q7ab4c"
+        "QBANK_URL": "http://192.168.1.23:8777",
+        "QBANK_KEY": "k3m9x2q7ab4c"
       }
     }
   }
@@ -59,17 +63,19 @@ Cursor / 其他客户端同理，只是配置文件位置不同。也可以不�
   "command": "node",
   "args": [
     "F:\\Code\\Android\\fenbi\\tools\\qbank-mcp\\dist\\index.js",
-    "--url",
-    "http://192.168.1.23:8777/?t=k3m9x2q7ab4c"
+    "--url", "http://192.168.1.23:8777",
+    "--key", "k3m9x2q7ab4c"
   ]
 }
 ```
 
-也可以只给 host 和 token（省得每次拼 URL）：
+也可以只给 host 和口令（`QBANK_TOKEN` 是旧名字，仍然认）：
 
 ```json
-"env": { "QBANK_HOST": "192.168.1.23:8777", "QBANK_TOKEN": "k3m9x2q7ab4c" }
+"env": { "QBANK_HOST": "192.168.1.23:8777", "QBANK_KEY": "k3m9x2q7ab4c" }
 ```
+
+老配置里如果地址还带着 `?t=xxx`，会被当成 key 继续用，不用为了升级重配一遍。
 
 改完重启客户端，工具列表里应该出现 14 个 `qbank_*` 工具。
 
@@ -147,9 +153,12 @@ Cursor / 其他客户端同理，只是配置文件位置不同。也可以不�
 **客户端里看不到工具**：`pnpm build` 有没有跑过？`args` 里的路径是不是绝对路径、有没有反斜杠转义？
 
 **每次调用都提示「连不上手机」**：检查 Wi-Fi 是否同一网段、App 里的服务是否还在跑、
-地址是不是最近一次启动复制的那串（服务重启后口令会变）。
+地址端口对不对（默认 8777）。
 
-**提示「未授权：请用 App 里显示的完整链接打开」**：`QBANK_URL` 里少了 `?t=`。
+**所有工具报 401 /「口令不对」**：手机设了访问密码，但 `QBANK_KEY` 没配或不是那串密码；
+没设密码时则是服务重启后随机码变了——回 App「AI 接入」重新复制配置。
+
+**发布变成「等手机点确认」**：配置里没有 `QBANK_KEY`。去手机点一下，或者把 key 补进配置。
 
 **加题成功了但 App 里没变化**：发布成功后 App 的试卷列表需要刷新一次；另外确认加的是同一组
 （同名组就是同一个，重名会覆盖）。
@@ -161,7 +170,7 @@ Android 13+ 没给通知权限的话，只有把 App 打开到「局域网编辑
 
 ```bash
 pnpm typecheck   # tsc --noEmit
-pnpm test        # 20 个用例：地址解析 / 读改写 / 真实 stdio 起进程调工具
+pnpm test        # 22 个用例：地址解析 / 读改写 / 真实 stdio 起进程调工具
 pnpm build
 pnpm start       # 手动跑（需要 QBANK_URL），日志在 stderr
 ```

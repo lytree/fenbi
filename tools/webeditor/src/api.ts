@@ -24,6 +24,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       data = { error: text }
     }
   }
+  if (res.status === 401) {
+    // 没登录 / 会话过期（手机改了密码、服务重启过）：整页刷新会落到服务端的登录页。
+    // 比在每个调用点弹「需要登录」干净，也不会把半截数据留在界面上。
+    window.location.reload()
+    throw new ApiError('需要登录', 401)
+  }
   if (!res.ok) throw new ApiError(data?.error || `请求失败（${res.status}）`, res.status)
   // 开发服务器对 /api/* 会回落到 index.html：拿到 HTML 说明手机端接口没接上，
   // 不能当成「空题库」继续走下去，否则永远不会切到本地试卷包
@@ -64,6 +70,21 @@ export interface PublishResponse {
   papers: { name: string; questionCount: number }[]
 }
 
+/**
+ * 网页没有写权限：发布 / 回滚只会登记一条请求，手机上点确认才真写。
+ *
+ * 响应里带 `needConfirm` 就说明是这条路；不带就是直发（AI 客户端带 `X-Lan-Key`，
+ * 网页永远拿不到那串 key）。
+ */
+export interface ConfirmRequired {
+  needConfirm: true
+  requestId: string
+  title: string
+  detail: string
+  ttlSec: number
+  replaced?: boolean
+}
+
 export interface DeleteRequestResponse {
   requestId: string
   title: string
@@ -84,7 +105,17 @@ export const api = {
   paper: (id: number) => request<PaperResponse>(`/api/paper?id=${id}`),
 
   publish: (title: string, replace: boolean, sheets: WireSheet[]) =>
-    request<PublishResponse>('/api/publish', jsonPost({ title, replace, sheets })),
+    request<PublishResponse | ConfirmRequired>('/api/publish', jsonPost({ title, replace, sheets })),
+
+  /** 等手机确认期间轮询；approved 时 result 就是发布结果 */
+  publishStatus: (id: string) =>
+    request<{ status: ConfirmStatus; result: PublishResponse | null; error?: string | null }>(
+      `/api/publish/status?id=${encodeURIComponent(id)}`,
+    ),
+
+  /** 网页上撤回：手机还没点的话，那边就不弹了 */
+  cancelPublish: (id: string) =>
+    request<{ ok: boolean; error?: string | null }>('/api/publish/cancel', jsonPost({ id })),
 
   /**
    * 上传一张图，返回题目里该写的相对路径 `images/<组编号>/xxx.png`。
@@ -102,6 +133,10 @@ export const api = {
       body: file,
     })
     const data = await res.json().catch(() => ({}))
+    if (res.status === 401) {
+      window.location.reload()
+      throw new ApiError('需要登录', 401)
+    }
     if (!res.ok) throw new ApiError(data?.error || '图片上传失败', res.status)
     return data.path as string
   },
@@ -144,8 +179,11 @@ export const api = {
     ),
 
   /** setId = 当前打开的组；组名改过时回滚要落回它，而不是快照里的旧名字 */
-  restoreVersion: (id: string, setId?: number) =>
-    request<PublishResponse>('/api/version/restore', jsonPost({ id, setId: setId ?? 0 })),
+  restoreVersion: (id: string, setId?: number, title?: string) =>
+    request<PublishResponse | ConfirmRequired>(
+      '/api/version/restore',
+      jsonPost({ id, setId: setId ?? 0, title: title ?? '' }),
+    ),
 
   deleteVersion: (id: string) => request<{ ok: boolean }>('/api/version/delete', jsonPost({ id })),
 

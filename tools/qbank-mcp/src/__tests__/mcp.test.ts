@@ -11,6 +11,7 @@ async function connect(mockUrl: string) {
     Object.entries(process.env).filter(([, v]) => v !== undefined)
   ) as Record<string, string>
   env.QBANK_URL = mockUrl
+  env.QBANK_KEY = 'test-key'
 
   const transport = new StdioClientTransport({
     command: process.execPath,
@@ -119,6 +120,7 @@ test('没配地址时服务仍能连上，调工具才提示怎么配', async (t
   delete env.QBANK_URL
   delete env.QBANK_HOST
   delete env.QBANK_TOKEN
+  delete env.QBANK_KEY
 
   const transport = new StdioClientTransport({
     command: process.execPath,
