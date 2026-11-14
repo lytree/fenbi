@@ -1,5 +1,8 @@
 import { QbankClient } from './client.js'
 import type {
+  ReciteCard,
+  ReciteCatalog,
+  ReciteSubjectInfo,
   RecordAnswer,
   RecordDetail,
   RecordSummary,
@@ -8,6 +11,7 @@ import type {
   StoredQuestion,
   WireQuestion,
   WireSheet,
+  WordItem,
 } from './schema.js'
 
 /* ------------------------------------------------------------------ 小工具 */
@@ -809,4 +813,362 @@ export async function deleteSet(client: QbankClient, args: DeleteSetArgs): Promi
     `手机上会弹确认框（App 没在前台会收到通知）。确认后可以再调 qbank_delete_set，` +
       `服务端会复用这条请求（requestId ${req.requestId}），不会重复发。`,
   ].join('\n')
+}
+
+/* ==================================================================
+   背诵词库（政治 / 常识）+ 词库（词条）
+   内容结构见 App docs/11-背诵.md：卡片正文用 ____ 标填空，
+   answers 按出现顺序对应每个空，数量必须相等。
+   ================================================================== */
+
+export function formatReciteSubjects(
+  subjects: ReciteSubjectInfo[],
+  wordsTotal: number
+): string {
+  const lines = ['手机里现有的背诵内容（App「背诵」Tab：词库 / 政治 / 常识）：', '']
+  for (const s of subjects) {
+    lines.push(
+      `${s.id} 「${s.title}」—— ${s.categoryCount} 分类 · ${s.cardCount} 卡` +
+        (s.hasEdits ? '（有网页 / AI 存过的覆盖版）' : '（App 内置版）')
+    )
+    if (s.intro) lines.push(`   ${clip(s.intro, 120)}`)
+  }
+  lines.push(`words 词条词库 —— 共 ${wordsTotal} 条（搜索 / 增改用 qbank_words_search / qbank_word_save）`)
+  lines.push('', '读卡：qbank_recite_get_cards(subject)；改卡：qbank_recite_save_cards(subject, patches/additions/deletions)')
+  return lines.join('\n')
+}
+
+export interface ReciteGetCardsArgs {
+  subject: string
+  /** 只看某个分类（分类 id，qbank_recite_get_cards 输出里有） */
+  cat?: string
+  /** 关键词：搜正文 / 答案 / 备注 / 来源 */
+  q?: string
+  offset?: number
+  limit?: number
+  full?: boolean
+}
+
+const BLANK = '____'
+
+const countBlanks = (text: string): number => text.split(BLANK).length - 1
+
+function formatReciteCard(c: ReciteCard, index: number, catName: string, full: boolean): string {
+  const lines = [`【${index + 1}】id=${c.id} · ${catName}${c.source ? ` · 来源：${clip(c.source, 40)}` : ''}`]
+  lines.push(full ? c.text : clipText(c.text, 400, '卡片正文'))
+  if (c.answers.length) {
+    lines.push(`填空答案（${c.answers.length} 个，按 ____ 顺序）：${c.answers.join(' | ')}`)
+  } else {
+    lines.push('（无填空：纯知识点卡）')
+  }
+  if (c.note?.trim()) lines.push(`备注：${full ? c.note : clip(c.note, 120)}`)
+  return lines.join('\n')
+}
+
+/** 读背诵卡片（分页）。返回给模型看的文本；改卡要用的 id 在每行开头。 */
+export async function readReciteCards(client: QbankClient, args: ReciteGetCardsArgs): Promise<string> {
+  const subject = args.subject?.trim()
+  if (subject !== 'politics' && subject !== 'common') {
+    throw new Error(`subject 只能是 politics（政治）或 common（常识），收到「${subject}」`)
+  }
+  const catalog = await client.reciteCatalog(subject)
+  const catName = (id: string) => {
+    const c = catalog.categories.find((x) => x.id === id)
+    return c ? (c.group ? `${c.group}·${c.name}` : c.name) : id
+  }
+
+  let cards = catalog.cards
+  if (args.cat?.trim()) {
+    const cat = args.cat.trim()
+    if (!catalog.categories.some((x) => x.id === cat)) {
+      throw new Error(
+        `没有分类 ${cat}。现有分类：${catalog.categories.map((x) => `${x.id}=${catName(x.id)}`).join('、')}`
+      )
+    }
+    cards = cards.filter((c) => c.cat === cat)
+  }
+  const kw = args.q?.trim().toLowerCase()
+  if (kw) {
+    cards = cards.filter((c) =>
+      `${c.text} ${c.answers.join(' ')} ${c.note} ${c.source}`.toLowerCase().includes(kw)
+    )
+  }
+
+  const offset = Math.max(0, Math.trunc(args.offset ?? 0))
+  const limit = Math.min(50, Math.max(1, Math.trunc(args.limit ?? 10)))
+  const page = cards.slice(offset, offset + limit)
+
+  const header =
+    `「${catalog.title}」（${subject}）符合条件 ${cards.length} 张卡，` +
+    `下面是第 ${page.length ? offset + 1 : 0}–${offset + page.length} 张` +
+    `（整库 ${catalog.categories.length} 分类 / ${catalog.cards.length} 卡` +
+    `${catalog.hasEdits ? '，有覆盖版' : '，内置版'}）`
+  const body = page.map((c, i) => formatReciteCard(c, offset + i, catName(c.cat), !!args.full)).join('\n\n')
+  const more: string[] = []
+  if (offset + page.length < cards.length) {
+    more.push(`继续读：offset=${offset + page.length}, limit=${limit}${args.cat ? `, cat="${args.cat}"` : ''}${kw ? `, q="${kw}"` : ''}`)
+  }
+  more.push('改卡用 qbank_recite_save_cards（按 id patch / 增 / 删，一次调用整份保存）')
+
+  return [header, '', body || '（没有命中的卡片）', '', ...more.map((m) => `· ${m}`)].join('\n').trim()
+}
+
+/* ---------------- 整份保存：patch / 增 / 删卡 + 分类维护 ---------------- */
+
+export interface ReciteCardPatch {
+  /** 要改哪张卡（qbank_recite_get_cards 输出里的 id） */
+  id: string
+  patch: {
+    text?: string
+    answers?: string[]
+    note?: string
+    source?: string
+    /** 换分类 = 移动卡片 */
+    cat?: string
+  }
+}
+
+export interface ReciteCardAddition {
+  cat: string
+  text: string
+  answers: string[]
+  note?: string
+  source?: string
+}
+
+export interface ReciteSaveArgs {
+  subject: string
+  /** 改弹层标题 / 说明（不传保持原样） */
+  title?: string
+  intro?: string
+  patches?: ReciteCardPatch[]
+  additions?: ReciteCardAddition[]
+  /** 要删的卡片 id */
+  deletions?: string[]
+  /** 分类维护：加分类 / 改名换组 */
+  categories?: {
+    add?: { name: string; group?: string }[]
+    rename?: { id: string; name?: string; group?: string }[]
+  }
+}
+
+let reciteAddSeq = 0
+
+/**
+ * 背诵词库的修改入口：读整份 → 按 id 增删改 → 整份保存。
+ *
+ * 服务端保存是「整份覆盖」，所以所有修改攒成一次调用发过去；
+ * 任何一条 id / cat 对不上、____ 数与答案数不一致，就整批不写——
+ * 半套修改在背诵内容上比不改更糟（App 里会直接显示成乱码或对不上分类）。
+ */
+export async function saveReciteCards(client: QbankClient, args: ReciteSaveArgs): Promise<string> {
+  const subject = args.subject?.trim()
+  if (subject !== 'politics' && subject !== 'common') {
+    throw new Error(`subject 只能是 politics（政治）或 common（常识），收到「${subject}」`)
+  }
+  const catalog = await client.reciteCatalog(subject)
+  const errors: string[] = []
+
+  const byId = new Map(catalog.cards.map((c) => [c.id, c]))
+  const catIds = new Set(catalog.categories.map((c) => c.id))
+  const catName = (id: string) => {
+    const c = catalog.categories.find((x) => x.id === id)
+    return c ? (c.group ? `${c.group}·${c.name}` : c.name) : id
+  }
+
+  // ---- 分类维护先做（新增的分类马上能接卡片）----
+  for (const add of args.categories?.add ?? []) {
+    const name = add.name?.trim()
+    if (!name) { errors.push('categories.add：name 为空'); continue }
+    let id = `p${name.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '').slice(0, 6)}` || `cat${Date.now().toString(36)}`
+    let n = 2
+    while (catIds.has(id)) id = `${id}${n++}`
+    catIds.add(id)
+    catalog.categories.push({ id, name, group: add.group?.trim() ?? '' })
+  }
+  for (const r of args.categories?.rename ?? []) {
+    const c = catalog.categories.find((x) => x.id === r.id)
+    if (!c) { errors.push(`分类 ${r.id} 不存在`); continue }
+    if (r.name?.trim()) c.name = r.name.trim()
+    if (r.group !== undefined) c.group = r.group.trim()
+  }
+
+  // ---- 删卡 ----
+  const deleted = new Set<string>()
+  for (const id of args.deletions ?? []) {
+    if (!byId.delete(id)) errors.push(`要删的卡片 ${id} 不存在`)
+    else deleted.add(id)
+  }
+
+  // ---- 改卡 ----
+  const touched: string[] = []
+  for (const u of args.patches ?? []) {
+    const card = byId.get(u.id)
+    if (!card) { errors.push(`要改的卡片 ${u.id} 不存在（可能已被删除或 id 写错）`); continue }
+    const next: ReciteCard = { ...card, ...u.patch }
+    if (u.patch.cat !== undefined && !catIds.has(u.patch.cat)) {
+      errors.push(`卡片 ${u.id} 的目标分类 ${u.patch.cat} 不存在`)
+      continue
+    }
+    if (!next.text.trim()) { errors.push(`卡片 ${u.id} 的正文不能改成空`); continue }
+    const blanks = countBlanks(next.text)
+    if (blanks !== next.answers.length) {
+      errors.push(`卡片 ${u.id}：正文有 ${blanks} 个 ____，但给了 ${next.answers.length} 个答案`)
+      continue
+    }
+    if (next.answers.some((a) => !a.trim())) {
+      errors.push(`卡片 ${u.id}：有空答案`)
+      continue
+    }
+    byId.set(u.id, next)
+    touched.push(`${u.id}(${Object.keys(u.patch).join('/')})`)
+  }
+
+  // ---- 加卡 ----
+  for (const a of args.additions ?? []) {
+    if (!catIds.has(a.cat)) {
+      errors.push(`新卡的分类 ${a.cat} 不存在（先用 categories.add 加分类，或用现有 id）`)
+      continue
+    }
+    if (!a.text?.trim()) { errors.push('新卡正文为空'); continue }
+    const blanks = countBlanks(a.text)
+    const answers = a.answers ?? []
+    if (blanks !== answers.length) {
+      errors.push(`新卡「${clip(a.text, 24)}…」正文有 ${blanks} 个 ____，但给了 ${answers.length} 个答案`)
+      continue
+    }
+    reciteAddSeq++
+    let id = `mcp-${Date.now().toString(36)}-${reciteAddSeq.toString(36)}`
+    while (byId.has(id)) id += 'x'
+    const card: ReciteCard = {
+      id,
+      cat: a.cat,
+      text: a.text,
+      answers,
+      note: a.note ?? '',
+      source: a.source ?? 'MCP',
+    }
+    byId.set(id, card)
+    touched.push(`${id}(新增)`)
+  }
+
+  if (errors.length) throw new Error(`这些没写进去（整份都没保存，放心改完再来）：\n${errors.join('\n')}`)
+  if (!touched.length && !deleted.size && !args.title && args.intro === undefined &&
+      !args.categories?.add?.length && !args.categories?.rename?.length) {
+    throw new Error('没有任何修改：patches / additions / deletions / categories 都是空的')
+  }
+
+  const cards = [...byId.values()]
+  const r = await client.reciteSave({
+    subject,
+    title: args.title?.trim() || catalog.title,
+    intro: args.intro !== undefined ? args.intro : catalog.intro,
+    categories: catalog.categories.map((c) => ({ id: c.id, name: c.name, group: c.group })),
+    cards,
+  })
+  return [
+    `已保存「${r.title ?? subject}」：${r.categoryCount} 分类 / ${r.cardCount} 卡` +
+      `（本次：改 ${args.patches?.length ?? 0}、加 ${args.additions?.length ?? 0}、删 ${deleted.size}）。`,
+    'App 里重新进入背诵页就能看到新版；收藏与背诵进度按卡片 id 保留。',
+  ].join('\n')
+}
+
+/* ---------------- 重置 ---------------- */
+
+export async function resetRecite(client: QbankClient, subject: string): Promise<string> {
+  const s = subject?.trim()
+  if (s !== 'politics' && s !== 'common') {
+    throw new Error(`subject 只能是 politics（政治）或 common（常识），收到「${subject}」`)
+  }
+  const catalog = await client.reciteCatalog(s)
+  const r = await client.reciteReset(s)
+  if (r.reset === false) {
+    return `「${catalog.title}」本来就没有覆盖版，内置内容原样。`
+  }
+  return `已重置「${catalog.title}」：删掉覆盖版，回到 App 内置内容（${r.categoryCount} 分类 / ${r.cardCount} 卡）。`
+}
+
+/* ---------------- 词库（词条） ---------------- */
+
+const WORD_CATEGORY: Record<string, string> = {
+  idiom: '成语',
+  word: '实词',
+  other: '其他',
+}
+
+export interface WordsSearchArgs {
+  q?: string
+  category?: string
+  tag?: string
+  offset?: number
+  limit?: number
+}
+
+export async function searchWords(client: QbankClient, args: WordsSearchArgs): Promise<string> {
+  const r = await client.listWords({ q: args.q, category: args.category, tag: args.tag })
+  const offset = Math.max(0, Math.trunc(args.offset ?? 0))
+  const limit = Math.min(50, Math.max(1, Math.trunc(args.limit ?? 20)))
+  const page = r.words.slice(offset, offset + limit)
+
+  const catLabel = (code: string) => WORD_CATEGORY[code] ?? code
+  const header =
+    `词条词库共 ${r.total} 条（成语 ${r.counts.idiom ?? 0} · 实词 ${r.counts.word ?? 0} · 其他 ${r.counts.other ?? 0}），` +
+    `命中 ${r.words.length} 条，下面是第 ${page.length ? offset + 1 : 0}–${offset + page.length} 条`
+  const body = page
+    .map((w) =>
+      [
+        `id=${w.id} 「${w.text}」${w.pinyin ? ` [${w.pinyin}]` : ''} · ${catLabel(w.category)}` +
+          (w.tag ? ` · ${w.tag}` : ''),
+        w.meaning ? clipText(w.meaning, 160, '释义') : '',
+      ].filter(Boolean).join('\n')
+    )
+    .join('\n\n')
+  const more: string[] = []
+  if (offset + page.length < r.words.length) {
+    more.push(`继续读：offset=${offset + page.length}, limit=${limit}${args.q ? `, q="${args.q}"` : ''}`)
+  }
+  more.push('加词 / 改词：qbank_word_save；删词：qbank_word_delete')
+
+  return [header, '', body || '（没有命中的词条）', '', ...more.map((m) => `· ${m}`)].join('\n').trim()
+}
+
+export interface WordSaveArgs {
+  /** 不传 = 新增词条 */
+  id?: number
+  text: string
+  /** 留空 = 按内置字表自动算（新词 / 正文改了才重算，老词条手改过的拼音不会被冲掉） */
+  pinyin?: string
+  /** idiom（成语）/ word（实词）/ other（其他）；留空按字数推测（4 字成语，其余实词） */
+  category?: string
+  /** 细分标签，多段用 · 分隔 */
+  tag?: string
+  meaning?: string
+  example?: string
+  source?: string
+}
+
+export async function saveWord(client: QbankClient, args: WordSaveArgs): Promise<string> {
+  if (!args.text?.trim()) throw new Error('text 不能为空')
+  const saved = await client.saveWord({
+    id: args.id && args.id > 0 ? args.id : undefined,
+    text: args.text.trim(),
+    pinyin: args.pinyin ?? '',
+    category: args.category ?? '',
+    tag: args.tag ?? '',
+    meaning: args.meaning ?? '',
+    example: args.example ?? '',
+    source: args.source ?? '',
+  })
+  const isNew = !args.id
+  return [
+    `${isNew ? '已新增' : '已保存'}词条「${saved.text}」（id=${saved.id}，${WORD_CATEGORY[saved.category] ?? saved.category}` +
+      `${saved.pinyin ? ` · ${saved.pinyin}` : ''}${saved.tag ? ` · ${saved.tag}` : ''}）。`,
+    '词条直接写库，不用手机确认；App 词库页搜索即可看到。',
+  ].join('\n')
+}
+
+export async function deleteWord(client: QbankClient, id: number): Promise<string> {
+  if (!id || id <= 0) throw new Error('id 不合法：先用 qbank_words_search 拿到词条 id')
+  const r = await client.deleteWord(id)
+  return `已删除词条 id=${r.id}（直接写库，不过手机确认；删错可以再用 qbank_word_save 加回来）。`
 }

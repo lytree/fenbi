@@ -2650,3 +2650,209 @@ body.pane-dragging {
     transition: none !important;
   }
 }
+
+/* ==================================================================
+   背诵词库编辑（政治 / 常识 / 词条）
+   复用全局变量与控件样式，这里只补结构类。
+   ================================================================== */
+
+.mode-seg { flex: none; margin-left: 4px; }
+
+.recite-layout .editor { border-left: 1px solid var(--line); }
+
+/* ---- 工具条下的列表区与卡片 ---- */
+
+.rlist { display: flex; flex-direction: column; gap: 10px; }
+
+.empty-inline {
+  padding: 48px 16px;
+  text-align: center;
+  color: var(--text-tertiary);
+  background: var(--bg-container);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-lg);
+}
+
+.rcard {
+  background: var(--bg-container);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+
+  &.bad { border-color: var(--error-border); }
+
+  .qhead { cursor: pointer; }
+  .ops button {
+    border: 0; background: none; color: var(--text-tertiary);
+    font: inherit; font-size: 12.5px; cursor: pointer; padding: 4px 6px; border-radius: var(--radius-sm);
+    &:hover { background: var(--bg-fill); color: var(--error); }
+  }
+}
+
+.rgrow { flex: 1; min-width: 0; }
+
+.rtext {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+
+  &.full { display: block; -webkit-line-clamp: unset; }
+
+  .rblank {
+    display: inline-block;
+    min-width: 3.2em;
+    text-align: center;
+    padding: 0 6px;
+    margin: 0 2px;
+    border-bottom: 2px solid var(--primary);
+    color: var(--primary);
+    font-weight: 600;
+    line-height: 1.2;
+  }
+}
+
+.rmeta {
+  display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; align-items: center;
+
+  .tag { font-size: 11.5px; padding: 2px 8px; }
+  .tag.src { color: var(--text-tertiary); }
+  .tag.hot { color: var(--error); border-color: var(--error-border); background: var(--error-bg); }
+}
+
+/* ---- 卡片编辑态 ---- */
+
+.rbody {
+  display: none;
+  padding: 4px 16px 16px;
+  border-top: 1px solid var(--line);
+}
+.rcard.open .rbody { display: block; }
+
+.rfield {
+  margin-top: 12px;
+
+  &.two {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-tertiary);
+    margin-bottom: 6px;
+  }
+
+  textarea,
+  input {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--bg-layout);
+    color: var(--text);
+    font: inherit;
+    font-size: 13.5px;
+    line-height: 1.6;
+    padding: 8px 10px;
+    outline: none;
+    resize: vertical;
+
+    &:focus { border-color: var(--primary); }
+  }
+}
+
+.ranswer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+
+  .ridx {
+    flex: none;
+    width: 22px;
+    height: 22px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--primary-bg);
+    color: var(--primary);
+    font-size: 12px;
+  }
+
+  input { flex: 1; }
+}
+
+.rhint {
+  font-size: 12px;
+  color: var(--text-quaternary);
+  margin-bottom: 6px;
+}
+
+.rhint-inline {
+  font-size: 12px;
+  color: var(--text-quaternary);
+}
+
+.rissues {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--error-border);
+  background: var(--error-bg);
+  color: var(--error-text);
+  border-radius: var(--radius);
+  font-size: 12.5px;
+  line-height: 1.8;
+}
+
+.rops {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+/* ---- 词条列表 ---- */
+
+.rcard.word .wline {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+
+  .wtext { font-size: 15px; color: var(--text); }
+  .wpinyin { font-size: 12.5px; color: var(--text-tertiary); font-family: var(--font-code); }
+}
+
+.rmeaning {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.rmore {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 24px;
+}
+
+/* 窄屏：背诵编辑态的两列并一列 */
+@media (max-width: 900px) {
+  .rfield.two { grid-template-columns: 1fr; }
+  .rtext { -webkit-line-clamp: 4; }
+}

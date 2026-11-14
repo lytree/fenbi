@@ -23,20 +23,25 @@ tools/webeditor/
   vite.config.ts          # base=/web/、outDir 指向 App assets
   src/
     main.tsx              # createApp
-    App.tsx               # 三栏布局 + 快捷键 + 文件选择器
-    store.ts              # 全部状态与动作（响应式单例，没有 Pinia）
+    App.tsx               # 模式切换（题库 / 背诵）+ 三栏布局 + 快捷键 + 文件选择器
+    store.ts              # 全部状态与动作（响应式单例，没有 Pinia）；背诵 / 词条状态也在里面
     api.ts                # /api/* 的封装
     paste.ts              # 批量粘贴文本 → 题目
     markdown.ts           # 预览用的 Markdown 子集（表格/图片/:::chart）
     figure.ts             # 图文排版：把选中段落包成 :::figure（两种视图共用）
     images.ts             # 插图、粘贴截图
-    types.ts              # 与 LanEditorStore.kt 的 JSON 约定
+    types.ts              # 与 LanEditorStore.kt / LanEditorRecite.kt / LanEditorWords.kt 的 JSON 约定
     theme.ts              # 明暗主题：data-theme + localStorage + 跟系统
     styles.scss           # Ant Design v5 令牌，明 / 暗两套值（[data-theme="dark"]）
-    components/           # TopBar / Sidebar / SheetBar / QuestionList / MaterialList /
-                          # QuestionCard / PreviewPane / IssuePane / VersionPane / ModalHost / Toast
+    components/           # TopBar（模式切换 + 复制 MCP）/ Sidebar / SheetBar / QuestionList /
+                          # MaterialList / QuestionCard / PreviewPane / IssuePane / VersionPane /
+                          # ModalHost / Toast / RecitePane（背诵卡编辑）/ WordsPane（词条编辑）
     __tests__/App.spec.ts # vitest + jsdom 冒烟
 ```
+
+「背诵」模式下 `RecitePane`（政治 / 常识：分类筛选 + 卡片列表 + 逐卡编辑，整份保存走手机确认）
+与 `WordsPane`（词条词库：搜索筛选 + 逐条编辑，直接写库）替换题库编辑区，右栏预览不渲染。
+数据面见 `docs/12` 的「背诵词库编辑」一节与 `ui/laneditor/LanEditorRecite.kt`、`LanEditorWords.kt`。
 
 ## 常用命令
 

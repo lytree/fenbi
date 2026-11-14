@@ -2,7 +2,8 @@
 
 把手机 App 里那个「局域网编辑器」包装成 **MCP（Model Context Protocol）** 工具，
 让 Claude Desktop / Cursor / Cherry Studio 这类客户端**直接读写手机里的题库**：
-列组、读题、加题、改题、删题、整组发布、回滚版本、申请删除整组。
+列组、读题、加题、改题、删题、整组发布、回滚版本、申请删除整组，
+以及**背诵词库（政治 / 常识）的读改存**和**词条词库（词库页）的搜索与增删改**。
 
 它不碰数据库，只是 `LanEditorServer` 那套 HTTP 接口的一层薄封装——
 和你在电脑浏览器里点「发布到 App」走的是同一条路。
@@ -77,7 +78,7 @@ Cursor / 其他客户端同理，只是配置文件位置不同。也可以不�
 
 老配置里如果地址还带着 `?t=xxx`，会被当成 key 继续用，不用为了升级重配一遍。
 
-改完重启客户端，工具列表里应该出现 14 个 `qbank_*` 工具。
+改完重启客户端，工具列表里应该出现 21 个 `qbank_*` 工具。
 
 ## 三、工具清单
 
@@ -101,6 +102,15 @@ Cursor / 其他客户端同理，只是配置文件位置不同。也可以不�
 | `qbank_publish_set` | 整组发布：新建或覆盖（覆盖要显式 `replace: true`） | 覆盖整组 |
 | `qbank_restore_version` | 回滚到某一版（回滚前也会先存一版） | 覆盖整组 |
 | `qbank_delete_set` | 删整组——**要手机点确认才执行** | 删除 |
+| **背诵词库（政治 / 常识）** | | |
+| `qbank_recite_subjects` | 列两块背诵内容（分类数 / 卡片数 / 有没有覆盖版）和词条词库总条数 | 只读 |
+| `qbank_recite_get_cards` | 读背诵卡片（按分类 / 关键词过滤，分页，`full` 取原文） | 只读 |
+| `qbank_recite_save_cards` | 改 / 增 / 删卡 + 分类维护，整份保存；____ 数与答案数不一致整份拒绝 | 覆盖整块内容 |
+| `qbank_recite_reset` | 删覆盖版，回到 App 内置内容 | 覆盖整块内容 |
+| **词条词库** | | |
+| `qbank_words_search` | 搜词条（关键词 / 分类 / 细分标签），拿 id | 只读 |
+| `qbank_word_save` | 新增 / 修改词条（拼音留空自动算） | 写库 |
+| `qbank_word_delete` | 删词条 | 写库 |
 
 ### 三条必须知道的口径
 
@@ -148,6 +158,20 @@ Cursor / 其他客户端同理，只是配置文件位置不同。也可以不�
 `qbank_list_records` 找到那次记录 → `qbank_get_record({ recordId, wrongOnly: true })` 逐题看错因，
 讲完如果发现某几题解析缺失或写错，直接 `qbank_set_analysis` / `qbank_batch_update_questions` 顺手补上。
 
+> 「往政治背诵里加一张卡：现行宪法是 1982 年颁布的，把年份挖空」
+
+`qbank_recite_get_cards({ subject: "politics", cat: "..." })` 看看放哪个分类 →
+`qbank_recite_save_cards({ subject: "politics", additions: [{ cat, text: "我国现行宪法是 ____ 年颁布的。", answers: ["1982"] }] })`。
+
+> 「政治背诵里「重要文件1」那部分内容过时了，帮我改掉」
+
+`qbank_recite_get_cards({ subject: "politics", cat: "cg16", full: true })` 逐张读原文 →
+把要改的卡整理成 `patches`（按 id），连同不需要的卡放进 `deletions`，一次 `qbank_recite_save_cards` 保存。
+
+> 「词库里加一个词条：不刊之论，指不可改动的言论」
+
+`qbank_word_save({ text: "不刊之论", category: "idiom", meaning: "…" })`（拼音留空自动算）。
+
 ## 五、排错
 
 **客户端里看不到工具**：`pnpm build` 有没有跑过？`args` 里的路径是不是绝对路径、有没有反斜杠转义？
@@ -170,7 +194,7 @@ Android 13+ 没给通知权限的话，只有把 App 打开到「局域网编辑
 
 ```bash
 pnpm typecheck   # tsc --noEmit
-pnpm test        # 22 个用例：地址解析 / 读改写 / 真实 stdio 起进程调工具
+pnpm test        # 24 个用例：地址解析 / 读改写 / 背诵与词条 / 真实 stdio 起进程调工具
 pnpm build
 pnpm start       # 手动跑（需要 QBANK_URL），日志在 stderr
 ```

@@ -420,6 +420,48 @@ class LanEditorServer(
                 Resp(200, imageMimeOf(file.name), file.readBytes())
             }
 
+            // ---- 背诵词库（政治 / 常识）：整份读，整份写 ----
+            "/api/recite/subjects" -> runCatching { LanEditorRecite.subjects(context) }.fold(
+                onSuccess = ::json,
+                onFailure = { jsonError(500, it.message ?: "读取背诵词库失败") },
+            )
+
+            "/api/recite/catalog" -> {
+                val subject = req.query["subject"] ?: return jsonError(400, "缺少 subject 参数")
+                runCatching { LanEditorRecite.catalog(context, subject) }.fold(
+                    onSuccess = ::json,
+                    onFailure = { jsonError(400, it.message ?: "读取失败") },
+                )
+            }
+
+            "/api/recite/save" -> handleReciteSave(req)
+
+            "/api/recite/reset" -> handleReciteReset(req)
+
+            // ---- 词库（词条 CRUD）：逐条小改，直接写库 ----
+            "/api/words" -> runCatching { LanEditorWords.list(context, req.query) }.fold(
+                onSuccess = ::json,
+                onFailure = { jsonError(500, it.message ?: "读取词库失败") },
+            )
+
+            "/api/word" -> when (req.method) {
+                "POST" -> {
+                    val body = readJson(req) ?: return jsonError(400, "请求不是合法 JSON")
+                    runCatching { LanEditorWords.save(context, body) }.fold(
+                        onSuccess = ::json,
+                        onFailure = { jsonError(400, it.message ?: "保存失败") },
+                    )
+                }
+                "DELETE" -> {
+                    val id = req.query["id"]?.toLongOrNull() ?: return jsonError(400, "缺少词条 id")
+                    json(LanEditorWords.delete(context, id))
+                }
+                else -> jsonError(400, "读词条请用 /api/words 列表")
+            }
+
+            // ---- MCP 配置：给网页上的「复制 MCP 配置」按钮 ----
+            "/api/mcp" -> handleMcpInfo()
+
             else -> jsonError(404, "接口不存在：$path")
         }
     }
@@ -502,6 +544,97 @@ class LanEditorServer(
                 .put("title", title)
                 .put("detail", detail)
                 .put("ttlSec", 600),
+        )
+    }
+
+    /**
+     * 保存背诵词库（政治 / 常识）：网页送来整份内容，手机确认后才覆盖。
+     *
+     * 与发布同一套两种入口：AI 带 `X-Lan-Key` 直接写；网页登记待确认请求，
+     * 网页拿 requestId 轮询 `/api/publish/status`（那条接口按请求 id 查，对任何 kind 都通用）。
+     */
+    private fun handleReciteSave(req: Req): Resp {
+        val body = readJson(req) ?: return jsonError(400, "请求不是合法 JSON")
+        val subject = body.optString("subject").trim()
+        if (subject.isEmpty()) return jsonError(400, "缺少 subject 参数")
+
+        // 先校验再问：内容本身不对的话，别让手机白弹一次确认框
+        val normalized = runCatching { LanEditorRecite.parseSave(context, body) }.fold(
+            onSuccess = { (_, payload) -> payload },
+            onFailure = { return jsonError(400, it.message ?: "词库内容校验没通过") },
+        )
+        val cardCount = normalized.optJSONArray("cards")?.length() ?: 0
+        val categoryCount = normalized.optJSONArray("categories")?.length() ?: 0
+        val title = normalized.optString("title").ifBlank { subject }
+
+        if (hasAccessKey(req)) {
+            return runCatching { LanEditorRecite.executeSave(context, body) }.fold(
+                onSuccess = { json(it) },
+                onFailure = { jsonError(400, it.message ?: "保存失败") },
+            )
+        }
+
+        val detail = "会把「$subject」整份换成网页上这版：$categoryCount 个分类、$cardCount 张卡片。" +
+            "覆盖文件删掉才能回到内置内容；App 里的收藏和背诵进度不受影响。"
+        val r = LanEditorConfirm.requestReciteSave(context, subject, title, detail, normalized)
+        return json(
+            JSONObject()
+                .put("needConfirm", true)
+                .put("requestId", r.id)
+                .put("title", title)
+                .put("detail", detail)
+                .put("ttlSec", 600),
+        )
+    }
+
+    /** 重置背诵词库：删用户覆盖文件、回到内置资产。同样「AI 直发、网页等确认」 */
+    private fun handleReciteReset(req: Req): Resp {
+        val body = readJson(req) ?: return jsonError(400, "请求不是合法 JSON")
+        val subject = body.optString("subject").trim()
+        if (subject.isEmpty()) return jsonError(400, "缺少 subject 参数")
+
+        if (hasAccessKey(req)) {
+            return runCatching { LanEditorRecite.executeReset(context, subject) }.fold(
+                onSuccess = { json(it) },
+                onFailure = { jsonError(400, it.message ?: "重置失败") },
+            )
+        }
+
+        val title = "重置 $subject"
+        val detail = "会删掉这块内容的网页修改，回到 App 内置的那份词库。"
+        val r = LanEditorConfirm.requestReciteReset(context, subject, title, detail, JSONObject().put("subject", subject))
+        return json(
+            JSONObject()
+                .put("needConfirm", true)
+                .put("requestId", r.id)
+                .put("title", title)
+                .put("detail", detail)
+                .put("ttlSec", 600),
+        )
+    }
+
+    /**
+     * MCP 配置给网页复制。安全边界想清楚再开：
+     *
+     * - **设了密码**：写入 key 就是那串密码，能打开这个接口的人必然刚输过密码——
+     *   给它不扩大任何泄露面，等于手机上「复制 MCP 配置」的一次远程版。
+     * - **没设密码**：整站对同一 Wi-Fi 开放，这时候把写入口令发给网页
+     *   等于把题库写权限交给局域网里的任何人，所以明确拒绝。
+     */
+    private fun handleMcpInfo(): Resp {
+        val pwd = password
+        if (pwd == null) {
+            return jsonError(
+                403,
+                "没设访问密码时不能在这里取写入口令（整站开放，给了等于人人可写）。" +
+                    "用手机「局域网编辑器」页的「复制 MCP 配置」，或者先设一个访问密码。",
+            )
+        }
+        return json(
+            JSONObject()
+                .put("url", pageUrl)
+                .put("key", pwd)
+                .put("config", LanEditorMcpConfig.json(pageUrl, pwd))
         )
     }
 

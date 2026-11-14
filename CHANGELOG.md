@@ -12,6 +12,41 @@
 
 ---
 
+## [0.0.48] - 2026-11-14
+
+### 新增
+
+* **网页编辑器加「背诵」模式**（顶栏「题库 / 背诵」切换）：左栏三块内容——词条词库、政治、常识。
+  词条词库可搜索 / 按分类标签筛选、逐条编辑（词条 / 拼音 / 分类 / 细分 / 释义 / 例句 / 出处）、
+  加词删词，直接写库不用手机确认，拼音留空按内置字表自动算；
+  政治 / 常识是分类分组浏览 + 卡片增删改（正文 `____` 填空、答案逐空对应、备注、来源、移动分类、
+  分类加 / 改名 / 删空分类），**整份保存**走与发布同一套手机确认流。
+* **背诵内容支持设备上修改**：`ReciteRepository` 增加用户覆盖层——网页 / AI 的修改落在
+  `filesDir/recite_<subject>_user.json`，App 读内容时覆盖文件优先、按 `lastModified` 自动失效缓存；
+  保存前服务端校验（`____` 数 = 答案数、id 唯一、cat 引用存在），「重置为内置」删覆盖文件回到 APK 内置版；
+  收藏 / 背诵进度按卡片 id 存在 settings 表，改内容与重置都不冲掉。
+* **局域网服务新增接口**：`/api/recite/subjects`、`/api/recite/catalog`、`/api/recite/save`、
+  `/api/recite/reset`（确认闸与发布一致）、`/api/words`（列表筛选）、`/api/word`（POST 保存 / DELETE 删除）、
+  `/api/mcp`（已设访问密码并登录时返回带写入口令的 MCP 配置 JSON，供网页「复制 MCP」按钮使用；
+  没设密码明确拒绝，避免整站开放时泄露写权限）。
+* **网页顶栏加「复制 MCP」按钮**：已登录会话一键把带当前地址与 `QBANK_KEY` 的 mcpServers 配置
+  整段复制到剪贴板（剪贴板 API 不可用时退回 execCommand 兜底，拿不到配置就弹出原文手动抄）。
+* **MCP server（tools/qbank-mcp）补 7 个工具**（共 21 个）：`qbank_recite_subjects`（列背诵内容与词条数）、
+  `qbank_recite_get_cards`（读背诵卡片，分类 / 关键词过滤分页）、`qbank_recite_save_cards`
+  （按 id patch / 增 / 删卡 + 分类维护，整份保存，校验不过整份拒绝）、`qbank_recite_reset`（重置内置）、
+  `qbank_words_search`（搜词条）、`qbank_word_save`（新增 / 修改词条）、`qbank_word_delete`（删词条）。
+
+### 优化
+
+* `QBankDb` 新增 `getWord` / `saveWord`（单条保存：编辑按 id 原地 UPDATE，新增撞「词条唯一」索引明确报错，
+  不静默覆盖），与批量导入的 `upsertWords` 口径分开。
+
+### 修复
+
+* 网页背诵编辑「＋ 新卡」在按分类筛选时落到第一个分类而不是当前筛选分类（三元 / `??` 优先级笔误）。
+
+---
+
 ## [0.0.47] - 2026-11-14
 
 ### 优化

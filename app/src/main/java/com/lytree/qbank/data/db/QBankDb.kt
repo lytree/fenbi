@@ -538,6 +538,49 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
             .use { c -> return if (c.moveToFirst()) c.getInt(0) else 0 }
     }
 
+    /** 单条取词（网页编辑器用）；不存在返回 null */
+    fun getWord(id: Long): Word? {
+        readableDatabase.rawQuery("SELECT * FROM words WHERE id = ?", arrayOf(id.toString())).use { c ->
+            return if (c.moveToFirst()) readWord(c) else null
+        }
+    }
+
+    /**
+     * 单条保存（局域网编辑器的词条编辑用），区别于批量导入的 [upsertWords]：
+     *
+     * - 带 [id] 走 UPDATE（编辑既有词条），改词条正文也不换行、id 不变；
+     * - 不带 id 走 INSERT（新词条），撞上「词条唯一」索引算失败而不是静默覆盖。
+     *
+     * 返回 null = 成功；否则是直接给网页看的错误说明。
+     */
+    fun saveWord(w: Word, id: Long = 0L): String? {
+        if (w.text.isBlank()) return "词条不能为空"
+        val db = writableDatabase
+        db.rawQuery(
+            "SELECT id FROM words WHERE text = ? AND id <> ?",
+            arrayOf(w.text, id.toString()),
+        ).use { c -> if (c.moveToFirst()) return "词库里已经有「${w.text}」了" }
+
+        val cv = ContentValues().apply {
+            put("text", w.text)
+            put("pinyin", w.pinyin)
+            put("initial", w.initial.ifBlank { "#" })
+            put("category", w.category)
+            put("tag", Word.normalizeTag(w.tag))
+            put("meaning", w.meaning)
+            put("example", w.example)
+            put("source", w.source)
+        }
+        return if (id > 0L) {
+            if (db.update("words", cv, "id = ?", arrayOf(id.toString())) == 0) {
+                "词条不存在（可能已被删掉），刷新列表再试"
+            } else null
+        } else {
+            cv.put("created_at", if (w.createdAt > 0) w.createdAt else System.currentTimeMillis())
+            if (db.insert("words", null, cv) == -1L) "写入失败" else null
+        }
+    }
+
     fun deleteWord(id: Long) {
         writableDatabase.delete("words", "id = ?", arrayOf(id.toString()))
     }

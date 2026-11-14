@@ -55,9 +55,16 @@ test('stdio 下注册了全部工具，且能列出题库', async (t) => {
     'qbank_list_sets',
     'qbank_list_versions',
     'qbank_publish_set',
+    'qbank_recite_get_cards',
+    'qbank_recite_reset',
+    'qbank_recite_save_cards',
+    'qbank_recite_subjects',
     'qbank_restore_version',
     'qbank_set_analysis',
     'qbank_update_question',
+    'qbank_word_delete',
+    'qbank_word_save',
+    'qbank_words_search',
   ])
 
   const listed = await client.callTool({ name: 'qbank_list_sets', arguments: {} })
@@ -135,4 +142,77 @@ test('没配地址时服务仍能连上，调工具才提示怎么配', async (t
   const result = await client.callTool({ name: 'qbank_list_sets', arguments: {} })
   assert.equal(result.isError, true)
   assert.match(textOf(result), /QBANK_URL/)
+})
+
+test('背诵词库：列出 → 加分类加卡 → 读到 → 校验不过整份拒绝', async (t) => {
+  const mock = await startMockServer()
+  t.after(mock.close)
+  const client = await connect(mock.url)
+  t.after(() => client.close())
+
+  const listed = await client.callTool({ name: 'qbank_recite_subjects', arguments: {} })
+  assert.match(textOf(listed), /politics/)
+  assert.match(textOf(listed), /2 卡/)
+
+  const saved = await client.callTool({
+    name: 'qbank_recite_save_cards',
+    arguments: {
+      subject: 'politics',
+      categories: { add: [{ name: '新思想', group: '超格' }] },
+      additions: [
+        { cat: 'p01', text: '宪法共 ____ 章。', answers: ['四'], source: '测试' },
+      ],
+    },
+  })
+  assert.match(textOf(saved), /已保存/)
+
+  const cards = await client.callTool({
+    name: 'qbank_recite_get_cards',
+    arguments: { subject: 'politics', q: '宪法' },
+  })
+  assert.match(textOf(cards), /宪法共 ____ 章/)
+  assert.match(textOf(cards), /四/)
+
+  // ____ 数与答案数不一致：整份不保存，mock 里的卡片数不变
+  const bad = await client.callTool({
+    name: 'qbank_recite_save_cards',
+    arguments: {
+      subject: 'politics',
+      additions: [{ cat: 'p01', text: '有两个 ____ 和一个 ____。', answers: ['一'] }],
+    },
+  })
+  assert.equal(bad.isError, true)
+  assert.match(textOf(bad), /2 个 ____/)
+})
+
+test('词库：搜索 → 新增 → 删除', async (t) => {
+  const mock = await startMockServer()
+  t.after(mock.close)
+  const client = await connect(mock.url)
+  t.after(() => client.close())
+
+  const found = await client.callTool({
+    name: 'qbank_words_search',
+    arguments: { q: '画蛇添足' },
+  })
+  assert.match(textOf(found), /id=1/)
+
+  const added = await client.callTool({
+    name: 'qbank_word_save',
+    arguments: { text: '守株待兔', meaning: '死守经验。', category: 'idiom' },
+  })
+  assert.match(textOf(added), /已新增词条「守株待兔」/)
+
+  const again = await client.callTool({
+    name: 'qbank_word_save',
+    arguments: { text: '守株待兔' },
+  })
+  assert.equal(again.isError, true)
+  assert.match(textOf(again), /已经有/)
+
+  const deleted = await client.callTool({
+    name: 'qbank_word_delete',
+    arguments: { id: 903 },
+  })
+  assert.match(textOf(deleted), /已删除/)
 })

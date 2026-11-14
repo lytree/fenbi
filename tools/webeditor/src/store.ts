@@ -3,7 +3,9 @@ import { api } from './api'
 import type { ConfirmRequired, PublishResponse } from './api'
 import type {
   EditorPaper, EditorView, Filter, Group, Issue, PaperSetInfo,
-  QIssue, Question, QuestionType, ResourceFile, Sheet, SubjectFilter, TypeFilter, VersionInfo, WireSheet,
+  QIssue, Question, QuestionType, ReciteCard, ReciteCatalog, ReciteCategory,
+  ReciteSaveResult, ReciteSubjectInfo, ResourceFile, Sheet, SubjectFilter,
+  TypeFilter, VersionInfo, WireSheet, WordItem,
 } from './types'
 import { formatTime, nextUid, sleep } from './util'
 import { parsePasted } from './paste'
@@ -34,8 +36,8 @@ export const TYPE_SHORT: Record<QuestionType, string> = {
 export const CHOICE: QuestionType[] = ['single', 'multi', 'uncertain', 'truefalse']
 export const LETTERS = 'ABCDEFGH'.split('')
 
-/** 等手机确认的动作；发布和回滚共用一套轮询 */
-type WaitingKind = 'publish' | 'restore' | 'delete'
+/** 等手机确认的动作；发布 / 回滚共用一套轮询，背诵词库的保存 / 重置也走同一条路 */
+type WaitingKind = 'publish' | 'restore' | 'delete' | 'recite-save' | 'recite-reset'
 
 /* ------------------------------------------------------------------ 状态 */
 
@@ -66,6 +68,8 @@ export interface ImportPreview {
 }
 
 export const state = reactive({
+  /** 顶层工作模式：题库编辑 / 背诵词库编辑（两边的状态互不覆盖） */
+  mode: 'paper' as 'paper' | 'recite',
   sets: [] as PaperSetInfo[],
   questionTotal: 0,
   paper: null as EditorPaper | null,
@@ -464,7 +468,7 @@ export async function publish(opts: { replace?: boolean } = {}): Promise<boolean
       )
       : r
     if (!result) return false
-    await afterPublished(paper, title, result)
+    await afterPublished(paper, title, result as PublishResponse)
     return true
   } catch (e) {
     const msg = e instanceof Error ? e.message : '发布失败'
@@ -510,7 +514,7 @@ async function waitPhone(
   req: ConfirmRequired,
   message: string,
   extra: string,
-): Promise<PublishResponse | null> {
+): Promise<PublishResponse | ReciteSaveResult | null> {
   ui.busy = false
   ui.waitingId = req.requestId
   ui.waitingKind = kind
@@ -1321,8 +1325,8 @@ export async function restoreVersion(v: VersionInfo): Promise<void> {
       : r
     if (!result) return
     await loadSets()
-    if (state.paper) await openSet(result.setId, { force: true })
-    toast(`已回滚到 ${formatTime(v.savedAt)} 那一版 · ${result.questionCount} 题`, 'ok')
+    if (state.paper) await openSet((result as PublishResponse).setId, { force: true })
+    toast(`已回滚到 ${formatTime(v.savedAt)} 那一版 · ${(result as PublishResponse).questionCount} 题`, 'ok')
   } catch (e) {
     toast(e instanceof Error ? e.message : '回滚失败', 'err')
   } finally {
@@ -1457,6 +1461,442 @@ async function pollDelete(id: string, setId: number, title: string, ttlSec: numb
     return
   }
 }
+
+/* ------------------------------------------------------------------ 背诵词库（政治 / 常识） + 词库（词条） */
+
+/**
+ * 背诵编辑器自己的状态。与题库编辑完全独立：
+ * `subject = 'words'` 是词条词库（DB 逐条改），其余是政治 / 常识两块背诵内容
+ * （整份编辑、整份保存，保存要过手机确认）。
+ */
+export const recite = reactive({
+  subjects: [] as ReciteSubjectInfo[],
+  /** '' = 还没选；'words' = 词条词库；'politics' / 'common' = 背诵内容 */
+  subject: '',
+  catalog: null as ReciteCatalog | null,
+  loading: false,
+  /** 有没保存到手机的改动（保存成功后清掉） */
+  dirty: false,
+  query: '',
+  catFilter: 'all' as string,
+  /** 正在展开编辑的卡片 id */
+  expanded: [] as string[],
+
+  // ---- 词条词库 ----
+  words: [] as WordItem[],
+  wordsTotal: 0,
+  wordsTags: [] as { name: string; count: number }[],
+  wordsCounts: {} as Record<string, number>,
+  wordQuery: '',
+  wordCategory: 'all' as string,
+  wordTag: 'all' as string,
+  /** 词条两千多条，列表先渲染一屏，「显示更多」再放行 */
+  wordLimit: 200,
+  /** 正在展开编辑的词条 id（0 = 新词条还没落库） */
+  wordExpanded: [] as number[],
+})
+
+/** 背诵卡片的本地 id 前缀：新卡在保存前都是这个开头，落盘前由服务器校验唯一 */
+let reciteSeq = 0
+
+function nextReciteCardId(): string {
+  reciteSeq++
+  return `web-${Date.now().toString(36)}-${reciteSeq.toString(36)}`
+}
+
+/* ---------------- 模式切换 ---------------- */
+
+export async function switchMode(mode: 'paper' | 'recite'): Promise<void> {
+  if (state.mode === mode) return
+  if (mode === 'recite' && recite.dirty) {
+    const ok = await askConfirm(
+      '背诵词库还有没保存的改动',
+      '切回题库编辑不会丢内容，但改动要记得保存；确定切换吗？',
+      '切换',
+    )
+    if (!ok) return
+  }
+  state.mode = mode
+  if (mode === 'recite' && !recite.subjects.length) {
+    await loadReciteSubjects()
+    // 第一次进来默认打开政治，别让人对着空页面猜
+    if (!recite.subject) await openReciteSubject('politics')
+  }
+}
+
+/* ---------------- 列表与打开 ---------------- */
+
+export async function loadReciteSubjects(): Promise<void> {
+  try {
+    const r = await api.reciteSubjects()
+    recite.subjects = r.subjects ?? []
+  } catch (e) {
+    toast(e instanceof Error ? e.message : '读取背诵词库失败', 'err')
+  }
+}
+
+/** 打开一块内容。'words' = 词条词库，'politics' / 'common' = 背诵内容 */
+export async function openReciteSubject(id: string, opts: { force?: boolean } = {}): Promise<void> {
+  if (recite.subject === id && !opts.force) return
+  if (recite.dirty && !opts.force) {
+    const ok = await askConfirm(
+      '背诵词库还有没保存的改动',
+      '换一块内容不会丢改动（改动还在内存里），但先保存更稳。直接换吗？',
+      '直接换',
+    )
+    if (!ok) return
+  }
+  recite.subject = id
+  recite.query = ''
+  recite.catFilter = 'all'
+  recite.expanded = []
+  recite.wordExpanded = []
+  recite.wordQuery = ''
+  recite.wordCategory = 'all'
+  recite.wordTag = 'all'
+  recite.wordLimit = 200
+  recite.catalog = null
+  recite.words = []
+  if (id === 'words') {
+    await loadWords()
+  } else {
+    recite.loading = true
+    try {
+      recite.catalog = await api.reciteCatalog(id)
+      recite.dirty = false
+    } catch (e) {
+      toast(e instanceof Error ? e.message : '读取失败', 'err')
+    } finally {
+      recite.loading = false
+    }
+  }
+}
+
+/* ---------------- 背诵卡片：编辑 / 校验 ---------------- */
+
+/** 单卡检查：和手机端落盘校验同一套口径，发布前就地兜住 */
+export function reciteCardIssues(c: ReciteCard): string[] {
+  const out: string[] = []
+  if (!c.text.trim()) out.push('正文为空')
+  const blanks = (c.text.match(/____/g) ?? []).length
+  if (blanks !== c.answers.length) {
+    out.push(`正文有 ${blanks} 个 ____，但给了 ${c.answers.length} 个答案`)
+  }
+  if (c.answers.some((a) => !a.trim())) out.push('有空答案')
+  if (!recite.catalog?.categories.some((x) => x.id === c.cat)) out.push('所属分类不存在')
+  return out
+}
+
+export function reciteIssueCount(): number {
+  return (recite.catalog?.cards ?? []).reduce((n, c) => n + reciteCardIssues(c).length, 0)
+}
+
+export function reciteDirty(): boolean {
+  return recite.dirty
+}
+
+export function markReciteDirty() {
+  recite.dirty = true
+}
+
+export function toggleReciteCard(id: string) {
+  recite.expanded = recite.expanded.includes(id)
+    ? recite.expanded.filter((x) => x !== id)
+    : [...recite.expanded, id]
+}
+
+export function addReciteCard(catId?: string): ReciteCard | null {
+  const cat = recite.catalog
+  if (!cat) return null
+  // 优先用调用方给的分类；没给就落进当前筛选的分类，再退到第一个分类
+  const target = catId ?? (recite.catFilter !== 'all' ? recite.catFilter : cat.categories[0]?.id)
+  if (!target) { toast('先建一个分类', 'err'); return null }
+  const card: ReciteCard = { id: nextReciteCardId(), cat: target, text: '', answers: [], note: '', source: '' }
+  cat.cards.push(card)
+  recite.expanded = [card.id]
+  markReciteDirty()
+  return card
+}
+
+export function removeReciteCard(id: string) {
+  const cat = recite.catalog
+  if (!cat) return
+  cat.cards = cat.cards.filter((c) => c.id !== id)
+  recite.expanded = recite.expanded.filter((x) => x !== id)
+  markReciteDirty()
+}
+
+export function updateReciteCard(id: string, patch: Partial<ReciteCard>) {
+  const c = recite.catalog?.cards.find((x) => x.id === id)
+  if (!c) return
+  Object.assign(c, patch)
+  markReciteDirty()
+}
+
+/** 换填空答案列表：数量要与正文里的 ____ 对上（界面负责让两处一起改） */
+export function setReciteCardAnswers(id: string, answers: string[]) {
+  updateReciteCard(id, { answers })
+}
+
+/** 把选中的一段正文变成填空：正文加 ____，答案追加一项 */
+export function blankReciteSelection(id: string, term: string) {
+  const c = recite.catalog?.cards.find((x) => x.id === id)
+  if (!c || !term.trim()) return
+  c.text = `${c.text} ____ `
+  c.answers.push(term.trim())
+  markReciteDirty()
+}
+
+export function moveReciteCard(id: string, catId: string) {
+  updateReciteCard(id, { cat: catId })
+}
+
+/* ---------------- 背诵分类 ---------------- */
+
+function reciteCategoryId(name: string): string {
+  const base = (recite.catalog?.subject === 'common' ? 'cs' : 'p') +
+    name.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '').slice(0, 6) || 'cat'
+  let id = base
+  let i = 2
+  while (recite.catalog?.categories.some((c) => c.id === id)) id = `${base}${i++}`
+  return id
+}
+
+export async function addReciteCategory(): Promise<void> {
+  if (!recite.catalog) return
+  const group = (await askText({
+    title: '新分类 · 所属分组',
+    label: '二级分组标题（弹层里的分组行）。留空 = 落到「未分组」',
+    value: recite.catalog.categories[0]?.group ?? '',
+    rows: 1,
+  }))
+  if (group === null) return
+  const name = await askText({ title: '新分类 · 名称', label: '分类名（范围弹层里的一行）', rows: 1 })
+  if (!name?.trim()) return
+  recite.catalog.categories.push({
+    id: reciteCategoryId(name.trim()),
+    name: name.trim(),
+    group: group.trim(),
+  })
+  markReciteDirty()
+  toast('分类已加，记得「＋ 新卡」往里放内容', 'ok')
+}
+
+export async function renameReciteCategory(id: string): Promise<void> {
+  const c = recite.catalog?.categories.find((x) => x.id === id)
+  if (!c) return
+  const name = await askText({ title: '改分类名', value: c.name, rows: 1 })
+  if (name?.trim()) { c.name = name.trim(); markReciteDirty() }
+  const group = await askText({
+    title: '改所属分组',
+    label: '二级分组标题。留空 = 未分组',
+    value: c.group,
+    rows: 1,
+  })
+  if (group !== null && group.trim() !== c.group) { c.group = group.trim(); markReciteDirty() }
+}
+
+/** 只许删空分类：带着卡删会把卡挂到不存在的分类上 */
+export async function removeReciteCategory(id: string): Promise<void> {
+  const cat = recite.catalog
+  const c = cat?.categories.find((x) => x.id === id)
+  if (!cat || !c) return
+  const n = cat.cards.filter((x) => x.cat === id).length
+  if (n > 0) { toast(`「${c.name}」里还有 ${n} 张卡，先移走或删掉再删分类`, 'err'); return }
+  const ok = await askConfirm(`删除分类「${c.name}」？`, '分类是空的，删掉不影响任何卡片。', '删除')
+  if (!ok) return
+  cat.categories = cat.categories.filter((x) => x.id !== id)
+  if (recite.catFilter === id) recite.catFilter = 'all'
+  markReciteDirty()
+}
+
+/* ---------------- 背诵筛选 ---------------- */
+
+/** 当前筛选下的卡片（分类 + 搜索） */
+export const reciteVisibleCards = computed<ReciteCard[]>(() => {
+  const cards = recite.catalog?.cards ?? []
+  const cat = recite.catFilter
+  const kw = recite.query.trim().toLowerCase()
+  return cards.filter((c) => {
+    if (cat !== 'all' && c.cat !== cat) return false
+    if (kw) {
+      const hay = `${c.text} ${c.answers.join(' ')} ${c.note} ${c.source}`.toLowerCase()
+      if (!hay.includes(kw)) return false
+    }
+    return true
+  })
+})
+
+/* ---------------- 背诵保存 / 重置 ---------------- */
+
+/**
+ * 整份保存。网页没有写权限：先在服务端校验结构，再登记一条待确认请求，
+ * 手机上点「确认保存」才落盘（和发布同一套流程）。
+ */
+export async function saveRecite(): Promise<boolean> {
+  const cat = recite.catalog
+  if (!cat) return false
+  const issues = reciteIssueCount()
+  if (issues > 0) {
+    toast(`有 ${issues} 处校验问题（空正文 / ____ 与答案数对不上），改完再保存`, 'err')
+    return false
+  }
+  if (!cat.title.trim()) { toast('先给这块内容起个标题', 'err'); return false }
+  if (ui.waitingId) {
+    toast('还有一条请求在等手机处理，等它结束再发', 'err')
+    return false
+  }
+
+  ui.busy = true
+  try {
+    const payload = {
+      subject: cat.subject,
+      title: cat.title,
+      intro: cat.intro,
+      categories: cat.categories.map((c) => ({ id: c.id, name: c.name, group: c.group })),
+      cards: cat.cards.map((c) => ({ ...c })),
+    }
+    const r = await api.reciteSave(payload)
+    const result = 'needConfirm' in r
+      ? await waitPhone(
+        'recite-save',
+        r,
+        `保存背诵词库「${r.title}」`,
+        '确认后 App 里的这块背诵内容会换成网页上这一版。',
+      )
+      : r
+    if (!result) return false
+    recite.dirty = false
+    await loadReciteSubjects()
+    await openReciteSubject(cat.subject, { force: true })
+    toast(`已保存「${result.title ?? cat.title}」· ${result.cardCount ?? '?'} 张卡片，回手机就能背`, 'ok')
+    return true
+  } catch (e) {
+    await showErrors('保存没成功', e instanceof Error ? e.message : '保存失败')
+    return false
+  } finally {
+    ui.busy = false
+  }
+}
+
+/** 重置为 App 内置内容：删掉覆盖文件，网页上的改动就没了 */
+export async function resetRecite(): Promise<void> {
+  const cat = recite.catalog
+  if (!cat) return
+  const ok = await askConfirm(
+    `把「${cat.title}」重置回 App 内置内容？`,
+    '会删掉网页 / AI 存过的那版，回到 APK 里内置的词库。' +
+      (cat.hasEdits ? '\n\n这块内容现在有覆盖版，重置后当前网页上的未保存改动也一并丢弃。' : ''),
+    '发到手机确认',
+  )
+  if (!ok) return
+  if (ui.waitingId) { toast('还有一条请求在等手机处理，等它结束再发', 'err'); return }
+  ui.busy = true
+  try {
+    const r = await api.reciteReset(cat.subject)
+    const result = 'needConfirm' in r
+      ? await waitPhone('recite-reset', r, `重置「${cat.title}」`, '重置会删掉覆盖版，回到内置内容。')
+      : r
+    if (!result) return
+    recite.dirty = false
+    await loadReciteSubjects()
+    await openReciteSubject(cat.subject, { force: true })
+    toast(result.reset === false ? '本来就没有覆盖版，内置内容原样' : '已重置回内置内容', 'ok')
+  } catch (e) {
+    toast(e instanceof Error ? e.message : '重置失败', 'err')
+  } finally {
+    ui.busy = false
+  }
+}
+
+/* ---------------- 词库（词条） ---------------- */
+
+export const WORD_CATEGORY_LABEL: Record<string, string> = {
+  idiom: '成语',
+  word: '实词',
+  other: '其他',
+}
+
+export async function loadWords(): Promise<void> {
+  recite.loading = true
+  try {
+    const r = await api.words({
+      q: recite.wordQuery,
+      category: recite.wordCategory,
+      tag: recite.wordTag,
+    })
+    recite.words = r.words ?? []
+    recite.wordsTotal = r.total ?? 0
+    recite.wordsTags = r.tags ?? []
+    recite.wordsCounts = r.counts ?? {}
+  } catch (e) {
+    toast(e instanceof Error ? e.message : '读取词库失败', 'err')
+  } finally {
+    recite.loading = false
+  }
+}
+
+export function toggleWord(id: number) {
+  recite.wordExpanded = recite.wordExpanded.includes(id)
+    ? recite.wordExpanded.filter((x) => x !== id)
+    : [...recite.wordExpanded, id]
+}
+
+export function addWordRow(): void {
+  const blank: WordItem = {
+    id: 0, text: '', pinyin: '', initial: '#', category: 'idiom',
+    tag: '', meaning: '', example: '', source: '',
+  }
+  recite.words = [blank, ...recite.words]
+  recite.wordExpanded = [0]
+}
+
+export function updateWordRow(id: number, patch: Partial<WordItem>) {
+  const w = recite.words.find((x) => x.id === id)
+  if (!w) return
+  Object.assign(w, patch)
+}
+
+/** 保存一条词条：直接写库（逐条小改不过手机确认），失败弹原因 */
+export async function saveWordItem(w: WordItem): Promise<void> {
+  if (!w.text.trim()) { toast('词条不能为空', 'err'); return }
+  ui.busy = true
+  try {
+    const saved = await api.wordSave({ ...w })
+    const i = recite.words.findIndex((x) => x.id === w.id)
+    if (i >= 0) recite.words.splice(i, 1, saved)
+    toast(`已保存「${saved.text}」${w.id === 0 ? '，词库里能搜到了' : ''}`, 'ok')
+    recite.wordExpanded = recite.wordExpanded.filter((x) => x !== w.id)
+    // 分类 / 标签计数变了，后台刷一遍筛选数据（不打断编辑）
+    void loadWords()
+  } catch (e) {
+    toast(e instanceof Error ? e.message : '保存失败', 'err')
+  } finally {
+    ui.busy = false
+  }
+}
+
+export async function deleteWordItem(w: WordItem): Promise<void> {
+  if (!w.id) {
+    // 没落过库的新行：撤掉就行
+    recite.words = recite.words.filter((x) => x !== w)
+    recite.wordExpanded = recite.wordExpanded.filter((x) => x !== w.id)
+    return
+  }
+  const ok = await askConfirm(`删除词条「${w.text}」？`, '词库里直接删掉，不过手机确认；删错可以重新加回来。', '删除')
+  if (!ok) return
+  try {
+    await api.wordDelete(w.id)
+    recite.words = recite.words.filter((x) => x.id !== w.id)
+    recite.wordExpanded = recite.wordExpanded.filter((x) => x !== w.id)
+    recite.wordsTotal = Math.max(0, recite.wordsTotal - 1)
+    toast('词条已删', 'ok')
+    void loadWords()
+  } catch (e) {
+    toast(e instanceof Error ? e.message : '删除失败', 'err')
+  }
+}
+
 
 /* ------------------------------------------------------------------ 草稿（防丢） */
 

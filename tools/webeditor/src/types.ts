@@ -138,3 +138,82 @@ export interface MigrationReport {
   /** 图片根目录下没被任何题引用的散图数量（不搬，留给人工判断） */
   orphans: number
 }
+
+/* ------------------------------------------------------------------ 背诵词库（政治 / 常识） */
+
+/** 背诵内容的一块：政治 / 常识 */
+export interface ReciteSubjectInfo {
+  id: string
+  title: string
+  intro: string
+  updated: string
+  categoryCount: number
+  cardCount: number
+  /** 是否有网页 / AI 存过的覆盖内容（false = 还是 App 内置那份） */
+  hasEdits: boolean
+}
+
+export interface ReciteCategory {
+  id: string
+  name: string
+  /** 二级分组标题，空串 = 未分组 */
+  group: string
+  /** 该分类下的卡片数（服务端算好） */
+  count?: number
+}
+
+/** 一张背诵卡：正文用 ____ 标填空，answers 按顺序对应每个空 */
+export interface ReciteCard {
+  id: string
+  cat: string
+  text: string
+  answers: string[]
+  note: string
+  source: string
+}
+
+/** 整份词库（服务端整读整写，编辑在前端做完一次提交） */
+export interface ReciteCatalog {
+  subject: string
+  title: string
+  intro: string
+  updated: string
+  hasEdits: boolean
+  categories: ReciteCategory[]
+  cards: ReciteCard[]
+}
+
+/** 保存 / 重置成功后的摘要 */
+export interface ReciteSaveResult {
+  ok: boolean
+  subject: string
+  title?: string
+  categoryCount?: number
+  cardCount?: number
+  updated?: string
+  /** 仅重置：是否真的删过覆盖文件（false = 本来就没有） */
+  reset?: boolean
+}
+
+/* ------------------------------------------------------------------ 词库（词条） */
+
+export interface WordItem {
+  id: number
+  text: string
+  pinyin: string
+  initial: string
+  category: string
+  tag: string
+  meaning: string
+  example: string
+  source: string
+}
+
+export interface WordsResponse {
+  words: WordItem[]
+  total: number
+  /** 分类计数：idiom / word / other */
+  counts: Record<string, number>
+  /** 标签清单（含条数），「未标注」name 为空串 */
+  tags: { name: string; count: number }[]
+}

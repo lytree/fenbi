@@ -59,6 +59,34 @@ export const nextUid = () => ++uidSeq
 
 export const sleep = (ms: number) => new Promise<void>((r) => window.setTimeout(r, ms))
 
+/**
+ * 复制文本到剪贴板。
+ *
+ * 服务跑在 `http://192.168.x.x` 上——不是安全上下文，`navigator.clipboard`
+ * 可能整个不存在，所以先试标准 API，失败退回隐藏 textarea + execCommand 的老办法。
+ */
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch { /* 落到下面的兜底 */ }
+  try {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.position = 'fixed'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.select()
+    const ok = document.execCommand('copy')
+    ta.remove()
+    return ok
+  } catch {
+    return false
+  }
+}
+
 /** 从题干 / 材料 / 选项里取第一张图，给分组板的缩略图用 */
 export function firstImageSrc(q: Question): string {
   const text = `${q.material}\n${q.stem}\n${q.options.map((o) => o.text).join('\n')}`

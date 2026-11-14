@@ -1,9 +1,10 @@
 import { defineComponent } from 'vue'
 import {
-  askConfirm, askText, loadSets, newPaper, openSet, requestDeleteSet, state, toast,
+  askConfirm, askText, loadReciteSubjects, loadSets, newPaper, openReciteSubject,
+  openSet, recite, requestDeleteSet, state, toast,
 } from '../store'
 
-/** 左侧：App 里现有的「导入组」列表。点一组就打开它，改完发布回去 */
+/** 左侧：题库模式 = App 里的「导入组」列表；背诵模式 = 词库 / 政治 / 常识 三块内容 */
 export default defineComponent({
   name: 'Sidebar',
   setup() {
@@ -51,55 +52,103 @@ export default defineComponent({
       }
     }
 
-    return () => (
-      <aside class="sidebar">
-        <div class="side-head">
-          <button class="primary sm" onClick={create}>＋ 新建一组</button>
-          <button class="ghost sm" onClick={refresh}>刷新列表</button>
-        </div>
+    const refreshRecite = () => void loadReciteSubjects()
 
-        <div class="side-list">
-          {state.sets.length === 0
-            ? <div class="side-empty">App 里还没有试卷<br />点上面「新建一组」开始</div>
-            : state.sets.map((s) => (
+    return () => {
+      if (state.mode === 'recite') {
+        return (
+          <aside class="sidebar">
+            <div class="side-head">
+              <button class="ghost sm" onClick={refreshRecite}>刷新</button>
+            </div>
+            <div class="side-list">
               <div
-                key={s.id}
-                class={['side-item', state.paper?.id === s.id && 'active']}
-                title={s.title}
-                onClick={() => pick(s.id, s.editable)}
+                class={['side-item', recite.subject === 'words' && 'active']}
+                onClick={() => void openReciteSubject('words')}
               >
                 <div>
-                  <div class="nm">{s.title}</div>
-                  <div class="mt">
-                    {s.paperCount} 卷 · {s.questionCount} 题
-                    {s.missingAnswers ? ` · 缺 ${s.missingAnswers} 答案` : ''}
-                    {s.editable ? null : <span class="tag">未归组</span>}
+                  <div class="nm">词库</div>
+                  <div class="mt">{recite.wordsTotal || '…'} 条词条 · 逐条编辑</div>
+                </div>
+              </div>
+              {recite.subjects.map((s) => (
+                <div
+                  key={s.id}
+                  class={['side-item', recite.subject === s.id && 'active']}
+                  title={s.intro}
+                  onClick={() => void openReciteSubject(s.id)}
+                >
+                  <div>
+                    <div class="nm">{s.title}</div>
+                    <div class="mt">
+                      {s.categoryCount} 分类 · {s.cardCount} 卡
+                      {s.hasEdits ? <span class="tag">有覆盖版</span> : <span class="tag">内置</span>}
+                    </div>
                   </div>
                 </div>
-                {s.editable
-                  ? (
-                    <div class="ops">
-                      <button
-                        title="删除这一组：请求会发到手机上确认"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          requestDeleteSet(s.id, s.title)
-                        }}
-                      >
-                        删除
-                      </button>
-                    </div>
-                  )
-                  : null}
-              </div>
-            ))}
-        </div>
+              ))}
+              {recite.subjects.length === 0
+                ? <div class="side-empty">读不到背诵词库<br />确认手机端局域网编辑器还开着</div>
+                : null}
+            </div>
+            <div class="side-foot">
+              <span class="dot"></span>
+              <span>政治 / 常识整份保存要手机确认</span>
+            </div>
+          </aside>
+        )
+      }
 
-        <div class="side-foot">
-          <span class="dot"></span>
-          <span>{state.sets.length} 组 · 共 {state.questionTotal} 题</span>
-        </div>
-      </aside>
-    )
+      return (
+        <aside class="sidebar">
+          <div class="side-head">
+            <button class="primary sm" onClick={create}>＋ 新建一组</button>
+            <button class="ghost sm" onClick={refresh}>刷新列表</button>
+          </div>
+
+          <div class="side-list">
+            {state.sets.length === 0
+              ? <div class="side-empty">App 里还没有试卷<br />点上面「新建一组」开始</div>
+              : state.sets.map((s) => (
+                <div
+                  key={s.id}
+                  class={['side-item', state.paper?.id === s.id && 'active']}
+                  title={s.title}
+                  onClick={() => pick(s.id, s.editable)}
+                >
+                  <div>
+                    <div class="nm">{s.title}</div>
+                    <div class="mt">
+                      {s.paperCount} 卷 · {s.questionCount} 题
+                      {s.missingAnswers ? ` · 缺 ${s.missingAnswers} 答案` : ''}
+                      {s.editable ? null : <span class="tag">未归组</span>}
+                    </div>
+                  </div>
+                  {s.editable
+                    ? (
+                      <div class="ops">
+                        <button
+                          title="删除这一组：请求会发到手机上确认"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            requestDeleteSet(s.id, s.title)
+                          }}
+                        >
+                          删除
+                        </button>
+                      </div>
+                    )
+                    : null}
+                </div>
+              ))}
+          </div>
+
+          <div class="side-foot">
+            <span class="dot"></span>
+            <span>{state.sets.length} 组 · 共 {state.questionTotal} 题</span>
+          </div>
+        </aside>
+      )
+    }
   },
 })

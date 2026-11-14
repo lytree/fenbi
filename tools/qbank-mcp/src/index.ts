@@ -21,14 +21,21 @@ import {
   batchUpdateQuestions,
   deleteQuestion,
   deleteSet,
+  deleteWord,
   findSet,
+  formatReciteSubjects,
   formatRecords,
   formatSets,
   listVersions,
   publishSet,
+  readReciteCards,
   readRecord,
   readSet,
+  resetRecite,
   restoreVersion,
+  saveReciteCards,
+  saveWord,
+  searchWords,
   setAnalysis,
   updateQuestion,
 } from './tools.js'
@@ -427,6 +434,221 @@ server.registerTool(
   async (args) => {
     try {
       return text(await deleteSet(need(), args))
+    } catch (e) {
+      return failure(e)
+    }
+  }
+)
+
+/* ------------------------------------------------------------------ 背诵词库（政治 / 常识）+ 词条 */
+
+server.registerTool(
+  'qbank_recite_subjects',
+  {
+    title: '列出背诵内容（政治 / 常识 / 词库）',
+    description:
+      '列出手机「背诵」Tab 下的内容块：政治、常识两块背诵卡（各多少分类 / 卡片、是否有覆盖版），' +
+      '以及词条词库的总条数。做任何背诵内容操作之前先调它拿 subject（politics / common）和分类 id。',
+    inputSchema: {},
+    annotations: { readOnlyHint: true },
+  },
+  async () => {
+    try {
+      const c = need()
+      const [{ subjects }, words] = await Promise.all([c.reciteSubjects(), c.listWords()])
+      return text(formatReciteSubjects(subjects, words.total))
+    } catch (e) {
+      return failure(e)
+    }
+  }
+)
+
+server.registerTool(
+  'qbank_recite_get_cards',
+  {
+    title: '读背诵卡片',
+    description:
+      '读政治 / 常识的背诵卡片（按分类、关键词过滤，分页）。每张卡带 id 和分类，' +
+      '改卡 / 删卡要用这个 id。默认每次 10 张，最多 50；正文超长会截断并标注，' +
+      '要按原文改写时先加 full=true。保存入口是 qbank_recite_save_cards（整份保存）。',
+    inputSchema: {
+      subject: z.enum(['politics', 'common']).describe('politics = 政治，common = 常识'),
+      cat: z.string().optional().describe('只看某个分类（分类 id）'),
+      q: z.string().optional().describe('关键词，搜正文 / 答案 / 备注 / 来源'),
+      offset: z.number().int().min(0).optional().describe('从第几张开始，默认 0'),
+      limit: z.number().int().min(1).max(50).optional().describe('一次读几张，默认 10，最多 50'),
+      full: z.boolean().optional().describe('返回完整原文不截断；要按读到的内容改写时必须传 true'),
+    },
+    annotations: { readOnlyHint: true },
+  },
+  async (args) => {
+    try {
+      return text(await readReciteCards(need(), args))
+    } catch (e) {
+      return failure(e)
+    }
+  }
+)
+
+server.registerTool(
+  'qbank_recite_save_cards',
+  {
+    title: '保存背诵词库（改 / 增 / 删卡，整份覆盖）',
+    description:
+      '修改政治 / 常识的背诵内容：按 id patch 卡片（text / answers / note / source / 换分类）、' +
+      '新增卡片、删除卡片、加分类或改名，一次调用读整份改完再整份保存。' +
+      '硬规则：正文里的 ____（四个下划线）数量必须与 answers 数量一致，任何一条不对整份都不保存。' +
+      '带 QBANK_KEY 时直接落盘；没带 key 会等手机确认。删掉的卡在 App 里的收藏会失效（进度按 id 保留）。',
+    inputSchema: {
+      subject: z.enum(['politics', 'common']).describe('politics = 政治，common = 常识'),
+      title: z.string().optional().describe('改弹层标题；不传保持原样'),
+      intro: z.string().optional().describe('改弹层说明；不传保持原样'),
+      patches: z
+        .array(
+          z.object({
+            id: z.string().min(1).describe('卡片 id（qbank_recite_get_cards 输出里）'),
+            patch: z.object({
+              text: z.string().optional().describe('正文，____ 标填空位'),
+              answers: z.array(z.string()).optional().describe('填空答案，按 ____ 出现顺序'),
+              note: z.string().optional().describe('备注'),
+              source: z.string().optional().describe('来源'),
+              cat: z.string().optional().describe('改成这个分类 = 移动卡片'),
+            }).describe('要改的字段，没传的保持原样'),
+          })
+        )
+        .max(100)
+        .optional()
+        .describe('要改的卡片'),
+      additions: z
+        .array(
+          z.object({
+            cat: z.string().min(1).describe('放进哪个分类（分类 id）'),
+            text: z.string().min(1).describe('正文，____ 标填空位（无填空也可以）'),
+            answers: z.array(z.string()).default([]).describe('填空答案，数量必须等于正文里 ____ 的数量'),
+            note: z.string().optional().describe('备注'),
+            source: z.string().optional().describe('来源；默认「MCP」'),
+          })
+        )
+        .max(100)
+        .optional()
+        .describe('要新增的卡片'),
+      deletions: z.array(z.string()).max(100).optional().describe('要删除的卡片 id'),
+      categories: z
+        .object({
+          add: z.array(z.object({
+            name: z.string().min(1).describe('分类名'),
+            group: z.string().optional().describe('所属二级分组；留空 = 未分组'),
+          })).optional().describe('要新增的分类'),
+          rename: z.array(z.object({
+            id: z.string().min(1).describe('分类 id'),
+            name: z.string().optional().describe('新分类名；不传不改名'),
+            group: z.string().optional().describe('新分组（传空串 = 移到未分组）'),
+          })).optional().describe('要改名的分类'),
+        })
+        .optional()
+        .describe('分类维护'),
+    },
+    annotations: { destructiveHint: true },
+  },
+  async (args) => {
+    try {
+      return text(await saveReciteCards(need(), args))
+    } catch (e) {
+      return failure(e)
+    }
+  }
+)
+
+server.registerTool(
+  'qbank_recite_reset',
+  {
+    title: '重置背诵词库为 App 内置内容',
+    description:
+      '删掉某块背诵内容（politics / common）的覆盖版，回到 APK 内置的那份。' +
+      '带 QBANK_KEY 时直接执行；没带 key 会等手机确认。',
+    inputSchema: {
+      subject: z.enum(['politics', 'common']).describe('politics = 政治，common = 常识'),
+    },
+    annotations: { destructiveHint: true },
+  },
+  async (args) => {
+    try {
+      return text(await resetRecite(need(), args.subject))
+    } catch (e) {
+      return failure(e)
+    }
+  }
+)
+
+server.registerTool(
+  'qbank_words_search',
+  {
+    title: '搜索词条词库',
+    description:
+      '搜 App「背诵 → 词库」的词条（成语 + 实词）：按关键词（词条 / 拼音 / 释义 / 标签）、' +
+      '分类（idiom / word / other）和细分标签过滤。返回的 id 用于 qbank_word_save（改）和 qbank_word_delete（删）。',
+    inputSchema: {
+      q: z.string().optional().describe('关键词'),
+      category: z.enum(['idiom', 'word', 'other']).optional().describe('分类；不传不限'),
+      tag: z.string().optional().describe('细分标签，如「对比辨析」'),
+      offset: z.number().int().min(0).optional().describe('从第几条开始，默认 0'),
+      limit: z.number().int().min(1).max(50).optional().describe('一次读几条，默认 20，最多 50'),
+    },
+    annotations: { readOnlyHint: true },
+  },
+  async (args) => {
+    try {
+      return text(await searchWords(need(), args))
+    } catch (e) {
+      return failure(e)
+    }
+  }
+)
+
+server.registerTool(
+  'qbank_word_save',
+  {
+    title: '新增 / 修改词条',
+    description:
+      '往词库加一个词条（不传 id）或修改既有词条（传 id）。拼音留空会按内置字表自动算；' +
+      '改词条正文时拼音自动重算，手改过的拼音只在正文没变时保留。词条正文唯一，撞名会失败。' +
+      '直接写库，不用手机确认。',
+    inputSchema: {
+      id: z.number().int().positive().optional().describe('词条 id；不传 = 新增'),
+      text: z.string().min(1).describe('词条本体（不能与现有词条重名）'),
+      pinyin: z.string().optional().describe('无声调全拼（空格分隔）；留空自动算'),
+      category: z.enum(['idiom', 'word', 'other']).optional().describe('分类；留空按字数推测'),
+      tag: z.string().optional().describe('细分标签，多段用 · 分隔'),
+      meaning: z.string().optional().describe('释义'),
+      example: z.string().optional().describe('例句'),
+      source: z.string().optional().describe('出处'),
+    },
+    annotations: { destructiveHint: true },
+  },
+  async (args) => {
+    try {
+      return text(await saveWord(need(), args))
+    } catch (e) {
+      return failure(e)
+    }
+  }
+)
+
+server.registerTool(
+  'qbank_word_delete',
+  {
+    title: '删除词条',
+    description:
+      '从词库删除一条词条（直接写库，不用手机确认）。id 从 qbank_words_search 拿。' +
+      '删错可以再用 qbank_word_save 加回来。',
+    inputSchema: {
+      id: z.number().int().positive().describe('词条 id'),
+    },
+    annotations: { destructiveHint: true },
+  },
+  async (args) => {
+    try {
+      return text(await deleteWord(need(), args.id))
     } catch (e) {
       return failure(e)
     }

@@ -37,7 +37,28 @@ export interface MockState {
   records: MockRecord[]
   /** 每次 publish 的请求体，断言用 */
   publishes: { title: string; replace: boolean; sheets: MockSheet[] }[]
+  /** 背诵词库（politics / common 各一份）+ 词条词库 */
+  recite: Record<string, MockReciteCatalog>
+  builtinRecite: Record<string, MockReciteCatalog>
+  words: { id: number; text: string; pinyin: string; initial: string; category: string; tag: string; meaning: string; example: string; source: string }[]
   nextId: number
+}
+
+export interface MockReciteCard {
+  id: string
+  cat: string
+  text: string
+  answers: string[]
+  note: string
+  source: string
+}
+
+export interface MockReciteCatalog {
+  title: string
+  intro: string
+  updated: string
+  categories: { id: string; name: string; group: string }[]
+  cards: MockReciteCard[]
 }
 
 export interface MockRecord {
@@ -86,7 +107,17 @@ const countMissing = (set: MockSet) =>
   set.sheets.reduce((n, s) => n + s.questions.filter((q) => !q.answer.trim()).length, 0)
 
 export function createState(): MockState {
-  const state: MockState = { sets: [], records: [], publishes: [], nextId: 1 }
+  const state: MockState = {
+    sets: [],
+    records: [],
+    publishes: [],
+    recite: reciteBuiltin(),
+    builtinRecite: reciteBuiltin(),
+    words: [],
+    nextId: 1,
+  }
+  wordsBuiltin(state)
+  state.nextId = 2
   state.sets.push({
     id: 1,
     title: '2024国考',
@@ -164,6 +195,35 @@ export function createState(): MockState {
   })
 
   return state
+}
+
+/** 内置的背诵词库 + 词条，给 recite / words 接口当初始数据 */
+function reciteBuiltin(): Record<string, MockReciteCatalog> {
+  const catalog: MockReciteCatalog = {
+    title: '测试政治背诵',
+    intro: 'mock 内置版',
+    updated: '2026-01-01',
+    categories: [{ id: 'p01', name: '宪法', group: '精编' }],
+    cards: [
+      { id: 'p01-001', cat: 'p01', text: '我国现行宪法是 ____ 年颁布的。', answers: ['1982'], note: '', source: '宪法' },
+      { id: 'p01-002', cat: 'p01', text: '全程无填空的纯知识点卡。', answers: [], note: '', source: '' },
+    ],
+  }
+  const common: MockReciteCatalog = {
+    title: '测试常识背诵',
+    intro: '',
+    updated: '',
+    categories: [],
+    cards: [],
+  }
+  return { politics: catalog, common }
+}
+
+function wordsBuiltin(state: MockState): void {
+  state.words.push(
+    { id: 1, text: '画蛇添足', pinyin: 'hua she tian zu', initial: 'H', category: 'idiom', tag: '多余·动作', meaning: '做了多余的事。', example: '', source: '内置' },
+    { id: 2, text: '踌躇', pinyin: 'chou chu', initial: 'C', category: 'word', tag: '', meaning: '犹豫。', example: '', source: '内置' },
+  )
 }
 
 export interface MockServer {
@@ -286,6 +346,172 @@ export async function startMockServer(state = createState()): Promise<MockServer
           : null,
         papers: set.sheets.map((sh) => ({ name: sh.name, questionCount: sh.questions.length })),
       })
+    }
+
+    // ---- 背诵词库（政治 / 常识） ----
+
+    if (path === '/api/recite/subjects' && req.method === 'GET') {
+      return json(res, 200, {
+        subjects: Object.entries(state.recite).map(([id, r]) => ({
+          id,
+          title: r.title,
+          intro: r.intro,
+          updated: r.updated,
+          categoryCount: r.categories.length,
+          cardCount: r.cards.length,
+          hasEdits: JSON.stringify(r) !== JSON.stringify(state.builtinRecite[id]),
+        })),
+      })
+    }
+
+    if (path === '/api/recite/catalog' && req.method === 'GET') {
+      const subject = url.searchParams.get('subject') ?? ''
+      const catalog = state.recite[subject]
+      if (!catalog) return json(res, 400, { error: `不认识的背诵词库：${subject}` })
+      return json(res, 200, {
+        subject,
+        title: catalog.title,
+        intro: catalog.intro,
+        updated: catalog.updated,
+        hasEdits: JSON.stringify(catalog) !== JSON.stringify(state.builtinRecite[subject]),
+        categories: catalog.categories,
+        cards: catalog.cards,
+      })
+    }
+
+    if (path === '/api/recite/save' && req.method === 'POST') {
+      const raw = await readBody(req)
+      let body: { subject?: string; title?: string; intro?: string; categories?: MockReciteCatalog['categories']; cards?: MockReciteCard[] }
+      try {
+        body = JSON.parse(raw)
+      } catch {
+        return json(res, 400, { error: '请求不是合法 JSON' })
+      }
+      const subject = body.subject ?? ''
+      if (!state.recite[subject]) return json(res, 400, { error: `不认识的背诵词库：${subject}` })
+      const categories = body.categories ?? []
+      const cards = body.cards ?? []
+      if (!categories.length) return json(res, 400, { error: '至少要保留一个分类' })
+      const catIds = new Set(categories.map((c) => c.id))
+      const errors: string[] = []
+      const seen = new Set<string>()
+      for (const c of cards) {
+        if (seen.has(c.id)) errors.push(`卡片 id 重复：${c.id}`)
+        seen.add(c.id)
+        if (!catIds.has(c.cat)) errors.push(`卡片「${c.id}」的分类 ${c.cat} 不存在`)
+        const blanks = c.text.split('____').length - 1
+        if (blanks !== (c.answers ?? []).length) {
+          errors.push(`卡片「${c.id}」正文有 ${blanks} 个 ____，但给了 ${(c.answers ?? []).length} 个答案`)
+        }
+      }
+      if (errors.length) return json(res, 400, { error: errors.join('\n') })
+
+      state.recite[subject] = {
+        title: body.title ?? state.recite[subject].title,
+        intro: body.intro ?? '',
+        updated: '2026-11-14',
+        categories,
+        cards,
+      }
+      return json(res, 200, {
+        ok: true,
+        subject,
+        title: state.recite[subject].title,
+        categoryCount: categories.length,
+        cardCount: cards.length,
+        updated: '2026-11-14',
+      })
+    }
+
+    if (path === '/api/recite/reset' && req.method === 'POST') {
+      const raw = await readBody(req)
+      let body: { subject?: string }
+      try {
+        body = JSON.parse(raw)
+      } catch {
+        return json(res, 400, { error: '请求不是合法 JSON' })
+      }
+      const subject = body.subject ?? ''
+      if (!state.recite[subject]) return json(res, 400, { error: `不认识的背诵词库：${subject}` })
+      const had = JSON.stringify(state.recite[subject]) !== JSON.stringify(state.builtinRecite[subject])
+      state.recite[subject] = JSON.parse(JSON.stringify(state.builtinRecite[subject]))
+      const r = state.recite[subject]
+      return json(res, 200, {
+        ok: true,
+        subject,
+        reset: had,
+        categoryCount: r.categories.length,
+        cardCount: r.cards.length,
+      })
+    }
+
+    // ---- 词库（词条） ----
+
+    if (path === '/api/words' && req.method === 'GET') {
+      const q = (url.searchParams.get('q') ?? '').trim().toLowerCase()
+      const category = url.searchParams.get('category') ?? ''
+      const tag = url.searchParams.get('tag') ?? ''
+      let list = state.words
+      if (category) list = list.filter((w) => w.category === category)
+      if (tag) list = list.filter((w) => w.tag.split('·').includes(tag))
+      if (q) {
+        list = list.filter((w) =>
+          `${w.text} ${w.pinyin} ${w.meaning} ${w.tag}`.toLowerCase().includes(q)
+        )
+      }
+      const counts: Record<string, number> = {}
+      for (const w of state.words) counts[w.category] = (counts[w.category] ?? 0) + 1
+      const tags = new Map<string, number>()
+      for (const w of state.words) {
+        for (const t of w.tag.split('·').filter(Boolean)) tags.set(t, (tags.get(t) ?? 0) + 1)
+      }
+      return json(res, 200, {
+        words: list,
+        total: state.words.length,
+        counts,
+        tags: [...tags.entries()].map(([name, count]) => ({ name, count })),
+      })
+    }
+
+    if (path === '/api/word' && req.method === 'POST') {
+      const raw = await readBody(req)
+      let body: { id?: number; text?: string; pinyin?: string; category?: string; tag?: string; meaning?: string; example?: string; source?: string }
+      try {
+        body = JSON.parse(raw)
+      } catch {
+        return json(res, 400, { error: '请求不是合法 JSON' })
+      }
+      const text = (body.text ?? '').trim()
+      if (!text) return json(res, 400, { error: '词条不能为空' })
+      const dup = state.words.find((w) => w.text === text && w.id !== (body.id ?? 0))
+      if (dup) return json(res, 400, { error: `词库里已经有「${text}」了` })
+      if (body.id) {
+        const w = state.words.find((x) => x.id === body.id)
+        if (!w) return json(res, 400, { error: '词条不存在' })
+        Object.assign(w, body)
+        return json(res, 200, w)
+      }
+      const w = {
+        id: 900 + state.words.length + 1,
+        text,
+        pinyin: body.pinyin ?? '',
+        initial: '#',
+        category: body.category || 'word',
+        tag: body.tag ?? '',
+        meaning: body.meaning ?? '',
+        example: body.example ?? '',
+        source: body.source || '网页编辑',
+      }
+      state.words.push(w)
+      return json(res, 200, w)
+    }
+
+    if (path === '/api/word' && req.method === 'DELETE') {
+      const id = Number(url.searchParams.get('id'))
+      const before = state.words.length
+      state.words = state.words.filter((w) => w.id !== id)
+      if (state.words.length === before) return json(res, 400, { error: '词条不存在' })
+      return json(res, 200, { ok: true, id })
     }
 
     return json(res, 404, { error: `mock 没实现 ${req.method} ${path}` })

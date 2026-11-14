@@ -1,11 +1,16 @@
 import type {
   PublishResult,
+  ReciteCatalog,
+  ReciteSaveResult,
+  ReciteSubjectInfo,
   RecordDetail,
   RecordSummary,
   SetDetail,
   SetsResponse,
   VersionInfo,
   WireSheet,
+  WordItem,
+  WordsResponse,
 } from './schema.js'
 import type { QbankConfig } from './config.js'
 
@@ -194,6 +199,80 @@ export class QbankClient {
       '/api/versions',
       {},
       title ? { title } : {}
+    )
+  }
+
+  // ---------------------------------------------------------------- 背诵词库（政治 / 常识）+ 词条
+
+  reciteSubjects(): Promise<{ subjects: ReciteSubjectInfo[] }> {
+    return this.call<{ subjects: ReciteSubjectInfo[] }>('/api/recite/subjects')
+  }
+
+  /** 整份背诵词库（政治 1200+ 卡，读的时候在 tools 层分页） */
+  reciteCatalog(subject: string): Promise<ReciteCatalog> {
+    return this.call<ReciteCatalog>('/api/recite/catalog', {}, { subject }, 60_000)
+  }
+
+  /** 整份保存：服务端先校验结构，AI 带 key 直写，没 key 走手机确认 */
+  async reciteSave(payload: {
+    subject: string
+    title: string
+    intro: string
+    categories: ReciteCatalog['categories']
+    cards: ReciteCatalog['cards']
+  }): Promise<ReciteSaveResult> {
+    const r = await this.call<ReciteSaveResult | ConfirmRequired>(
+      '/api/recite/save',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      },
+      {},
+      60_000
+    )
+    if (!('needConfirm' in r)) return r
+    return this.awaitConfirm<ReciteSaveResult>(r, '保存背诵词库')
+  }
+
+  /** 重置为 App 内置内容：删覆盖文件 */
+  async reciteReset(subject: string): Promise<ReciteSaveResult> {
+    const r = await this.call<ReciteSaveResult | ConfirmRequired>(
+      '/api/recite/reset',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subject }),
+      },
+      {},
+      60_000
+    )
+    if (!('needConfirm' in r)) return r
+    return this.awaitConfirm<ReciteSaveResult>(r, '重置背诵词库')
+  }
+
+  listWords(query: { q?: string; category?: string; tag?: string } = {}): Promise<WordsResponse> {
+    const params: Record<string, string> = {}
+    if (query.q?.trim()) params.q = query.q.trim()
+    if (query.category && query.category !== 'all') params.category = query.category
+    if (query.tag && query.tag !== 'all') params.tag = query.tag
+    return this.call<WordsResponse>('/api/words', {}, params, 60_000)
+  }
+
+  saveWord(word: Partial<WordItem>): Promise<WordItem> {
+    return this.call<WordItem>('/api/word', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(word),
+    })
+  }
+
+  deleteWord(id: number): Promise<{ ok: boolean; id: number }> {
+    return this.call<{ ok: boolean; id: number }>(
+      '/api/word',
+      { method: 'DELETE' },
+      { id },
+      20_000
     )
   }
 

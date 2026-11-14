@@ -135,3 +135,76 @@ export interface RecordAnswer extends StoredQuestion {
 export interface RecordDetail extends RecordSummary {
   answers: RecordAnswer[]
 }
+
+/* ------------------------------------------------------------------ 背诵词库（政治 / 常识）+ 词条 */
+
+/** 背诵内容的一块：政治 / 常识（App「背诵」Tab 下的两块背诵卡内容） */
+export interface ReciteSubjectInfo {
+  id: string
+  title: string
+  intro: string
+  updated: string
+  categoryCount: number
+  cardCount: number
+  /** 是否有网页 / AI 存过的覆盖版（false = 还是 App 内置那份） */
+  hasEdits: boolean
+}
+
+export interface ReciteCategory {
+  id: string
+  name: string
+  /** 二级分组标题，空串 = 未分组 */
+  group: string
+  count?: number
+}
+
+/** 一张背诵卡：正文用 ____ 标填空位，answers 按出现顺序一一对应 */
+export interface ReciteCard {
+  id: string
+  cat: string
+  text: string
+  answers: string[]
+  note: string
+  source: string
+}
+
+export interface ReciteCatalog {
+  subject: string
+  title: string
+  intro: string
+  updated: string
+  hasEdits: boolean
+  categories: ReciteCategory[]
+  cards: ReciteCard[]
+}
+
+export interface ReciteSaveResult {
+  ok: boolean
+  subject: string
+  title?: string
+  categoryCount?: number
+  cardCount?: number
+  updated?: string
+  /** 仅重置：是否真的删过覆盖文件（false = 本来就没有） */
+  reset?: boolean
+}
+
+/** 词库（词条）。与 App words 表一一对应 */
+export interface WordItem {
+  id: number
+  text: string
+  pinyin: string
+  initial: string
+  category: string
+  tag: string
+  meaning: string
+  example: string
+  source: string
+}
+
+export interface WordsResponse {
+  words: WordItem[]
+  total: number
+  counts: Record<string, number>
+  tags: { name: string; count: number }[]
+}

@@ -99,12 +99,16 @@ class LanEditorActivity : AppCompatActivity() {
         val action = when (req.kind) {
             LanEditorConfirm.KIND_PUBLISH -> "发布"
             LanEditorConfirm.KIND_RESTORE -> "回滚"
+            LanEditorConfirm.KIND_SAVE_RECITE -> "保存背诵词库"
+            LanEditorConfirm.KIND_RESET_RECITE -> "重置背诵词库"
             else -> "删除"
         }
         val okText = "确认$action"
         val cancelText = when (req.kind) {
             LanEditorConfirm.KIND_PUBLISH -> "不发布"
             LanEditorConfirm.KIND_RESTORE -> "不回滚"
+            LanEditorConfirm.KIND_SAVE_RECITE -> "不保存"
+            LanEditorConfirm.KIND_RESET_RECITE -> "不重置"
             else -> "不删"
         }
         FbDialog.confirm(

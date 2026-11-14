@@ -1,7 +1,11 @@
 import { defineComponent } from 'vue'
-import { issueCounts, markDirty, publish, state, toast, ui } from '../store'
+import { api } from '../api'
+import {
+  issueCounts, markDirty, markReciteDirty, publish, recite, resetRecite, saveRecite,
+  showErrors, state, switchMode, toast, ui,
+} from '../store'
 import { theme, toggleTheme } from '../theme'
-import { formatTime } from '../util'
+import { copyText, formatTime } from '../util'
 
 /** 明暗切换：白天显示月亮（切到夜间），夜里显示太阳 */
 const ThemeIcon = () => {
@@ -20,7 +24,7 @@ const ThemeIcon = () => {
   )
 }
 
-/** 顶栏：组名（发布后就是 App 首页那个标题）+ 校验 + 发布 */
+/** 顶栏：模式切换（题库 / 背诵）+ 标题 + 动作 */
 export default defineComponent({
   name: 'TopBar',
   setup() {
@@ -38,60 +42,169 @@ export default defineComponent({
       await publish()
     }
 
-    return () => (
-      <header class="topbar">
-        <div class="brand">
-          <span class="logo">题</span>
-          <div class="brand-text">
-            <b>题库编辑器</b>
-            <span class="ws">手机里的题库 · 局域网直连</span>
+    /**
+     * 复制 MCP 配置（含写入口令）。
+     *
+     * 复制成功直接提示；拿不到（没设密码 / 剪贴板被拦）就把配置弹出来让人手动抄。
+     * key 不回显在按钮旁边：口令只落在剪贴板和一次性弹层里，不常驻页面。
+     */
+    const copyMcp = async () => {
+      try {
+        const r = await api.mcpInfo()
+        if (await copyText(r.config)) {
+          toast('MCP 配置已复制（含写入口令），粘到客户端的 mcpServers 里', 'ok')
+          return
+        }
+        await showErrors(
+          '复制失败，请手动复制',
+          `${r.config}\n\n（写入口令 QBANK_KEY 就在上面 JSON 里。）`,
+        )
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : '拿不到 MCP 配置'
+        if (msg.includes('403') || msg.includes('不能在这里取')) {
+          toast(msg, 'err')
+        } else {
+          await showErrors('拿不到 MCP 配置', msg)
+        }
+      }
+    }
+
+    return () => {
+      const reciteMode = state.mode === 'recite'
+      const isWords = recite.subject === 'words'
+      const catalog = recite.catalog
+
+      return (
+        <header class="topbar">
+          <div class="brand">
+            <span class="logo">题</span>
+            <div class="brand-text">
+              <b>题库编辑器</b>
+              <span class="ws">手机里的题库 · 局域网直连</span>
+            </div>
           </div>
-        </div>
 
-        <div class="title-wrap">
-          <input
-            class="paper-name"
-            value={state.paper?.name ?? ''}
-            readonly={!state.paper}
-            spellcheck={false}
-            placeholder="这一组叫什么（会成为 App 首页的标题）"
-            onInput={(e) => {
-              if (!state.paper) return
-              state.paper.name = (e.target as HTMLInputElement).value
-              markDirty()
-            }}
-          />
-          {state.dirty ? <span class="dirty">未发布</span> : null}
-          {state.dirty && ui.draftSavedAt
+          <div class={['mode-seg', 'seg']} title="切换：题库编辑 / 背诵词库编辑">
+            <button
+              class={['seg-btn', !reciteMode && 'on']}
+              onClick={() => void switchMode('paper')}
+            >
+              题库
+            </button>
+            <button
+              class={['seg-btn', reciteMode && 'on']}
+              onClick={() => void switchMode('recite')}
+            >
+              背诵
+            </button>
+          </div>
+
+          {reciteMode
             ? (
-              <span class="draft-saved" title="改动已存到本机浏览器，关掉页面也不会丢；草稿不设过期时间">
-                已自动保存 {formatTime(ui.draftSavedAt)}
-              </span>
+              <div class="title-wrap">
+                {isWords
+                  ? (
+                    <input class="paper-name" value="词条词库（App：背诵 → 词库）" readonly />
+                  )
+                  : (
+                    <input
+                      class="paper-name"
+                      value={catalog?.title ?? ''}
+                      readonly={!catalog}
+                      spellcheck={false}
+                      placeholder="这块背诵内容的标题（App 弹层顶部显示）"
+                      onInput={(e) => {
+                        if (!catalog) return
+                        catalog.title = (e.target as HTMLInputElement).value
+                        markReciteDirty()
+                      }}
+                    />
+                  )}
+                {recite.dirty ? <span class="dirty">未保存</span> : null}
+                {catalog?.hasEdits && !recite.dirty ? <span class="draft-saved">手机上有覆盖版</span> : null}
+              </div>
             )
-            : null}
-        </div>
+            : (
+              <div class="title-wrap">
+                <input
+                  class="paper-name"
+                  value={state.paper?.name ?? ''}
+                  readonly={!state.paper}
+                  spellcheck={false}
+                  placeholder="这一组叫什么（会成为 App 首页的标题）"
+                  onInput={(e) => {
+                    if (!state.paper) return
+                    state.paper.name = (e.target as HTMLInputElement).value
+                    markDirty()
+                  }}
+                />
+                {state.dirty ? <span class="dirty">未发布</span> : null}
+                {state.dirty && ui.draftSavedAt
+                  ? (
+                    <span class="draft-saved" title="改动已存到本机浏览器，关掉页面也不会丢；草稿不设过期时间">
+                      已自动保存 {formatTime(ui.draftSavedAt)}
+                    </span>
+                  )
+                  : null}
+              </div>
+            )}
 
-        <div class="top-actions">
-          <button
-            class="theme-btn"
-            title={theme.mode === 'dark' ? '切到白天' : '切到夜间'}
-            aria-label={theme.mode === 'dark' ? '切到白天' : '切到夜间'}
-            onClick={toggleTheme}
-          >
-            <ThemeIcon />
-          </button>
-          <button class="ghost" disabled={!state.paper} onClick={check}>校验</button>
-          <button
-            class="primary"
-            disabled={!state.paper || ui.busy}
-            title="点完还要在手机上点「确认发布」才会写进题库"
-            onClick={runPublish}
-          >
-            {ui.busy ? '发布中…' : '发布到 App'}
-            <kbd>Ctrl S</kbd>
-          </button>
-        </div>
-      </header>
-    )
+          <div class="top-actions">
+            <button
+              class="ghost sm"
+              title="复制 AI（MCP）配置 JSON，含写入口令。需已在手机上设置访问密码并用它登录"
+              onClick={() => void copyMcp()}
+            >
+              复制 MCP
+            </button>
+            <button
+              class="theme-btn"
+              title={theme.mode === 'dark' ? '切到白天' : '切到夜间'}
+              aria-label={theme.mode === 'dark' ? '切到白天' : '切到夜间'}
+              onClick={toggleTheme}
+            >
+              <ThemeIcon />
+            </button>
+            {reciteMode
+              ? (
+                <>
+                  {!isWords && catalog
+                    ? (
+                      <>
+                        <button class="ghost" disabled={ui.busy || !!ui.waitingId} onClick={() => void resetRecite()}>
+                          重置为内置
+                        </button>
+                        <button
+                          class="primary"
+                          disabled={ui.busy}
+                          title="整份覆盖手机上的这块内容，点完还要在手机上点「确认保存」"
+                          onClick={() => void saveRecite()}
+                        >
+                          {ui.busy ? '保存中…' : '保存到手机'}
+                          <kbd>Ctrl S</kbd>
+                        </button>
+                      </>
+                    )
+                    : null}
+                </>
+              )
+              : (
+                <>
+                  <button class="ghost" disabled={!state.paper} onClick={check}>校验</button>
+                  <button
+                    class="primary"
+                    disabled={!state.paper || ui.busy}
+                    title="点完还要在手机上点「确认发布」才会写进题库"
+                    onClick={runPublish}
+                  >
+                    {ui.busy ? '发布中…' : '发布到 App'}
+                    <kbd>Ctrl S</kbd>
+                  </button>
+                </>
+              )}
+          </div>
+        </header>
+      )
+    }
   },
 })

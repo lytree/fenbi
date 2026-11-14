@@ -1,6 +1,7 @@
 import type {
-  ConfirmStatus, EditorPaper, MigrationReport, PaperSetInfo, ResourceFile, Sheet,
-  VersionInfo, WireSheet,
+  ConfirmStatus, EditorPaper, MigrationReport, PaperSetInfo, ReciteCatalog,
+  ReciteSaveResult, ReciteSubjectInfo, ResourceFile, Sheet, VersionInfo,
+  WireSheet, WordItem, WordsResponse,
 } from './types'
 
 export class ApiError extends Error {
@@ -106,9 +107,9 @@ export const api = {
   publish: (title: string, replace: boolean, sheets: WireSheet[]) =>
     request<PublishResponse | ConfirmRequired>('/api/publish', jsonPost({ title, replace, sheets })),
 
-  /** 等手机确认期间轮询；approved 时 result 就是发布结果 */
+  /** 等手机确认期间轮询；approved 时 result 就是发布 / 保存的结果 */
   publishStatus: (id: string) =>
-    request<{ status: ConfirmStatus; result: PublishResponse | null; error?: string | null }>(
+    request<{ status: ConfirmStatus; result: PublishResponse | ReciteSaveResult | null; error?: string | null }>(
       `/api/publish/status?id=${encodeURIComponent(id)}`,
     ),
 
@@ -184,6 +185,49 @@ export const api = {
     ),
 
   cancelDelete: (id: string) => request<{ ok: boolean }>('/api/delete/cancel', jsonPost({ id })),
+
+  /* ------------ 背诵词库（政治 / 常识） ------------ */
+
+  reciteSubjects: () =>
+    request<{ subjects: ReciteSubjectInfo[] }>('/api/recite/subjects'),
+
+  reciteCatalog: (subject: string) =>
+    request<ReciteCatalog>(`/api/recite/catalog?subject=${encodeURIComponent(subject)}`),
+
+  /**
+   * 整份保存背诵词库。响应和发布一样分两路：
+   * AI（带 key）直发拿到 `ReciteSaveResult`；网页拿到 `ConfirmRequired`，
+   * 轮询 /api/publish/status（那条接口按请求 id 查，对任何操作都通用）。
+   */
+  reciteSave: (payload: Partial<ReciteCatalog> & { subject: string }) =>
+    request<ReciteSaveResult | ConfirmRequired>('/api/recite/save', jsonPost(payload)),
+
+  reciteReset: (subject: string) =>
+    request<ReciteSaveResult | ConfirmRequired>('/api/recite/reset', jsonPost({ subject })),
+
+  /* ------------ 词库（词条 CRUD） ------------ */
+
+  words: (opts: { q?: string; category?: string; tag?: string } = {}) => {
+    const qs = new URLSearchParams()
+    if (opts.q) qs.set('q', opts.q)
+    if (opts.category && opts.category !== 'all') qs.set('category', opts.category)
+    if (opts.tag && opts.tag !== 'all') qs.set('tag', opts.tag)
+    const s = qs.toString()
+    return request<WordsResponse>('/api/words' + (s ? `?${s}` : ''))
+  },
+
+  wordSave: (w: Partial<WordItem>) =>
+    request<WordItem>('/api/word', jsonPost(w)),
+
+  wordDelete: (id: number) =>
+    request<{ ok: boolean; id: number }>(`/api/word?id=${id}`, { method: 'DELETE' }),
+
+  /**
+   * MCP 配置（含写入口令）。只在「已设访问密码」时返回——那时 key 就是密码，
+   * 能打开网页的人本来就知道；没设密码服务端会 403，提示去手机上复制。
+   */
+  mcpInfo: () =>
+    request<{ url: string; key: string; config: string }>('/api/mcp'),
 }
 
 export type { EditorPaper }

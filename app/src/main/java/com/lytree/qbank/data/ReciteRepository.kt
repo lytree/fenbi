@@ -8,6 +8,7 @@ import com.lytree.qbank.data.model.ReciteCategory
 import com.lytree.qbank.data.model.ReciteSubject
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -15,26 +16,126 @@ import java.util.concurrent.ConcurrentHashMap
  * （assets/recite_politics.json、assets/recite_common.json），
  * 掌握状态 / 重点收藏 / 分组编排走 settings 表，换设备升级后仍然保留。
  *
+ * 内容本身也可以在设备上改：局域网编辑器（网页 / AI）保存的词库落在
+ * filesDir 的用户覆盖文件里（[userFile]），读取时**优先于内置资产**——
+ * 内置资产只在 APK 里改不了，覆盖文件删掉就回到内置内容（[resetToAsset]）。
+ *
  * 两套内容的收藏、范围、上次卡片分开存（key 里带模块 id），字号与背诵模式共用。
  * 政治模块沿用老版本的 key，升级上来原有的收藏和进度不会丢。
  */
 object ReciteRepository {
 
-    private val cache = ConcurrentHashMap<String, ReciteCatalog>()
+    /** 缓存带上内容来源的时间戳：覆盖文件被改写后（lastModified 变化）自动重读 */
+    private class Cached(val stamp: Long, val catalog: ReciteCatalog)
+
+    private val cache = ConcurrentHashMap<String, Cached>()
+
+    /** 用户覆盖文件：存在即表示这块内容被编辑过 */
+    fun userFile(context: Context, subject: ReciteSubject): File =
+        File(context.applicationContext.filesDir, "recite_${subject.id}_user.json")
+
+    fun hasUserEdits(context: Context, subject: ReciteSubject): Boolean =
+        userFile(context, subject).exists()
 
     fun catalog(context: Context, subject: ReciteSubject): ReciteCatalog {
-        cache[subject.id]?.let { return it }
+        val file = userFile(context, subject)
+        val stamp = if (file.exists()) file.lastModified() else -1L
+        cache[subject.id]?.let { if (it.stamp == stamp) return it.catalog }
         synchronized(this) {
-            cache[subject.id]?.let { return it }
-            val loaded = runCatching { parse(context.applicationContext, subject) }
+            cache[subject.id]?.let { if (it.stamp == stamp) return it.catalog }
+            val loaded = runCatching { parse(context, subject, file) }
                 .getOrElse { ReciteCatalog.EMPTY }
-            cache[subject.id] = loaded
+            cache[subject.id] = Cached(stamp, loaded)
             return loaded
         }
     }
 
-    private fun parse(context: Context, subject: ReciteSubject): ReciteCatalog {
-        val text = context.assets.open(subject.asset).bufferedReader(Charsets.UTF_8).use { it.readText() }
+    /**
+     * 保存网页 / AI 送来的整份词库（结构校验通过后写覆盖文件）。
+     *
+     * 先写临时文件再改名：写一半崩溃 / 被杀，最多丢这次保存，不会把旧内容写坏。
+     */
+    fun saveUserCatalog(context: Context, subject: ReciteSubject, root: JSONObject) {
+        validateUserCatalog(root)
+        val file = userFile(context, subject)
+        val tmp = File(file.parentFile, file.name + ".tmp")
+        tmp.writeText(root.toString(), Charsets.UTF_8)
+        if (!tmp.renameTo(file)) {
+            tmp.delete()
+            throw IllegalStateException("覆盖文件写入失败（重命名没成功）")
+        }
+        cache.remove(subject.id)
+    }
+
+    /**
+     * 整份词库的结构校验：____ 数量必须与 answers 数量一致、id 不得重复、
+     * cat 必须命中某个分类。这些错了 App 里会显示成乱码或对不上分类名，
+     * 不如存的时候就拦下来。校验失败抛 [IllegalArgumentException]，消息直接给网页看。
+     *
+     * 独立出来给编辑器侧用：先 validate、重组字段，再落盘，避免「存到一半才报错」。
+     */
+    fun validateUserCatalog(root: JSONObject) {
+        val categories = root.optJSONArray("categories")
+            ?: throw IllegalArgumentException("categories 缺失或不是数组")
+        val cards = root.optJSONArray("cards")
+            ?: throw IllegalArgumentException("cards 缺失或不是数组")
+
+        val catIds = HashSet<String>(categories.length())
+        for (i in 0 until categories.length()) {
+            val c = categories.optJSONObject(i)
+                ?: throw IllegalArgumentException("categories[$i] 不是对象")
+            val id = c.optString("id").trim()
+            if (id.isEmpty()) throw IllegalArgumentException("categories[$i] 缺少 id")
+            if (!catIds.add(id)) throw IllegalArgumentException("分类 id 重复：$id")
+            if (c.optString("name").isBlank()) {
+                throw IllegalArgumentException("分类「$id」缺少 name")
+            }
+        }
+
+        val seen = HashSet<String>(cards.length())
+        for (i in 0 until cards.length()) {
+            val c = cards.optJSONObject(i) ?: throw IllegalArgumentException("cards[$i] 不是对象")
+            val id = c.optString("id").trim()
+            val text = c.optString("text")
+            if (id.isEmpty()) throw IllegalArgumentException("cards[$i] 缺少 id")
+            if (!seen.add(id)) throw IllegalArgumentException("卡片 id 重复：$id")
+            val cat = c.optString("cat").trim()
+            if (!catIds.contains(cat)) throw IllegalArgumentException("卡片「$id」的分类 $cat 不存在")
+            if (text.isBlank()) throw IllegalArgumentException("卡片「$id」正文为空")
+            val blanks = countBlanks(text)
+            val answers = c.optJSONArray("answers") ?: JSONArray()
+            if (blanks != answers.length()) {
+                throw IllegalArgumentException(
+                    "卡片「$id」正文有 $blanks 个 ____，但给了 ${answers.length()} 个答案"
+                )
+            }
+        }
+    }
+
+    /** 删掉用户覆盖文件，回到内置资产的内容 */
+    fun resetToAsset(context: Context, subject: ReciteSubject) {
+        userFile(context, subject).delete()
+        cache.remove(subject.id)
+    }
+
+    private fun countBlanks(text: String): Int {
+        var n = 0
+        var i = text.indexOf(BLANK)
+        while (i >= 0) {
+            n++
+            i = text.indexOf(BLANK, i + BLANK.length)
+        }
+        return n
+    }
+
+    private const val BLANK = "____"
+
+    private fun parse(context: Context, subject: ReciteSubject, override: File): ReciteCatalog {
+        val text = if (override.exists()) {
+            override.readText(Charsets.UTF_8)
+        } else {
+            context.assets.open(subject.asset).bufferedReader(Charsets.UTF_8).use { it.readText() }
+        }
         val root = JSONObject(text)
 
         val categoriesJson = root.getJSONArray("categories")

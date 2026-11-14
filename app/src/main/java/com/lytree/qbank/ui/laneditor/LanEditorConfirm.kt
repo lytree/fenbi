@@ -32,6 +32,8 @@ object LanEditorConfirm {
     const val KIND_DELETE_SET = "delete_set"
     const val KIND_PUBLISH = "publish"
     const val KIND_RESTORE = "restore"
+    const val KIND_SAVE_RECITE = "save_recite"
+    const val KIND_RESET_RECITE = "reset_recite"
 
     const val STATUS_PENDING = "pending"
     const val STATUS_APPROVED = "approved"
@@ -165,6 +167,48 @@ object LanEditorConfirm {
         return enqueue(ctx, KIND_RESTORE, setId, title, detail, payload)
     }
 
+    /**
+     * 网页点「保存背诵词库」（政治 / 常识）：整份覆盖，必须过手机确认。
+     * 同一块内容还在等确认时用最新内容顶掉旧请求（与发布同一套去重逻辑）。
+     */
+    fun requestReciteSave(context: Context, subjectId: String, title: String, detail: String, payload: JSONObject): Request {
+        return requestRecite(context, KIND_SAVE_RECITE, subjectId, title, detail, payload)
+    }
+
+    /** 网页点「重置为内置词库」：删掉用户覆盖文件，同样要确认 */
+    fun requestReciteReset(context: Context, subjectId: String, title: String, detail: String, payload: JSONObject): Request {
+        return requestRecite(context, KIND_RESET_RECITE, subjectId, title, detail, payload)
+    }
+
+    private fun requestRecite(
+        context: Context,
+        kind: String,
+        subjectId: String,
+        title: String,
+        detail: String,
+        payload: JSONObject,
+    ): Request {
+        val ctx = context.applicationContext
+        appContext = ctx
+        var reuse: Request? = null
+        synchronized(items) {
+            items.values.firstOrNull {
+                it.kind == kind && it.title == title && it.status == STATUS_PENDING && !it.expired
+            }?.let { old ->
+                old.payload = payload
+                old.detail = detail
+                old.createdAt = System.currentTimeMillis()
+                reuse = old
+            }
+        }
+        reuse?.let { old ->
+            publish()
+            if (!activityVisible) notifyPending(ctx, old)
+            return old
+        }
+        return enqueue(ctx, kind, 0L, title, detail, payload)
+    }
+
     private fun enqueue(
         ctx: Context,
         kind: String,
@@ -276,6 +320,16 @@ object LanEditorConfirm {
                 targetSetId = req.payload.optLong("setId", 0L),
             )
 
+            KIND_SAVE_RECITE -> LanEditorRecite.executeSave(
+                ctx,
+                req.payload.optJSONObject("catalog") ?: req.payload,
+            )
+
+            KIND_RESET_RECITE -> LanEditorRecite.executeReset(
+                ctx,
+                req.payload.optString("subject"),
+            )
+
             else -> throw IllegalStateException("不认识的操作：${req.kind}")
         }
     }
@@ -332,6 +386,8 @@ object LanEditorConfirm {
         val action = when (req.kind) {
             KIND_PUBLISH -> "发布"
             KIND_RESTORE -> "回滚"
+            KIND_SAVE_RECITE -> "保存背诵词库"
+            KIND_RESET_RECITE -> "重置背诵词库"
             else -> "删除"
         }
         val notif = NotificationCompat.Builder(context, CHANNEL_ID)
