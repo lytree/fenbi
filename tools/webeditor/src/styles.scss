@@ -6,14 +6,14 @@
 //
 //   · 字      系统字体栈（-apple-system / Segoe UI / PingFang SC），正文 14/1.5715，
 //             标题同字体加粗到 600；不再用宋体，数字也不再单独走等宽（antd 只在表格里用 tabular）。
-//   · 色      主色 #1677FF，成功 #52C41A、警告 #FAAD14、错误 #FF4D4F；
+//   · 色      主色 #7C5CFC（淡紫，与 App 端色板一致），成功 #52C41A、警告 #FAAD14、错误 #FF4D4F；
 //             文字四档 rgba(0,0,0,.88/.65/.45/.25)，边框 #D9D9D9、次级边框 #F0F0F0，
-//             页面底 #F5F5F5、容器白。夜里换 antd dark：底 #000、容器 #141414、浮层 #1F1F1F、
-//             主色 #1668DC，文字白色四档。
+//             页面底 #F7F5FA（微微带紫）、容器白。夜里换暗紫：底 #000、容器 #141414、浮层 #1F1F1F、
+//             主色 #A88BFF，文字白色四档。
 //   · 形      控件高 32（小号 24），圆角 6；卡片圆角 8 + 1px 次级边框 + 三级投影；
 //             标签圆角 4；分段控件是灰底槽里嵌一块白瓷片。
-//   · 态      hover 提亮一档（#4096FF）、active 压深（#0958D9）、聚焦 2px 淡蓝光圈；
-//             disabled 用 .25 透明；选中项用主色淡底 #E6F4FF + 主色字（antd Menu 的做法）。
+//   · 态      hover 提亮一档（#9D7DFF）、active 压深（#5A3AD6）、聚焦 2px 淡紫光圈；
+//             disabled 用 .25 透明；选中项用主色淡底 #F1EAFF + 主色字（antd Menu 的做法）。
 //
 // 两套皮只换变量：组件样式里只出现 var(--*)。
 // 类名与组件一一对应，改的是皮，不是骨。
@@ -25,26 +25,26 @@ $font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", 
 $font-code: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
 
 // ---- 亮色令牌 ----
-$bg-layout: #f5f5f5;
+$bg-layout: #f7f5fa;
 $bg-container: #ffffff;
 $bg-elevated: #ffffff;
-$bg-fill: rgba(0, 0, 0, .04);
-$bg-fill-strong: rgba(0, 0, 0, .06);
+$bg-fill: rgba(76, 44, 160, .04);
+$bg-fill-strong: rgba(76, 44, 160, .06);
 $bg-mask: rgba(0, 0, 0, .45);
 
-$text: rgba(0, 0, 0, .88);
-$text-secondary: rgba(0, 0, 0, .65);
-$text-tertiary: rgba(0, 0, 0, .45);
-$text-quaternary: rgba(0, 0, 0, .25);
+$text: rgba(30, 20, 50, .88);
+$text-secondary: rgba(30, 20, 50, .65);
+$text-tertiary: rgba(30, 20, 50, .45);
+$text-quaternary: rgba(30, 20, 50, .25);
 
-$border: #d9d9d9;
-$border-secondary: #f0f0f0;
+$border: #dcd8e6;
+$border-secondary: #f1eef6;
 
-$primary: #1677ff;
-$primary-hover: #4096ff;
-$primary-active: #0958d9;
-$primary-bg: #e6f4ff;
-$primary-border: #91caff;
+$primary: #7c5cfc;
+$primary-hover: #9d7dff;
+$primary-active: #5a3ad6;
+$primary-bg: #f1eaff;
+$primary-border: #c2a8ff;
 
 $success: #52c41a;
 $success-bg: #f6ffed;
@@ -151,36 +151,36 @@ $shadow-tertiary: 0 1px 2px -2px rgba(0, 0, 0, .16), 0 3px 6px 0 rgba(0, 0, 0, .
   --line-strong: var(--border);
 }
 
-/* 夜里：antd dark algorithm 的取值——底 #000、容器 #141414、浮层 #1F1F1F，
-   主色抬到 #1668DC（黑底上 #1677FF 太扎眼），文字换成白色四档 */
+/* 夜里：暗紫 algorithm 的取值——底 #000、容器 #141414、浮层 #1F1F1F，
+   主色抬到 #A88BFF（黑底上 #7C5CFC 太扎眼），文字换成白色四档 */
 :root[data-theme="dark"] {
   color-scheme: dark;
 
   --bg-layout: #000000;
   --bg-container: #141414;
   --bg-elevated: #1f1f1f;
-  --bg-fill: rgba(255, 255, 255, .08);
-  --bg-fill-strong: rgba(255, 255, 255, .12);
+  --bg-fill: rgba(168, 139, 255, .10);
+  --bg-fill-strong: rgba(168, 139, 255, .14);
   --bg-mask: rgba(0, 0, 0, .65);
 
-  --text: rgba(255, 255, 255, .85);
-  --text-secondary: rgba(255, 255, 255, .65);
-  --text-tertiary: rgba(255, 255, 255, .45);
-  --text-quaternary: rgba(255, 255, 255, .25);
+  --text: rgba(245, 242, 255, .85);
+  --text-secondary: rgba(245, 242, 255, .65);
+  --text-tertiary: rgba(245, 242, 255, .45);
+  --text-quaternary: rgba(245, 242, 255, .25);
 
   --border: #424242;
   --border-secondary: #303030;
 
-  /* 黑底上 #1668DC 当文字太暗（antd dark 的原值只有 3.5:1），文字 / 描边用亮一档的 #3C89E8，
-     实心块才用 #1668DC——两者都在 antd 的蓝板里 */
-  --primary: #3c89e8;
-  --primary-hover: #69b1ff;
-  --primary-active: #1554ad;
-  --primary-solid: #1668dc;
-  --primary-solid-hover: #3c89e8;
-  --primary-solid-active: #1554ad;
-  --primary-bg: #111a2c;
-  --primary-border: #15325b;
+  /* 黑底上 #7C5CFC 当文字太暗，文字 / 描边用亮一档的 #A88BFF，
+     实心块才用 #7C5CFC——白天和夜里实心块保持同一块紫 */
+  --primary: #a88bff;
+  --primary-hover: #c4aaff;
+  --primary-active: #6d4de0;
+  --primary-solid: #7c5cfc;
+  --primary-solid-hover: #a88bff;
+  --primary-solid-active: #5a3ad6;
+  --primary-bg: #1a142c;
+  --primary-border: #31285c;
 
   --success: #49aa19;
   --success-bg: #162312;

@@ -2,7 +2,7 @@
 <!--
   首页外壳：内容区 + 参考风格底部导航
   · 导航白底、顶部 0.5dp 分割线、图标 22dp / 文字 10sp
-  · 未选 #8A9095、选中主蓝 #3C7CFC，无 M2 的水波纹高亮块
+  · 未选 #8C8895、选中主紫 #7C5CFC，无 M2 的水波纹高亮块
   · 状态栏由各 Fragment 的 FbTitleBar 处理，导航栏由代码加 padding
 -->
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
