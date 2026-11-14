@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  思维导图浏览页：一页导图一张卡，点标题展开层级
+  与背诵页共用顶栏与页面底色；内容来自 assets/recite_mindmap.json
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    style="@style/FbPage">
+
+    <com.lytree.qbank.ui.FbTitleBar
+        android:id="@+id/titleBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
+
+    <TextView
+        android:id="@+id/tvIntro"
+        style="@style/FbCaption"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingStart="@dimen/fb_page_pad"
+        android:paddingTop="@dimen/fb_space_4"
+        android:paddingEnd="@dimen/fb_page_pad"
+        android:paddingBottom="@dimen/fb_space_4"
+        tools:text="共 36 个主题 · 点主题展开，按导图层级通读" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/list"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:clipToPadding="false"
+        android:paddingBottom="@dimen/fb_space_16"
+        android:scrollbars="none" />
+
+    <TextView
+        android:id="@+id/emptyText"
+        style="@style/FbEmptyText"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:text="@string/mindmap_empty"
+        android:visibility="gone" />
+</LinearLayout>

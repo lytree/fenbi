@@ -359,6 +359,25 @@
     <string name="recite_empty_favorite">还没有标为重点的考点\n点卡片右上角的星，重点就会收在这里</string>
     <string name="recite_updated">更新于 %1$s · 共 %2$d 个考点</string>
     <string name="recite_total_fmt">共 %1$d 个考点</string>
+
+    <!-- 思维导图浏览页 -->
+    <string name="mindmap_title">思维导图</string>
+    <string name="mindmap_entry">思维导图</string>
+    <string name="mindmap_empty">导图内容还没整理好</string>
+    <string name="mindmap_intro_fmt">共 %1$d 个主题 · 点主题展开，按导图层级通读</string>
+    <string name="mindmap_index_fmt">%1$02d</string>
+    <string name="mindmap_meta_fmt">%1$d 个分支 · %2$d 条要点</string>
+    <string name="mindmap_meta_pairs_fmt">%1$d 个分支 · %2$d 条要点 · %3$d 组连线</string>
+    <string name="mindmap_pair_section">内涵连线</string>
+    <string name="mindmap_pair_count_fmt">%1$d 组</string>
+    <string name="mindmap_pair_start">开始配对</string>
+    <string name="mindmap_pair_progress">已配对 %1$d / %2$d</string>
+    <string name="mindmap_pair_done">全部配对完成 · 共 %1$d 组</string>
+    <string name="mindmap_pair_hint">先点左边的提法，再点右边对应的内涵</string>
+    <string name="mindmap_pair_left">提法</string>
+    <string name="mindmap_pair_right">内涵</string>
+    <string name="mindmap_pair_wrong">这一组不对，再想想</string>
+    <string name="mindmap_pair_close">关闭</string>
     <string name="page_lan_editor">局域网编辑器</string>
     <string name="lan_editor_title">电脑上加题</string>
     <string name="lan_editor_sub">手机开一个网页服务，同一 Wi-Fi 的电脑浏览器加题，发布后直接进 App</string>

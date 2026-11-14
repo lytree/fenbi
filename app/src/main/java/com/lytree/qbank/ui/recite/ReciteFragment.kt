@@ -126,6 +126,13 @@ class ReciteFragment : Fragment() {
             R.drawable.ic_recite_mode,
             getString(R.string.recite_mode)
         ) { setReciteMode(!reciteMode) }
+        // 导图是政治理论这本书的内容，只在政治这块给入口
+        if (subject == ReciteSubject.POLITICS) {
+            binding.titleBar.addIconAction(
+                R.drawable.ic_recite_mindmap,
+                getString(R.string.mindmap_entry)
+            ) { openMindMap() }
+        }
         binding.titleBar.addIconAction(
             R.drawable.ic_recite_catalog,
             getString(R.string.recite_catalog_title)
@@ -200,6 +207,13 @@ class ReciteFragment : Fragment() {
     private fun openRecite(target: ReciteSubject) {
         parentFragmentManager.beginTransaction()
             .replace(R.id.container, newInstance(target))
+            .commit()
+    }
+
+    /** 打开思维导图浏览页：整本导图按页还原成层级大纲，不再走填空卡 */
+    private fun openMindMap() {
+        parentFragmentManager.beginTransaction()
+            .replace(R.id.container, MindMapFragment())
             .commit()
     }
 
