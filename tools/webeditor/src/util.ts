@@ -14,11 +14,24 @@ export function debounce<T extends (...args: any[]) => void>(fn: T, ms: number):
   }) as T
 }
 
-/** 让 textarea 长到内容那么高（最高 520px，再高就内部滚动） */
+/**
+ * 让 textarea 长到内容那么高（最高 520px，再高就内部滚动）。
+ *
+ * 必须等元素真的进了文档再量：Vue 的函数 ref 在插入 DOM 之前就会回调一次，
+ * 那时 `scrollHeight` 是 0，量出来只有 2px —— 材料正文会被裁成一条缝。
+ * 所以没连上文档就挪到下一帧再量。
+ */
 export function grow(el?: HTMLTextAreaElement | null) {
   if (!el) return
-  el.style.height = 'auto'
-  el.style.height = `${Math.min(el.scrollHeight + 2, 520)}px`
+  const apply = () => {
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight + 2, 520)}px`
+  }
+  if (!el.isConnected) {
+    requestAnimationFrame(apply)
+    return
+  }
+  apply()
 }
 
 export function growAll(root: HTMLElement | null | undefined) {

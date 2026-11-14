@@ -18,7 +18,7 @@ export default defineComponent({
       const errors = issues.filter((i) => i.level === 'error').length
       return (
         <>
-          <div class="issue ok" style="cursor:default;color:#5b6a7c">
+          <div class="issue ok sum" style="cursor:default">
             共 {issues.length} 条 · {errors} 个错误（会拦下发布）· 点一条跳到那道题
           </div>
           {issues.map((it, k) => (

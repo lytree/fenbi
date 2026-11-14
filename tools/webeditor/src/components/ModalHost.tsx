@@ -79,18 +79,14 @@ export default defineComponent({
               : m.kind === 'confirm'
                 ? (
                 <div class="mbody">
-                  <div style="font-size:12.8px;line-height:1.85;color:#3c4a5a;white-space:pre-wrap">
-                    {m.message}
-                  </div>
+                  <div class="confirm-text">{m.message}</div>
                 </div>
               )
               : m.kind === 'errors'
                 ? (
                   <div class="mbody">
                     <div class="hint" style="margin:0 0 10px">按 App 的导入规则先卡了一遍，改完这几处再发布：</div>
-                    <div style="font-size:12.5px;line-height:1.85;color:#b91c1c;white-space:pre-wrap">
-                      {m.message}
-                    </div>
+                    <div class="error-text">{m.message}</div>
                   </div>
                 )
                 : (

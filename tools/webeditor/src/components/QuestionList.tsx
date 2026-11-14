@@ -140,10 +140,21 @@ export default defineComponent({
 
       const nodes: any[] = []
       let lastGroupStart = -1
+      // 组内小题先攒着，成组后再统一塞进 .grp-nest：
+      // 阶梯缩进要的是一条**连续**的脊线，不能一张卡画一段（卡片之间的 7px 间隙会断线）
+      let nestBuf: any[] = []
+      let nestKey = 0
+      const flushNest = () => {
+        if (!nestBuf.length) return
+        nodes.push(<div class="grp-nest" key={`nest-${nestKey}`}>{nestBuf}</div>)
+        nestBuf = []
+      }
 
       for (const i of indexes) {
         const g = groupAt(state.groups, i)
         if (g && g.start !== lastGroupStart) {
+          flushNest()
+          nestKey = g.start
           nodes.push(
             <div
               class={['group-head', hoverGroup.value === g.start && 'drop-on']}
@@ -167,6 +178,7 @@ export default defineComponent({
                 ref={(el: any) => {
                   if (el) areas.set(g.start, el as HTMLTextAreaElement)
                   else areas.delete(g.start)
+                  grow(el as HTMLTextAreaElement)
                 }}
                 placeholder="材料正文：支持 Markdown 表格、图片、:::chart、:::figure 图文排版"
                 onInput={(e) => {
@@ -189,9 +201,7 @@ export default defineComponent({
           )
           lastGroupStart = g.start
         }
-        if (!g) lastGroupStart = -1
-
-        nodes.push(
+        const card = (
           <div
             key={qs[i]._uid}
             class={[
@@ -205,10 +215,20 @@ export default defineComponent({
             onDrop={(e: DragEvent) => onCardDrop(e, qs[i])}
           >
             <QuestionCard question={qs[i]} index={i} group={g} sortable={true} />
-          </div>,
+          </div>
         )
+
+        // 组内题进缩进容器；独立题先收掉上一组的缩进再平铺
+        if (g) {
+          nestBuf.push(card)
+        } else {
+          flushNest()
+          lastGroupStart = -1
+          nodes.push(card)
+        }
       }
 
+      flushNest()
       return nodes
     }
   },

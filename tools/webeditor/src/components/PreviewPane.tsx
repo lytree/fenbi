@@ -47,7 +47,7 @@ export default defineComponent({
 
       if (material) h += `<div class="pv-mat"><div class="mh">材料</div>${renderMaterial(material)}</div>`
 
-      h += `<div class="pv-stem">${renderInline(q.stem) || '<span style="color:#a9b6c6">（题干为空）</span>'}</div>`
+      h += `<div class="pv-stem">${renderInline(q.stem) || '<span class="pv-ph">（题干为空）</span>'}</div>`
 
       if (opts.length) {
         h += '<div class="pv-opts">'
@@ -63,7 +63,7 @@ export default defineComponent({
       }
 
       h += `<div class="pv-ans">答案：${
-        q.answer ? `<b>${esc(q.answer)}</b>` : '<span style="color:#b45309">待补</span>'
+        q.answer ? `<b>${esc(q.answer)}</b>` : '<span class="pv-pending">待补</span>'
       }</div>`
       h += '</div>'
       return h
@@ -73,7 +73,9 @@ export default defineComponent({
       const qs = currentQuestions()
       if (!qs.length) return '<div class="pv-empty">这份卷还没有题目</div>'
       const groups = groupsOf(qs)
-      let out = ''
+      // 样张页眉：一行小字说明「这是卷面、不是编辑器」，跟左边的校样条区分开
+      let out = '<div class="pv-head"><span class="pv-head-t">卷面样张</span>' +
+        `<span class="pv-head-n">${qs.length} 题 · 与 App 答题页同版式</span></div>`
       let i = 0
       while (i < qs.length) {
         const g = groups.find((x) => x.start === i)

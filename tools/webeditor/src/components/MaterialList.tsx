@@ -132,55 +132,59 @@ export default defineComponent({
               </button>
             </div>
 
-            <textarea
-              class="mb-text"
-              rows={6}
-              spellcheck={false}
-              value={materialText(g)}
-              ref={(el: any) => {
-                if (el) areas.set(g.start, el as HTMLTextAreaElement)
-                else areas.delete(g.start)
-                grow(el as HTMLTextAreaElement)
-              }}
-              placeholder="材料正文：支持 Markdown 表格、图片、:::chart、:::figure 图文排版"
-              onInput={(e) => {
-                const el = e.target as HTMLTextAreaElement
-                // 先只改题上的文本；分组等失焦再重算，避免删空时整块消失
-                setGroupMaterial(g.start, el.value, false)
-                grow(el)
-              }}
-              onBlur={() => refreshGroups()}
-              onPaste={(e) => insertPastedImage(e as ClipboardEvent, e.target as HTMLTextAreaElement)}
-            />
+            {/* 材料正文与它带的小题整体右缩一级、共用左侧一道脊线：
+                材料标签是父节点（一级），正文和子题是二级，缩进把归属关系画出来 */}
+            <div class="mb-nest">
+              <textarea
+                class="mb-text"
+                rows={6}
+                spellcheck={false}
+                value={materialText(g)}
+                ref={(el: any) => {
+                  if (el) areas.set(g.start, el as HTMLTextAreaElement)
+                  else areas.delete(g.start)
+                  grow(el as HTMLTextAreaElement)
+                }}
+                placeholder="材料正文：支持 Markdown 表格、图片、:::chart、:::figure 图文排版"
+                onInput={(e) => {
+                  const el = e.target as HTMLTextAreaElement
+                  // 先只改题上的文本；分组等失焦再重算，避免删空时整块消失
+                  setGroupMaterial(g.start, el.value, false)
+                  grow(el)
+                }}
+                onBlur={() => refreshGroups()}
+                onPaste={(e) => insertPastedImage(e as ClipboardEvent, e.target as HTMLTextAreaElement)}
+              />
 
-            <div class="mb-tools">
-              <span class="t">图文排版</span>
-              {FIGURE_LAYOUTS.map(([key, label]) => (
-                <button
-                  key={key}
-                  title={`把选中的图文包成 :::figure（layout: ${key}）`}
-                  onClick={() => applyFigure(g, key)}
-                >
-                  {label}
-                </button>
+              <div class="mb-tools">
+                <span class="t">图文排版</span>
+                {FIGURE_LAYOUTS.map(([key, label]) => (
+                  <button
+                    key={key}
+                    title={`把选中的图文包成 :::figure（layout: ${key}）`}
+                    onClick={() => applyFigure(g, key)}
+                  >
+                    {label}
+                  </button>
+                ))}
+                <button title="把图片插入光标处" onClick={() => addImage(g.start)}>插图</button>
+                <span class="grow"></span>
+                <span class="mini-hint">选中要对排的文字再点排版；截图可直接 Ctrl+V</span>
+              </div>
+
+              {previewOpen.has(g.start)
+                ? <div class="mb-preview" innerHTML={renderMaterial(materialText(g))} />
+                : null}
+
+              <div class="mb-subhead">
+                <span class="t">小题 {members.length} 道</span>
+                <span class="mini-hint">材料只在这里维护，发布时写进组内每道小题</span>
+              </div>
+
+              {members.map((x) => (
+                <QuestionCard key={qs[x]._uid} question={qs[x]} index={x} group={g} />
               ))}
-              <button title="把图片插入光标处" onClick={() => addImage(g.start)}>插图</button>
-              <span class="grow"></span>
-              <span class="mini-hint">选中要对排的文字再点排版；截图可直接 Ctrl+V</span>
             </div>
-
-            {previewOpen.has(g.start)
-              ? <div class="mb-preview" innerHTML={renderMaterial(materialText(g))} />
-              : null}
-
-            <div class="mb-subhead">
-              <span class="t">小题 {members.length} 道</span>
-              <span class="mini-hint">材料只在这里维护，发布时写进组内每道小题</span>
-            </div>
-
-            {members.map((x) => (
-              <QuestionCard key={qs[x]._uid} question={qs[x]} index={x} group={g} />
-            ))}
           </section>,
         )
       }

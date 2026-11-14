@@ -14,7 +14,8 @@ import Toast from './components/Toast'
 import {
   TYPE_SHORT, addQuestion, cancelWaiting, closeModal, currentQuestions, filtersActive, flushDraft,
   issueCounts, level1Options, level2Options, loadSets, loadVersions, maybeRestoreDraft,
-  openPasteDialog, openSet, publish, resetFilters, showErrors, startDraftAutoSave, state,
+  openLocalPackage, openPasteDialog, openSet, publish, resetFilters, showErrors,
+  startDraftAutoSave, state,
   stopDraftAutoSave, switchSource, toast, typeCounts, ui, visibleIndexes,
 } from './store'
 import type { QuestionType } from './types'
@@ -105,6 +106,11 @@ export default defineComponent({
         if (state.source === 'phone') {
           const first = state.sets.find((s) => s.id > 0)
           if (first) await openSet(first.id, { force: true })
+        } else {
+          // 本地试卷包模式（pnpm dev）也顺手打开第一份：进来就能看到校样台，
+          // 不用先点一下左边——和手机题库模式的口径一致
+          const firstLocal = state.localPackages[0]
+          if (firstLocal) await openLocalPackage(firstLocal.id)
         }
       } catch (e) {
         // 这里也可能是「这组太大，超过单卷上限」这类业务错误，别一律说成连不上
