@@ -178,7 +178,7 @@ export default defineComponent({
         )
       }
 
-      const cards = reciteVisibleCards()
+      const cards = reciteVisibleCards.value
       const issues = recite.catalog ? recite.catalog.cards.reduce((n, c) => n + reciteCardIssues(c).length, 0) : 0
       const grouped = catOptions()
 

@@ -12,6 +12,18 @@
 
 ---
 
+## [0.0.49] - 2026-11-14
+
+### 修复
+
+* **网页背诵界面卡片列表整块空白**：`reciteVisibleCards` 是 Vue 的 `computed`（`ComputedRef` 对象），
+  渲染时却按函数调用，抛 `TypeError` 被 Vue 捕获后只渲染空节点，工具栏与卡片列表一起消失；
+  改为读取 `.value` 后恢复。
+* 网页编辑器类型检查清零：保存 / 重置结果按 `'cardCount' in result`、`'reset' in result`
+  收窄联合类型，`tsc --noEmit` 不再报错。
+
+---
+
 ## [0.0.48] - 2026-11-14
 
 ### 新增

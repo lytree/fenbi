@@ -1769,7 +1769,8 @@ export async function saveRecite(): Promise<boolean> {
     recite.dirty = false
     await loadReciteSubjects()
     await openReciteSubject(cat.subject, { force: true })
-    toast(`已保存「${result.title ?? cat.title}」· ${result.cardCount ?? '?'} 张卡片，回手机就能背`, 'ok')
+    const cardCount = 'cardCount' in result ? result.cardCount : undefined
+    toast(`已保存「${result.title ?? cat.title}」· ${cardCount ?? '?'} 张卡片，回手机就能背`, 'ok')
     return true
   } catch (e) {
     await showErrors('保存没成功', e instanceof Error ? e.message : '保存失败')
@@ -1801,7 +1802,8 @@ export async function resetRecite(): Promise<void> {
     recite.dirty = false
     await loadReciteSubjects()
     await openReciteSubject(cat.subject, { force: true })
-    toast(result.reset === false ? '本来就没有覆盖版，内置内容原样' : '已重置回内置内容', 'ok')
+    const wasReset = 'reset' in result ? result.reset : undefined
+    toast(wasReset === false ? '本来就没有覆盖版，内置内容原样' : '已重置回内置内容', 'ok')
   } catch (e) {
     toast(e instanceof Error ? e.message : '重置失败', 'err')
   } finally {
