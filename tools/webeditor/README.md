@@ -31,7 +31,8 @@ tools/webeditor/
     figure.ts             # 图文排版：把选中段落包成 :::figure（两种视图共用）
     images.ts             # 插图、粘贴截图
     types.ts              # 与 LanEditorStore.kt 的 JSON 约定
-    styles.scss           # 与 App 同一套浅色令牌
+    theme.ts              # 明暗主题：data-theme + localStorage + 跟系统
+    styles.scss           # Ant Design v5 令牌，明 / 暗两套值（[data-theme="dark"]）
     components/           # TopBar / Sidebar / SheetBar / QuestionList / MaterialList /
                           # QuestionCard / PreviewPane / IssuePane / VersionPane / ModalHost / Toast
     __tests__/App.spec.ts # vitest + jsdom 冒烟
@@ -41,8 +42,8 @@ tools/webeditor/
 
 ```bash
 pnpm install       # 首次；锁文件是 pnpm-lock.yaml
-pnpm dev           # 本地起 dev server（接口需要真机服务或自建 mock）
-pnpm test          # 冒烟 + 材料模式 + 预览同步：打开一组 → 加题 → 发布 / 版本面板 / 删除只发请求（28 例）
+pnpm dev           # 本地起 dev server（接口需要真机服务或自建 mock，没有本地试卷包退路）
+pnpm test          # 冒烟 + 材料模式 + 预览同步：打开一组 → 加题 → 发布 / 版本面板 / 删除只发请求（42 例）
 pnpm build         # 产物写进 ../../app/src/main/assets/webeditor/
 ```
 

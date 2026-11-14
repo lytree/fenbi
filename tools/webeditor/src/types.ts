@@ -74,17 +74,6 @@ export type Filter = 'all' | 'issue' | 'noanswer' | 'image' | 'group'
 /** 编辑视图：题目卡列表 / 以材料为中心的编辑模式 / 拖拽分组板 */
 export type EditorView = 'list' | 'material' | 'board'
 
-/** 数据源：手机局域网题库 / 电脑本地试卷包（开发服务器提供） */
-export type DataSource = 'phone' | 'local'
-
-/** 本地试卷包（胶水层由 vite 开发服务器提供） */
-export interface LocalPackageInfo {
-  id: string
-  title: string
-  path: string
-  questionCount: number
-}
-
 /** 按题型筛（单选 / 判断 / 填空 …） */
 export type TypeFilter = 'all' | QuestionType
 

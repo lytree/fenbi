@@ -1,8 +1,7 @@
 import type {
-  ConfirmStatus, EditorPaper, LocalPackageInfo, MigrationReport, PaperSetInfo, ResourceFile, Sheet,
+  ConfirmStatus, EditorPaper, MigrationReport, PaperSetInfo, ResourceFile, Sheet,
   VersionInfo, WireSheet,
 } from './types'
-import type { LocalPackageResponse, LocalQuestionRaw } from './local'
 
 export class ApiError extends Error {
   constructor(message: string, readonly status: number) {
@@ -32,7 +31,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   if (!res.ok) throw new ApiError(data?.error || `请求失败（${res.status}）`, res.status)
   // 开发服务器对 /api/* 会回落到 index.html：拿到 HTML 说明手机端接口没接上，
-  // 不能当成「空题库」继续走下去，否则永远不会切到本地试卷包
+  // 不能当成「空题库」继续走下去
   if (!isJson) {
     throw new ApiError('接口返回的不是 JSON：手机端局域网服务可能没开', res.status)
   }
@@ -159,18 +158,6 @@ export const api = {
    */
   migrateImages: (setId: number) =>
     request<MigrationReport>('/api/images/migrate', jsonPost({ setId })),
-
-  // ---- 本地试卷包（只在 vite 开发服务器下可用） ----
-  localPackages: () => request<{ packages: LocalPackageInfo[] }>('/local/packages'),
-
-  localPackage: (id: string) =>
-    request<LocalPackageResponse>(`/local/package?id=${encodeURIComponent(id)}`),
-
-  localSave: (path: string, bank: string, description: string, questions: LocalQuestionRaw[]) =>
-    request<{ ok: boolean; path: string; questionCount: number }>(
-      '/local/save',
-      jsonPost({ path, bank, description, questions }),
-    ),
 
   /** 某组的历史版本；不给 title 就是全部 */
   versions: (title?: string) =>

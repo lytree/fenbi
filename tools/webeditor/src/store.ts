@@ -2,15 +2,12 @@ import { computed, reactive } from 'vue'
 import { api } from './api'
 import type { ConfirmRequired, PublishResponse } from './api'
 import type {
-  DataSource, EditorPaper, EditorView, Filter, Group, Issue, LocalPackageInfo, PaperSetInfo,
+  EditorPaper, EditorView, Filter, Group, Issue, PaperSetInfo,
   QIssue, Question, QuestionType, ResourceFile, Sheet, SubjectFilter, TypeFilter, VersionInfo, WireSheet,
 } from './types'
 import { formatTime, nextUid, sleep } from './util'
 import { parsePasted } from './paste'
 import { typeName } from './xingce'
-import {
-  localToQuestions, questionsToLocal, type LocalPackageResponse,
-} from './local'
 
 /* ------------------------------------------------------------------ 常量 */
 
@@ -59,12 +56,6 @@ export const state = reactive({
   sheet: 0,
   /** 题目列表 / 材料模式 / 分组板；只影响编辑区呈现，不改数据 */
   view: 'list' as EditorView,
-  /** 数据源：手机局域网题库 / 本地试卷包 */
-  source: 'phone' as DataSource,
-  /** 本地试卷包列表（source = local 时左侧栏用） */
-  localPackages: [] as LocalPackageInfo[],
-  /** 当前打开的本地试卷包；path 是磁盘上的 JSON 文件 */
-  local: null as { id: string; path: string; dir: string; description: string } | null,
   /** 分组板里多选的题目（_uid） */
   selected: [] as number[],
   dirty: false,
@@ -370,8 +361,6 @@ export async function openSet(id: number, opts: { force?: boolean } = {}): Promi
     if (!ok) return false
   }
   const p = await api.paper(id)
-  state.source = 'phone'
-  state.local = null
   state.paper = {
     id: p.id,
     name: p.title,
@@ -413,103 +402,6 @@ export function newPaper(name: string) {
   refreshGroups()
 }
 
-/* ------------------------------------------------------------------ 本地试卷包 */
-
-export async function loadLocalPackages() {
-  const r = await api.localPackages()
-  state.localPackages = r.packages ?? []
-}
-
-export async function switchSource(src: DataSource): Promise<void> {
-  if (state.source === src) return
-  const hadChanges = state.dirty
-  if (hadChanges) {
-    const ok = await askConfirm('当前改动还没保存', '切换数据源会丢掉这些改动，确定吗？', '丢掉改动')
-    if (!ok) return
-  }
-  state.source = src
-  state.paper = null
-  state.local = null
-  state.versions = []
-  state.expanded = []
-  state.focused = null
-  state.dirty = false
-  clearSelection()
-  // 没改动时别动草稿：启动自动切本地时，手机那份未发布草稿还要留着
-  if (hadChanges) clearDraft()
-  state.resources = []
-  state.resourceSetId = 0
-  if (src === 'phone') {
-    await loadSets()
-    const first = state.sets.find((s) => s.id > 0)
-    if (first) await openSet(first.id, { force: true })
-  } else {
-    await loadLocalPackages()
-  }
-}
-
-/** 打开一份本地 JSON 试卷包（只在开发服务器下可用） */
-export async function openLocalPackage(id: string, opts: { force?: boolean } = {}): Promise<boolean> {
-  if (!opts.force && state.dirty) {
-    const ok = await askConfirm('当前改动还没保存', '切换会丢掉刚才的改动，确定吗？', '丢掉改动')
-    if (!ok) return false
-  }
-  const raw: LocalPackageResponse = await api.localPackage(id)
-  const questions = localToQuestions(raw)
-  state.source = 'local'
-  state.local = {
-    id: raw.id,
-    path: raw.path,
-    dir: raw.dir ?? '',
-    description: String(raw.description ?? ''),
-  }
-  state.paper = {
-    id: 0,
-    name: String(raw.bank || raw.title || raw.id),
-    sheets: [{ name: '试卷', questions }],
-  }
-  state.sheet = 0
-  state.expanded = []
-  state.focused = questions[0]?._uid ?? null
-  state.dirty = false
-  state.versions = []
-  clearSelection()
-  resetFilters()
-  clearDraft()
-  refreshGroups()
-  return true
-}
-
-/** 保存回本地 JSON：多工作表按顺序拼成一份 questions（本地格式没有工作表概念） */
-export async function saveLocal(): Promise<boolean> {
-  const paper = state.paper
-  if (!paper || !state.local) return false
-  const title = (paper.name || '').trim()
-  if (!title) { toast('先给这份试卷起个名字', 'err'); return false }
-  const all = paper.sheets.flatMap((s) => s.questions)
-  if (!all.length) { toast('还一道题都没有，先加题', 'err'); return false }
-
-  ui.busy = true
-  try {
-    const r = await api.localSave(
-      state.local.path,
-      title,
-      state.local.description,
-      questionsToLocal(all),
-    )
-    state.dirty = false
-    clearDraft()
-    toast(`已保存到本地：${r.path} · ${r.questionCount} 题`, 'ok')
-    await loadLocalPackages()
-    return true
-  } catch (e) {
-    await showErrors('保存到本地失败', e instanceof Error ? e.message : '保存失败')
-    return false
-  } finally {
-    ui.busy = false
-  }
-}
-
 export function serialize(): WireSheet[] {
   return (state.paper?.sheets ?? []).map((s) => ({
     name: s.name,
@@ -527,8 +419,6 @@ export function serialize(): WireSheet[] {
  * 点了才真正写库。这里一直等到手机给结论——成功 / 拒绝 / 超时。
  */
 export async function publish(opts: { replace?: boolean } = {}): Promise<boolean> {
-  // 本地模式没有手机端，发布 = 写回磁盘上的 JSON 试卷包
-  if (state.source === 'local') return saveLocal()
   const paper = state.paper
   if (!paper) return false
   const title = (paper.name || '').trim()
@@ -927,10 +817,6 @@ export function currentSetId(): number {
 }
 
 export async function uploadImage(file: File, replacePath?: string): Promise<string | null> {
-  if (state.source === 'local') {
-    toast('本地试卷包模式不支持上传图片：图片请直接放进试卷包的 images/ 目录', 'err')
-    return null
-  }
   try {
     const path = await api.upload(file, currentSetId(), replacePath)
     toast(replacePath ? `已替换这张图：${path}` : `图片已存进手机：${path}`, 'ok')
@@ -948,7 +834,7 @@ export async function uploadImage(file: File, replacePath?: string): Promise<str
 /** 拉当前这组的图片列表；新组（id=0）读的是手机端的 draft 目录 */
 export async function loadResources(): Promise<void> {
   const setId = currentSetId()
-  if (!state.paper || state.source !== 'phone') {
+  if (!state.paper) {
     state.resources = []
     state.resourceSetId = setId
     return
@@ -991,10 +877,6 @@ export async function deleteResource(file: ResourceFile): Promise<void> {
  */
 export async function migrateImages(): Promise<boolean> {
   const setId = currentSetId()
-  if (state.source !== 'phone') {
-    toast('本地试卷包模式没有手机端图片目录，用不了整理', 'err')
-    return false
-  }
   if (setId <= 0) {
     toast('这一组还没发布：先把图片存进手机、发布之后再整理', 'err')
     return false
@@ -1432,8 +1314,8 @@ interface Draft {
   name: string
   sheets: WireSheet[]
   savedAt: number
-  source?: DataSource
-  local?: { id: string; path: string; dir: string; description: string } | null
+  /** 旧版草稿里有 source / local 字段（本地试卷包模式），现在只认手机题库，读到就忽略 */
+  source?: string
 }
 
 let draftTimer: number | undefined
@@ -1458,8 +1340,6 @@ function saveDraftNow() {
       name: paper.name,
       sheets: serialize(),
       savedAt,
-      source: state.source,
-      local: state.local ? { ...state.local } : null,
     } satisfies Draft))
     ui.draftSavedAt = savedAt
   } catch {
@@ -1524,22 +1404,19 @@ export function hasDraft(): boolean {
 export async function maybeRestoreDraft(): Promise<boolean> {
   const d = readDraft()
   if (!d) return false
-  // 草稿是「手机题库」还是「本地试卷包」的，不能串台
-  if ((d.source ?? 'phone') !== state.source) return false
+  // 本地试卷包模式已经删了：它留下的草稿没有落库对象，读到就丢掉
+  if (d.source === 'local') { clearDraft(); return false }
   const age = Date.now() - (d.savedAt ?? 0)
   const when = age > 24 * 3600_000
     ? `${formatTime(d.savedAt)}（${Math.floor(age / 86_400_000)} 天前）`
     : formatTime(d.savedAt)
-  const local = d.source === 'local'
   const ok = await askConfirm(
     '接着上次改？',
-    `本地存着一份 ${when} 的${local ? '未保存' : '未发布'}改动：「${d.name}」共 ${d.sheets.length} 卷。\n\n` +
-      `恢复后再点「${local ? '保存到本地' : '发布到 App'}」才会落盘；不要的话就从当前内容打开（选「不要」会删掉这份草稿）。`,
+    `本地存着一份 ${when} 的未发布改动：「${d.name}」共 ${d.sheets.length} 卷。\n\n` +
+      '恢复后再点「发布到 App」才会落库；不要的话就从当前内容打开（选「不要」会删掉这份草稿）。',
     '接着改',
   )
   if (!ok) { clearDraft(); return false }
-  state.source = d.source ?? 'phone'
-  state.local = d.local ?? null
   state.paper = {
     id: d.setId ?? 0,
     name: d.name,

@@ -14,12 +14,13 @@ import Toast from './components/Toast'
 import {
   TYPE_SHORT, addQuestion, cancelWaiting, closeModal, currentQuestions, filtersActive, flushDraft,
   issueCounts, level1Options, level2Options, loadSets, loadVersions, maybeRestoreDraft,
-  openLocalPackage, openPasteDialog, openSet, publish, resetFilters, showErrors,
+  openPasteDialog, openSet, publish, resetFilters, showErrors,
   startDraftAutoSave, state,
-  stopDraftAutoSave, switchSource, toast, typeCounts, ui, visibleIndexes,
+  stopDraftAutoSave, toast, typeCounts, ui, visibleIndexes,
 } from './store'
 import type { QuestionType } from './types'
 import { handleFileInput } from './images'
+import { initTheme } from './theme'
 
 export default defineComponent({
   name: 'App',
@@ -70,6 +71,7 @@ export default defineComponent({
     }
 
     onMounted(async () => {
+      initTheme()
       window.addEventListener('keydown', onKeydown)
       window.addEventListener('beforeunload', onBeforeUnload)
       window.addEventListener('resize', syncViewport)
@@ -77,25 +79,13 @@ export default defineComponent({
       syncViewport()
       // 停手 700ms 存一次之外，每 30 秒再兜一次底；关页面时立刻落盘
       startDraftAutoSave()
-      let sourceReady = false
       try {
         await loadSets()
-        sourceReady = true
       } catch {
-        // 手机没连上时退回本地试卷包：开发服务器会扫描 qbank_out / sample / templates
-        try {
-          await switchSource('local')
-          sourceReady = true
-          toast('手机题库没连上，已切到本地试卷包', '')
-        } catch {
-          // 两边都打不开，下面统一报错
-        }
-      }
-      if (!sourceReady) {
         showErrors(
           '连不上题库',
-          '手机上的「局域网编辑器」没开，本地试卷包也没读到。\n\n' +
-            '用手机重新打开带口令的地址，或者在 tools/webeditor 下跑 pnpm dev 使用本地试卷包。',
+          '手机上的「局域网编辑器」没开，或者口令变了。\n\n' +
+            '用手机重新打开它显示的那个带口令的地址，这个页面才能读到题库。',
         )
         return
       }
@@ -103,15 +93,8 @@ export default defineComponent({
         // 上次还有没发布的改动就问一句要不要接着改；不然就从手机上当前内容打开
         const restored = await maybeRestoreDraft()
         if (restored) return
-        if (state.source === 'phone') {
-          const first = state.sets.find((s) => s.id > 0)
-          if (first) await openSet(first.id, { force: true })
-        } else {
-          // 本地试卷包模式（pnpm dev）也顺手打开第一份：进来就能看到校样台，
-          // 不用先点一下左边——和手机题库模式的口径一致
-          const firstLocal = state.localPackages[0]
-          if (firstLocal) await openLocalPackage(firstLocal.id)
-        }
+        const first = state.sets.find((s) => s.id > 0)
+        if (first) await openSet(first.id, { force: true })
       } catch (e) {
         // 这里也可能是「这组太大，超过单卷上限」这类业务错误，别一律说成连不上
         const msg = e instanceof Error ? e.message : '加载失败'
@@ -285,9 +268,10 @@ export default defineComponent({
                     </>
                   )
                   : null}
-                <span class="grow"></span>
-                <button class="ghost sm" disabled={!state.paper} onClick={openPasteDialog}>批量粘贴</button>
-                <button class="primary sm" disabled={!state.paper} onClick={() => addQuestion()}>＋ 新题</button>
+                <div class="toolbar-actions">
+                  <button class="ghost sm" disabled={!state.paper} onClick={openPasteDialog}>批量粘贴</button>
+                  <button class="primary sm" disabled={!state.paper} onClick={() => addQuestion()}>＋ 新题</button>
+                </div>
                 </div>
 
                 <div class="qlist">

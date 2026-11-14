@@ -1,3 +1,5 @@
+import type { Question } from './types'
+
 export const esc = (s: unknown): string =>
   String(s ?? '')
     .replace(/&/g, '&amp;')
@@ -56,6 +58,15 @@ let uidSeq = 0
 export const nextUid = () => ++uidSeq
 
 export const sleep = (ms: number) => new Promise<void>((r) => window.setTimeout(r, ms))
+
+/** 从题干 / 材料 / 选项里取第一张图，给分组板的缩略图用 */
+export function firstImageSrc(q: Question): string {
+  const text = `${q.material}\n${q.stem}\n${q.options.map((o) => o.text).join('\n')}`
+  const md = text.match(/!\[[^\]]*\]\(\s*([^)\s]+)/)
+  if (md) return md[1]
+  const bare = text.match(/(?:^|\s)((?:[A-Za-z]:[\\/]|\/|\.{1,2}\/|https?:\/\/|asset:\/\/)[^\s)]+\.(?:png|jpe?g|webp|gif|bmp))/i)
+  return bare ? bare[1] : ''
+}
 
 /** 版本列表用的时间：今年的省略年份，看着短一点 */
 export function formatTime(ts: number): string {

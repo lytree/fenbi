@@ -1,9 +1,23 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>题库编辑器</title>
+  <script>
+    // 首屏就把明暗定下来：读过 localStorage 就用它，没选过跟系统；
+    // 放在样式之前，避免先按白底画一帧再翻成黑的。
+    (function () {
+      try {
+        var saved = localStorage.getItem('fenbi.lan-editor.theme')
+        var dark = saved === 'dark' || (saved !== 'light' &&
+          window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
+        document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
+      } catch (e) {
+        // 隐私模式下读不到：按白天的冷纸面走
+      }
+    })()
+  </script>
 </head>
 <body>
   <div id="app"></div>

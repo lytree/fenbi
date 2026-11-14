@@ -1,6 +1,5 @@
 import { defineConfig } from 'vitest/config'
 import vueJsx from 'vue-jsx/vite'
-import { localServer } from './local-server'
 
 /**
  * 构建产物直接落进 App 的 assets：
@@ -12,7 +11,7 @@ import { localServer } from './local-server'
  */
 export default defineConfig({
   base: '/web/',
-  plugins: [vueJsx(), localServer()],
+  plugins: [vueJsx()],
   css: {
     preprocessorOptions: {
       // 用现代编译 API：sass 1.8x 起旧 API 会打一堆弃用警告

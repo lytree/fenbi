@@ -61,7 +61,6 @@ export default defineComponent({
         .map(([path, refs]) => ({ path, refs }))
     })
 
-    const local = computed(() => state.source === 'local')
     const unpublished = computed(() => !!state.paper && state.paper.id <= 0)
 
     onMounted(() => { void loadResources() })
@@ -96,15 +95,6 @@ export default defineComponent({
 
     return () => {
       if (!state.paper) return <div class="pv-empty">还没有打开任何一组</div>
-      if (local.value) {
-        return (
-          <div class="pv-empty">
-            本地试卷包模式不支持资源管理
-            <br />
-            图片直接放进试卷包的 images/ 目录，用相对路径引用即可
-          </div>
-        )
-      }
 
       return (
         <div class="ppane res-pane">

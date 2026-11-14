@@ -1,7 +1,7 @@
 import { defineComponent, ref } from 'vue'
 import type { Group, Question } from '../types'
 import { api } from '../api'
-import { firstImageSrc } from '../local'
+import { firstImageSrc } from '../util'
 import { plain, renderMaterial } from '../markdown'
 import {
   TYPE_SHORT, addQuestionToGroup, assignSelectedToGroup, clearSelection, currentQuestions,
