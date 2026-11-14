@@ -7,6 +7,8 @@ import type {
 } from './types'
 import { formatTime, nextUid, sleep } from './util'
 import { parsePasted } from './paste'
+import { parseWorkbook, matchBackfill } from './importx'
+import type { BackfillEntry, BackfillPlan, ImportNote, ParsedSheet } from './importx'
 import { typeName } from './xingce'
 
 /* ------------------------------------------------------------------ 常量 */
@@ -39,7 +41,7 @@ type WaitingKind = 'publish' | 'restore' | 'delete'
 
 export interface ModalState {
   /** waiting = 等手机确认（发布 / 回滚 / 删除），没有输入框，只有状态文案 */
-  kind: 'text' | 'confirm' | 'errors' | 'paste' | 'waiting'
+  kind: 'text' | 'confirm' | 'errors' | 'paste' | 'waiting' | 'import'
   title: string
   label?: string
   message?: string
@@ -47,6 +49,20 @@ export interface ModalState {
   rows?: number
   okText?: string
   resolve: (v: any) => void
+}
+
+/** 「导入文件」弹层的预览数据：文件解析完在这里等用户确认 */
+export interface ImportPreview {
+  fileName: string
+  mode: 'questions' | 'backfill'
+  /** questions 模式：解析出的各份卷 */
+  sheets: ParsedSheet[]
+  /** backfill 模式：文件条目与匹配结果 */
+  entries: BackfillEntry[]
+  plan: BackfillPlan | null
+  notes: ImportNote[]
+  /** questions 模式：落到新工作表，还是追加进当前工作表（只有一份卷时可选） */
+  target: 'new' | 'current'
 }
 
 export const state = reactive({
@@ -91,6 +107,8 @@ export const ui = reactive({
   waitingKind: null as WaitingKind | null,
   /** 最近一次草稿落盘时间（0 = 当前没有草稿），顶栏据此显示「已自动保存」 */
   draftSavedAt: 0,
+  /** 「导入文件」的解析结果，弹层开着期间持有 */
+  importPreview: null as ImportPreview | null,
 })
 
 let toastTimer: number | undefined
@@ -1109,6 +1127,145 @@ export function openPasteDialog() {
       toast(`插入 ${list.length} 题${list.some((q) => q.type !== 'single') ? '（含非单选）' : ''}，记得发布`, 'ok')
     },
   }
+}
+
+/* ------------------------------------------------------------------ 导入文件（Excel / 答案后补） */
+
+/**
+ * 工具条「导入文件」的入口：文件选择完在这里解析并弹预览。
+ *
+ * 解析全在前端做（importx.ts），发到手机的仍是普通 JSON——手机端不需要认识 Excel。
+ * 文件里认得出题干/选项列 → 题目导入；只有题号/答案/解析 → 按当前卷做答案后补。
+ */
+export async function handleImportFiles(files: FileList | null): Promise<void> {
+  const file = files?.[0]
+  // 同一个文件选两次不触发 change，用完清掉
+  const input = document.getElementById('file-import') as HTMLInputElement | null
+  if (input) input.value = ''
+  if (!file) return
+  if (!state.paper) { toast('先在左边打开一组，再导入', 'err'); return }
+
+  const fileName = file.name
+  if (!/\.xlsx$/i.test(fileName)) {
+    toast('只支持 Excel（.xlsx）文件，WPS 另存为 .xlsx 即可', 'err')
+    return
+  }
+
+  ui.busy = true
+  try {
+    const data = await file.arrayBuffer()
+    const result = parseWorkbook(data, fileName.replace(/\.xlsx$/i, ''))
+    if (result.kind === 'empty') {
+      await showErrors('导入没成功', result.error)
+      return
+    }
+    if (result.kind === 'questions') {
+      const total = result.sheets.reduce((s, x) => s + x.questions.length, 0)
+      if (!total) {
+        await showErrors('导入没成功', result.notes.map((n) => n.message).join('\n') || '没解析出题目')
+        return
+      }
+      ui.importPreview = {
+        fileName,
+        mode: 'questions',
+        sheets: result.sheets,
+        entries: [],
+        plan: null,
+        notes: result.notes,
+        target: result.sheets.length === 1 ? 'current' : 'new',
+      }
+    } else {
+      const qs = currentQuestions()
+      if (!qs.length) {
+        toast('当前工作表一道题都没有，答案没处可补', 'err')
+        return
+      }
+      ui.importPreview = {
+        fileName,
+        mode: 'backfill',
+        sheets: [],
+        entries: result.entries,
+        plan: matchBackfill(result.entries, qs),
+        notes: result.notes,
+        target: 'current',
+      }
+    }
+    ui.modal = {
+      kind: 'import',
+      title: '导入文件',
+      okText: ui.importPreview.mode === 'backfill' ? '补进当前卷' : '导入',
+      resolve: () => {},
+    }
+  } catch (e) {
+    toast(e instanceof Error ? e.message : '读取文件失败', 'err')
+  } finally {
+    ui.busy = false
+  }
+}
+
+/** 工作表重名时补个序号：2023国考 → 2023国考 2 */
+function uniqueSheetName(name: string): string {
+  const used = new Set((state.paper?.sheets ?? []).map((s) => s.name))
+  if (!used.has(name)) return name
+  let i = 2
+  while (used.has(`${name} ${i}`)) i++
+  return `${name} ${i}`
+}
+
+/** 预览弹层里点「导入 / 补进当前卷」：真正把解析结果写进当前内容 */
+export function confirmImport(): void {
+  const p = ui.importPreview
+  ui.importPreview = null
+  ui.modal = null
+  if (!p) return
+
+  if (p.mode === 'questions') {
+    const all = p.sheets.flatMap((s) => s.questions)
+    if (!all.length) return
+    if (p.target === 'current' && p.sheets.length === 1) {
+      insertQuestions(all)
+      const miss = all.filter((q) => !q.answer).length
+      toast(`已追加 ${all.length} 题${miss ? `（缺答案 ${miss} 题）` : ''}，记得发布`, 'ok')
+    } else {
+      for (const s of p.sheets) {
+        if (!s.questions.length) continue
+        state.paper!.sheets.push({ name: uniqueSheetName(s.name), questions: s.questions })
+      }
+      const added = p.sheets.filter((s) => s.questions.length).length
+      // 指到新加的第一张表，让用户立刻看到导进来的东西
+      state.sheet = state.paper!.sheets.length - added
+      state.expanded = []
+      state.focused = null
+      markDirty()
+      refreshGroups()
+      const total = p.sheets.reduce((sum, s) => sum + s.questions.length, 0)
+      toast(`已加 ${added} 张工作表 · 共 ${total} 题，记得发布`, 'ok')
+    }
+    return
+  }
+
+  // 答案后补：只动答案和解析，题目内容一个字不改
+  const plan = p.plan
+  if (!plan || !plan.matches.length) {
+    toast('一条都没匹配上：文件里的题号 / 题干和当前卷对不上', 'err')
+    return
+  }
+  const qs = currentQuestions()
+  let wroteAnswer = 0
+  let wroteAnalysis = 0
+  for (const m of plan.matches) {
+    const q = qs.find((x) => x._uid === m.uid)
+    if (!q) continue
+    if (m.answer) { q.answer = m.answer; wroteAnswer++ }
+    if (m.analysis) { q.analysis = m.analysis; wroteAnalysis++ }
+    q._issues = null
+  }
+  markDirty()
+  toast(
+    `补了 ${wroteAnswer} 题答案${wroteAnalysis ? `、${wroteAnalysis} 题解析` : ''}` +
+      (plan.unmatched.length ? `；${plan.unmatched.length} 条没匹配上已忽略` : ''),
+    'ok',
+  )
 }
 
 

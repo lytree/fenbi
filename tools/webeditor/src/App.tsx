@@ -13,8 +13,8 @@ import ModalHost from './components/ModalHost'
 import Toast from './components/Toast'
 import {
   TYPE_SHORT, addQuestion, cancelWaiting, closeModal, currentQuestions, filtersActive, flushDraft,
-  issueCounts, level1Options, level2Options, loadSets, loadVersions, maybeRestoreDraft,
-  openPasteDialog, openSet, publish, resetFilters, showErrors,
+  handleImportFiles, issueCounts, level1Options, level2Options, loadSets, loadVersions,
+  maybeRestoreDraft, openPasteDialog, openSet, publish, resetFilters, showErrors,
   startDraftAutoSave, state,
   stopDraftAutoSave, toast, typeCounts, ui, visibleIndexes,
 } from './store'
@@ -270,6 +270,14 @@ export default defineComponent({
                   : null}
                 <div class="toolbar-actions">
                   <button class="ghost sm" disabled={!state.paper} onClick={openPasteDialog}>批量粘贴</button>
+                  <button
+                    class="ghost sm"
+                    disabled={!state.paper}
+                    title="导入 Excel（.xlsx）：题目表追加成题；只有题号/答案/解析的文件按答案后补匹配当前卷"
+                    onClick={() => (document.getElementById('file-import') as HTMLInputElement | null)?.click()}
+                  >
+                    导入文件
+                  </button>
                   <button class="primary sm" disabled={!state.paper} onClick={() => addQuestion()}>＋ 新题</button>
                 </div>
                 </div>
@@ -362,6 +370,14 @@ export default defineComponent({
           multiple
           style="display:none"
           onChange={(e) => handleFileInput((e.target as HTMLInputElement).files)}
+        />
+
+        <input
+          id="file-import"
+          type="file"
+          accept=".xlsx"
+          style="display:none"
+          onChange={(e) => { void handleImportFiles((e.target as HTMLInputElement).files) }}
         />
       </div>
     )
