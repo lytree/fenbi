@@ -2662,7 +2662,19 @@ body.pane-dragging {
 
 /* ---- 工具条下的列表区与卡片 ---- */
 
-.rlist { display: flex; flex-direction: column; gap: 10px; }
+/*
+ * .qlist 已经是固定高度的滚动容器（flex: 1），这里再套一层 flex 列后，
+ * 卡片默认 flex-shrink: 1；而 .rcard 带 overflow: hidden，flex 项的
+ * 自动最小高度是 0，于是条目一多整列卡片会被压成几像素高的空条。
+ * 卡片必须钉住自身高度，把溢出交给 .qlist 滚动。
+ */
+.rlist {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  > * { flex: none; }
+}
 
 .empty-inline {
   padding: 48px 16px;
@@ -2845,10 +2857,18 @@ body.pane-dragging {
   overflow: hidden;
 }
 
-.rmore {
+.pager {
   display: flex;
+  align-items: center;
   justify-content: center;
+  gap: 10px;
   padding: 8px 0 24px;
+  font-size: 13px;
+  color: var(--text-secondary);
+
+  .select { width: auto; }
+
+  .pager-info { color: var(--text-tertiary); }
 }
 
 /* 窄屏：背诵编辑态的两列并一列 */

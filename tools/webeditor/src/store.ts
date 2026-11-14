@@ -1490,8 +1490,9 @@ export const recite = reactive({
   wordQuery: '',
   wordCategory: 'all' as string,
   wordTag: 'all' as string,
-  /** 词条两千多条，列表先渲染一屏，「显示更多」再放行 */
-  wordLimit: 200,
+  /** 词条两千多条，一次全渲染会明显卡顿：按页切片，只在列表区渲染当前页 */
+  wordPage: 1,
+  wordPageSize: 50,
   /** 正在展开编辑的词条 id（0 = 新词条还没落库） */
   wordExpanded: [] as number[],
 })
@@ -1554,7 +1555,7 @@ export async function openReciteSubject(id: string, opts: { force?: boolean } = 
   recite.wordQuery = ''
   recite.wordCategory = 'all'
   recite.wordTag = 'all'
-  recite.wordLimit = 200
+  recite.wordPage = 1
   recite.catalog = null
   recite.words = []
   if (id === 'words') {
@@ -1831,6 +1832,8 @@ export async function loadWords(): Promise<void> {
     recite.wordsTotal = r.total ?? 0
     recite.wordsTags = r.tags ?? []
     recite.wordsCounts = r.counts ?? {}
+    // 筛选 / 搜索后条数变少，当前页可能已经越界
+    recite.wordPage = Math.min(recite.wordPage, wordPageCount())
   } catch (e) {
     toast(e instanceof Error ? e.message : '读取词库失败', 'err')
   } finally {
@@ -1844,6 +1847,16 @@ export function toggleWord(id: number) {
     : [...recite.wordExpanded, id]
 }
 
+/** 当前筛选结果的总页数（至少 1 页，空列表也能显示「第 1 / 1 页」） */
+export function wordPageCount(): number {
+  return Math.max(1, Math.ceil(recite.words.length / recite.wordPageSize))
+}
+
+/** 跳页：越界直接夹到首尾页 */
+export function setWordPage(page: number) {
+  recite.wordPage = Math.min(Math.max(1, page), wordPageCount())
+}
+
 export function addWordRow(): void {
   const blank: WordItem = {
     id: 0, text: '', pinyin: '', initial: '#', category: 'idiom',
@@ -1851,6 +1864,7 @@ export function addWordRow(): void {
   }
   recite.words = [blank, ...recite.words]
   recite.wordExpanded = [0]
+  recite.wordPage = 1
 }
 
 export function updateWordRow(id: number, patch: Partial<WordItem>) {

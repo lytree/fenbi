@@ -1,7 +1,8 @@
 import { defineComponent, ref } from 'vue'
 import type { WordItem } from '../types'
 import {
-  addWordRow, deleteWordItem, loadWords, recite, saveWordItem, toggleWord, updateWordRow, WORD_CATEGORY_LABEL,
+  addWordRow, deleteWordItem, loadWords, recite, saveWordItem, setWordPage, toggleWord, updateWordRow,
+  WORD_CATEGORY_LABEL, wordPageCount,
 } from '../store'
 
 /** 一条词条编辑态 */
@@ -107,21 +108,26 @@ export default defineComponent({
       window.clearTimeout(queryTimer)
       queryTimer = window.setTimeout(() => {
         recite.wordQuery = queryInput.value
+        recite.wordPage = 1
         void loadWords()
       }, 250)
     }
 
     const onCategory = (v: string) => {
       recite.wordCategory = v
+      recite.wordPage = 1
       void loadWords()
     }
     const onTag = (v: string) => {
       recite.wordTag = v
+      recite.wordPage = 1
       void loadWords()
     }
 
     return () => {
-      const shown = recite.words.slice(0, recite.wordLimit)
+      const pageCount = wordPageCount()
+      const page = Math.min(recite.wordPage, pageCount)
+      const shown = recite.words.slice((page - 1) * recite.wordPageSize, page * recite.wordPageSize)
       return (
         <>
           <div class="toolbar">
@@ -175,12 +181,22 @@ export default defineComponent({
                   </div>
                 )
               })}
-            {recite.words.length > shown.length
+            {recite.words.length > recite.wordPageSize
               ? (
-                <div class="rmore">
-                  <button class="ghost sm" onClick={() => { recite.wordLimit += 500 }}>
-                    显示更多（还有 {recite.words.length - shown.length} 条）
-                  </button>
+                <div class="pager">
+                  <button class="ghost sm" disabled={page <= 1} onClick={() => setWordPage(page - 1)}>上一页</button>
+                  <select
+                    class="select"
+                    title="跳到某一页"
+                    value={page}
+                    onChange={(e) => setWordPage(Number((e.target as HTMLSelectElement).value))}
+                  >
+                    {Array.from({ length: pageCount }, (_, i) => (
+                      <option key={i + 1} value={i + 1}>第 {i + 1} 页</option>
+                    ))}
+                  </select>
+                  <button class="ghost sm" disabled={page >= pageCount} onClick={() => setWordPage(page + 1)}>下一页</button>
+                  <span class="pager-info">共 {recite.words.length} 条</span>
                 </div>
               )
               : null}
