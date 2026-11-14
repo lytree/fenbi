@@ -34,7 +34,8 @@ import java.util.Locale
 /**
  * 答题页（竖屏）。
  *
- * - **顶栏**：X 关闭 / 闹钟+倒计时 / 居中标题「试卷名（题数）」/ 交卷 / 答题卡 / 更多
+ * - **顶栏**：闹钟+倒计时 / 居中标题「试卷名（题数）」/ 交卷 / 答题卡 / 更多（退出走系统返回，
+ *   左上角不挂关闭图标）
  * - **内容**：连续滚动的多题浏览（默认模式），每题 = 题目行（题号+题型+标记/笔记/收藏）+ 题干 + 选项
  * - **更多面板**：字号（小/中/大）、日间/夜间、多题浏览/单题浏览
  * - **答题卡**：底部弹层，圆形题号 + 按科目分组 + 通栏交卷
@@ -455,7 +456,7 @@ class ExamActivity : AppCompatActivity() {
     }
 
     private fun setupTopBar() {
-        binding.btnClose.setOnClickListener { confirmExit() }
+        // 左上角不再挂关闭图标：退出走系统返回（onBackPressed → confirmExit）
         binding.btnCard.setOnClickListener { openAnswerCard() }
         binding.btnSubmitTop.setOnClickListener { confirmSubmit() }
         binding.btnDownload.setOnClickListener { exportPaper() }
@@ -703,10 +704,8 @@ class ExamActivity : AppCompatActivity() {
         if (inkMode) inkToolbar.setInkMode(false)
         binding.morePanel.visibility = View.GONE
 
-        // 分屏时左上角是「返回」而不是「关闭」：点它是收起材料，不会退出整套卷（对齐参考应用）
-        binding.btnClose.setImageResource(R.drawable.ic_fb_back)
-        binding.btnClose.contentDescription = getString(R.string.material_collapse)
-        binding.btnClose.setOnClickListener { closeSplit() }
+        // 分屏时左上角不再挂「返回」图标：收起材料走左栏标题右边的「收起材料」，
+        // 系统返回键在分屏状态下同样先收起分屏（见 onBackPressed）
 
         renderSplitMaterial()
         setupSplitList(q)
@@ -803,9 +802,6 @@ class ExamActivity : AppCompatActivity() {
         splitMode = false
         splitList = null
         splitListAdapter = null
-        binding.btnClose.setImageResource(R.drawable.ic_fb_close)
-        binding.btnClose.contentDescription = getString(R.string.action_close)
-        binding.btnClose.setOnClickListener { confirmExit() }
         applySplitVisibility()
         refreshCards()
     }
@@ -1654,9 +1650,9 @@ class ExamActivity : AppCompatActivity() {
         binding.tvPaperName.setTextColor(titleColor)
         binding.tvTimer.setTextColor(bodyColor)
 
-        // 顶栏图标：关闭 / 下载 / 交卷 / 答题卡 / 更多 / 倒计时
+        // 顶栏图标：下载 / 交卷 / 答题卡 / 更多 / 倒计时
         listOf(
-            binding.btnClose, binding.btnDownload, binding.btnCard, binding.btnMore,
+            binding.btnDownload, binding.btnCard, binding.btnMore,
             binding.icTimer, binding.icSubmit
         ).forEach { it.setColorFilter(iconColor) }
         binding.tvSubmitLabel.setTextColor(metaColor)
@@ -1923,6 +1919,11 @@ class ExamActivity : AppCompatActivity() {
     }
 
     override fun onBackPressed() {
+        // 分屏时返回键先收起分屏（原来这一步是左上角那个「←」干的）
+        if (splitMode) {
+            closeSplit()
+            return
+        }
         if (submitted) { super.onBackPressed(); return }
         confirmExit()
     }

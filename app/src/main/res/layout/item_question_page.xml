@@ -1,13 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  「卷面题块」（对齐粉笔真机截图）：
-  · 整页白底通铺，题与题之间只隔一条 0.5dp 细线（fb_question_divider）
-  · 模块切换处先出「模块说明卡」：浅蓝渐变圆角块 + 「资料分析 (20题)」标题 + 该模块作答说明
-  · 材料题：材料块在本块最上方通栏展示，下面才是题号行
-  · 题目行：题号「N.」+ 题型标签 + 右侧 标记/笔/收藏（28dp）
-  · 题干 16sp / 选项 32dp 圆标 + 16sp 正文、单列
-  左右留白统一走 fb_content_padding_h（约 5% 屏宽：手机 22dp / 小平板 32dp / 大平板 40dp）；
-  卷面宽度不设上限，宽屏时直接铺满可用宽度。
+  「卷面题块」——树形版。
+
+  一块 = 树上的一个节点条目，左边一条脊线把「材料 → 小题」的归属关系画出来：
+  · 材料头（实心主蓝点）+ 材料正文块（浅灰圆角面板）= 父节点，可点标题栏收起 / 展开；
+  · 题号行（空心圈）+ 题干 + 选项 = 子节点，脊线从上往下串起同一份材料带的几道题；
+  · 组内最后一道题的脊线在节点处收住（见 TreeRailView），不会一路拖到卷尾。
+
+  结构：
+    FrameLayout（树栏 + 内容列，两栏顶边对齐）
+      ├─ TreeRailView  宽 fb_tree_rail_w / 高 match_parent，只画线，不占内容宽度
+      └─ LinearLayout cardContent  marginStart = 树栏宽
+           材料节点 / 题号行 / 题干 / 题干配图 / 选项 / 笔记 / 解析
+
+  留白算式：树栏宽 + 内容列里各处的 fb_tree_content_pad_start = 原来的 fb_content_padding_h，
+  所以加了脊线之后正文的左右边界一点没动（手机 16+6=22 / sw600 20+12=32 / sw720 24+16=40）。
+  选项行例外：它本来就贴着卡片左沿 16dp，树栏占了这段，行内起始留白相应减掉（fb_tree_option_pad_start）。
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
@@ -27,193 +35,258 @@
         android:layout_marginTop="@dimen/fb_space_12"
         android:layout_marginEnd="@dimen/fb_content_padding_h" />
 
-    <!-- ===== 材料（资料分析 / 材料题）=====
-         对齐粉笔：材料整块在本块顶部通栏展示，随卷面一起滚动；
-         长材料用右上角「弹出材料」看全屏 -->
-    <LinearLayout
-        android:id="@+id/materialBox"
+    <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:paddingStart="@dimen/fb_content_padding_h"
-        android:paddingTop="@dimen/fb_space_16"
-        android:paddingEnd="@dimen/fb_content_padding_h"
-        android:visibility="gone"
-        tools:visibility="visible">
+        android:layout_height="wrap_content">
+
+        <!-- 树脊：只画线，不接收触摸（clickable=false 由代码保持默认） -->
+        <com.lytree.qbank.ui.TreeRailView
+            android:id="@+id/treeRail"
+            android:layout_width="@dimen/fb_tree_rail_w"
+            android:layout_height="match_parent" />
 
         <LinearLayout
+            android:id="@+id/cardContent"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
+            android:layout_marginStart="@dimen/fb_tree_rail_w"
+            android:orientation="vertical">
 
-            <TextView
-                android:id="@+id/tvMaterialTag"
-                style="@style/FbTag"
-                android:text="@string/tag_material" />
-
-            <View
-                android:layout_width="0dp"
-                android:layout_height="1dp"
-                android:layout_weight="1" />
-
-            <!-- 弹出材料：材料单独占大半屏、独立滚动，题目位置不动 -->
+            <!-- ===== 材料节点 =====
+                 标题栏 = 标签「材料 N」+ 题量 + 折叠箭头 + 弹出材料；整行可点，收起材料正文 -->
             <LinearLayout
-                android:id="@+id/btnMaterialExpand"
-                android:layout_width="wrap_content"
+                android:id="@+id/materialBox"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:background="?attr/selectableItemBackgroundBorderless"
+                android:orientation="vertical"
+                android:paddingStart="@dimen/fb_tree_content_pad_start"
+                android:paddingTop="@dimen/fb_space_16"
+                android:paddingEnd="@dimen/fb_content_padding_h"
+                android:visibility="gone"
+                tools:visibility="visible">
+
+                <LinearLayout
+                    android:id="@+id/materialHead"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="?attr/selectableItemBackground"
+                    android:gravity="center_vertical"
+                    android:minHeight="28dp"
+                    android:orientation="horizontal"
+                    android:paddingBottom="@dimen/fb_space_8">
+
+                    <TextView
+                        android:id="@+id/tvMaterialTag"
+                        style="@style/FbTag"
+                        android:text="@string/tag_material" />
+
+                    <!-- 这一则材料带几道小题 -->
+                    <TextView
+                        android:id="@+id/tvMaterialCount"
+                        style="@style/FbCaption"
+                        android:layout_marginStart="@dimen/fb_space_4"
+                        tools:text="3 题" />
+
+                    <View
+                        android:layout_width="0dp"
+                        android:layout_height="1dp"
+                        android:layout_weight="1" />
+
+                    <!-- 弹出材料：材料单独占大半屏、独立滚动，题目位置不动 -->
+                    <LinearLayout
+                        android:id="@+id/btnMaterialExpand"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingStart="@dimen/fb_space_4"
+                        android:paddingTop="@dimen/fb_space_4"
+                        android:paddingEnd="@dimen/fb_space_4"
+                        android:paddingBottom="@dimen/fb_space_4">
+
+                        <ImageView
+                            android:id="@+id/icMaterialExpand"
+                            android:layout_width="@dimen/fb_icon_sm_size"
+                            android:layout_height="@dimen/fb_icon_sm_size"
+                            android:contentDescription="@null"
+                            android:src="@drawable/ic_fb_material_expand" />
+
+                        <TextView
+                            android:id="@+id/tvMaterialExpand"
+                            style="@style/FbCaption"
+                            android:layout_marginStart="@dimen/fb_space_4"
+                            android:text="@string/material_pop_out" />
+                    </LinearLayout>
+
+                    <!-- 收起 / 展开：箭头朝下=展开，箭头朝右=已收起 -->
+                    <ImageView
+                        android:id="@+id/btnMaterialToggle"
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:layout_marginStart="@dimen/fb_space_4"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="@string/material_collapse"
+                        android:padding="4dp"
+                        android:src="@drawable/ic_fb_chevron_down" />
+                </LinearLayout>
+
+                <!-- 材料正文：浅灰圆角面板，把「这一段属于上面那个节点」圈出来 -->
+                <LinearLayout
+                    android:id="@+id/materialPanel"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_fb_material_panel"
+                    android:orientation="vertical"
+                    android:padding="@dimen/fb_tree_panel_pad">
+
+                    <LinearLayout
+                        android:id="@+id/materialContent"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- ===== 题号行：题号 + 题型 + 三图标（树上的子节点，脊线圆点锚在这一行）===== -->
+            <LinearLayout
+                android:id="@+id/questionActionBar"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
-                android:paddingStart="@dimen/fb_space_4"
-                android:paddingTop="@dimen/fb_space_4"
-                android:paddingEnd="@dimen/fb_space_4"
+                android:paddingStart="@dimen/fb_tree_content_pad_start"
+                android:paddingTop="@dimen/fb_space_20"
+                android:paddingEnd="@dimen/fb_content_padding_h"
                 android:paddingBottom="@dimen/fb_space_4">
 
-                <ImageView
-                    android:id="@+id/icMaterialExpand"
-                    android:layout_width="@dimen/fb_icon_sm_size"
-                    android:layout_height="@dimen/fb_icon_sm_size"
-                    android:contentDescription="@null"
-                    android:src="@drawable/ic_fb_material_expand" />
+                <TextView
+                    android:id="@+id/tvIndex"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:includeFontPadding="false"
+                    android:textColor="@color/fb_text_title"
+                    android:textSize="@dimen/fb_question_text_size"
+                    android:textStyle="bold"
+                    tools:text="106." />
 
                 <TextView
-                    android:id="@+id/tvMaterialExpand"
-                    style="@style/FbCaption"
+                    android:id="@+id/tvType"
+                    style="@style/FbTag"
                     android:layout_marginStart="@dimen/fb_space_4"
-                    android:text="@string/material_pop_out" />
+                    tools:text="单选题" />
+
+                <!-- 待补答案：导入时这道题就没有标准答案 -->
+                <TextView
+                    android:id="@+id/tvPending"
+                    style="@style/FbTagWarning"
+                    android:layout_marginStart="@dimen/fb_space_4"
+                    android:text="@string/pending_answer"
+                    android:visibility="gone"
+                    tools:visibility="visible" />
+
+                <View
+                    android:layout_width="0dp"
+                    android:layout_height="1dp"
+                    android:layout_weight="1" />
+
+                <!-- 标记（细线星）/ 笔（手写标注，长按写笔记）/ 收藏（星） -->
+                <ImageView
+                    android:id="@+id/btnMark"
+                    android:layout_width="@dimen/fb_bar_item_width"
+                    android:layout_height="@dimen/fb_bar_item_width"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/action_mark"
+                    android:padding="4dp"
+                    android:src="@drawable/ic_fb_star_outline" />
+
+                <ImageView
+                    android:id="@+id/btnScratch"
+                    android:layout_width="@dimen/fb_bar_item_width"
+                    android:layout_height="@dimen/fb_bar_item_width"
+                    android:layout_marginStart="@dimen/fb_bar_item_gap"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/action_ink_edit"
+                    android:padding="4dp"
+                    android:src="@drawable/ic_fb_edit" />
+
+                <ImageView
+                    android:id="@+id/btnFavorite"
+                    android:layout_width="@dimen/fb_bar_item_width"
+                    android:layout_height="@dimen/fb_bar_item_width"
+                    android:layout_marginStart="@dimen/fb_bar_item_gap"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/action_favorite"
+                    android:padding="4dp"
+                    android:src="@drawable/ic_fb_star" />
             </LinearLayout>
+
+            <!-- ===== 题干 =====
+                 纯文字进 tvStem；题干里夹的图片（![说明](路径) / 单独一行图片地址）摘出来放 stemMedia，
+                 顺序与材料 / 选项图片同一套口径（见 MaterialRenderer.splitInline） -->
+            <TextView
+                android:id="@+id/tvStem"
+                style="@style/FbStem"
+                android:layout_marginTop="@dimen/fb_space_16"
+                android:paddingStart="@dimen/fb_tree_content_pad_start"
+                android:paddingEnd="@dimen/fb_content_padding_h"
+                tools:text="2025年1-11月，B市大中型重点企业研发费用中工业企业占比同比约：" />
+
+            <LinearLayout
+                android:id="@+id/stemMedia"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingStart="@dimen/fb_tree_content_pad_start"
+                android:paddingEnd="@dimen/fb_content_padding_h"
+                android:visibility="gone"
+                tools:visibility="gone" />
+
+            <!-- ===== 选项 ===== -->
+            <LinearLayout
+                android:id="@+id/optionsBox"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/fb_space_12"
+                android:orientation="vertical" />
+
+            <!-- ===== 笔记 ===== -->
+            <TextView
+                android:id="@+id/tvNote"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/fb_tree_content_pad_start"
+                android:layout_marginTop="@dimen/fb_space_8"
+                android:layout_marginEnd="@dimen/fb_content_padding_h"
+                android:background="@drawable/bg_fb_note"
+                android:lineSpacingExtra="3dp"
+                android:padding="@dimen/fb_space_12"
+                android:textColor="@color/fb_text_tertiary"
+                android:textSize="@dimen/fb_text_body_sm"
+                android:visibility="gone"
+                tools:text="笔记：注意区分前瞻性与创新性"
+                tools:visibility="visible" />
+
+            <!-- ===== 作答小结 + 解析（交卷后 / 练习模式即时判分后才有）=====
+                 版式见 view_fb_answer_block.xml：正确答案 / 你的答案 左右两栏 + 结果 / 解析正文 -->
+            <include
+                android:id="@+id/answerBlock"
+                layout="@layout/view_fb_answer_block"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/fb_tree_content_pad_start"
+                android:layout_marginTop="@dimen/fb_space_12"
+                android:layout_marginEnd="@dimen/fb_content_padding_h" />
+
+            <!-- ===== 题间分隔线 =====
+                 放在内容列里而不是卡片底部：树脊要一路连到下一条目的顶边，
+                 这条线若通栏压在卡片底部，脊线就被它截断成一段一段的；
+                 现在线从树栏右侧起笔，脊线从旁边贯通 —— 组内几道题看起来才是「一串」。 -->
+            <View
+                android:id="@+id/vDivider"
+                style="@style/FbDivider"
+                android:layout_marginTop="@dimen/fb_space_20"
+                android:background="@color/fb_question_divider" />
         </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/materialContent"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/fb_space_12"
-            android:orientation="vertical" />
-    </LinearLayout>
-
-    <!-- ===== 题目行：题号 + 题型 + 三图标 ===== -->
-    <LinearLayout
-        android:id="@+id/questionActionBar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingStart="@dimen/fb_content_padding_h"
-        android:paddingTop="@dimen/fb_space_20"
-        android:paddingEnd="@dimen/fb_content_padding_h"
-        android:paddingBottom="@dimen/fb_space_4">
-
-        <TextView
-            android:id="@+id/tvIndex"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:includeFontPadding="false"
-            android:textColor="@color/fb_text_title"
-            android:textSize="@dimen/fb_question_text_size"
-            tools:text="106." />
-
-        <TextView
-            android:id="@+id/tvType"
-            style="@style/FbTag"
-            android:layout_marginStart="@dimen/fb_space_4"
-            tools:text="单选题" />
-
-        <!-- 待补答案：导入时这道题就没有标准答案 -->
-        <TextView
-            android:id="@+id/tvPending"
-            style="@style/FbTagWarning"
-            android:layout_marginStart="@dimen/fb_space_4"
-            android:text="@string/pending_answer"
-            android:visibility="gone"
-            tools:visibility="visible" />
-
-        <View
-            android:layout_width="0dp"
-            android:layout_height="1dp"
-            android:layout_weight="1" />
-
-        <!-- 标记（细线星）/ 笔（手写标注，长按写笔记）/ 收藏（星） -->
-        <ImageView
-            android:id="@+id/btnMark"
-            android:layout_width="@dimen/fb_bar_item_width"
-            android:layout_height="@dimen/fb_bar_item_width"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/action_mark"
-            android:padding="4dp"
-            android:src="@drawable/ic_fb_star_outline" />
-
-        <ImageView
-            android:id="@+id/btnScratch"
-            android:layout_width="@dimen/fb_bar_item_width"
-            android:layout_height="@dimen/fb_bar_item_width"
-            android:layout_marginStart="@dimen/fb_bar_item_gap"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/action_ink_edit"
-            android:padding="4dp"
-            android:src="@drawable/ic_fb_edit" />
-
-        <ImageView
-            android:id="@+id/btnFavorite"
-            android:layout_width="@dimen/fb_bar_item_width"
-            android:layout_height="@dimen/fb_bar_item_width"
-            android:layout_marginStart="@dimen/fb_bar_item_gap"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/action_favorite"
-            android:padding="4dp"
-            android:src="@drawable/ic_fb_star" />
-    </LinearLayout>
-
-    <!-- ===== 题干 ===== -->
-    <TextView
-        android:id="@+id/tvStem"
-        style="@style/FbStem"
-        android:layout_marginTop="@dimen/fb_space_16"
-        android:paddingStart="@dimen/fb_content_padding_h"
-        android:paddingEnd="@dimen/fb_content_padding_h"
-        tools:text="2025年1-11月，B市大中型重点企业研发费用中工业企业占比同比约：" />
-
-    <!-- ===== 选项 ===== -->
-    <LinearLayout
-        android:id="@+id/optionsBox"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="@dimen/fb_space_12"
-        android:orientation="vertical" />
-
-    <!-- ===== 笔记 ===== -->
-    <TextView
-        android:id="@+id/tvNote"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="@dimen/fb_content_padding_h"
-        android:layout_marginTop="@dimen/fb_space_8"
-        android:layout_marginEnd="@dimen/fb_content_padding_h"
-        android:background="@drawable/bg_fb_note"
-        android:lineSpacingExtra="3dp"
-        android:padding="@dimen/fb_space_12"
-        android:textColor="@color/fb_text_tertiary"
-        android:textSize="@dimen/fb_text_body_sm"
-        android:visibility="gone"
-        tools:text="笔记：注意区分前瞻性与创新性"
-        tools:visibility="visible" />
-
-    <!-- ===== 作答小结 + 解析（交卷后 / 练习模式即时判分后才有）=====
-         版式见 view_fb_answer_block.xml：正确答案 / 你的答案 左右两栏 + 结果 / 解析正文 -->
-    <include
-        android:id="@+id/answerBlock"
-        layout="@layout/view_fb_answer_block"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="@dimen/fb_content_padding_h"
-        android:layout_marginTop="@dimen/fb_space_12"
-        android:layout_marginEnd="@dimen/fb_content_padding_h" />
-
-    <!-- ===== 题间分隔线（白底通铺靠它分题） ===== -->
-    <View
-        android:id="@+id/vDivider"
-        style="@style/FbDivider"
-        android:layout_marginTop="@dimen/fb_space_20"
-        android:background="@color/fb_question_divider" />
+    </FrameLayout>
 </LinearLayout>

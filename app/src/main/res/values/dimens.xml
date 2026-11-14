@@ -137,6 +137,26 @@
     <dimen name="fb_option_row_padding_start">16dp</dimen>
     <dimen name="fb_option_text_gap">10dp</dimen>
 
+    <!-- ==================== ④ 卷面树形结构（材料 → 小题） ====================
+         题块左侧留白里让出一条「树栏」：脊线画在栏中间，材料 / 题号各有节点圆点。
+         题目文字仍从原来的 fb_content_padding_h 处起排，算式：
+             fb_tree_rail_w + fb_tree_content_pad_start = fb_content_padding_h
+         三档（手机 / sw600 / sw720）都满足，见各自的 dimens 覆盖值。 -->
+    <!-- 树栏宽度（脊线左右可用的空档） -->
+    <dimen name="fb_tree_rail_w">16dp</dimen>
+    <!-- 脊线中心距题块左边 -->
+    <dimen name="fb_tree_rail_x">8dp</dimen>
+    <!-- 脊线粗细 -->
+    <dimen name="fb_tree_rail_line">2dp</dimen>
+    <!-- 节点圆点直径 -->
+    <dimen name="fb_tree_node_size">8dp</dimen>
+    <!-- 树栏右侧到内容的留白（22 - 16 = 6） -->
+    <dimen name="fb_tree_content_pad_start">6dp</dimen>
+    <!-- 材料节点卡（内嵌灰块）内侧留白 -->
+    <dimen name="fb_tree_panel_pad">10dp</dimen>
+    <!-- 选项行起始留白：与题干左边界对齐（压在树栏右侧那一栏里） -->
+    <dimen name="fb_tree_option_pad_start">6dp</dimen>
+
     <!-- 答题卡 -->
     <dimen name="fb_card_num_size">40dp</dimen>
     <dimen name="fb_card_num_pad">4dp</dimen>

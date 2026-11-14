@@ -91,4 +91,13 @@
     <dimen name="fb_empty_offset">80dp</dimen>
     <dimen name="fb_nav_h">60dp</dimen>
     <dimen name="fb_nav_icon">24dp</dimen>
+
+    <!-- ===== 卷面树栏（16 + 6 = 22 的手机档在这里放大到 20 + 12 = 32） ===== -->
+    <dimen name="fb_tree_rail_w">20dp</dimen>
+    <dimen name="fb_tree_rail_x">10dp</dimen>
+    <dimen name="fb_tree_rail_line">2dp</dimen>
+    <dimen name="fb_tree_node_size">10dp</dimen>
+    <dimen name="fb_tree_content_pad_start">12dp</dimen>
+    <dimen name="fb_tree_panel_pad">12dp</dimen>
+    <dimen name="fb_tree_option_pad_start">12dp</dimen>
 </resources>

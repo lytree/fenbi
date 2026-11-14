@@ -10,4 +10,10 @@
     <dimen name="fb_content_padding_h">40dp</dimen>
     <dimen name="fb_option_row_padding_start">26dp</dimen>
 
+    <!-- 树栏同一算式：24 + 16 = 40 -->
+    <dimen name="fb_tree_rail_w">24dp</dimen>
+    <dimen name="fb_tree_rail_x">12dp</dimen>
+    <dimen name="fb_tree_content_pad_start">16dp</dimen>
+    <dimen name="fb_tree_option_pad_start">16dp</dimen>
+
 </resources>

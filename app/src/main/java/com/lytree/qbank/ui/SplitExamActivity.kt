@@ -424,7 +424,19 @@ class SplitExamActivity : AppCompatActivity() {
             val card = ItemSplitQuestionBinding.inflate(inflater, binding.questionList, false)
             card.tvNum.text = "${i + 1 + indexOffset}."
             card.tvType.text = q.type.label
-            card.tvStem.text = q.stem
+            // 题干里夹的图片摘到图区渲染，文字仍留在 TextView（与主卷面同一套口径）
+            val stem = MaterialRenderer.splitInline(q.stem)
+            card.tvStem.text = stem.text
+            card.tvStem.visibility = if (stem.text.isBlank()) android.view.View.GONE else android.view.View.VISIBLE
+            if (stem.hasImages) {
+                card.stemMedia.visibility = android.view.View.VISIBLE
+                MaterialRenderer.renderOptionImages(
+                    this, card.stemMedia, stem.images, night = false, maxHeightDp = 360f
+                )
+            } else {
+                card.stemMedia.visibility = android.view.View.GONE
+                card.stemMedia.removeAllViews()
+            }
 
             val multi = q.type == com.lytree.qbank.data.model.QuestionType.MULTI ||
                 q.type == com.lytree.qbank.data.model.QuestionType.UNCERTAIN

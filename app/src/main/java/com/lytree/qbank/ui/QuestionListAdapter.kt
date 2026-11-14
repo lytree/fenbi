@@ -3,6 +3,7 @@ package com.lytree.qbank.ui
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
+import com.lytree.qbank.R
 import com.lytree.qbank.data.model.PaperStructure
 import com.lytree.qbank.data.model.Question
 import com.lytree.qbank.databinding.ItemQuestionPageBinding
@@ -56,8 +57,18 @@ class QuestionListAdapter(
         onInkClicked = onInkClicked,
         onNoteClicked = onNoteClicked,
         onAnswerChanged = onAnswerChanged,
-        onMaterialExpand = onMaterialExpand
+        onMaterialExpand = onMaterialExpand,
+        // 长材料收起来先看题，再展开对数据——树上那个 disclosure 箭头点下去就是这件事
+        onMaterialToggle = { q -> toggleMaterial(q) }
     )
+
+    /**
+     * 已收起的材料组（元素是**组首题在整卷里的下标**）。
+     *
+     * 只放在适配器里、不落库：折叠是「这一次翻卷子的临时状态」，
+     * 下次进来还是一屏材料全长展开——不然用户会以为材料丢了。
+     */
+    private val collapsedGroups = HashSet<Int>()
 
     class VH(val binding: ItemQuestionPageBinding) : RecyclerView.ViewHolder(binding.root)
 
@@ -76,10 +87,23 @@ class QuestionListAdapter(
 
     override fun onBindViewHolder(holder: VH, position: Int) {
         val ctx = holder.binding.root.context
+        val q = questions[position]
+        // 本题在卷面树上的位置：「材料组」内才有脊线，组首还多一个材料节点
+        val group = structure.groupAt(position)
+        val inTree = group?.isMaterialGroup == true && !hideAllMaterials
+        val rail = if (inTree && group != null) {
+            QuestionCardBinder.RailMark(
+                above = position > group.startIndex,
+                below = position < group.endIndex - 1,
+                materialNode = position == group.startIndex
+            )
+        } else {
+            null
+        }
         QuestionCardBinder.bind(
             b = holder.binding,
             position = position + indexOffset,
-            q = questions[position],
+            q = q,
             answers = answers,
             marked = marked,
             favorites = favorites,
@@ -93,7 +117,7 @@ class QuestionListAdapter(
             // 后面的题接着往下排（对齐参考应用的连续卷面）
             hideMaterial = hideAllMaterials || !structure.isGroupStart(position),
             // 「弹出材料」只给一材料多题的组留入口（组内只有一题时材料在卡上已完整显示）
-            materialGroupSize = structure.groupOf(questions[position])?.count ?: 1,
+            materialGroupSize = group?.count ?: 1,
             // 大类说明卡：同一个大类只在首题出现一次（对齐参考应用的「资料分析 (20题)」）
             moduleHeader = if (hideModuleHeaders) {
                 null
@@ -101,8 +125,24 @@ class QuestionListAdapter(
                 structure.sectionAt(position)
                     ?.takeIf { structure.isSectionStart(position) }
                     ?.let { ModuleHeaders.headerOf(ctx, it) }
-            }
+            },
+            rail = rail,
+            materialLabel = if (inTree && group != null) {
+                ctx.getString(R.string.tree_material_label, structure.materialOrdinal(group))
+            } else {
+                null
+            },
+            materialCollapsed = inTree && group != null &&
+                position == group.startIndex && group.startIndex in collapsedGroups
         )
+    }
+
+    /** 收起 / 展开一则材料：只有组首那张卡上有材料正文，重绑它一个就够 */
+    private fun toggleMaterial(q: Question) {
+        val group = structure.groupOf(q) ?: return
+        if (!group.isMaterialGroup) return
+        if (!collapsedGroups.remove(group.startIndex)) collapsedGroups.add(group.startIndex)
+        notifyItemChanged(group.startIndex)
     }
 
     companion object {

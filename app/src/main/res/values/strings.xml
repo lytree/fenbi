@@ -124,6 +124,13 @@
     <string name="material_pop_out">弹出材料</string>
     <string name="material_collapse">收起材料</string>
 
+    <!-- ===== 卷面树形结构（材料 → 小题） ===== -->
+    <!-- 材料节点标题：「材料 2」——同一模块里的第几则材料 -->
+    <string name="tree_material_label">材料 %1$d</string>
+    <!-- 材料节点上的题量：「3 题」 -->
+    <string name="tree_material_count">%1$d 题</string>
+    <string name="tree_material_expand">展开材料</string>
+
     <!-- ===== 模块说明卡（卷面里「资料分析 (20题)」那一块） ===== -->
     <string name="module_title_fmt">%1$s (%2$d题)</string>
     <string name="module_desc_data_analysis">所给出的图、表、文字或综合性资料均有若干个问题要你回答。你应根据资料提供的信息进行分析、比较、计算和判断处理。</string>

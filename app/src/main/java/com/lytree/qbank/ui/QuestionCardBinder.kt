@@ -67,7 +67,7 @@ object QuestionCardBinder {
         b.tvModuleDesc.visibility = if (header.desc.isBlank()) View.GONE else View.VISIBLE
     }
 
-    /** 卡片上的四个交互回调，由各适配器在构造时注入 */
+    /** 卡片上的交互回调，由各适配器在构造时注入 */
     class Callbacks(
         val onMarkToggle: (Question) -> Unit,
         val onFavoriteToggle: (Question) -> Unit,
@@ -77,7 +77,23 @@ object QuestionCardBinder {
         val onNoteClicked: (Question) -> Unit,
         val onAnswerChanged: (Question) -> Unit,
         /** 材料右上角「弹出材料」：把材料单独放大展示 */
-        val onMaterialExpand: ((Question) -> Unit)? = null
+        val onMaterialExpand: ((Question) -> Unit)? = null,
+        /** 点材料标题栏：收起 / 展开材料正文（不传 = 不给折叠入口） */
+        val onMaterialToggle: ((Question) -> Unit)? = null
+    )
+
+    /**
+     * 本题卡在「材料组」这条树枝上的位置（见 [TreeRailView]）。
+     *
+     * 三件事分开说，调用方（[QuestionListAdapter]）只按结构填，不用关心怎么画：
+     * - [above]：顶边要不要把脊线接进来（组内非首题）；
+     * - [below]：底边要不要继续往下连（组内非末题）；
+     * - [materialNode]：本卡是不是组首、材料头算不算一个节点。
+     */
+    class RailMark(
+        val above: Boolean,
+        val below: Boolean,
+        val materialNode: Boolean
     )
 
     fun bind(
@@ -119,7 +135,16 @@ object QuestionCardBinder {
          * 右上角「标记 / 笔 / 收藏」也没有承接动作，直接不显示。
          * 其余版式、字号、判分着色一律与答题页相同——复习页就是要跟答题页长得一模一样。
          */
-        readOnly: Boolean = false
+        readOnly: Boolean = false,
+        /**
+         * 树脊：本卡在「材料 → 小题」这条树枝上的位置。
+         * null 表示不参与树形卷面（普通单题 / 分屏右栏 / 复习页），左侧那条线不画。
+         */
+        rail: RailMark? = null,
+        /** 材料节点标题里的序号（「材料 2」）；null 时退回光秃秃的「材料」 */
+        materialLabel: String? = null,
+        /** 材料正文是否已收起：标题栏照留，正文不占地方（折叠状态由适配器持有） */
+        materialCollapsed: Boolean = false
     ) {
         val ctx = b.root.context
         val res = ctx.resources
@@ -207,7 +232,11 @@ object QuestionCardBinder {
         b.btnFavorite.visibility = actionVisibility
 
         // ---- 题干（字号随「更多」面板缩放；基准 16sp / 额外行距 7dp）----
-        b.tvStem.text = q.stem
+        // 题干里可能夹图（图形推理、言语的材料图）：图片摘到 stemMedia 里渲染，
+        // 文字留在 TextView 上——这样字号缩放、行距、笔迹锚点（取题干顶边）全都还是原来那套。
+        val stem = MaterialRenderer.splitInline(q.stem)
+        b.tvStem.text = stem.text
+        b.tvStem.visibility = if (stem.text.isBlank()) View.GONE else View.VISIBLE
         b.tvStem.setTextColor(
             ContextCompat.getColor(
                 ctx, if (night) R.color.fb_night_text_body else R.color.fb_text_body
@@ -215,21 +244,23 @@ object QuestionCardBinder {
         )
         b.tvStem.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f * fontScale)
         b.tvStem.setLineSpacing(7f * density * fontScale, 1f)
+        if (stem.hasImages) {
+            b.stemMedia.visibility = View.VISIBLE
+            MaterialRenderer.renderOptionImages(
+                ctx, b.stemMedia, stem.images, night, maxHeightDp = STEM_IMAGE_MAX_HEIGHT_DP
+            )
+        } else {
+            b.stemMedia.visibility = View.GONE
+            b.stemMedia.removeAllViews()
+        }
 
         // ---- 材料 ----
-        // 对齐参考应用：材料块在卡片顶部通栏展示（白底、无内嵌灰卡），整块随卡片滚动；
+        // 树形卷面里「材料」是父节点：标签栏（材料 N · 几题 · 折叠箭头）+ 浅灰面板正文。
         // 同一则材料的后续题不再重复渲染（由适配器算好 hideMaterial 传进来）
-        if (q.material.isNotBlank() && !hideMaterial) {
+        val showMaterial = q.material.isNotBlank() && !hideMaterial
+        if (showMaterial) {
             b.materialBox.visibility = View.VISIBLE
-            b.materialBox.setBackgroundColor(android.graphics.Color.TRANSPARENT)
-            b.tvMaterialTag.setBackgroundResource(
-                if (night) R.drawable.bg_fb_material_tag_night else R.drawable.bg_fb_material_tag
-            )
-            b.tvMaterialTag.setTextColor(
-                ContextCompat.getColor(
-                    ctx, if (night) R.color.fb_night_tag_text else R.color.fb_type_tag_text
-                )
-            )
+            bindMaterialHead(b, q, materialLabel, materialGroupSize, materialCollapsed, night, cb)
             // 「弹出材料」：窄屏里材料被卡宽压着，表格 / 图表都看不清，单独弹出来看。
             // 但只有**一则材料带多道小题**才留这个入口——单题材料在卡上已完整展开，
             // 弹出等于把同一段材料再看一遍；分屏右栏（onMaterialExpand = null）同理不留。
@@ -243,11 +274,21 @@ object QuestionCardBinder {
                 b.icMaterialExpand.setColorFilter(metaColor)
                 b.btnMaterialExpand.setOnClickListener { cb.onMaterialExpand?.invoke(q) }
             }
-            MaterialRenderer.render(ctx, b.materialContent, q.material, night)
+            if (materialCollapsed) {
+                // 收起时不留正文（连渲染都不做：长材料里的图表、配图很吃内存）
+                b.materialContent.removeAllViews()
+            } else {
+                MaterialRenderer.render(ctx, b.materialContent, q.material, night)
+            }
         } else {
             b.materialBox.visibility = View.GONE
             b.materialContent.removeAllViews()
         }
+
+        // ---- 树脊 ----
+        // 只有「材料组」里的题才画：材料头一个实心节点，题号行一个空心节点，
+        // 组内几道题共用一条竖线（组首 / 组中 / 组尾的接线方式见 RailMark）。
+        bindRail(b, showMaterial, rail, night)
 
         // ---- 选项 ----
         b.optionsBox.removeAllViews()
@@ -262,6 +303,91 @@ object QuestionCardBinder {
         } else {
             AnswerBlock.hide(b.answerBlock)
         }
+    }
+
+    // ---------------- 材料节点 / 树脊 ----------------
+
+    /** 题干配图的最高高度：比选项图（240dp）高一档，比材料图（420dp）矮一档 */
+    private const val STEM_IMAGE_MAX_HEIGHT_DP = 360f
+
+    /**
+     * 材料节点标题栏：`● 材料 2 · 3 题 … ⤢ 弹出材料 ⌄`。
+     *
+     * 整行可点 = 收起 / 展开材料正文（[Callbacks.onMaterialToggle] 非空时才有这个入口）。
+     * 箭头朝下表示「正文在下、已展开」，朝右表示「已收起」——树上的 disclosure 三角，
+     * 用 chevron 是这套设计系统里唯一的折叠语言（首页试卷树也是它）。
+     */
+    private fun bindMaterialHead(
+        b: ItemQuestionPageBinding,
+        q: Question,
+        label: String?,
+        groupSize: Int,
+        collapsed: Boolean,
+        night: Boolean,
+        cb: Callbacks
+    ) {
+        val ctx = b.root.context
+        b.tvMaterialTag.text = label ?: ctx.getString(R.string.tag_material)
+        b.tvMaterialTag.setBackgroundResource(
+            if (night) R.drawable.bg_fb_material_tag_night else R.drawable.bg_fb_material_tag
+        )
+        b.tvMaterialTag.setTextColor(
+            ContextCompat.getColor(
+                ctx, if (night) R.color.fb_night_tag_text else R.color.fb_type_tag_text
+            )
+        )
+
+        // 题量只在「一则材料带多道小题」时写出来；一材料一题重复「1 题」纯属噪音
+        b.tvMaterialCount.text = ctx.getString(R.string.tree_material_count, groupSize)
+        b.tvMaterialCount.visibility = if (groupSize > 1) View.VISIBLE else View.GONE
+        b.tvMaterialCount.setTextColor(
+            ContextCompat.getColor(
+                ctx, if (night) R.color.fb_night_text_meta else R.color.fb_text_meta
+            )
+        )
+
+        b.materialPanel.setBackgroundResource(
+            if (night) R.drawable.bg_fb_material_panel_night else R.drawable.bg_fb_material_panel
+        )
+        b.materialPanel.visibility = if (collapsed) View.GONE else View.VISIBLE
+
+        val canToggle = cb.onMaterialToggle != null
+        b.btnMaterialToggle.visibility = if (canToggle) View.VISIBLE else View.GONE
+        if (canToggle) {
+            // 不用动画：重绑时直接落到目标角度，免得每次滑回来都「转一下」
+            b.btnMaterialToggle.rotation = if (collapsed) -90f else 0f
+            b.btnMaterialToggle.contentDescription = ctx.getString(
+                if (collapsed) R.string.tree_material_expand else R.string.material_collapse
+            )
+            b.materialHead.setOnClickListener { cb.onMaterialToggle?.invoke(q) }
+            b.materialHead.isClickable = true
+        } else {
+            b.materialHead.setOnClickListener(null)
+            b.materialHead.isClickable = false
+        }
+    }
+
+    /**
+     * 把树脊交给 [TreeRailView] 画。
+     *
+     * 节点顺序就是纵向顺序：材料头在上、题号行在下；两者之间的线由组件自己连。
+     * 不属于材料组（[rail] 为 null）时传空列表——组件什么都不画，但**栏位留着**，
+     * 卷面里普通题与材料组题的正文左边界才不会跳来跳去。
+     */
+    private fun bindRail(
+        b: ItemQuestionPageBinding,
+        showMaterial: Boolean,
+        rail: RailMark?,
+        night: Boolean
+    ) {
+        if (rail == null) {
+            b.treeRail.bind(emptyList(), false, false, night)
+            return
+        }
+        val nodes = ArrayList<TreeRailView.Node>(2)
+        if (rail.materialNode && showMaterial) nodes += TreeRailView.Node(b.materialHead, true)
+        nodes += TreeRailView.Node(b.questionActionBar, false)
+        b.treeRail.bind(nodes, rail.above, rail.below, night)
     }
 
     // ---------------- 选项 ----------------
@@ -427,7 +553,7 @@ object QuestionCardBinder {
         val dm = res.displayMetrics
         val inflater = LayoutInflater.from(ctx)
         val gap = (8 * dm.density).toInt()
-        val padStart = if (applyRowPadding) res.getDimensionPixelSize(R.dimen.fb_option_row_padding_start) else 0
+        val padStart = if (applyRowPadding) res.getDimensionPixelSize(R.dimen.fb_tree_option_pad_start) else 0
         val padEnd = if (applyRowPadding) res.getDimensionPixelSize(R.dimen.fb_content_padding_h) else 0
         val padV = res.getDimensionPixelSize(R.dimen.fb_option_row_padding_v)
         val count = q.options.size.takeIf { it > 0 } ?: 1

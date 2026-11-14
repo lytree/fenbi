@@ -167,6 +167,22 @@ class PaperStructure(source: List<Question>) {
     fun isSectionStart(questionIndex: Int): Boolean =
         sectionAt(questionIndex)?.startIndex == questionIndex
 
+    /**
+     * 「材料 2」里的那个 2：这一则材料在所属大类里是第几份。
+     *
+     * 只数**真带材料的组**——同一模块里夹着的普通单题不该把材料序号顶上去
+     * （「资料分析」里 5 则材料 + 若干单题，用户心里数的是材料，不是题块）。
+     */
+    fun materialOrdinal(group: Group): Int {
+        val section = sections.getOrNull(group.sectionIndex) ?: return 1
+        var n = 0
+        for (g in section.groups) {
+            if (g.isMaterialGroup) n++
+            if (g.startIndex == group.startIndex) return n.coerceAtLeast(1)
+        }
+        return 1
+    }
+
     companion object {
         /**
          * 大类命名归一：`行测·资料分析` / `行测-资料分析` / `行测/资料分析` → `资料分析`；

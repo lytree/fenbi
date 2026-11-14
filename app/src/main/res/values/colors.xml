@@ -107,6 +107,12 @@
     <color name="fb_module_title">#1B2126</color>
     <!-- 材料区 / 表格 / 分屏左栏 -->
     <color name="fb_material_bg">#FAFBFC</color>
+    <!-- 材料节点卡：比卷面白底深半档的灰蓝，树形卷面里它是一块「父节点」容器 -->
+    <color name="fb_material_panel">#F6F8FB</color>
+    <!-- 树脊线 / 题目节点描边：比分割线深一点，浅底上要看得见 -->
+    <color name="fb_tree_rail">#C9D4E4</color>
+    <!-- 题目节点圆心：与卷面同色，脊线穿过去时被它截断，节点才立得起来 -->
+    <color name="fb_tree_node_fill">#FFFFFF</color>
     <color name="fb_split_bg">#FAFBFC</color>
     <color name="fb_table_header_bg">#F3F5F8</color>
     <color name="fb_table_line">#D8DCE3</color>
@@ -193,6 +199,11 @@
     <color name="fb_night_tag_text">#7EA3FF</color>
     <!-- 材料 / 笔记 / 解析等次级面板 -->
     <color name="fb_night_material_bg">#1E2025</color>
+    <!-- 材料节点卡（夜间）：比卷面亮半档，跟白天的「浅灰块」同一个位置关系 -->
+    <color name="fb_night_material_panel">#1F2227</color>
+    <!-- 树脊线（夜间）：暗底上压成一条几乎看不出的线，节点靠主蓝点住 -->
+    <color name="fb_night_tree_rail">#3E4450</color>
+    <color name="fb_night_tree_node_fill">#17181C</color>
     <color name="fb_night_note_bg">#1F2126</color>
     <!-- 选项圆形徽标未选态 -->
     <color name="fb_night_circle_stroke">#4A4E58</color>

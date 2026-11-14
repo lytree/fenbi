@@ -39,6 +39,14 @@
         android:layout_marginTop="@dimen/fb_space_12"
         tools:text="2025年1-11月，B市大中型重点企业研发费用中工业企业占比同比约：" />
 
+    <!-- 题干配图（写法见 MaterialRenderer.splitInline）；分屏页与主卷面同一套口径 -->
+    <LinearLayout
+        android:id="@+id/stemMedia"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone" />
+
     <LinearLayout
         android:id="@+id/optionsBox"
         android:layout_width="match_parent"

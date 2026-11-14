@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 材料节点卡（夜间）：比卷面亮半档，与日间的「浅灰块」保持同一个位置关系 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/fb_night_material_panel" />
+    <corners android:radius="@dimen/fb_radius_card" />
+</shape>

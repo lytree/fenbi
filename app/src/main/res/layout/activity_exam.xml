@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   答题页布局：
-  · 顶栏 44dp：X(28dp) / 闹钟+倒计时 / 居中标题「试卷名（题数）」/ 下载·交卷(图标+文字)·答题卡·更多
+  · 顶栏 44dp：闹钟+倒计时 / 居中标题「试卷名（题数）」/ 下载·交卷(图标+文字)·答题卡·更多
+  · 左上角不挂关闭图标：退出本卷走系统返回手势 / 返回键（onBackPressed → confirmExit）
   · 右侧动作项 28dp，节距 15dp
   · 内容：整页白底通铺的连续卷面，题与题之间只有一条 0.5dp 细线
   · 无底部操作条（粉笔把上一题/下一题交给滚动与答题卡）
@@ -25,29 +26,15 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
 
-        <!-- 关闭 -->
-        <ImageView
-            android:id="@+id/btnClose"
-            android:layout_width="@dimen/fb_bar_item_width"
-            android:layout_height="@dimen/fb_bar_item_width"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/action_close"
-            android:padding="3dp"
-            android:src="@drawable/ic_fb_close"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent" />
-
-        <!-- 倒计时 -->
+        <!-- 倒计时（左上角只留它：退出本卷交给系统返回手势 / 返回键，顶栏不再挂关闭图标） -->
         <LinearLayout
             android:id="@+id/timerPill"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="@dimen/fb_space_8"
             android:gravity="center_vertical"
             android:orientation="horizontal"
             app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintStart_toEndOf="@id/btnClose"
+            app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent">
 
             <ImageView

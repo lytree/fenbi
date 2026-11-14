@@ -587,6 +587,45 @@ object MaterialRenderer {
             .filter { it.isNotEmpty() }
             .joinToString("\n")
 
+    /**
+     * **题干 / 解析正文**里的图片：写法与选项同一套（`![说明](地址)`、`[图片](地址)`、整行就是地址），
+     * 但保留原文的分段与换行——题干常常是多段文字，按行 trim 会把段落挤成一坨。
+     *
+     * 返回值与 [splitOption] 同型：文字走原来的 TextView（字号缩放、行距、笔迹锚点都不变），
+     * 图片另外排在图区里。这样「题干里带一张图」不必把整块题面换成材料渲染器。
+     */
+    fun splitInline(text: String): OptionContent {
+        if (text.isBlank()) return OptionContent("", emptyList())
+        val images = ArrayList<OptionImage>(2)
+        var rest = MD_IMAGE_INLINE.replace(text) { m ->
+            images += OptionImage(m.groupValues[2].trim(), m.groupValues[1].trim())
+            ""
+        }
+        rest = BRACKET_IMAGE_INLINE.replace(rest) { m ->
+            images += OptionImage(m.groupValues[1].trim())
+            ""
+        }
+        var plain = rest
+        if (images.isEmpty()) {
+            // 整段就是一个图片地址（图形推理的题干常这么写）：没有别的文字才算
+            val rows = plain.lines().map { it.trim() }.filter { it.isNotEmpty() }
+            if (rows.size == 1) {
+                parseImageLine(rows[0])?.let {
+                    images += OptionImage(it.src, it.alt)
+                    plain = ""
+                }
+            }
+        }
+        return OptionContent(tidyParagraphs(plain), images)
+    }
+
+    /** 段间空行压成一个、去掉首尾空行；段内的换行原样保留 */
+    private fun tidyParagraphs(raw: String): String =
+        raw.replace("\r\n", "\n")
+            .replace(Regex("[ \\t]+\\n"), "\n")
+            .replace(Regex("\\n{3,}"), "\n\n")
+            .trim()
+
     /** 列表 / 导入预览用的纯文字：图片引用收成「［图片］」，别把一长串路径糊到界面上 */
     fun optionSummary(text: String): String {
         val c = splitOption(text)
