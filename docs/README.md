@@ -23,11 +23,19 @@
 
 | 目录 | 内容 |
 |---|---|
+| [app/](../app/) | Android 工程（Kotlin + 原生 View + ViewBinding） |
 | [templates/](../templates/) | 可直接导入的空模板：试卷模板（xlsx）+ 答案 / 解析模板 + 试卷包模板 |
 | [tools/webeditor/](../tools/webeditor/) | 局域网编辑器前端（Vue 3 + TSX），构建产物打进 `app/src/main/assets/webeditor/` |
 | [tools/qbank-mcp/](../tools/qbank-mcp/) | 题库 MCP server（Node + TS），把局域网接口暴露成 AI 工具 |
 | [sample/](../sample/) | 有内容的完整示例（行测 11 题、资料分析试卷包） |
 | [docs/images/](images/) | 文档配图 |
+
+示例与模板由 JSON 数据源生成（重新生成并回读校验）：
+
+```bash
+node tools/make_samples.js        # 重新生成 app 内置示例
+node templates/make_templates.js  # 重新生成模板并回读校验
+```
 
 ## 三条常见路径
 
