@@ -80,3 +80,6 @@ tools/webeditor/.pnpm-debug.log
 tools/qbank-mcp/node_modules/
 tools/qbank-mcp/dist/
 tools/qbank-mcp/.pnpm-debug.log
+
+# ---- C# 版 spike（实验工程，只留源码与设计稿）----
+spike/**/obj/

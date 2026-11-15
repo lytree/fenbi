@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net11.0-android</TargetFramework>
+    <SupportedOSPlatformVersion>24</SupportedOSPlatformVersion>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- 与原生版（com.lytree.qbank）共存，同机安装不互相覆盖 -->
+    <ApplicationId>com.lytree.qbank.exp</ApplicationId>
+    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>0.1.0</ApplicationDisplayVersion>
+    <RootNamespace>QBank.App</RootNamespace>
+    <!-- 实验期先不用全量裁剪：ClosedXML 靠反射读 OpenXml，全裁剪会静默失效 -->
+    <TrimMode>partial</TrimMode>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\QBank.Core\QBank.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AndroidAsset Include="Assets\**" />
+  </ItemGroup>
+
+</Project>
