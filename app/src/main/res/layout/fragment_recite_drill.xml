@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  聚焦背诵页：从大纲里某一条进来，一条一屏。
+
+  这一页只做一件事——把当前这条背下来。所以没有三段切换、没有筛选、没有列表：
+  上面是「在哪一组」的面包屑 + 序号，中间是一张卡（轻点揭示、长按偷看、左右滑切条），
+  下面两个按钮就是全部的决策：「还不熟」跳过、「背会了」标已背并进下一条。
+  背完一组后卡片换成小结（共几条 / 已背几条），可以直接再背一遍或回大纲。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    style="@style/FbPage">
+
+    <com.lytree.qbank.ui.FbTitleBar
+        android:id="@+id/titleBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
+
+    <!-- 面包屑（在哪一组）+ 序号：切条时只动这两行 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="@dimen/fb_page_pad"
+        android:paddingTop="2dp"
+        android:paddingEnd="@dimen/fb_page_pad"
+        android:paddingBottom="@dimen/fb_space_8">
+
+        <TextView
+            android:id="@+id/tvCrumb"
+            style="@style/FbCaption"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:maxLines="1"
+            tools:text="新思想 · 超格 · 政治理论考情介绍+新思想导论" />
+
+        <TextView
+            android:id="@+id/tvCounter"
+            style="@style/FbGroupTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/fb_space_12"
+            tools:text="3 / 42" />
+    </LinearLayout>
+
+    <!-- 本组进度：细条，比数字更直观地知道还剩多少 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="3dp"
+        android:orientation="horizontal">
+
+        <View
+            android:id="@+id/progressFill"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="0"
+            android:background="@color/fb_primary" />
+
+        <View
+            android:id="@+id/progressRest"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1000"
+            android:background="@color/fb_divider" />
+    </LinearLayout>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:paddingStart="@dimen/fb_page_pad"
+        android:paddingTop="@dimen/fb_space_12"
+        android:paddingEnd="@dimen/fb_page_pad"
+        android:paddingBottom="@dimen/fb_space_16">
+
+        <FrameLayout
+            android:id="@+id/card"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@drawable/bg_fb_card"
+            android:clickable="true"
+            android:focusable="true">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:padding="@dimen/fb_card_pad">
+
+                <!-- 正文可纵向滚动：长条目揭示后可能超过一屏，不能截断 -->
+                <ScrollView
+                    android:id="@+id/cardScroll"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:fillViewport="true"
+                    android:scrollbars="none">
+
+                    <TextView
+                        android:id="@+id/tvText"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:lineSpacingExtra="8dp"
+                        android:textColor="@color/fb_text_primary"
+                        android:textSize="@dimen/fb_text_card_title"
+                        tools:text="习近平新时代中国特色社会主义思想是马克思主义基本原理同中国具体实际相结合、同中华优秀传统文化相结合的重大成果。" />
+                </ScrollView>
+
+                <TextView
+                    android:id="@+id/tvHint"
+                    style="@style/FbCaption"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/fb_space_8"
+                    android:gravity="center"
+                    android:text="@string/drill_hint_reveal" />
+            </LinearLayout>
+        </FrameLayout>
+
+        <!-- 一组背完：卡片换成小结，不另开页面 -->
+        <LinearLayout
+            android:id="@+id/doneBox"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@drawable/bg_fb_card"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="@dimen/fb_space_24"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/tvDoneTitle"
+                style="@style/FbSectionTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/drill_done_title" />
+
+            <TextView
+                android:id="@+id/tvDoneMsg"
+                style="@style/FbCaption"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/fb_space_8"
+                android:gravity="center"
+                tools:text="共 42 条 · 已背 40 条" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/fb_space_24"
+                android:orientation="horizontal">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnAgain"
+                    style="@style/FbGhostButton"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/fb_btn_h"
+                    android:layout_weight="1"
+                    android:text="@string/drill_again" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnBackOutline"
+                    style="@style/FbPrimaryButton"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/fb_btn_h"
+                    android:layout_marginStart="@dimen/fb_space_12"
+                    android:layout_weight="1"
+                    android:text="@string/drill_back_outline" />
+            </LinearLayout>
+        </LinearLayout>
+    </FrameLayout>
+
+    <!-- 底部决策条：左边跳过、右边标已背。整页只有这两个动作 -->
+    <LinearLayout
+        android:id="@+id/bottomBar"
+        style="@style/FbBottomBar"
+        android:orientation="horizontal">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnHard"
+            style="@style/FbGhostButton"
+            android:layout_width="0dp"
+            android:layout_height="@dimen/fb_btn_h"
+            android:layout_weight="1"
+            android:text="@string/drill_unknown" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnKnown"
+            style="@style/FbPrimaryButton"
+            android:layout_width="0dp"
+            android:layout_height="@dimen/fb_btn_h"
+            android:layout_marginStart="@dimen/fb_space_12"
+            android:layout_weight="1"
+            android:text="@string/drill_known" />
+    </LinearLayout>
+</LinearLayout>

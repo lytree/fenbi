@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 导图主题卡：标题行（书页号 + 章节名 + 分支数）+ 展开后的树（代码里按深度递归加行，分支可折叠） -->
+<!-- 导图主题卡：书页号 + 章节名 + 分支 / 要点统计，整行可点进图形化导图 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     style="@style/FbListCardLine"
@@ -61,18 +61,8 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="@dimen/fb_space_8"
             android:includeFontPadding="false"
-            android:text="▸"
+            android:text="›"
             android:textColor="@color/fb_text_meta"
-            android:textSize="@dimen/fb_text_tag" />
+            android:textSize="@dimen/fb_text_card_title" />
     </LinearLayout>
-
-    <LinearLayout
-        android:id="@+id/body"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:paddingStart="@dimen/fb_card_pad"
-        android:paddingEnd="@dimen/fb_card_pad"
-        android:paddingBottom="8dp"
-        android:visibility="gone" />
 </LinearLayout>

@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 大纲一级分支 = 一个内容标签：主色竖条 + 名称 + 条数 + 折叠箭头，整行可点 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="?attr/selectableItemBackground"
+    android:clickable="true"
+    android:focusable="true"
+    android:gravity="center_vertical"
+    android:minHeight="52dp"
+    android:orientation="horizontal"
+    android:paddingStart="@dimen/fb_page_pad"
+    android:paddingTop="@dimen/fb_space_12"
+    android:paddingEnd="@dimen/fb_space_12"
+    android:paddingBottom="@dimen/fb_space_8">
+
+    <View
+        android:layout_width="3dp"
+        android:layout_height="16dp"
+        android:layout_marginEnd="@dimen/fb_space_8"
+        android:background="@color/fb_primary" />
+
+    <TextView
+        android:id="@+id/tvTagName"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:includeFontPadding="false"
+        android:textColor="@color/fb_text_title"
+        android:textSize="@dimen/fb_text_card_title"
+        android:textStyle="bold"
+        tools:text="新思想" />
+
+    <TextView
+        android:id="@+id/tvTagMeta"
+        style="@style/FbCaption"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="@dimen/fb_space_8"
+        tools:text="128 / 550" />
+
+    <TextView
+        android:id="@+id/tvChevron"
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:gravity="center"
+        android:includeFontPadding="false"
+        android:text="▾"
+        android:textColor="@color/fb_text_meta"
+        android:textSize="@dimen/fb_text_item_sub" />
+</LinearLayout>

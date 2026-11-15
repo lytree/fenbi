@@ -133,12 +133,12 @@ class ReciteFragment : Fragment() {
                 getString(R.string.mindmap_entry)
             ) { openMindMap() }
         }
-        binding.titleBar.addIconAction(
-            R.drawable.ic_recite_catalog,
-            getString(R.string.recite_catalog_title)
-        ) { showCatalog() }
         fontAction = binding.titleBar.addTextAction("") { cycleFont() }
         fontAction.setTextColor(ContextCompat.getColor(context, R.color.fb_text_secondary))
+
+        // 范围入口就在筛选行的胶囊上（与词库页的胶囊同一个位置），顶栏不再重复放图标
+        binding.scopeChip.setOnClickListener { showCatalog() }
+        binding.favChip.setOnClickListener { applyFilter(categoryFilter, !favoriteOnly) }
 
         // 词库 / 政治 / 常识 三段切换：当前已在这一段，点另外两段把本页换掉
         LibrarySwitch.bind(
@@ -205,8 +205,14 @@ class ReciteFragment : Fragment() {
 
     /** 换到另一块背诵内容（政治 / 常识）：同上，仍留在「背诵」Tab 里 */
     private fun openRecite(target: ReciteSubject) {
+        // 政治换成了统一库的大纲页，本页只服务常识
+        val page = if (target == ReciteSubject.POLITICS) {
+            ReciteOutlineFragment()
+        } else {
+            newInstance(target)
+        }
         parentFragmentManager.beginTransaction()
-            .replace(R.id.container, newInstance(target))
+            .replace(R.id.container, page)
             .commit()
     }
 
@@ -221,7 +227,7 @@ class ReciteFragment : Fragment() {
 
     private fun render(animate: Boolean, forward: Boolean = true) {
         if (!isAdded) return
-        renderFilterChip()
+        renderFilterRow()
 
         val list = cardsInScope()
         if (list.isEmpty()) {
@@ -307,20 +313,29 @@ class ReciteFragment : Fragment() {
         }
     }
 
-    private fun renderFilterChip() {
-        val label = when {
-            categoryFilter != null && favoriteOnly ->
-                "${categoryName(categoryFilter)} · ${getString(R.string.recite_filter_favorite)}"
-            categoryFilter != null -> categoryName(categoryFilter)
-            favoriteOnly -> getString(R.string.recite_filter_favorite)
-            else -> null
-        }
-        binding.filterChip.isVisible = label != null
-        if (label != null) {
-            binding.filterChip.text = getString(R.string.recite_filter_fmt, label)
-            // chip 的 × 清掉筛选：回到默认的「全部考点」，chip 随之隐藏
-            binding.filterChip.setOnClickListener { applyFilter(null, false) }
-        }
+    /**
+     * 筛选行：左边「范围」胶囊常驻（点开考点范围面板）+「只看重点」开关胶囊，
+     * 右边「第几张 / 共几张」。与词库页的胶囊行同一套位置和样式。
+     */
+    private fun renderFilterRow() {
+        val scope = categoryFilter?.let { categoryName(it) }?.takeIf { it.isNotBlank() }
+        binding.scopeChip.text = scope ?: getString(R.string.recite_catalog_all)
+        styleChip(binding.scopeChip, on = scope != null)
+        styleChip(binding.favChip, on = favoriteOnly)
+    }
+
+    /** 胶囊两态：开 = 主蓝实心白字加粗，关 = 浅底次要色 */
+    private fun styleChip(chip: TextView, on: Boolean) {
+        chip.setBackgroundResource(
+            if (on) R.drawable.bg_fb_chip_selected else R.drawable.bg_fb_chip
+        )
+        chip.setTextColor(
+            ContextCompat.getColor(
+                requireContext(),
+                if (on) R.color.fb_text_on_primary else R.color.fb_text_secondary
+            )
+        )
+        chip.setTypeface(null, if (on) Typeface.BOLD else Typeface.NORMAL)
     }
 
     private fun emptyMessage(): CharSequence {

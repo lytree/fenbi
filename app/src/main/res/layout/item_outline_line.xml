@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  大纲条目行：卡片是「正文 + 右侧已背圆点」，点正文揭示 / 收起答案，点圆点标记已背
+  （分开是为了防误触——读的时候点正文不该改状态）。导图行按 depth 缩进，depth=0 带主色短竖条。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/row"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="?attr/selectableItemBackground"
+    android:clickable="true"
+    android:focusable="true"
+    android:gravity="top"
+    android:orientation="horizontal"
+    android:paddingEnd="@dimen/fb_space_4">
+
+    <View
+        android:id="@+id/indentBar"
+        android:layout_width="2dp"
+        android:layout_height="14dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginEnd="@dimen/fb_space_8"
+        android:background="@color/fb_primary_ring"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/tvText"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:lineSpacingExtra="4dp"
+        android:paddingTop="9dp"
+        android:paddingEnd="@dimen/fb_space_8"
+        android:paddingBottom="9dp"
+        android:textColor="@color/fb_text_primary"
+        android:textSize="@dimen/fb_text_item_title"
+        tools:text="习近平新时代中国特色社会主义思想是马克思主义基本原理同中国具体实际相结合、同中华优秀传统文化相结合的重大成果。" />
+
+    <!-- 已背标记：40dp 点击区，空心 = 未背，实心主色 = 已背 -->
+    <TextView
+        android:id="@+id/tvDot"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center"
+        android:includeFontPadding="false"
+        android:text="○"
+        android:textColor="@color/fb_text_hint"
+        android:textSize="@dimen/fb_text_card_title" />
+</LinearLayout>

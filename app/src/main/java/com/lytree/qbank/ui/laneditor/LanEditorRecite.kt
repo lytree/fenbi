@@ -21,6 +21,10 @@ import java.util.Locale
  *   [ReciteRepository.saveUserCatalog]，网页保存还要过手机确认（[LanEditorConfirm]）。
  *
  * 词库（词条 CRUD）在 [LanEditorWords]，那边是逐条小改，不在这里。
+ *
+ * ⚠️ 政治这一块**改了暂时不生效**：政治页已经改读统一库（`assets/recite_library.json`，
+ * 由 `tools/build_library.cs` 合成），这里写的是旧的 `recite_politics.json` 覆盖文件。
+ * 等 P1 把编辑器接到 `recite_library_user.json` 再放开，别以为这是 bug。
  */
 object LanEditorRecite {
 

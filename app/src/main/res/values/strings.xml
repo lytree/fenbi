@@ -367,7 +367,7 @@
     <string name="mindmap_title">思维导图</string>
     <string name="mindmap_entry">思维导图</string>
     <string name="mindmap_empty">导图内容还没整理好</string>
-    <string name="mindmap_intro_fmt">共 %1$d 个板块 %2$d 个主题 · 点主题展开，点分支收起</string>
+    <string name="mindmap_intro_fmt">共 %1$d 个板块 %2$d 个主题 · 点主题看图，双指缩放</string>
     <string name="mindmap_section_all">全部（%1$d）</string>
     <string name="mindmap_section_chip_fmt">%1$s %2$d</string>
     <string name="mindmap_section_meta_fmt">%1$d 主题 · %2$d 条</string>
@@ -384,6 +384,49 @@
     <string name="mindmap_pair_right">内涵</string>
     <string name="mindmap_pair_wrong">这一组不对，再想想</string>
     <string name="mindmap_pair_close">关闭</string>
+    <string name="mindmap_graph_hint">双指缩放 · 拖动平移 · 点节点展开或收起</string>
+    <string name="mindmap_graph_meta_fmt">%1$s · %2$d 个分支 · %3$d 条要点</string>
+    <string name="mindmap_graph_fit">适应屏幕</string>
+    <string name="mindmap_graph_expand">展开全部</string>
+    <string name="mindmap_graph_collapse">只看主干</string>
+
+    <!-- 政治理论大纲页（内容库里板块 / 章节已取消，只剩标签分支） -->
+    <string name="lib_progress_fmt">已背 %1$d / %2$d</string>
+    <string name="lib_tag_count_fmt">%1$d 条</string>
+    <string name="lib_tag_remain_fmt">剩 %1$d 条</string>
+    <string name="lib_only_unmastered">只看未背</string>
+    <string name="lib_untagged">未归类</string>
+    <string name="lib_empty">内容还没整理好</string>
+    <string name="lib_blind">遮答预览</string>
+    <string name="lib_blind_on">遮答预览已开 · 点行揭示</string>
+    <string name="lib_blind_off">遮答预览已关 · 整篇可读</string>
+    <string name="lib_more">更多</string>
+    <string name="lib_graph">鸟瞰导图</string>
+    <string name="lib_reset_done">重置已背进度</string>
+    <string name="lib_reset_msg">会清掉 %1$d 条已背标记，内容本身不受影响。</string>
+    <string name="lib_reset_none">还没有标记过已背</string>
+    <string name="lib_reset_ok">已重置</string>
+    <string name="lib_mark_done">标为已背</string>
+    <string name="lib_mark_undone">取消已背</string>
+
+    <!-- 聚焦背诵页（大纲里点某一条进来，一条一屏） -->
+    <string name="drill_title">背诵</string>
+    <string name="drill_counter_fmt">%1$d / %2$d</string>
+    <string name="drill_unknown">还不熟</string>
+    <string name="drill_known">背会了</string>
+    <string name="drill_next">下一条</string>
+    <string name="drill_hint_reveal">轻点揭示 · 长按偷看</string>
+    <string name="drill_hint_revealed">轻点收起</string>
+    <string name="drill_hint_peeking">松手隐藏</string>
+    <string name="drill_hint_mode">答案常显</string>
+    <string name="drill_hint_plain">整条读一遍 · 左右滑切条</string>
+    <string name="drill_done_title">这一组背完了</string>
+    <string name="drill_done_msg">共 %1$d 条 · 已背 %2$d 条</string>
+    <string name="drill_again">再背一遍</string>
+    <string name="drill_back_outline">回大纲</string>
+    <string name="drill_empty">这一条内容找不到了，可能资产更新过</string>
+    <string name="drill_continue">继续上次背诵</string>
+    <string name="drill_last_none">还没背过，先展开一支挑一条</string>
     <string name="page_lan_editor">局域网编辑器</string>
     <string name="lan_editor_title">电脑上加题</string>
     <string name="lan_editor_sub">手机开一个网页服务，同一 Wi-Fi 的电脑浏览器加题，发布后直接进 App</string>

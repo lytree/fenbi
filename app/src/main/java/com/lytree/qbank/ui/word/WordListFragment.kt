@@ -25,6 +25,7 @@ import com.lytree.qbank.databinding.FragmentWordsBinding
 import com.lytree.qbank.ui.LibrarySwitch
 import com.lytree.qbank.ui.Refreshable
 import com.lytree.qbank.ui.recite.ReciteFragment
+import com.lytree.qbank.ui.recite.ReciteOutlineFragment
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -130,8 +131,14 @@ class WordListFragment : Fragment(), Refreshable {
 
     /** 换成背诵页（政治 / 常识）：同样留在「背诵」Tab 里，三块内容共用一条切换条 */
     private fun openRecite(subject: ReciteSubject) {
+        // 政治现在是一棵大纲（统一库 + 标签分支），常识仍是填空卡流
+        val page = if (subject == ReciteSubject.POLITICS) {
+            ReciteOutlineFragment()
+        } else {
+            ReciteFragment.newInstance(subject)
+        }
         parentFragmentManager.beginTransaction()
-            .replace(R.id.container, ReciteFragment.newInstance(subject))
+            .replace(R.id.container, page)
             .commit()
     }
 

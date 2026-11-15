@@ -20,42 +20,50 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content" />
 
-    <!-- 背诵模式的开关在顶栏（睁眼图标），这里只放当前范围与进度 -->
+    <!--
+      筛选行：与词库页同一条口径——左边一排胶囊、右边计数。
+      背诵模式的开关在顶栏（睁眼图标），范围面板从「范围」胶囊进。
+    -->
     <LinearLayout
         android:id="@+id/modeRow"
         android:layout_width="match_parent"
-        android:layout_height="32dp"
+        android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingStart="@dimen/fb_page_pad"
-        android:paddingEnd="@dimen/fb_page_pad">
+        android:paddingTop="2dp"
+        android:paddingEnd="@dimen/fb_page_pad"
+        android:paddingBottom="8dp">
+
+        <!-- 当前范围：点开考点范围面板；有筛选时变主蓝实心，一眼看出不是「全部考点」 -->
+        <TextView
+            android:id="@+id/scopeChip"
+            style="@style/FbChip"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:maxWidth="180dp"
+            android:text="@string/recite_catalog_all"
+            tools:text="四中全会·十五五" />
+
+        <!-- 只看重点：开关式胶囊，与面板里的那一项同一个状态 -->
+        <TextView
+            android:id="@+id/favChip"
+            style="@style/FbChip"
+            android:layout_marginStart="6dp"
+            android:text="@string/recite_filter_favorite" />
 
         <Space
             android:layout_width="0dp"
             android:layout_height="1dp"
             android:layout_weight="1" />
 
-        <!-- 当前筛选范围：点一下即清掉 -->
-        <TextView
-            android:id="@+id/filterChip"
-            style="@style/FbTag"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:maxWidth="150dp"
-            android:textColor="@color/fb_primary"
-            android:visibility="gone"
-            tools:text="四中全会·十五五 ×"
-            tools:visibility="visible" />
-
         <!-- 当前第几张 / 本范围共几张，滑一张动一下 -->
         <TextView
             android:id="@+id/tvProgress"
+            style="@style/FbGroupTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="10dp"
-            android:includeFontPadding="false"
-            android:textColor="@color/fb_text_meta"
-            android:textSize="@dimen/fb_text_tag"
+            android:paddingEnd="10dp"
             tools:text="12 / 86" />
     </LinearLayout>
 

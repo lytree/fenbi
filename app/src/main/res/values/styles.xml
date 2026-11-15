@@ -74,6 +74,31 @@
         <item name="android:focusable">true</item>
     </style>
 
+    <!-- 导图画布底部的操作文字（适应屏幕 / 展开全部 / 连线配对） -->
+    <style name="FbGraphAction">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginEnd">4dp</item>
+        <item name="android:paddingStart">10dp</item>
+        <item name="android:paddingTop">7dp</item>
+        <item name="android:paddingEnd">10dp</item>
+        <item name="android:paddingBottom">7dp</item>
+        <item name="android:background">?attr/selectableItemBackground</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+        <item name="android:textColor">@color/fb_text_secondary</item>
+        <item name="android:textSize">@dimen/fb_text_body_sm</item>
+    </style>
+
+    <!-- 全屏对话框（导图查看）：铺满屏幕、不浮起、底色就是页面底色 -->
+    <style name="FbFullScreenDialog" parent="Theme.QBank">
+        <item name="android:windowIsFloating">false</item>
+        <item name="android:windowBackground">@color/fb_page_bg</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+    </style>
+
     <!-- ============================================================
          2. 分割线
          ============================================================ -->

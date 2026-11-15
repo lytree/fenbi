@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  政治理论大纲页（政治这一段的主页，取代原来的「考点卡 + 导图」两个入口）
+
+  一棵大纲到底：一级分支 = 内容标签（可折叠），分支里按「来源」做视觉分段（不可折叠，
+  它只是阅读节奏，不是又把分组加回来），再下面是条目行——卡片点一下揭示答案，
+  导图行按层级缩进。原始板块 / 章节分组已经在资产里取消了。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    style="@style/FbPage">
+
+    <com.lytree.qbank.ui.FbTitleBar
+        android:id="@+id/titleBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
+
+    <!-- 词库 / 政治 / 常识 三段切换：本页是「政治」那一段 -->
+    <include
+        android:id="@+id/librarySwitch"
+        layout="@layout/view_library_switch"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
+
+    <!-- 进度 + 只看未背：进度按条算（卡片与导图行一起数） -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="@dimen/fb_page_pad"
+        android:paddingTop="2dp"
+        android:paddingEnd="@dimen/fb_page_pad"
+        android:paddingBottom="@dimen/fb_space_8">
+
+        <TextView
+            android:id="@+id/tvProgress"
+            style="@style/FbGroupTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            tools:text="已背 128 / 2216" />
+
+        <TextView
+            android:id="@+id/chipUnmastered"
+            style="@style/FbChip"
+            android:text="@string/lib_only_unmastered" />
+    </LinearLayout>
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/list"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:clipToPadding="false"
+        android:paddingBottom="@dimen/fb_space_16"
+        android:scrollbars="none" />
+
+    <TextView
+        android:id="@+id/emptyText"
+        style="@style/FbEmptyText"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:text="@string/lib_empty"
+        android:visibility="gone" />
+</LinearLayout>
