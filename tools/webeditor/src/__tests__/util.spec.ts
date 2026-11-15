@@ -19,6 +19,7 @@ const q = (patch: Partial<Question>): Question => ({
   year: '',
   score: '',
   keywords: '',
+  optionLayout: '',
   ...patch,
 })
 

@@ -29,6 +29,11 @@ export interface Question {
   year: string
   score: string | number
   keywords: string
+  /**
+   * 选项排布（**每题独立**，只有网页编辑器能改）：
+   * 空串 = 单列 1×4（默认）；'2x2' = 两列两行。只影响文字选项。
+   */
+  optionLayout: string
   id?: number
 }
 

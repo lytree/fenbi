@@ -1337,7 +1337,32 @@ button {
   > label { @include label; color: var(--text-tertiary); min-width: 40px; }
 }
 
-.opts { display: grid; gap: 8px; margin-top: 12px; }
+/* 选项排布（每题）：标题行右侧的小胶囊，点一下在 单列 1×4 / 两列 2×2 之间切 */
+.opts-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+
+  .lbl { font-size: 14px; color: var(--text-secondary); }
+}
+
+.opt-layout {
+  margin-left: auto;
+  height: 24px;
+  padding: 0 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--bg-container);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: none;
+
+  &:hover { color: var(--primary); border-color: var(--primary-border); background: var(--bg-container); }
+  &.on { color: var(--primary); border-color: var(--primary-border); background: var(--primary-bg); }
+}
+
+.opts { display: grid; gap: 8px; margin-top: 8px; }
 
 .opt {
   display: grid;
@@ -1672,22 +1697,6 @@ body.pane-dragging {
 
   .pv-head-t { font-size: 14px; font-weight: 600; color: var(--text); }
   .pv-head-n { @include label; color: var(--text-tertiary); }
-
-  /* 选项布局开关：页眉右侧的小胶囊，点一下在 1×4 / 2×2 之间切 */
-  .pv-layout {
-    margin-left: auto;
-    height: 22px;
-    padding: 0 8px;
-    border: 1px solid var(--border);
-    border-radius: 11px;
-    background: var(--bg-container);
-    color: var(--text-secondary);
-    font-size: 12px;
-    cursor: pointer;
-    transition: border-color .2s, color .2s;
-
-    &:hover { border-color: var(--primary-border); color: var(--primary); }
-  }
 }
 
 .pv-q {

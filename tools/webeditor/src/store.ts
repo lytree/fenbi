@@ -101,26 +101,7 @@ export const state = reactive({
   resourceSetId: 0,
   focused: null as number | null,
   groups: [] as Group[],
-  /** 卷面预览的选项排布：false = 单列（1×4，对齐 App 默认），true = 两列（2×2） */
-  previewTwoCol: false,
 })
-
-/** 卷面预览选项布局：纯显示偏好，存在本机，不参与发布 */
-const PREVIEW_TWO_COL_KEY = 'webeditor.preview_two_col'
-try {
-  state.previewTwoCol = localStorage.getItem(PREVIEW_TWO_COL_KEY) === '1'
-} catch {
-  // 隐私模式禁了 localStorage：用默认的单列就行
-}
-
-export function setPreviewTwoCol(two: boolean) {
-  state.previewTwoCol = two
-  try {
-    localStorage.setItem(PREVIEW_TWO_COL_KEY, two ? '1' : '0')
-  } catch {
-    // 同上，存不了就只影响这一次会话
-  }
-}
 
 export const ui = reactive({
   toastText: '',
@@ -217,6 +198,8 @@ export function blankQuestion(type: QuestionType = 'single'): Question {
     year: '',
     score: '',
     keywords: '',
+    /** 选项排布：'' = 单列 1×4（默认），'2x2' = 两列 */
+    optionLayout: '',
     _issues: null,
   }
 }
@@ -441,7 +424,13 @@ export async function openSet(id: number, opts: { force?: boolean } = {}): Promi
     name: p.title,
     sheets: (p.sheets ?? []).map((s) => ({
       name: s.name,
-      questions: (s.questions ?? []).map((q) => ({ ...q, _uid: nextUid(), _issues: null })),
+      // 老数据里没有 optionLayout：补成 ''（单列），后面每题切换时才有初值可读
+      questions: (s.questions ?? []).map((q) => ({
+        ...q,
+        optionLayout: q.optionLayout ?? '',
+        _uid: nextUid(),
+        _issues: null,
+      })),
     })),
   }
   state.resources = []
@@ -2090,7 +2079,13 @@ export async function maybeRestoreDraft(): Promise<boolean> {
     name: d.name,
     sheets: d.sheets.map((s) => ({
       name: s.name,
-      questions: (s.questions ?? []).map((q) => ({ ...q, _uid: nextUid(), _issues: null })),
+      // 老数据里没有 optionLayout：补成 ''（单列），后面每题切换时才有初值可读
+      questions: (s.questions ?? []).map((q) => ({
+        ...q,
+        optionLayout: q.optionLayout ?? '',
+        _uid: nextUid(),
+        _issues: null,
+      })),
     })),
   }
   if (!state.paper.sheets.length) state.paper.sheets = [{ name: '试卷', questions: [] }]

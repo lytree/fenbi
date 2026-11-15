@@ -34,6 +34,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         createV11Tables(db)
         createV13Tables(db)
         createV14Columns(db)
+        createV15Columns(db)
     }
 
     /**
@@ -60,7 +61,8 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
                 source TEXT DEFAULT '',
                 year TEXT DEFAULT '',
                 score REAL DEFAULT 1.0,
-                keywords TEXT DEFAULT ''
+                keywords TEXT DEFAULT '',
+                option_layout TEXT NOT NULL DEFAULT ''
             )""".trimIndent()
         )
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_q_knowledge ON questions(knowledge)")
@@ -146,6 +148,8 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         if (oldVersion < 13) createV13Tables(db)
         // v14：导入组可归档——首页默认不显示，网页编辑器收进「归档」区，题目与记录都保留
         if (oldVersion < 14) createV14Columns(db)
+        // v15：选项排布按题存（空串 = 单列 1×4，'2x2' = 两列），只由网页编辑器写
+        if (oldVersion < 15) createV15Columns(db)
     }
 
     /** v3：收藏表 + 答题进度表（对齐参考应用「收藏跨会话保留 / 中途退出可续做」） */
@@ -327,6 +331,18 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
     private fun createV14Columns(db: SQLiteDatabase) {
         if (!hasColumn(db, "paper_sets", "archived")) {
             db.execSQL("ALTER TABLE paper_sets ADD COLUMN archived INTEGER NOT NULL DEFAULT 0")
+        }
+    }
+
+    /**
+     * v15：**选项排布按题存**。
+     *
+     * 空串 = 单列 1×4（和以前一样），`'2x2'` = 两列两行。默认空串，老题升级后版式不变；
+     * 值只由网页编辑器写，App 只负责按题目自己的值渲染。
+     */
+    private fun createV15Columns(db: SQLiteDatabase) {
+        if (!hasColumn(db, "questions", "option_layout")) {
+            db.execSQL("ALTER TABLE questions ADD COLUMN option_layout TEXT NOT NULL DEFAULT ''")
         }
     }
 
@@ -712,6 +728,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         put("year", q.year)
         put("score", q.score)
         put("keywords", q.keywords)
+        put("option_layout", q.optionLayout)
     }
 
     /** 某份试卷的题目，按卷面顺序 */
@@ -780,7 +797,8 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         source = c.getString(c.getColumnIndexOrThrow("source")) ?: "",
         year = c.getString(c.getColumnIndexOrThrow("year")) ?: "",
         score = c.getDouble(c.getColumnIndexOrThrow("score")),
-        keywords = c.getString(c.getColumnIndexOrThrow("keywords")) ?: ""
+        keywords = c.getString(c.getColumnIndexOrThrow("keywords")) ?: "",
+        optionLayout = c.getString(c.getColumnIndexOrThrow("option_layout")) ?: ""
     )
 
     // ---------------- Paper ----------------
@@ -2127,8 +2145,11 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
          *
          * v14：`paper_sets` 加 `archived` 列（组归档）。纯增列、老数据默认 0，
          * 老 App 读到这一版备份会拒绝恢复（数据本身不会丢）。
+         *
+         * v15：`questions` 加 `option_layout` 列（选项排布按题存）。纯增列、默认空串 = 单列，
+         * 老 App 同样只是拒绝恢复这一版备份，不会读坏数据。
          */
-        const val DB_VERSION = 14
+        const val DB_VERSION = 15
 
         /** 重练卷统一挂的组名 */
         private const val RETRY_SET_TITLE = "错题重练"

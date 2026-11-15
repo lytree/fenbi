@@ -77,8 +77,16 @@ data class Question(
     val year: String = "",
     val score: Double = 1.0,
     /** 主观题得分关键词，";" 分隔 */
-    val keywords: String = ""
+    val keywords: String = "",
+    /**
+     * 选项排布（**每题独立**，只有网页编辑器能改）：
+     * 空串 = 单列 1×4（默认）；[VALUE_TWO_COLUMN] = 两列 2×2。
+     * 只影响文字选项，全图选项仍走 `buildImageOptionsRow` 的横排。
+     */
+    val optionLayout: String = ""
 ) {
+    /** 这题的选项是不是两列（2×2）排 */
+    val twoColumnOptions: Boolean get() = optionLayout == VALUE_TWO_COLUMN
     /** 该题是否为"有标准答案键"的客观题 */
     fun answerKeys(): Set<String> =
         answer.split(',', ' ', '，', '、', ';', '；', '|')
@@ -103,6 +111,9 @@ data class Question(
     }
 
     companion object {
+        /** [optionLayout] 的唯一非默认值：两列 2×2（其余为空串 = 单列 1×4） */
+        const val VALUE_TWO_COLUMN = "2x2"
+
         fun optionsFromJson(s: String): List<Option> {
             if (s.isBlank()) return emptyList()
             return try {

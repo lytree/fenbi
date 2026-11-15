@@ -145,6 +145,8 @@ class LanEditorStore(private val context: Context) {
         put("year", q.year)
         put("score", q.score)
         put("keywords", q.keywords)
+        // 选项排布按题存：'' = 单列 1×4，'2x2' = 两列；网页按这题自己的值渲染与切换
+        put("optionLayout", q.optionLayout)
         put("id", q.id)
     }
 
@@ -471,7 +473,13 @@ class LanEditorStore(private val context: Context) {
             source = o.optString("source").trim(),
             year = o.optString("year").trim(),
             score = score,
-            keywords = o.optString("keywords").trim()
+            keywords = o.optString("keywords").trim(),
+            // 只认一个非默认值，别的脏值一律当单列，免得前端传错把版式搞坏
+            optionLayout = if (o.optString("optionLayout").trim() == Question.VALUE_TWO_COLUMN) {
+                Question.VALUE_TWO_COLUMN
+            } else {
+                ""
+            }
         )
     }
 

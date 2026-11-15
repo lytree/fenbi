@@ -132,6 +132,7 @@ function parseChunk(lines: string[]): Question | null {
     year: '',
     score: '',
     keywords: '',
+    optionLayout: '',
     _issues: null,
   }
 }

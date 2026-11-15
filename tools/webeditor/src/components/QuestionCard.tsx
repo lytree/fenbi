@@ -231,6 +231,16 @@ export default defineComponent({
                   </div>
                 </div>
 
+                <div class="opts-head">
+                  <span class="lbl">选项</span>
+                  <button
+                    class={['opt-layout', q.optionLayout === '2x2' && 'on']}
+                    title="只改这一题：单列 1×4 / 两列 2×2，手机答题页按这个值排"
+                    onClick={() => updateQuestion(q, 'optionLayout', q.optionLayout === '2x2' ? '' : '2x2')}
+                  >
+                    {q.optionLayout === '2x2' ? '两列 2×2' : '单列 1×4'}
+                  </button>
+                </div>
                 <div class="opts">
                   {q.options.map((o) => (
                     <div class="opt">

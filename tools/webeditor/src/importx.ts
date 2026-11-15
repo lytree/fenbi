@@ -213,6 +213,7 @@ function blankFrom(row: Record<string, string>): Question {
     year: row.year ?? '',
     score: row.score ?? '',
     keywords: row.keywords ?? '',
+    optionLayout: '',
     _issues: null,
   }
 }
