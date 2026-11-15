@@ -45,15 +45,12 @@ class LanEditorService : Service() {
 
         fun pageUrl(): String = server?.pageUrl.orEmpty()
 
-        /** 随机写入口令：只在**没设密码**时给 AI 用 */
-        fun accessKey(): String = server?.accessKey.orEmpty()
-
         /**
-         * AI 配置里该写的口令：设了密码就是密码（重启也不变），没设才用随机码。
-         * 两种情况都能让 MCP 直发；网页端永远拿不到这串。
+         * AI 配置里该写的口令：设了密码就是密码，没设就是固定保存的那串。
+         * 两种情况都能让 MCP 直发，且配一次长期有效。
          */
         fun aiKey(context: Context): String =
-            LanEditorPrefs.password(context) ?: accessKey()
+            LanEditorPrefs.password(context) ?: LanEditorPrefs.mcpKey(context)
 
         fun lastRequest(): String = server?.lastRequest.orEmpty()
 

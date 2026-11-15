@@ -31,7 +31,7 @@ import kotlin.random.Random
  * - **写库确认**：就算登录了，**发布 / 回滚 / 删除**也只登记一条请求，
  *   必须由手机上的 [LanEditorActivity] 点「确认」才动库（见 [LanEditorConfirm]）。
  * - AI（MCP）在请求头里带 `X-Lan-Key: <密码>` 才允许直接发布——批量导入没法每步都点手机。
- *   没设密码时那串是每次启动随机生成的 accessKey。key 不出现在任何 URL 上。
+ *   没设密码时那串是首次生成后固定保存的 accessKey（见 [LanEditorPrefs.mcpKey]）。key 不出现在任何 URL 上。
  * - 服务由前台 Service 拉起，用户点停止或杀掉 App 就结束，不会常驻。
  *
  * 线程模型：一个 accept 线程 + 4 个 worker，连接级 `Connection: close`，
@@ -66,10 +66,11 @@ class LanEditorServer(
      * 给 AI 客户端用的写入口令（请求头 `X-Lan-Key`）。
      *
      * 用户在手机上设了访问密码之后，**密码本身就是写入口令**（见 [hasAccessKey]）；
-     * 没设密码时用这串每次启动新生成的随机码，AI 配置照样能直发。
-     * 两者都不进 URL，网页端拿不到，所以网页的写操作一律要过手机确认。
+     * 没设密码时用这串固定口令——首次生成后存在 [LanEditorPrefs]，服务重启也不变，
+     * 手机上复制过的 MCP 配置可以一直用。
+     * 口令不进 URL，所以网页的写操作一律要过手机确认（[handleMcpInfo] 除外，它只把配置发给网页）。
      */
-    val accessKey: String = randomToken()
+    val accessKey: String = LanEditorPrefs.mcpKey(context)
 
     /** 网页登录口令；null = 没设密码，打开地址就能用 */
     @Volatile
@@ -768,27 +769,20 @@ class LanEditorServer(
     }
 
     /**
-     * MCP 配置给网页复制。安全边界想清楚再开：
+     * MCP 配置给网页复制。
      *
-     * - **设了密码**：写入 key 就是那串密码，能打开这个接口的人必然刚输过密码——
-     *   给它不扩大任何泄露面，等于手机上「复制 MCP 配置」的一次远程版。
-     * - **没设密码**：整站对同一 Wi-Fi 开放，这时候把写入口令发给网页
-     *   等于把题库写权限交给局域网里的任何人，所以明确拒绝。
+     * 写入口令是固定的：设了访问密码就是那串密码，没设就是 [accessKey]
+     * （首次生成后不再变）。所以网页拿一次就能长期用，不用每次重启回来重抄。
+     * 没设密码时网页也能取到写入口令——这类部署本来整站就对着同一 Wi-Fi 开放，
+     * 想要写权限只掌握在自己手里，请在手机上设一个访问密码。
      */
     private fun handleMcpInfo(): Resp {
-        val pwd = password
-        if (pwd == null) {
-            return jsonError(
-                403,
-                "没设访问密码时不能在这里取写入口令（整站开放，给了等于人人可写）。" +
-                    "用手机「局域网编辑器」页的「复制 MCP 配置」，或者先设一个访问密码。",
-            )
-        }
+        val key = password ?: accessKey
         return json(
             JSONObject()
                 .put("url", pageUrl)
-                .put("key", pwd)
-                .put("config", LanEditorMcpConfig.json(pageUrl, pwd))
+                .put("key", key)
+                .put("config", LanEditorMcpConfig.json(pageUrl, key))
         )
     }
 
@@ -861,7 +855,7 @@ class LanEditorServer(
      * AI 客户端的写入口令。
      *
      * 只认请求头，不认 query：口令进了 URL 就会出现在浏览器历史、日志、截图里。
-     * 认两种：用户设的固定密码（推荐，重启不变），以及没设密码时的随机 accessKey。
+     * 认两种：用户设的固定密码（推荐），以及没设密码时那串固定的 accessKey。
      */
     private fun hasAccessKey(req: Req): Boolean {
         val key = req.headers["x-lan-key"]?.trim().orEmpty()

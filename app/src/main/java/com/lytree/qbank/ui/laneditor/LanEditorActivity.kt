@@ -215,15 +215,16 @@ class LanEditorActivity : AppCompatActivity() {
     /**
      * 复制 AI 客户端（MCP）的配置。
      *
-     * 写入口令每次启动都变，手拼最容易漏 —— 这里直接把当前地址 + 口令拼好的整段 JSON
-     * 放进剪贴板，用户只要把 args 里的路径换成自己电脑上的位置。
+     * 写入口令固定不变（设了密码就是密码，没设就是首次生成后保存的那串），
+     * 这里把当前地址 + 口令拼成整段 JSON 放进剪贴板，
+     * 用户只要把 args 里的路径换成自己电脑上的位置，之后不用再回来重抄。
      */
     private fun copyMcp() {
         if (!LanEditorService.isRunning()) {
-            Toast.makeText(this, "先启动服务，配置里才会带上当前口令", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "先启动服务，配置里才会带上当前地址", Toast.LENGTH_SHORT).show()
             return
         }
-        val json = LanEditorMcpConfig.json(LanEditorService.pageUrl(), LanEditorService.accessKey())
+        val json = LanEditorMcpConfig.json(LanEditorService.pageUrl(), LanEditorService.aiKey(this))
         val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         cm.setPrimaryClip(ClipData.newPlainText("MCP 配置", json))
         Toast.makeText(this, "配置已复制，粘到客户端的 mcpServers 里", Toast.LENGTH_SHORT).show()
@@ -249,8 +250,8 @@ class LanEditorActivity : AppCompatActivity() {
         }
         binding.btnClearPassword.isEnabled = pwd != null
 
-        // AI 接入卡片：未启动时给一份带占位地址的样例，启动后换成真实地址 + 当前口令
-        // 设了密码就用密码（重启不变），没设才用每次启动生成的随机码
+        // AI 接入卡片：未启动时给一份带占位地址的样例，启动后换成真实地址 + 写入口令
+        // 设了密码就用密码，没设就用固定保存的那串（两者重启都不变）
         val mcp = LanEditorMcpConfig.json(url, if (running) LanEditorService.aiKey(this) else "")
         if (binding.tvMcp.text.toString() != mcp) binding.tvMcp.text = mcp
         binding.btnCopyMcp.isEnabled = running

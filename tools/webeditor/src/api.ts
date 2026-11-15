@@ -263,8 +263,8 @@ export const api = {
     request<{ ok: boolean; id: number }>(`/api/word?id=${id}`, { method: 'DELETE' }),
 
   /**
-   * MCP 配置（含写入口令）。只在「已设访问密码」时返回——那时 key 就是密码，
-   * 能打开网页的人本来就知道；没设密码服务端会 403，提示去手机上复制。
+   * MCP 配置（含写入口令）。口令固定不变：设了访问密码时就是密码，
+   * 没设时是手机首次生成后保存的那串，所以复制一次可以长期用。
    */
   mcpInfo: () =>
     request<{ url: string; key: string; config: string }>('/api/mcp'),

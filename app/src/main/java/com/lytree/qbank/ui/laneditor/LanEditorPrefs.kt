@@ -1,15 +1,17 @@
 package com.lytree.qbank.ui.laneditor
 
 import android.content.Context
+import kotlin.random.Random
 
 /**
- * 局域网编辑器的持久化设置：端口 + 访问密码。
+ * 局域网编辑器的持久化设置：端口 + 访问密码 + AI 写入口令。
  *
  * 为什么单独抽出来：以前口令是每次启动随机生成的，**重启就得重新复制链接**；
  * 现在密码由用户自己定、存在这里，网页登录和 AI 写入口令共用同一串，
- * 手机重启、服务重启都不用再改配置。
+ * 手机重启、服务重启都不用再改配置。没设密码时也有一个固定口令（[mcpKey]），
+ * 同样不会因为重启而变。
  *
- * 密码就明文躺在 App 私有目录的 SharedPreferences 里：这不是账号体系，
+ * 这些值就明文躺在 App 私有目录的 SharedPreferences 里：这不是账号体系，
  * 它保护的是「同一 Wi-Fi 下顺手打开地址的人」，不是拿到设备的人。
  * 系统备份会带走它——换机恢复后不用重设。
  */
@@ -18,6 +20,7 @@ object LanEditorPrefs {
     private const val PREFS = "lan_editor"
     private const val KEY_PORT = "port"
     private const val KEY_PASSWORD = "password"
+    private const val KEY_MCP_KEY = "mcp_key"
 
     const val DEFAULT_PORT = 8777
 
@@ -39,6 +42,25 @@ object LanEditorPrefs {
         prefs(context).edit().apply {
             if (value == null) remove(KEY_PASSWORD) else putString(KEY_PASSWORD, value)
         }.apply()
+    }
+
+    /**
+     * AI（MCP）写入口令，首次调用时生成后固定保存。
+     *
+     * 以前没设密码时这串是每次启动随机生成的，服务一重启配置就失效，
+     * AI 客户端那边要回来重新复制一遍；固定在本地之后，
+     * 手机上「复制 MCP 配置」和网页上的「复制 MCP」拿到的都是同一串，配一次长期有效。
+     */
+    @Synchronized
+    fun mcpKey(context: Context): String {
+        val prefs = prefs(context)
+        prefs.getString(KEY_MCP_KEY, null)?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+        val created = buildString {
+            val pool = "abcdefghijkmnpqrstuvwxyz23456789"
+            repeat(32) { append(pool[Random.nextInt(pool.length)]) }
+        }
+        prefs.edit().putString(KEY_MCP_KEY, created).apply()
+        return created
     }
 
     private fun prefs(context: Context) =

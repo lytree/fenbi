@@ -45,7 +45,8 @@ export default defineComponent({
     /**
      * 复制 MCP 配置（含写入口令）。
      *
-     * 复制成功直接提示；拿不到（没设密码 / 剪贴板被拦）就把配置弹出来让人手动抄。
+     * 口令是固定的（设了密码就是密码，没设就是手机首次生成后保存的那串），
+     * 复制一次可以长期用；剪贴板被拦时把配置弹出来让人手动抄。
      * key 不回显在按钮旁边：口令只落在剪贴板和一次性弹层里，不常驻页面。
      */
     const copyMcp = async () => {
@@ -61,11 +62,7 @@ export default defineComponent({
         )
       } catch (e) {
         const msg = e instanceof Error ? e.message : '拿不到 MCP 配置'
-        if (msg.includes('403') || msg.includes('不能在这里取')) {
-          toast(msg, 'err')
-        } else {
-          await showErrors('拿不到 MCP 配置', msg)
-        }
+        await showErrors('拿不到 MCP 配置', msg)
       }
     }
 
@@ -152,7 +149,7 @@ export default defineComponent({
           <div class="top-actions">
             <button
               class="ghost sm"
-              title="复制 AI（MCP）配置 JSON，含写入口令。需已在手机上设置访问密码并用它登录"
+              title="复制 AI（MCP）配置 JSON，含固定不变的写入口令，配一次可长期使用"
               onClick={() => void copyMcp()}
             >
               复制 MCP
