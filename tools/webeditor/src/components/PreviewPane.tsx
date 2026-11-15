@@ -4,7 +4,7 @@ import {
   ansSet, currentQuestions, focusQuestion, groupsOf, setPreviewTwoCol, state, TYPE_LABEL,
 } from '../store'
 import { esc } from '../util'
-import { renderInline, renderMaterial } from '../markdown'
+import { renderInline, renderMaterial, renderStem } from '../markdown'
 import { LEVEL_NONE, level1Of, level2Of } from '../xingce'
 
 /**
@@ -49,7 +49,8 @@ export default defineComponent({
 
       if (material) h += `<div class="pv-mat"><div class="mh">材料</div>${renderMaterial(material)}</div>`
 
-      h += `<div class="pv-stem">${renderInline(q.stem) || '<span class="pv-ph">（题干为空）</span>'}</div>`
+      // 题干里带表格时 renderStem 会排出真表格（和 App 的 renderStemRich 同一套口径）
+      h += `<div class="pv-stem">${renderStem(q.stem) || '<span class="pv-ph">（题干为空）</span>'}</div>`
 
       if (opts.length) {
         // 选项排布跟着右上角「选项：单列 / 两列」走，和 App 答题页「更多 → 选项布局」同一套口径

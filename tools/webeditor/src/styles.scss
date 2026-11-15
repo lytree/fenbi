@@ -3006,3 +3006,491 @@ body.pane-dragging {
   .rfield.two { grid-template-columns: 1fr; }
   .rtext { -webkit-line-clamp: 4; }
 }
+
+/* =============================================================================
+ * 思维导图（背诵模式里的第四块内容）
+ * 板块分段 → 主题卡片 → 按层级缩进的树；行内直接改字，右侧浮出层级操作
+ * ========================================================================== */
+
+.mm-section { margin-top: 20px; }
+
+.mm-section:first-child { margin-top: 0; }
+
+.mm-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 2px 8px;
+
+  .bar {
+    width: 3px;
+    height: 14px;
+    border-radius: 2px;
+    background: var(--primary);
+  }
+
+  .nm {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .mt {
+    font-size: 12px;
+    color: var(--text-tertiary);
+  }
+}
+
+.mm-card .mm-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.mm-body { padding-top: 2px; }
+
+.mm-tree {
+  margin-top: 12px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--line);
+}
+
+/* 一行一个节点。缩进按深度递进，跟 App 里同一套层级感 */
+.mm-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  border-radius: var(--radius-sm);
+
+  &.d0 { padding-left: 0; }
+  &.d1 { padding-left: 18px; }
+  &.d2 { padding-left: 36px; }
+  &.d3 { padding-left: 54px; }
+  &.d4 { padding-left: 72px; }
+
+  &:hover { background: var(--bg-fill); }
+  &:hover .mm-ops { opacity: 1; }
+}
+
+.mm-twist {
+  flex: none;
+  width: 18px;
+  height: 26px;
+  border: 0;
+  background: none;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+
+  &.leaf { cursor: default; color: var(--text-quaternary); }
+  &:hover:not(.leaf) { color: var(--primary); }
+}
+
+.mm-text {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 3px 4px;
+  resize: none;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  /* 现代浏览器按内容撑高；不支持的走 JS 的 scrollHeight 兜底 */
+  field-sizing: content;
+
+  &:focus {
+    outline: none;
+    background: var(--bg-elevated);
+    box-shadow: inset 0 0 0 1px var(--primary-border);
+  }
+}
+
+.mm-row.d0 .mm-text { font-weight: 600; color: var(--primary); }
+.mm-row.d1 .mm-text { font-weight: 600; }
+.mm-row.d3 .mm-text,
+.mm-row.d4 .mm-text { color: var(--text-secondary); font-size: 12.5px; }
+
+.mm-ops {
+  display: flex;
+  gap: 2px;
+  padding-top: 2px;
+  opacity: 0;
+  transition: opacity 0.12s;
+
+  button {
+    height: 20px;
+    padding: 0 5px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--bg-elevated);
+    color: var(--text-tertiary);
+    font: inherit;
+    font-size: 11px;
+    line-height: 1;
+    cursor: pointer;
+
+    &:hover { color: var(--primary); border-color: var(--primary-border); }
+    &:disabled { opacity: 0.35; cursor: default; }
+    &.danger:hover { color: var(--error); border-color: var(--error-border); }
+  }
+}
+
+.mm-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.mm-pairs {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
+}
+
+.mm-pairs-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+
+  > span:first-child {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  > span.hint { flex: 1; min-width: 0; }
+}
+
+.mm-pair {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) 18px minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+
+  .idx { font-size: 12px; color: var(--text-tertiary); text-align: right; }
+  .arrow { font-size: 12px; color: var(--text-tertiary); text-align: center; }
+
+  input {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--bg-layout);
+    color: var(--text);
+    font: inherit;
+    font-size: 12.5px;
+    padding: 5px 8px;
+    outline: none;
+
+    &:focus { border-color: var(--primary); }
+  }
+}
+
+@media (max-width: 900px) {
+  .mm-ops { opacity: 1; }
+  .mm-row.d3 { padding-left: 36px; }
+  .mm-row.d4 { padding-left: 44px; }
+}
+
+/* =============================================================================
+ * 背诵预览（背诵模式右栏）
+ * 词库 / 卡片 / 导图各一套只读版式，口径对齐 App：正文按段落排、表格是真表格、
+ * 卡片正反面可翻，导图带折叠与连线配对。
+ * ========================================================================== */
+
+.rcp {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.rcp-tip {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-tertiary);
+  margin-bottom: 12px;
+}
+
+.rcp-card {
+  background: var(--bg-container);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+}
+
+.rcp-empty {
+  padding: 40px 10px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
+.rcp-hint {
+  font-size: 12.5px;
+  color: var(--text-quaternary);
+}
+
+.rcp-hint-inline {
+  font-size: 12px;
+  font-style: normal;
+  color: var(--text-quaternary);
+}
+
+/* ---- 共用小块 ---- */
+
+.rcp-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+
+  .rcp-flip { margin-left: auto; }
+}
+
+.rcp-tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.rcp-rich {
+  margin-top: 10px;
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: var(--text);
+  word-break: break-word;
+}
+
+/* 段落：段距小一点，题面 / 释义读起来是一整块 */
+.rcp-p { margin: 0 0 5px; }
+.rcp-p:last-child { margin-bottom: 0; }
+
+/* 填空位：正面只给编号和下划线，背面填答案并高亮 */
+.rcp-blank {
+  display: inline-block;
+  min-width: 2.4em;
+  padding: 0 5px;
+  margin: 0 2px;
+  border-bottom: 1.5px solid var(--primary);
+  border-radius: 2px 2px 0 0;
+  color: var(--primary);
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: center;
+  vertical-align: baseline;
+
+  &.on {
+    background: var(--primary-bg);
+    color: var(--primary);
+    font-size: inherit;
+    font-weight: 600;
+  }
+
+  &.empty { color: var(--text-quaternary); border-bottom-color: var(--border-secondary); }
+}
+
+/* ---- 词库 ---- */
+
+.rcp-word {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+
+  b { font-size: 18px; font-weight: 600; color: var(--text); }
+}
+
+.rcp-line {
+  margin-top: 8px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+
+  .k {
+    margin-right: 6px;
+    color: var(--text-tertiary);
+  }
+}
+
+/* ---- 政治 / 常识卡片 ---- */
+
+.rcp-body {
+  margin-top: 12px;
+  font-size: 15px;
+  line-height: 1.75;
+  color: var(--text);
+  text-align: justify;
+  word-break: break-word;
+  cursor: pointer;
+
+  strong { font-weight: 600; }
+}
+
+.rcp-answers {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+
+  &.on { color: var(--text); }
+
+  .rcp-answer {
+    display: flex;
+    gap: 8px;
+    padding: 2px 0;
+
+    .ridx {
+      flex: none;
+      width: 16px;
+      text-align: right;
+      color: var(--text-tertiary);
+      font-variant-numeric: tabular-nums;
+    }
+  }
+}
+
+.rcp-note {
+  margin-top: 12px;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  background: var(--bg-layout);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-tertiary);
+}
+
+/* ---- 思维导图 ---- */
+
+.rcp-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+
+  .bar {
+    width: 3px;
+    height: 13px;
+    border-radius: 2px;
+    background: var(--primary);
+  }
+
+  .nm { font-size: 12.5px; color: var(--text-tertiary); }
+}
+
+.rcp-mm-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.rcp-tree { margin-top: 10px; }
+
+.rcp-node {
+  display: flex;
+  align-items: flex-start;
+
+  &.d0 { padding-left: 0; }
+  &.d1 { padding-left: 16px; }
+  &.d2 { padding-left: 32px; }
+  &.d3 { padding-left: 48px; }
+  &.d4 { padding-left: 64px; }
+}
+
+.rcp-twist {
+  flex: none;
+  width: 16px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-tertiary);
+  font-size: 10px;
+  line-height: 1.8;
+  cursor: pointer;
+
+  &.leaf { color: var(--text-quaternary); cursor: default; }
+  &:hover:not(.leaf) { color: var(--primary); }
+}
+
+.rcp-ntext {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  word-break: break-word;
+}
+
+.rcp-node.d0 .rcp-ntext { font-weight: 600; color: var(--primary); }
+.rcp-node.d1 .rcp-ntext { font-weight: 600; color: var(--text); }
+
+.rcp-pairs {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
+}
+
+.rcp-pairs-head {
+  margin-bottom: 8px;
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+}
+
+.rcp-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 16px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 5px;
+  padding: 5px 8px;
+  border-radius: var(--radius);
+  background: var(--bg-layout);
+  font-size: 12.5px;
+  line-height: 1.6;
+
+  .l { color: var(--text); }
+  .r { color: var(--text-secondary); }
+  .arrow { text-align: center; color: var(--text-tertiary); }
+}
+
+/* 列表里的正文预览（.rtext）也要能排表格：卡片里的小号填空与小号表格 */
+.rtext .rcp-blank {
+  min-width: 2em;
+  padding: 0 4px;
+  font-size: 11px;
+}
+
+.rtext .rcp-p { display: inline; margin: 0; }
+
+.rtext table.pv-tbl {
+  margin: 6px 0;
+  font-size: 11.5px;
+}
+
+@media (max-width: 900px) {
+  .rcp { padding: 12px; }
+  .rcp-body { font-size: 14px; }
+}

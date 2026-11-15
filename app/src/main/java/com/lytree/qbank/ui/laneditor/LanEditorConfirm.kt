@@ -34,6 +34,8 @@ object LanEditorConfirm {
     const val KIND_RESTORE = "restore"
     const val KIND_SAVE_RECITE = "save_recite"
     const val KIND_RESET_RECITE = "reset_recite"
+    const val KIND_SAVE_MINDMAP = "save_mindmap"
+    const val KIND_RESET_MINDMAP = "reset_mindmap"
 
     const val STATUS_PENDING = "pending"
     const val STATUS_APPROVED = "approved"
@@ -172,18 +174,31 @@ object LanEditorConfirm {
      * 同一块内容还在等确认时用最新内容顶掉旧请求（与发布同一套去重逻辑）。
      */
     fun requestReciteSave(context: Context, subjectId: String, title: String, detail: String, payload: JSONObject): Request {
-        return requestRecite(context, KIND_SAVE_RECITE, subjectId, title, detail, payload)
+        return requestByTitle(context, KIND_SAVE_RECITE, title, detail, payload)
     }
 
     /** 网页点「重置为内置词库」：删掉用户覆盖文件，同样要确认 */
     fun requestReciteReset(context: Context, subjectId: String, title: String, detail: String, payload: JSONObject): Request {
-        return requestRecite(context, KIND_RESET_RECITE, subjectId, title, detail, payload)
+        return requestByTitle(context, KIND_RESET_RECITE, title, detail, payload)
     }
 
-    private fun requestRecite(
+    /** 网页点「保存思维导图」：整份覆盖，同样要过手机确认 */
+    fun requestMindMapSave(context: Context, title: String, detail: String, payload: JSONObject): Request {
+        return requestByTitle(context, KIND_SAVE_MINDMAP, title, detail, payload)
+    }
+
+    /** 网页点「重置思维导图」：删掉用户覆盖文件 */
+    fun requestMindMapReset(context: Context, title: String, detail: String, payload: JSONObject): Request {
+        return requestByTitle(context, KIND_RESET_MINDMAP, title, detail, payload)
+    }
+
+    /**
+     * 整份覆盖类请求（背诵词库 / 思维导图）：同一块内容还在等确认时，
+     * 用最新内容顶掉旧请求，还回同一个 id——连点两下不该在手机上弹两次。
+     */
+    private fun requestByTitle(
         context: Context,
         kind: String,
-        subjectId: String,
         title: String,
         detail: String,
         payload: JSONObject,
@@ -329,6 +344,10 @@ object LanEditorConfirm {
                 ctx,
                 req.payload.optString("subject"),
             )
+
+            KIND_SAVE_MINDMAP -> LanEditorMindMap.executeSave(ctx, req.payload)
+
+            KIND_RESET_MINDMAP -> LanEditorMindMap.executeReset(ctx)
 
             else -> throw IllegalStateException("不认识的操作：${req.kind}")
         }

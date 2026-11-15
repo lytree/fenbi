@@ -237,26 +237,44 @@ object QuestionCardBinder {
         b.btnFavorite.visibility = actionVisibility
 
         // ---- 题干（字号随「更多」面板缩放；基准 16sp / 额外行距 7dp）----
-        // 题干里可能夹图（图形推理、言语的材料图）：图片摘到 stemMedia 里渲染，
-        // 文字留在 TextView 上——这样字号缩放、行距、笔迹锚点（取题干顶边）全都还是原来那套。
-        val stem = MaterialRenderer.splitInline(q.stem)
-        b.tvStem.text = stem.text
-        b.tvStem.visibility = if (stem.text.isBlank()) View.GONE else View.VISIBLE
-        b.tvStem.setTextColor(
-            ContextCompat.getColor(
-                ctx, if (night) R.color.fb_night_text_body else R.color.fb_text_body
-            )
-        )
-        b.tvStem.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f * fontScale)
-        b.tvStem.setLineSpacing(7f * density * fontScale, 1f)
-        if (stem.hasImages) {
-            b.stemMedia.visibility = View.VISIBLE
-            MaterialRenderer.renderOptionImages(
-                ctx, b.stemMedia, stem.images, night, maxHeightDp = STEM_IMAGE_MAX_HEIGHT_DP
-            )
-        } else {
+        // 三种情况：
+        // 1. 带表格（资料分析的续表、判断推理的对照表被写进了题干）：整块走材料渲染器，
+        //    `|` 才会变成真表格；此时 tvStem 让位给 stemRich（stemHasTable 只是预判，很便宜）
+        // 2. 只有文字 + 夹图：图片摘到 stemMedia 里渲染，文字留在 TextView 上
+        // 3. 纯文字：照旧
+        // 文字走 TextView 时字号缩放、行距、笔迹锚点（取题干顶边）全都还是原来那套。
+        if (MaterialRenderer.stemHasTable(q.stem)) {
+            b.tvStem.visibility = View.GONE
+            b.tvStem.text = ""
             b.stemMedia.visibility = View.GONE
             b.stemMedia.removeAllViews()
+            b.stemRich.visibility = View.VISIBLE
+            MaterialRenderer.renderStemRich(
+                ctx, b.stemRich, q.stem, night, fontScale,
+                maxImageHeightDp = STEM_IMAGE_MAX_HEIGHT_DP
+            )
+        } else {
+            b.stemRich.visibility = View.GONE
+            b.stemRich.removeAllViews()
+            val stem = MaterialRenderer.splitInline(q.stem)
+            b.tvStem.text = stem.text
+            b.tvStem.visibility = if (stem.text.isBlank()) View.GONE else View.VISIBLE
+            b.tvStem.setTextColor(
+                ContextCompat.getColor(
+                    ctx, if (night) R.color.fb_night_text_body else R.color.fb_text_body
+                )
+            )
+            b.tvStem.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f * fontScale)
+            b.tvStem.setLineSpacing(7f * density * fontScale, 1f)
+            if (stem.hasImages) {
+                b.stemMedia.visibility = View.VISIBLE
+                MaterialRenderer.renderOptionImages(
+                    ctx, b.stemMedia, stem.images, night, maxHeightDp = STEM_IMAGE_MAX_HEIGHT_DP
+                )
+            } else {
+                b.stemMedia.visibility = View.GONE
+                b.stemMedia.removeAllViews()
+            }
         }
 
         // ---- 材料 ----

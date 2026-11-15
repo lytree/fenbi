@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 导图主题卡：标题行（页码 + 章节名 + 分支数）+ 展开后的大纲（代码里按 level 加行） -->
+<!-- 导图主题卡：标题行（书页号 + 章节名 + 分支数）+ 展开后的树（代码里按深度递归加行，分支可折叠） -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     style="@style/FbListCardLine"

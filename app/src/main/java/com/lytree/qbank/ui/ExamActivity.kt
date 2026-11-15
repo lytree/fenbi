@@ -1050,7 +1050,9 @@ class ExamActivity : AppCompatActivity() {
             if (id == 0L || card.width <= 0 || card.height <= 0) return
             val cardLoc = IntArray(2)
             card.getLocationOnScreen(cardLoc)
-            val stem = card.findViewById<View>(R.id.tvStem)
+            // 带表格的题干渲染在 stemRich 里（tvStem 此时不可见），锚点取可见的那个的顶边
+            val stem = card.findViewById<View>(R.id.stemRich)?.takeIf { it.height > 0 }
+                ?: card.findViewById<View>(R.id.tvStem)
             val stemY = if (stem != null && stem.height > 0) {
                 val stemLoc = IntArray(2)
                 stem.getLocationOnScreen(stemLoc)

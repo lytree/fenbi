@@ -223,7 +223,8 @@
 
             <!-- ===== 题干 =====
                  纯文字进 tvStem；题干里夹的图片（![说明](路径) / 单独一行图片地址）摘出来放 stemMedia，
-                 顺序与材料 / 选项图片同一套口径（见 MaterialRenderer.splitInline） -->
+                 顺序与材料 / 选项图片同一套口径（见 MaterialRenderer.splitInline）；
+                 题干里带表格时两者都让位给 stemRich（表格不能塞进 TextView，见 MaterialRenderer.renderStemRich） -->
             <TextView
                 android:id="@+id/tvStem"
                 style="@style/FbStem"
@@ -231,6 +232,17 @@
                 android:paddingStart="@dimen/fb_tree_content_pad_start"
                 android:paddingEnd="@dimen/fb_content_padding_h"
                 tools:text="2025年1-11月，B市大中型重点企业研发费用中工业企业占比同比约：" />
+
+            <LinearLayout
+                android:id="@+id/stemRich"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/fb_space_12"
+                android:orientation="vertical"
+                android:paddingStart="@dimen/fb_tree_content_pad_start"
+                android:paddingEnd="@dimen/fb_content_padding_h"
+                android:visibility="gone"
+                tools:visibility="gone" />
 
             <LinearLayout
                 android:id="@+id/stemMedia"

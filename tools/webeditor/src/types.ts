@@ -219,3 +219,68 @@ export interface WordsResponse {
   /** 标签清单（含条数），「未标注」name 为空串 */
   tags: { name: string; count: number }[]
 }
+
+/* ------------------------------------------------------------------ 思维导图 */
+
+/**
+ * 导图的一个节点：一句话 + 它下面挂的要点。
+ *
+ * 树只由 children 表达（旧资产是扁平 outline + level 字段，深层一多就分不清缩进
+ * 到底代表哪一级）。叶子节点不写 children，省体积。
+ */
+export interface MindMapNode {
+  text: string
+  children?: MindMapNode[]
+}
+
+/** 书页下半部「内涵连线」的一组对应：提法 ↔ 内涵 */
+export interface MindMapPair {
+  left: string
+  right: string
+}
+
+/** 一页书 = 一个主题 */
+export interface MindMapTopic {
+  id: string
+  /** 源 PDF 页码（书页号 + 2），对照扫件用 */
+  page?: number
+  /** 列表上的小标签，如「书页 02」 */
+  label: string
+  name: string
+  /** 节点数（服务端算好；编辑后前端重算，只作展示） */
+  nodeCount?: number
+  nodes: MindMapNode[]
+  /** 连线题单独存：新树把它们错还原成了父子，配对关系以这里为准 */
+  pairs: MindMapPair[]
+}
+
+/** 书里的一个大板块 */
+export interface MindMapSection {
+  id: string
+  name: string
+  nodeCount?: number
+  topics: MindMapTopic[]
+}
+
+/** 整份导图（服务端整读整写，编辑在前端做完一次提交） */
+export interface MindMapCatalog {
+  version: number
+  title: string
+  intro: string
+  updated: string
+  hasEdits: boolean
+  topicCount?: number
+  nodeCount?: number
+  sections: MindMapSection[]
+}
+
+/** 保存 / 重置成功后的摘要 */
+export interface MindMapSaveResult {
+  ok: boolean
+  sectionCount?: number
+  topicCount?: number
+  nodeCount?: number
+  updated?: string
+  /** 仅重置：是否真的删过覆盖文件（false = 本来就没有） */
+  reset?: boolean
+}

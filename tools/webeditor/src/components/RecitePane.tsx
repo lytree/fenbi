@@ -1,28 +1,21 @@
 import { defineComponent, ref } from 'vue'
 import type { ReciteCard } from '../types'
+import { renderRecite } from '../markdown'
 import {
   addReciteCard, addReciteCategory, blankReciteSelection, recite, reciteCardIssues,
   reciteVisibleCards, removeReciteCard, removeReciteCategory, renameReciteCategory,
   setReciteCardAnswers, toggleReciteCard, updateReciteCard,
 } from '../store'
 
-/** 卡片正文预览：____ 高亮成填空样式，长文截断（编辑时看全文） */
-const TextPreview = ({ text, full }: { text: string; full: boolean }) => {
-  const parts = text.split('____')
-  return (
-    <div class={['rtext', full && 'full']}>
-      {parts.map((p, i) => (
-        <span key={i}>
-          {i > 0 ? <span class="rblank">{answersTextHint}</span> : null}
-          {p}
-        </span>
-      ))}
-    </div>
-  )
-}
-
-/** ____ 的占位显示；预览里没有答案上下文，只标出「空位」 */
-const answersTextHint = '▁▁▁▁'
+/**
+ * 卡片正文预览：`____` 标成编号空位，长文截断（编辑时看全文）。
+ *
+ * 走的是和右栏预览同一个渲染器（[renderRecite]），所以正文里写的表格在列表里
+ * 就已经是真表格，不用等翻到右栏才发现 `|` 露出来了。
+ */
+const TextPreview = ({ text, full }: { text: string; full: boolean }) => (
+  <div class={['rtext', full && 'full']} innerHTML={renderRecite(text, [], false)} />
+)
 
 /** 一张背诵卡的编辑态 */
 const CardEditor = defineComponent({

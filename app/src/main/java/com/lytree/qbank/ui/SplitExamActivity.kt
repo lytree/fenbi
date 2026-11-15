@@ -317,7 +317,9 @@ class SplitExamActivity : AppCompatActivity() {
             if (card.width <= 0 || card.height <= 0) continue
             val cardLoc = IntArray(2)
             card.getLocationOnScreen(cardLoc)
-            val stem = card.findViewById<View>(R.id.tvStem)
+            // 带表格的题干渲染在 stemRich 里（tvStem 此时不可见），锚点取可见的那个的顶边
+            val stem = card.findViewById<View>(R.id.stemRich)?.takeIf { it.height > 0 }
+                ?: card.findViewById<View>(R.id.tvStem)
             val stemY = if (stem != null && stem.height > 0) {
                 val stemLoc = IntArray(2)
                 stem.getLocationOnScreen(stemLoc)
@@ -424,18 +426,32 @@ class SplitExamActivity : AppCompatActivity() {
             val card = ItemSplitQuestionBinding.inflate(inflater, binding.questionList, false)
             card.tvNum.text = "${i + 1 + indexOffset}."
             card.tvType.text = q.type.label
-            // 题干里夹的图片摘到图区渲染，文字仍留在 TextView（与主卷面同一套口径）
-            val stem = MaterialRenderer.splitInline(q.stem)
-            card.tvStem.text = stem.text
-            card.tvStem.visibility = if (stem.text.isBlank()) android.view.View.GONE else android.view.View.VISIBLE
-            if (stem.hasImages) {
-                card.stemMedia.visibility = android.view.View.VISIBLE
-                MaterialRenderer.renderOptionImages(
-                    this, card.stemMedia, stem.images, night = false, maxHeightDp = 360f
-                )
-            } else {
+            // 题干里夹的图片摘到图区渲染，文字仍留在 TextView（与主卷面同一套口径）；
+            // 带表格的题干整块走材料渲染器，`|` 才会变成真表格
+            if (MaterialRenderer.stemHasTable(q.stem)) {
+                card.tvStem.visibility = android.view.View.GONE
+                card.tvStem.text = ""
                 card.stemMedia.visibility = android.view.View.GONE
                 card.stemMedia.removeAllViews()
+                card.stemRich.visibility = android.view.View.VISIBLE
+                MaterialRenderer.renderStemRich(
+                    this, card.stemRich, q.stem, night = false, maxImageHeightDp = 360f
+                )
+            } else {
+                card.stemRich.visibility = android.view.View.GONE
+                card.stemRich.removeAllViews()
+                val stem = MaterialRenderer.splitInline(q.stem)
+                card.tvStem.text = stem.text
+                card.tvStem.visibility = if (stem.text.isBlank()) android.view.View.GONE else android.view.View.VISIBLE
+                if (stem.hasImages) {
+                    card.stemMedia.visibility = android.view.View.VISIBLE
+                    MaterialRenderer.renderOptionImages(
+                        this, card.stemMedia, stem.images, night = false, maxHeightDp = 360f
+                    )
+                } else {
+                    card.stemMedia.visibility = android.view.View.GONE
+                    card.stemMedia.removeAllViews()
+                }
             }
 
             val multi = q.type == com.lytree.qbank.data.model.QuestionType.MULTI ||

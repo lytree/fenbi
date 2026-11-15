@@ -111,6 +111,87 @@ object MaterialRenderer {
         }
     }
 
+    // ---------------- 题干 ----------------
+
+    /** 题干字号（缩放前的基准，与卡片里 TextView 那套一致） */
+    private const val STEM_FONT_SP = 16f
+
+    /** 题干额外行距（dp） */
+    private const val STEM_LINE_SPACING_DP = 7f
+
+    /**
+     * 题干里有没有表格（Markdown 竖线表格 / 制表符对齐的裸表格）。
+     *
+     * 有表格的题干不能整段塞进 TextView——`|` 会原样露出来，资料分析那种表更是挤成一坨；
+     * 这种走 [renderStemRich]。纯文字题干继续用 TextView：字号缩放、行距、
+     * 笔迹锚点（取题干顶边）全都是原来那套，不为极少数带表的题让所有题变慢。
+     */
+    fun stemHasTable(stem: String): Boolean {
+        if (stem.isBlank()) return false
+        // 便宜的预筛：既没有竖线也没有制表符，连解析都省了
+        if (!stem.contains('|') && !stem.contains('\t')) return false
+        return parse(stem).any { it is Block.Table }
+    }
+
+    /**
+     * 渲染「带表格的题干」：段落仍按题干字号 / 行距 / 字色，表格走材料那套表格控件
+     * （列宽自适应、夜间换色、字号随题干缩放），图表和配图也一并按原文顺序排。
+     *
+     * 只在 [stemHasTable] 为真时用。容器由布局提供（`stemRich`），左右留白和原来
+     * 题干的 padding 一致，所以换路径以后看上去只有表格变了。
+     */
+    fun renderStemRich(
+        context: Context,
+        container: ViewGroup,
+        stem: String,
+        night: Boolean = false,
+        fontScale: Float = 1f,
+        maxImageHeightDp: Float = 360f,
+        chartScale: Float = 1.3f
+    ) {
+        container.removeAllViews()
+        if (stem.isBlank()) return
+
+        parse(stem).forEach { block ->
+            val view: View? = when (block) {
+                is Block.Table -> buildTable(context, block, night, fontScale)
+                is Block.Paragraph ->
+                    buildStemParagraph(context, block.text, night, fontScale)
+                is Block.Chart -> buildChart(context, block.spec, night, chartScale)
+                is Block.Image -> buildImage(
+                    context, block.image.src, block.image.alt, night,
+                    maxHeightDp = maxImageHeightDp,
+                    fillWidth = block.image.size == ImageSize.FULL
+                )
+                is Block.Figure -> if (block.images.isNotEmpty() || block.text.isNotEmpty()) {
+                    buildFigure(context, block, night, fontScale)
+                } else {
+                    null
+                }
+            }
+            if (view != null) container.addView(view)
+        }
+    }
+
+    /** 题干正文段落：字号 / 行距 / 字色照抄卡片里 TextView 的设置，换路径看不出差别 */
+    private fun buildStemParagraph(
+        context: Context,
+        text: String,
+        night: Boolean,
+        fontScale: Float
+    ): View {
+        val tv = TextView(context)
+        tv.text = text
+        tv.setTextColor(
+            ContextCompat.getColor(
+                context, if (night) R.color.fb_night_text_body else R.color.fb_text_body
+            )
+        )
+        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, STEM_FONT_SP * fontScale)
+        tv.setLineSpacing(dp(context, STEM_LINE_SPACING_DP) * fontScale, 1f)
+        return tv
+    }
+
     // ---------------- 解析 ----------------
 
     /** 图文块的排版方式（`:::figure` 的 `layout:`） */

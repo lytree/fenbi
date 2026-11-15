@@ -450,6 +450,16 @@ class LanEditorServer(
 
             "/api/recite/reset" -> handleReciteReset(req)
 
+            // ---- 思维导图：整份读，整份写 ----
+            "/api/mindmap" -> runCatching { LanEditorMindMap.catalog(context) }.fold(
+                onSuccess = ::json,
+                onFailure = { jsonError(500, it.message ?: "读取导图失败") },
+            )
+
+            "/api/mindmap/save" -> handleMindMapSave(req)
+
+            "/api/mindmap/reset" -> handleMindMapReset(req)
+
             // ---- 词库（词条 CRUD）：逐条小改，直接写库 ----
             "/api/words" -> runCatching { LanEditorWords.list(context, req.query) }.fold(
                 onSuccess = ::json,
@@ -623,6 +633,75 @@ class LanEditorServer(
                 .put("detail", detail)
                 .put("ttlSec", 600),
         )
+    }
+
+    /**
+     * 保存整份思维导图。
+     *
+     * 导图是「一键整份覆盖」的东西（板块 / 主题 / 树都在一份资产里），
+     * 所以和背诵词库一样：先校验、再问手机、AI 带 key 才直发。
+     */
+    private fun handleMindMapSave(req: Req): Resp {
+        val body = readJson(req) ?: return jsonError(400, "请求不是合法 JSON")
+
+        // 先校验再问：结构不对的话，别让手机白弹一次确认框
+        val normalized = runCatching { LanEditorMindMap.parseSave(context, body) }.fold(
+            onSuccess = { it },
+            onFailure = { return jsonError(400, it.message ?: "导图内容校验没通过") },
+        )
+
+        if (hasAccessKey(req)) {
+            return runCatching { LanEditorMindMap.executeSave(context, body) }.fold(
+                onSuccess = { json(it) },
+                onFailure = { jsonError(400, it.message ?: "保存失败") },
+            )
+        }
+
+        val sectionCount = normalized.optJSONArray("sections")?.length() ?: 0
+        val topicCount = countMindMapTopics(normalized)
+        val nodeCount = LanEditorMindMap.countNodes(normalized)
+        val detail = "会把整份导图换成网页上这版：$sectionCount 个板块、$topicCount 个主题、$nodeCount 条要点。" +
+            "覆盖文件删掉才能回到内置内容。"
+        val r = LanEditorConfirm.requestMindMapSave(context, "思维导图", detail, normalized)
+        return json(
+            JSONObject()
+                .put("needConfirm", true)
+                .put("requestId", r.id)
+                .put("title", "思维导图")
+                .put("detail", detail)
+                .put("ttlSec", 600),
+        )
+    }
+
+    /** 重置思维导图：删用户覆盖文件、回到内置资产 */
+    private fun handleMindMapReset(req: Req): Resp {
+        if (hasAccessKey(req)) {
+            return runCatching { LanEditorMindMap.executeReset(context) }.fold(
+                onSuccess = { json(it) },
+                onFailure = { jsonError(400, it.message ?: "重置失败") },
+            )
+        }
+
+        val title = "重置思维导图"
+        val detail = "会删掉网页上改过的导图，回到 App 内置的那份。"
+        val r = LanEditorConfirm.requestMindMapReset(context, title, detail, JSONObject())
+        return json(
+            JSONObject()
+                .put("needConfirm", true)
+                .put("requestId", r.id)
+                .put("title", title)
+                .put("detail", detail)
+                .put("ttlSec", 600),
+        )
+    }
+
+    private fun countMindMapTopics(root: JSONObject): Int {
+        val sections = root.optJSONArray("sections") ?: return 0
+        var total = 0
+        for (i in 0 until sections.length()) {
+            total += sections.optJSONObject(i)?.optJSONArray("topics")?.length() ?: 0
+        }
+        return total
     }
 
     /**

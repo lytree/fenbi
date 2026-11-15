@@ -1,5 +1,6 @@
 import { defineComponent, ref } from 'vue'
 import type { WordItem } from '../types'
+import { renderRich } from '../markdown'
 import {
   addWordRow, deleteWordItem, loadWords, recite, saveWordItem, setWordPage, toggleWord, updateWordRow,
   WORD_CATEGORY_LABEL, wordPageCount,
@@ -191,7 +192,9 @@ export default defineComponent({
                           <span class="tag">{WORD_CATEGORY_LABEL[w.category] ?? w.category}</span>
                           {w.tag ? <span class="tag src">{w.tag}</span> : null}
                         </div>
-                        {w.meaning ? <div class="rmeaning">{w.meaning}</div> : null}
+                        {w.meaning
+                          ? <div class="rmeaning" innerHTML={renderRich(w.meaning, 'rmeaning-p')} />
+                          : null}
                       </div>
                     </div>
                     {open ? <WordEditor word={w} /> : null}

@@ -11,13 +11,15 @@ import VersionPane from './components/VersionPane'
 import ResourcePane from './components/ResourcePane'
 import RecitePane from './components/RecitePane'
 import WordsPane from './components/WordsPane'
+import MindMapPane from './components/MindMapPane'
+import RecitePreview from './components/RecitePreview'
 import ModalHost from './components/ModalHost'
 import Toast from './components/Toast'
 import {
   TYPE_SHORT, addQuestion, cancelWaiting, closeModal, currentQuestions, filtersActive, flushDraft,
   handleImportFiles, issueCounts, level1Options, level2Options, loadSets, loadVersions,
-  maybeRestoreDraft, openPasteDialog, openSet, publish, recite, resetFilters, saveRecite,
-  showErrors, startDraftAutoSave, state,
+  maybeRestoreDraft, openPasteDialog, openSet, publish, recite, resetFilters, saveMindMap,
+  saveRecite, showErrors, startDraftAutoSave, state,
   stopDraftAutoSave, switchMode, toast, typeCounts, ui, visibleIndexes,
 } from './store'
 import type { QuestionType } from './types'
@@ -134,7 +136,10 @@ export default defineComponent({
       const mod = e.ctrlKey || e.metaKey
       if (mod && e.key.toLowerCase() === 's') {
         e.preventDefault()
-        if (state.mode === 'recite') void saveRecite()
+        if (state.mode === 'recite') {
+          if (recite.subject === 'mindmap') void saveMindMap()
+          else void saveRecite()
+        }
         else publish()
         return
       }
@@ -176,7 +181,9 @@ export default defineComponent({
             ? (
               // 背诵模式：单栏工作区（词库 / 政治 / 常识），不需要右栏预览
               <section class="editor recite-editor">
-                {recite.subject === 'words' ? <WordsPane /> : <RecitePane />}
+                {recite.subject === 'words'
+                  ? <WordsPane />
+                  : recite.subject === 'mindmap' ? <MindMapPane /> : <RecitePane />}
               </section>
             )
             : (
@@ -321,6 +328,21 @@ export default defineComponent({
               </section>
             )}
 
+          {state.mode === 'recite' && !previewHidden.value
+            ? (
+              // 背诵模式也有右栏：按 App 的样子预览当前这张卡 / 词条 / 导图主题
+              <aside class="preview recite-preview">
+                <div class="pane-split" title="拖动调整预览宽度" onPointerdown={onSplitDown}></div>
+                <div class="ptabs">
+                  <button class="ptab active">背诵预览</button>
+                  <span class="grow"></span>
+                  <button class="icon-btn" title="收起预览" onClick={() => setPreviewHidden(true)}>⟩</button>
+                </div>
+                <RecitePreview />
+              </aside>
+            )
+            : null}
+
           {state.mode === 'paper' && !previewHidden.value
             ? (
               <aside class="preview">
@@ -369,7 +391,7 @@ export default defineComponent({
             )
             : null}
 
-          {state.mode === 'paper' && previewHidden.value
+          {(state.mode === 'paper' || state.mode === 'recite') && previewHidden.value
             ? <button class="preview-fab" title="展开预览" onClick={() => setPreviewHidden(false)}>⟨</button>
             : null}
         </main>

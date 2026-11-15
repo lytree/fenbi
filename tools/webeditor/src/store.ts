@@ -2,7 +2,8 @@ import { computed, reactive } from 'vue'
 import { api } from './api'
 import type { ConfirmRequired, PublishResponse } from './api'
 import type {
-  EditorPaper, EditorView, Filter, Group, Issue, PaperSetInfo,
+  EditorPaper, EditorView, Filter, Group, Issue, MindMapCatalog, MindMapNode, MindMapSaveResult,
+  MindMapSection, MindMapTopic, PaperSetInfo,
   QIssue, Question, QuestionType, ReciteCard, ReciteCatalog, ReciteCategory,
   ReciteSaveResult, ReciteSubjectInfo, ResourceFile, Sheet, SubjectFilter,
   TypeFilter, VersionInfo, WireSheet, WordItem,
@@ -37,7 +38,10 @@ export const CHOICE: QuestionType[] = ['single', 'multi', 'uncertain', 'truefals
 export const LETTERS = 'ABCDEFGH'.split('')
 
 /** 等手机确认的动作；发布 / 回滚共用一套轮询，背诵词库的保存 / 重置也走同一条路 */
-type WaitingKind = 'publish' | 'restore' | 'delete' | 'recite-save' | 'recite-reset'
+type WaitingKind =
+  | 'publish' | 'restore' | 'delete'
+  | 'recite-save' | 'recite-reset'
+  | 'mindmap-save' | 'mindmap-reset'
 
 /* ------------------------------------------------------------------ 状态 */
 
@@ -1585,12 +1589,12 @@ export async function loadReciteSubjects(): Promise<void> {
   }
 }
 
-/** 打开一块内容。'words' = 词条词库，'politics' / 'common' = 背诵内容 */
+/** 打开一块内容。'words' = 词条词库，'mindmap' = 思维导图，其余 = 背诵内容 */
 export async function openReciteSubject(id: string, opts: { force?: boolean } = {}): Promise<void> {
   if (recite.subject === id && !opts.force) return
-  if (recite.dirty && !opts.force) {
+  if ((recite.dirty || mindmap.dirty) && !opts.force) {
     const ok = await askConfirm(
-      '背诵词库还有没保存的改动',
+      '还有没保存的改动',
       '换一块内容不会丢改动（改动还在内存里），但先保存更稳。直接换吗？',
       '直接换',
     )
@@ -1609,6 +1613,8 @@ export async function openReciteSubject(id: string, opts: { force?: boolean } = 
   recite.words = []
   if (id === 'words') {
     await loadWords()
+  } else if (id === 'mindmap') {
+    await loadMindMap(opts.force === true)
   } else {
     recite.loading = true
     try {
@@ -2096,4 +2102,427 @@ export async function maybeRestoreDraft(): Promise<boolean> {
   ui.draftSavedAt = d.savedAt ?? 0
   refreshGroups()
   return true
+}
+
+/* ------------------------------------------------------------------ 思维导图（整份读、整份写） */
+
+/**
+ * 导图编辑器自己的状态。与题库编辑、背诵词库都独立：
+ * 整份读出来在前端改，一次提交整份回去；保存要过手机确认。
+ *
+ * 展开状态只活在内存里（编辑一下路径就会变，持久化反而错位）。
+ */
+export const mindmap = reactive({
+  catalog: null as MindMapCatalog | null,
+  loading: false,
+  /** 有没保存到手机的改动（保存成功后清掉） */
+  dirty: false,
+  /** 顶部板块筛选；'all' = 全部板块 */
+  section: 'all',
+  /** 展开的主题 id */
+  openTopics: [] as string[],
+  /** 节点展开的覆盖：没点过的按深度决定。key = "主题id#路径" */
+  openNodes: {} as Record<string, boolean>,
+})
+
+/** 默认摊开到第几层：0 中心主题 / 1 一级分支 / 2 分支的要点 */
+export const MINDMAP_DEFAULT_OPEN_DEPTH = 2
+
+export function markMindMapDirty() {
+  mindmap.dirty = true
+}
+
+export async function loadMindMap(force = false): Promise<void> {
+  if (mindmap.catalog && !force) return
+  mindmap.loading = true
+  try {
+    mindmap.catalog = await api.mindmap()
+    mindmap.dirty = false
+    mindmap.section = 'all'
+    mindmap.openTopics = []
+    mindmap.openNodes = {}
+  } catch (e) {
+    toast(e instanceof Error ? e.message : '读取导图失败', 'err')
+  } finally {
+    mindmap.loading = false
+  }
+}
+
+/** 当前筛选下的板块（保留板块外壳，界面上要按板块分段显示） */
+export const mindMapVisibleSections = computed<MindMapSection[]>(() => {
+  const sections = mindmap.catalog?.sections ?? []
+  return mindmap.section === 'all' ? sections : sections.filter((s) => s.id === mindmap.section)
+})
+
+/** 命中搜索的节点数：用于「该主题下有 N 处命中」的提示 */
+export function mindMapCount(nodes: MindMapNode[]): number {
+  return nodes.reduce((n, x) => n + 1 + mindMapCount(x.children ?? []), 0)
+}
+
+/** 按索引链定位：返回所在兄弟数组与下标，越界一律 null */
+export function mindMapLocate(
+  nodes: MindMapNode[],
+  path: number[],
+): { list: MindMapNode[]; index: number } | null {
+  if (!path.length) return null
+  let list = nodes
+  for (let i = 0; i < path.length - 1; i++) {
+    const node = list[path[i]]
+    if (!node) return null
+    node.children = node.children ?? []
+    list = node.children
+  }
+  const index = path[path.length - 1]
+  if (!list[index]) return null
+  return { list, index }
+}
+
+export function mindMapNodeAt(topic: MindMapTopic, path: number[]): MindMapNode | null {
+  const found = mindMapLocate(topic.nodes, path)
+  return found ? found.list[found.index] : null
+}
+
+export function mindMapTopicById(id: string): MindMapTopic | null {
+  for (const s of mindmap.catalog?.sections ?? []) {
+    const t = s.topics.find((x) => x.id === id)
+    if (t) return t
+  }
+  return null
+}
+
+export function mindMapSectionOf(topicId: string): MindMapSection | null {
+  return (mindmap.catalog?.sections ?? []).find((s) => s.topics.some((t) => t.id === topicId)) ?? null
+}
+
+/* ---------------- 展开 / 收起 ---------------- */
+
+export function mindMapNodeKey(topicId: string, path: number[]): string {
+  return `${topicId}#${path.join('.')}`
+}
+
+export function mindMapIsOpen(topicId: string, path: number[], depth: number): boolean {
+  const v = mindmap.openNodes[mindMapNodeKey(topicId, path)]
+  return v ?? depth < MINDMAP_DEFAULT_OPEN_DEPTH
+}
+
+export function toggleMindMapNode(topicId: string, path: number[], depth: number) {
+  const key = mindMapNodeKey(topicId, path)
+  const cur = mindmap.openNodes[key] ?? depth < MINDMAP_DEFAULT_OPEN_DEPTH
+  mindmap.openNodes[key] = !cur
+}
+
+export function toggleMindMapTopic(id: string) {
+  mindmap.openTopics = mindmap.openTopics.includes(id)
+    ? mindmap.openTopics.filter((x) => x !== id)
+    : [...mindmap.openTopics, id]
+}
+
+export function expandMindMapTopic(id: string, open: boolean) {
+  const has = mindmap.openTopics.includes(id)
+  if (open === has) return
+  toggleMindMapTopic(id)
+}
+
+/* ---------------- 节点编辑 ---------------- */
+
+export function updateMindMapNode(topicId: string, path: number[], text: string) {
+  const topic = mindMapTopicById(topicId)
+  if (!topic) return
+  const found = mindMapLocate(topic.nodes, path)
+  if (!found) return
+  found.list[found.index].text = text
+  markMindMapDirty()
+}
+
+/** 在某节点后面插一个同级空节点（同级最快；要更深就走「缩进」） */
+export function addMindMapSibling(topicId: string, path: number[]): number[] | null {
+  const topic = mindMapTopicById(topicId)
+  if (!topic) return null
+  const found = mindMapLocate(topic.nodes, path)
+  if (!found) return null
+  const at = found.index + 1
+  found.list.splice(at, 0, { text: '' })
+  markMindMapDirty()
+  return [...path.slice(0, -1), at]
+}
+
+/** 给节点加一个子节点（挂在末尾） */
+export function addMindMapChild(topicId: string, path: number[]): number[] | null {
+  const topic = mindMapTopicById(topicId)
+  if (!topic) return null
+  const found = mindMapLocate(topic.nodes, path)
+  if (!found) return null
+  const node = found.list[found.index]
+  node.children = node.children ?? []
+  node.children.push({ text: '' })
+  mindmap.openNodes[mindMapNodeKey(topicId, path)] = true
+  markMindMapDirty()
+  return [...path, node.children.length - 1]
+}
+
+/** 主题为空时也要能加第一个节点 */
+export function addMindMapRoot(topicId: string): number[] | null {
+  const topic = mindMapTopicById(topicId)
+  if (!topic) return null
+  topic.nodes.push({ text: '' })
+  markMindMapDirty()
+  return [topic.nodes.length - 1]
+}
+
+/** 删节点连同它下面整棵子树（内容不少，界面上要二次确认） */
+export function removeMindMapNode(topicId: string, path: number[]) {
+  const topic = mindMapTopicById(topicId)
+  if (!topic) return
+  const found = mindMapLocate(topic.nodes, path)
+  if (!found) return
+  found.list.splice(found.index, 1)
+  markMindMapDirty()
+}
+
+/** 缩进：挂到前一个兄弟节点下（第一个兄弟没法缩进——上面没有可当父的） */
+export function indentMindMapNode(topicId: string, path: number[]): number[] | null {
+  const topic = mindMapTopicById(topicId)
+  if (!topic) return null
+  const found = mindMapLocate(topic.nodes, path)
+  if (!found || found.index === 0) return null
+  const [node] = found.list.splice(found.index, 1)
+  const prev = found.list[found.index - 1]
+  prev.children = prev.children ?? []
+  prev.children.push(node)
+  mindmap.openNodes[mindMapNodeKey(topicId, path.slice(0, -1).concat(found.index - 1))] = true
+  markMindMapDirty()
+  return [...path.slice(0, -1), found.index - 1, prev.children.length - 1]
+}
+
+/** 反缩进：升成父节点的兄弟，排在父节点后面 */
+export function outdentMindMapNode(topicId: string, path: number[]): number[] | null {
+  const topic = mindMapTopicById(topicId)
+  if (!topic || path.length < 2) return null
+  const parentPath = path.slice(0, -1)
+  const parentFound = mindMapLocate(topic.nodes, parentPath)
+  if (!parentFound) return null
+  const selfFound = mindMapLocate(topic.nodes, path)
+  if (!selfFound) return null
+  const [node] = selfFound.list.splice(selfFound.index, 1)
+  const at = parentFound.index + 1
+  parentFound.list.splice(at, 0, node)
+  markMindMapDirty()
+  return [...parentPath.slice(0, -1), at]
+}
+
+/** 同级上移 / 下移：delta = -1 / +1 */
+export function moveMindMapNode(topicId: string, path: number[], delta: number): number[] | null {
+  const topic = mindMapTopicById(topicId)
+  if (!topic) return null
+  const found = mindMapLocate(topic.nodes, path)
+  if (!found) return null
+  const at = found.index + delta
+  if (at < 0 || at >= found.list.length) return null
+  const [node] = found.list.splice(found.index, 1)
+  found.list.splice(at, 0, node)
+  markMindMapDirty()
+  return [...path.slice(0, -1), at]
+}
+
+/* ---------------- 主题编辑 ---------------- */
+
+let mindMapSeq = 0
+
+export function renameMindMapTopic(topicId: string, name: string) {
+  const topic = mindMapTopicById(topicId)
+  if (!topic) return
+  topic.name = name
+  markMindMapDirty()
+}
+
+export function addMindMapTopic(sectionId: string): string | null {
+  const section = mindmap.catalog?.sections.find((s) => s.id === sectionId)
+  if (!section) return null
+  mindMapSeq++
+  const id = `web-${Date.now().toString(36)}-${mindMapSeq.toString(36)}`
+  section.topics.push({
+    id,
+    label: '新主题',
+    name: '新主题',
+    nodes: [{ text: '' }],
+    pairs: [],
+  })
+  mindmap.openTopics = [...mindmap.openTopics, id]
+  markMindMapDirty()
+  return id
+}
+
+export async function removeMindMapTopic(sectionId: string, topicId: string): Promise<void> {
+  const section = mindmap.catalog?.sections.find((s) => s.id === sectionId)
+  if (!section) return
+  const topic = section.topics.find((t) => t.id === topicId)
+  if (!topic) return
+  const ok = await askConfirm(
+    `删除主题「${topic.name}」？`,
+    '这一页的整棵树都会删掉（保存后才真正落盘）。书页上的配对题也一起没。',
+    '删除',
+  )
+  if (!ok) return
+  section.topics = section.topics.filter((t) => t.id !== topicId)
+  markMindMapDirty()
+}
+
+/* ---------------- 保存 / 重置 ---------------- */
+
+/** 保存前的本地校验：和手机端落盘校验同一套口径，先在网页上兜住 */
+export function mindMapIssue(cat: MindMapCatalog): string | null {
+  if (!cat.sections.length) return '至少要保留一个板块'
+  for (const s of cat.sections) {
+    if (!s.name.trim()) return '有板块没填名字'
+    if (!s.topics.length) return `板块「${s.name}」里至少要有一个主题`
+    for (const t of s.topics) {
+      if (!t.name.trim()) return '有主题没填名字'
+      if (!t.nodes.length) return `主题「${t.name}」里至少要有一个节点`
+      const walk = (nodes: MindMapNode[]): string | null => {
+        for (const n of nodes) {
+          if (!n.text.trim()) return `「${t.name}」里有空白节点，删掉或补上文字再保存`
+          const deep = walk(n.children ?? [])
+          if (deep) return deep
+        }
+        return null
+      }
+      const bad = walk(t.nodes)
+      if (bad) return bad
+    }
+  }
+  return null
+}
+
+export async function saveMindMap(): Promise<boolean> {
+  const cat = mindmap.catalog
+  if (!cat) return false
+  const problem = mindMapIssue(cat)
+  if (problem) { toast(problem, 'err'); return false }
+  if (ui.waitingId) {
+    toast('还有一条请求在等手机处理，等它结束再发', 'err')
+    return false
+  }
+
+  ui.busy = true
+  try {
+    const r = await api.mindmapSave({ ...cat })
+    const result = 'needConfirm' in r
+      ? await waitPhone(
+        'mindmap-save',
+        r,
+        `保存导图「${r.title}」`,
+        '确认后 App 里的思维导图会换成网页上这一版。',
+      )
+      : r
+    if (!result) return false
+    mindmap.dirty = false
+    await loadMindMap(true)
+    const topics = (result as MindMapSaveResult).topicCount
+    toast(`已保存思维导图 · ${topics ?? '?'} 个主题，回手机就能看`, 'ok')
+    return true
+  } catch (e) {
+    await showErrors('保存没成功', e instanceof Error ? e.message : '保存失败')
+    return false
+  } finally {
+    ui.busy = false
+  }
+}
+
+/** 重置为 App 内置内容：删掉覆盖文件，网页上的改动就没了 */
+export async function resetMindMap(): Promise<void> {
+  const cat = mindmap.catalog
+  if (!cat) return
+  const ok = await askConfirm(
+    '把思维导图重置回 App 内置内容？',
+    '会删掉网页 / AI 存过的那版导图，回到 APK 里内置的树。' +
+      (cat.hasEdits ? '\n\n现在有覆盖版，重置后当前网页上的未保存改动也一并丢弃。' : ''),
+    '发到手机确认',
+  )
+  if (!ok) return
+  if (ui.waitingId) { toast('还有一条请求在等手机处理，等它结束再发', 'err'); return }
+  ui.busy = true
+  try {
+    const r = await api.mindmapReset()
+    const result = 'needConfirm' in r
+      ? await waitPhone('mindmap-reset', r, '重置思维导图', '重置会删掉覆盖版，回到内置内容。')
+      : r
+    if (!result) return
+    mindmap.dirty = false
+    await loadMindMap(true)
+    const wasReset = (result as MindMapSaveResult).reset
+    toast(wasReset === false ? '本来就没有覆盖版，内置内容原样' : '已重置回内置导图', 'ok')
+  } catch (e) {
+    toast(e instanceof Error ? e.message : '重置失败', 'err')
+  } finally {
+    ui.busy = false
+  }
+}
+
+/* ---------------- 配对题（书页上的「内涵连线」） ---------------- */
+
+export function updateMindMapPair(topicId: string, index: number, side: 'left' | 'right', text: string) {
+  const topic = mindMapTopicById(topicId)
+  const pair = topic?.pairs[index]
+  if (!pair) return
+  pair[side] = text
+  markMindMapDirty()
+}
+
+export function addMindMapPair(topicId: string) {
+  const topic = mindMapTopicById(topicId)
+  if (!topic) return
+  topic.pairs.push({ left: '', right: '' })
+  markMindMapDirty()
+}
+
+export function removeMindMapPair(topicId: string, index: number) {
+  const topic = mindMapTopicById(topicId)
+  if (!topic) return
+  topic.pairs.splice(index, 1)
+  markMindMapDirty()
+}
+
+export function renameMindMapLabel(topicId: string, label: string) {
+  const topic = mindMapTopicById(topicId)
+  if (!topic) return
+  topic.label = label
+  markMindMapDirty()
+}
+
+/* ------------------------------------------------------------------ 预览取值（背诵 / 导图右栏） */
+
+/**
+ * 预览栏显示哪一张？规则统一成「看最近展开的那张，没有就取当前筛选的第一张」——
+ * 不用再维护一份「当前选中」状态，点开哪张卡片，右边就是哪张。
+ */
+export function recitePreviewCard(): ReciteCard | null {
+  const cards = reciteVisibleCards.value
+  if (!cards.length) return null
+  for (let i = recite.expanded.length - 1; i >= 0; i--) {
+    const hit = cards.find((c) => c.id === recite.expanded[i])
+    if (hit) return hit
+  }
+  return cards[0]
+}
+
+/** 词库同理；词库列表分页，只在当前页里找（页外那张右栏看不到也没意义） */
+export function wordPreviewItem(): WordItem | null {
+  const page = Math.min(recite.wordPage, wordPageCount())
+  const shown = recite.words.slice((page - 1) * recite.wordPageSize, page * recite.wordPageSize)
+  if (!shown.length) return null
+  for (let i = recite.wordExpanded.length - 1; i >= 0; i--) {
+    const hit = shown.find((w) => w.id === recite.wordExpanded[i])
+    if (hit) return hit
+  }
+  return shown[0]
+}
+
+/** 导图：最近展开的主题；一个都没展开就取当前板块的第一个 */
+export function mindMapPreviewTopic(): MindMapTopic | null {
+  for (let i = mindmap.openTopics.length - 1; i >= 0; i--) {
+    const t = mindMapTopicById(mindmap.openTopics[i])
+    if (t) return t
+  }
+  const sections = mindMapVisibleSections.value
+  return sections[0]?.topics[0] ?? null
 }

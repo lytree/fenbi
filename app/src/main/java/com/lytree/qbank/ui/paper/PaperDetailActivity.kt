@@ -170,7 +170,19 @@ class QuestionAdapter : RecyclerView.Adapter<QuestionAdapter.VH>() {
                 append(q.knowledge)
             }
         }
-        b.tvStem.text = q.stem
+        // 题干里带表格时整块走材料渲染器（`|` 表格塞进 TextView 会原样露出一排竖线），
+        // 纯文字题干仍用 TextView，字色字号与列表其它字段一致
+        if (MaterialRenderer.stemHasTable(q.stem)) {
+            b.tvStem.visibility = View.GONE
+            b.tvStem.text = ""
+            b.stemRich.visibility = View.VISIBLE
+            MaterialRenderer.renderStemRich(ctx, b.stemRich, q.stem, night = false)
+        } else {
+            b.stemRich.visibility = View.GONE
+            b.stemRich.removeAllViews()
+            b.tvStem.visibility = View.VISIBLE
+            b.tvStem.text = q.stem
+        }
         b.tvOptions.text = q.options.joinToString("\n") {
             "${it.key}. ${MaterialRenderer.optionSummary(it.text)}"
         }

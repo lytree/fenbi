@@ -183,20 +183,63 @@ const FENCE_CLOSE = (head: string) => (head.startsWith('```') ? '```' : ':::')
 
 /**
  * 材料：段落 / 表格 / `:::chart` 占位 / `:::figure` 图文排版。
- *
- * 逐行扫而不是按空行切块——`:::figure` 块里可能有空行，按空行切会把一个块劈成两半，
- * 预览就和 App 对不上了。
  */
 export function renderMaterial(text: string): string {
+  return renderBlocks(text)
+}
+
+/**
+ * 题干：和材料同一套解析（段落 / 表格 / 图片 / 图表 / 图文块），只有段落挂的类不同。
+ *
+ * 题干里出现表格（资料分析的续表、判断推理的对照表被写进了题干）时不能只把文字塞进来，
+ * 否则 `|` 会原样露出一排竖线——和 App 的 MaterialRenderer.renderStemRich 是同一个判断：
+ * 有表格就整块按块渲染，没有就退化成一段文字。
+ */
+export function renderStem(text: string): string {
+  return renderRich(text, 'pv-stem-p')
+}
+
+/** 任意一段富文本（段落 / 表格 / 图片 / 图表）：[paraClass] 只影响段落外层类名 */
+export function renderRich(text: string, paraClass = ''): string {
+  return renderBlocks(text, paraClass)
+}
+
+/**
+ * 背诵卡正文：段落 / 表格照常排，`____` 换成填空样式。
+ *
+ * [reveal] 为假是卡片正面——留出编号下划线，看不见答案；
+ * 为真时答案填进去（背面），背完点一下翻回来。答案按正文里 `____` 出现的顺序对应，
+ * 和 App 背诵页同一套口径。
+ */
+export function renderRecite(text: string, answers: string[], reveal: boolean): string {
+  const html = renderRich(text, 'rcp-p')
+  let i = 0
+  return html.replace(/_{2,}/g, () => {
+    const n = i++
+    const answer = (answers[n] ?? '').trim()
+    if (!reveal) return `<span class="rcp-blank" data-n="${n + 1}">${n + 1}</span>`
+    return answer
+      ? `<span class="rcp-blank on" data-n="${n + 1}">${esc(answer)}</span>`
+      : `<span class="rcp-blank empty" data-n="${n + 1}">（未填）</span>`
+  })
+}
+
+/**
+ * 逐行扫而不是按空行切块——`:::figure` 块里可能有空行，按空行切会把一个块劈成两半，
+ * 预览就和 App 对不上了。[paraClass] 只影响段落的外层类名（题干用它微调段距）。
+ */
+function renderBlocks(text: string, paraClass = ''): string {
   const src = (text || '').replace(/\r/g, '').trim()
   if (!src) return ''
   const lines = src.split('\n')
   const out: string[] = []
   let para: string[] = []
 
+  const p = paraClass ? `<p class="${paraClass}" style="margin:0 0 6px">` : '<p style="margin:0 0 6px">'
+
   const flush = () => {
     const body = para.join('\n').trim()
-    if (body) out.push(`<p style="margin:0 0 6px">${renderInline(body)}</p>`)
+    if (body) out.push(`${p}${renderInline(body)}</p>`)
     para = []
   }
 

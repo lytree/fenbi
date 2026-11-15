@@ -1,11 +1,11 @@
 import { defineComponent } from 'vue'
 import type { PaperSetInfo } from '../types'
 import {
-  askConfirm, askText, loadReciteSubjects, loadSets, newPaper, openReciteSubject,
+  askConfirm, askText, loadReciteSubjects, loadSets, mindmap, newPaper, openReciteSubject,
   openSet, recite, requestDeleteSet, setSetArchived, state, toast,
 } from '../store'
 
-/** 左侧：题库模式 = App 里的「导入组」列表；背诵模式 = 词库 / 政治 / 常识 三块内容 */
+/** 左侧：题库模式 = App 里的「导入组」列表；背诵模式 = 词库 / 政治 / 常识 / 思维导图 四块内容 */
 export default defineComponent({
   name: 'Sidebar',
   setup() {
@@ -118,6 +118,21 @@ export default defineComponent({
                   </div>
                 </div>
               ))}
+              <div
+                class={['side-item', recite.subject === 'mindmap' && 'active']}
+                title="原书 10 个板块的导图，按板块 / 主题 / 层级浏览和编辑"
+                onClick={() => void openReciteSubject('mindmap')}
+              >
+                <div>
+                  <div class="nm">思维导图</div>
+                  <div class="mt">
+                    {mindmap.catalog
+                      ? `${mindmap.catalog.sections.length} 板块 · ${mindmap.catalog.topicCount ?? 0} 主题`
+                      : '点开才读'}
+                    {mindmap.catalog?.hasEdits ? <span class="tag">有覆盖版</span> : null}
+                  </div>
+                </div>
+              </div>
               {recite.subjects.length === 0
                 ? <div class="side-empty">读不到背诵词库<br />确认手机端局域网编辑器还开着</div>
                 : null}

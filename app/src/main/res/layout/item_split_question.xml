@@ -39,6 +39,16 @@
         android:layout_marginTop="@dimen/fb_space_12"
         tools:text="2025年1-11月，B市大中型重点企业研发费用中工业企业占比同比约：" />
 
+    <!-- 题干带表格时整块渲染在这里（`|` 表格不能塞进 TextView，见 MaterialRenderer.renderStemRich） -->
+    <LinearLayout
+        android:id="@+id/stemRich"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/fb_space_8"
+        android:orientation="vertical"
+        android:visibility="gone"
+        tools:visibility="gone" />
+
     <!-- 题干配图（写法见 MaterialRenderer.splitInline）；分屏页与主卷面同一套口径 -->
     <LinearLayout
         android:id="@+id/stemMedia"

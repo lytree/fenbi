@@ -369,7 +369,10 @@
     <string name="mindmap_title">思维导图</string>
     <string name="mindmap_entry">思维导图</string>
     <string name="mindmap_empty">导图内容还没整理好</string>
-    <string name="mindmap_intro_fmt">共 %1$d 个主题 · 点主题展开，按导图层级通读</string>
+    <string name="mindmap_intro_fmt">共 %1$d 个板块 %2$d 个主题 · 点主题展开，点分支收起</string>
+    <string name="mindmap_section_all">全部（%1$d）</string>
+    <string name="mindmap_section_chip_fmt">%1$s %2$d</string>
+    <string name="mindmap_section_meta_fmt">%1$d 主题 · %2$d 条</string>
     <string name="mindmap_index_fmt">%1$02d</string>
     <string name="mindmap_meta_fmt">%1$d 个分支 · %2$d 条要点</string>
     <string name="mindmap_meta_pairs_fmt">%1$d 个分支 · %2$d 条要点 · %3$d 组连线</string>

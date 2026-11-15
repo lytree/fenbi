@@ -1,6 +1,6 @@
 import type {
-  ConfirmStatus, EditorPaper, MigrationReport, PaperSetInfo, ReciteCatalog,
-  ReciteSaveResult, ReciteSubjectInfo, ResourceFile, Sheet, VersionInfo,
+  ConfirmStatus, EditorPaper, MindMapCatalog, MindMapSaveResult, MigrationReport, PaperSetInfo,
+  ReciteCatalog, ReciteSaveResult, ReciteSubjectInfo, ResourceFile, Sheet, VersionInfo,
   WireSheet, WordItem, WordsResponse,
 } from './types'
 
@@ -214,6 +214,21 @@ export const api = {
 
   reciteReset: (subject: string) =>
     request<ReciteSaveResult | ConfirmRequired>('/api/recite/reset', jsonPost({ subject })),
+
+  /* ------------ 思维导图（整份读、整份写） ------------ */
+
+  mindmap: () => request<MindMapCatalog>('/api/mindmap'),
+
+  /**
+   * 整份保存导图。响应和背诵一样分两路：
+   * AI（带 key）直发拿到 `MindMapSaveResult`；网页拿到 `ConfirmRequired`，
+   * 轮询 /api/publish/status（按请求 id 查，对任何操作都通用）。
+   */
+  mindmapSave: (payload: MindMapCatalog) =>
+    request<MindMapSaveResult | ConfirmRequired>('/api/mindmap/save', jsonPost(payload)),
+
+  mindmapReset: () =>
+    request<MindMapSaveResult | ConfirmRequired>('/api/mindmap/reset', jsonPost({})),
 
   /* ------------ 词库（词条 CRUD） ------------ */
 

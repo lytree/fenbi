@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 导图板块头：一个板块一行的分组标题 + 统计（列表按板块分段，滚动时知道自己在哪一块） -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingStart="@dimen/fb_page_pad"
+    android:paddingTop="@dimen/fb_space_12"
+    android:paddingEnd="@dimen/fb_page_pad"
+    android:paddingBottom="@dimen/fb_space_4">
+
+    <View
+        android:layout_width="3dp"
+        android:layout_height="14dp"
+        android:layout_marginEnd="@dimen/fb_space_8"
+        android:background="@color/fb_primary" />
+
+    <TextView
+        android:id="@+id/tvSectionName"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:includeFontPadding="false"
+        android:textColor="@color/fb_text_title"
+        android:textSize="@dimen/fb_text_item_title"
+        android:textStyle="bold"
+        tools:text="党的建设与全面从严治党" />
+
+    <TextView
+        android:id="@+id/tvSectionMeta"
+        style="@style/FbCaption"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="@dimen/fb_space_8"
+        tools:text="7 主题 · 179 条" />
+</LinearLayout>

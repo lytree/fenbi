@@ -22,20 +22,24 @@ import com.lytree.qbank.R
 import com.lytree.qbank.data.MindMapRepository
 import com.lytree.qbank.data.model.MindMapCatalog
 import com.lytree.qbank.data.model.MindMapNode
-import com.lytree.qbank.data.model.MindMapPage
+import com.lytree.qbank.data.model.MindMapSection
+import com.lytree.qbank.data.model.MindMapTopic
 import com.lytree.qbank.data.model.ReciteSubject
 import com.lytree.qbank.databinding.FragmentMindmapBinding
 import com.lytree.qbank.databinding.ItemMindmapPageBinding
+import com.lytree.qbank.databinding.ItemMindmapSectionBinding
 
 /**
  * 思维导图浏览页（政治背诵顶栏的「导图」入口）。
  *
- * 原书《政治理论思维导图大盘点》是扫描版导图，这里按书页还原成层级大纲：
- * 中心主题（level 0）→ 一级分支（1）→ 逐层要点（2..4）。一页一张卡，点标题展开。
+ * 原书《政治理论思维导图大盘点》是扫描版导图，这里按坐标还原的树呈现：
+ * 顶端按书里的 10 个板块筛选，列表一个板块一段，一段里一页书一张卡；
+ * 卡片展开后是「中心主题 → 分支 → 要点」的树，有子节点的行可点着折叠，
+ * 默认只摊开前三层，免得一页 40 多条要点一次铺满屏。
  *
  * · 不做填空：导图的内容是整句原文，用于通读 / 朗读，跟政治背诵卡的「____ 自测」互补
  * · 页面下半部的「内涵连线」做成配对卡：左提法右内涵，点选配对，错了给一次提示
- * · 展开状态只存内存，退出重进回到全部收起
+ * · 展开状态只存内存，退出重进回到默认收起
  */
 class MindMapFragment : Fragment() {
 
@@ -43,10 +47,18 @@ class MindMapFragment : Fragment() {
     private val binding get() = _binding!!
 
     private lateinit var catalog: MindMapCatalog
-    private lateinit var adapter: PageAdapter
+    private lateinit var adapter: RowAdapter
 
-    /** 已展开的主题 id；收起即移除 */
-    private val expanded = HashSet<String>()
+    /** 当前筛的板块 id；null = 全部板块 */
+    private var activeSection: String? = null
+
+    /** 已展开的主题卡 id */
+    private val openTopics = HashSet<String>()
+
+    /** 树节点展开状态的覆盖：没点过的按深度决定，点过就按点过的来。key = "主题id#路径" */
+    private val nodeOpen = HashMap<String, Boolean>()
+
+    private val rows = ArrayList<Row>()
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -71,12 +83,24 @@ class MindMapFragment : Fragment() {
             }
         )
 
-        binding.tvIntro.text = getString(R.string.mindmap_intro_fmt, catalog.pages.size)
+        val empty = catalog.isEmpty
+        binding.tvIntro.text = if (empty) {
+            ""
+        } else {
+            getString(R.string.mindmap_intro_fmt, catalog.sections.size, catalog.topicCount)
+        }
+        binding.sectionBar.isVisible = !empty
+
         binding.list.layoutManager = LinearLayoutManager(requireContext())
-        adapter = PageAdapter()
+        adapter = RowAdapter()
         binding.list.adapter = adapter
-        binding.list.isVisible = catalog.pages.isNotEmpty()
-        binding.emptyText.isVisible = catalog.pages.isEmpty()
+        binding.list.isVisible = !empty
+        binding.emptyText.isVisible = empty
+
+        if (!empty) {
+            buildChips()
+            rebuildRows()
+        }
     }
 
     override fun onDestroyView() {
@@ -91,139 +115,273 @@ class MindMapFragment : Fragment() {
             .commit()
     }
 
-    private fun toggle(page: MindMapPage) {
-        if (!expanded.remove(page.id)) expanded.add(page.id)
-        val index = catalog.pages.indexOfFirst { it.id == page.id }
-        if (index >= 0) adapter.notifyItemChanged(index)
+    // ---------------------------------------------------------------- 板块筛选
+
+    private fun buildChips() {
+        val bar = binding.sectionChips
+        bar.removeAllViews()
+        bar.addView(
+            chip(
+                text = getString(R.string.mindmap_section_all, catalog.topicCount),
+                on = activeSection == null,
+            ) { selectSection(null) }
+        )
+        for (section in catalog.sections) {
+            bar.addView(
+                chip(
+                    text = getString(R.string.mindmap_section_chip_fmt, section.name, section.topics.size),
+                    on = activeSection == section.id,
+                ) { selectSection(section.id) }
+            )
+        }
+    }
+
+    private fun chip(text: String, on: Boolean, onClick: () -> Unit): View {
+        val ctx = requireContext()
+        val view = TextView(ctx).apply {
+            this.text = text
+            setTextSize(TypedValue.COMPLEX_UNIT_PX, resources.getDimension(R.dimen.fb_text_tag))
+            includeFontPadding = false
+            setPadding(dp(11), dp(6), dp(11), dp(6))
+            isClickable = true
+            isFocusable = true
+            setTextColor(
+                ContextCompat.getColor(
+                    ctx,
+                    if (on) R.color.fb_primary else R.color.fb_text_secondary
+                )
+            )
+            setTypeface(null, if (on) Typeface.BOLD else Typeface.NORMAL)
+            background = rounded(
+                ContextCompat.getColor(
+                    ctx,
+                    if (on) R.color.fb_primary_soft else R.color.fb_card_bg
+                ),
+                14
+            )
+            setOnClickListener { onClick() }
+        }
+        return view.apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { marginEnd = dp(6) }
+        }
+    }
+
+    private fun selectSection(id: String?) {
+        if (activeSection == id) return
+        activeSection = id
+        buildChips()
+        rebuildRows()
+        binding.list.scrollToPosition(0)
     }
 
     // ---------------------------------------------------------------- 列表
 
-    private inner class PageAdapter : RecyclerView.Adapter<PageHolder>() {
+    private sealed interface Row {
+        data class Head(val section: MindMapSection) : Row
+        data class Card(val section: MindMapSection, val topic: MindMapTopic) : Row
+    }
 
-        override fun getItemCount(): Int = catalog.pages.size
+    private fun rebuildRows() {
+        rows.clear()
+        val sections = catalog.sections.filter { activeSection == null || it.id == activeSection }
+        for (section in sections) {
+            rows.add(Row.Head(section))
+            for (topic in section.topics) rows.add(Row.Card(section, topic))
+        }
+        adapter.notifyDataSetChanged()
+    }
 
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PageHolder {
-            val inflater = LayoutInflater.from(parent.context)
-            return PageHolder(ItemMindmapPageBinding.inflate(inflater, parent, false))
+    private fun toggleTopic(topic: MindMapTopic) {
+        if (!openTopics.remove(topic.id)) openTopics.add(topic.id)
+        val index = rows.indexOfFirst { it is Row.Card && it.topic.id == topic.id }
+        if (index >= 0) adapter.notifyItemChanged(index)
+    }
+
+    private fun toggleNode(topic: MindMapTopic, key: String, depth: Int) {
+        val current = nodeOpen[key] ?: (depth < DEFAULT_OPEN_DEPTH)
+        nodeOpen[key] = !current
+        val index = rows.indexOfFirst { it is Row.Card && it.topic.id == topic.id }
+        if (index >= 0) adapter.notifyItemChanged(index)
+    }
+
+    private inner class RowAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+
+        override fun getItemCount(): Int = rows.size
+
+        override fun getItemViewType(position: Int): Int = when (rows[position]) {
+            is Row.Head -> TYPE_HEAD
+            is Row.Card -> TYPE_CARD
         }
 
-        override fun onBindViewHolder(holder: PageHolder, position: Int) {
-            holder.bind(catalog.pages[position])
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+            val inflater = LayoutInflater.from(parent.context)
+            return if (viewType == TYPE_HEAD) {
+                SectionHolder(ItemMindmapSectionBinding.inflate(inflater, parent, false))
+            } else {
+                CardHolder(ItemMindmapPageBinding.inflate(inflater, parent, false))
+            }
+        }
+
+        override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+            when (val row = rows[position]) {
+                is Row.Head -> (holder as SectionHolder).bind(row.section)
+                is Row.Card -> (holder as CardHolder).bind(row.topic)
+            }
         }
     }
 
-    private inner class PageHolder(
+    private inner class SectionHolder(
+        private val item: ItemMindmapSectionBinding
+    ) : RecyclerView.ViewHolder(item.root) {
+
+        fun bind(section: MindMapSection) {
+            item.tvSectionName.text = section.name
+            item.tvSectionMeta.text = getString(
+                R.string.mindmap_section_meta_fmt, section.topics.size, section.nodeCount
+            )
+        }
+    }
+
+    private inner class CardHolder(
         private val item: ItemMindmapPageBinding
     ) : RecyclerView.ViewHolder(item.root) {
 
-        fun bind(page: MindMapPage) {
-            item.tvIndex.text = getString(R.string.mindmap_index_fmt, page.page)
-            item.tvName.text = page.name
-            item.tvMeta.text = if (page.pairs.isEmpty()) {
-                getString(R.string.mindmap_meta_fmt, page.branchCount, page.pointCount)
+        fun bind(topic: MindMapTopic) {
+            // 书页标签是「书页 02」，列表上只要那两位数字；新建的主题没有号，留个占位
+            item.tvIndex.text = topic.label.filter { it.isDigit() }.takeLast(2).ifEmpty { "·" }
+            item.tvName.text = topic.name
+            item.tvMeta.text = if (topic.pairs.isEmpty()) {
+                getString(R.string.mindmap_meta_fmt, topic.branchCount, topic.nodeCount)
             } else {
                 getString(
                     R.string.mindmap_meta_pairs_fmt,
-                    page.branchCount, page.pointCount, page.pairs.size
+                    topic.branchCount, topic.nodeCount, topic.pairs.size
                 )
             }
 
-            val open = page.id in expanded
+            val open = topic.id in openTopics
             item.tvArrow.text = if (open) "▾" else "▸"
             item.body.isVisible = open
             item.body.removeAllViews()
-            if (open) fillBody(page)
-            item.header.setOnClickListener { toggle(page) }
+            if (open) fillBody(topic)
+            item.header.setOnClickListener { toggleTopic(topic) }
         }
 
-        private fun fillBody(page: MindMapPage) {
-            page.nodes.forEach { item.body.addView(nodeView(it)) }
-            if (page.pairs.isNotEmpty()) item.body.addView(pairRow(page))
+        private fun fillBody(topic: MindMapTopic) {
+            topic.nodes.forEachIndexed { index, node ->
+                addTreeRow(item.body, topic, node, "$index", 0)
+            }
+            if (topic.pairs.isNotEmpty()) item.body.addView(pairRow(topic))
         }
     }
 
-    // ---------------------------------------------------------------- 大纲行
+    // ---------------------------------------------------------------- 树
 
-    /** 按 level 缩进：0 主题标签 / 1 分支加粗带竖条 / 2..4 逐层缩进，3 起加圆点 */
-    private fun nodeView(node: MindMapNode): View {
-        val context = requireContext()
-        val row = LinearLayout(context).apply {
+    /**
+     * 递归把节点加成行。折叠的分支不下钻，所以一次只渲染看得见的那些行——
+     * 一页 40 多条要点全渲染会让滚动发滞。
+     */
+    private fun addTreeRow(
+        container: LinearLayout,
+        topic: MindMapTopic,
+        node: MindMapNode,
+        path: String,
+        depth: Int,
+    ) {
+        val key = "${topic.id}#$path"
+        val hasKids = node.hasChildren
+        val open = hasKids && (nodeOpen[key] ?: (depth < DEFAULT_OPEN_DEPTH))
+        container.addView(nodeRow(node, depth, hasKids, open) { toggleNode(topic, key, depth) })
+        if (!open) return
+        node.children.forEachIndexed { index, child ->
+            addTreeRow(container, topic, child, "$path.$index", depth + 1)
+        }
+    }
+
+    /** 按深度缩进：0 中心主题（色块）/ 1 分支加粗 / 2 正文 / 3 起次要色带圆点 */
+    private fun nodeRow(
+        node: MindMapNode,
+        depth: Int,
+        hasKids: Boolean,
+        open: Boolean,
+        onToggle: () -> Unit,
+    ): View {
+        val ctx = requireContext()
+        val row = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        val lp = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        )
-
-        when (node.level) {
-            0 -> {
-                val tag = TextView(context).apply {
-                    text = node.text
+        val indent = when (depth) {
+            0 -> 0
+            1 -> dp(12)
+            2 -> dp(26)
+            3 -> dp(40)
+            else -> dp(54)
+        }
+        if (indent > 0) {
+            row.addView(View(ctx), LinearLayout.LayoutParams(indent, 1))
+        }
+        if (hasKids) {
+            row.addView(
+                TextView(ctx).apply {
+                    text = if (open) "▾" else "▸"
                     setTextSize(TypedValue.COMPLEX_UNIT_PX, resources.getDimension(R.dimen.fb_text_tag))
-                    setTextColor(ContextCompat.getColor(context, R.color.fb_primary))
-                    setTypeface(null, Typeface.BOLD)
+                    setTextColor(ContextCompat.getColor(ctx, R.color.fb_text_meta))
                     includeFontPadding = false
-                    setPadding(dp(9), dp(3), dp(9), dp(3))
-                    background = rounded(ContextCompat.getColor(context, R.color.fb_primary_soft), 5)
-                }
-                lp.topMargin = dp(12)
-                row.addView(tag, LinearLayout.LayoutParams(
+                },
+                LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
-                ))
-                row.layoutParams = lp
-                return row
-            }
-            1 -> {
-                row.addView(
-                    View(context).apply {
-                        setBackgroundColor(ContextCompat.getColor(context, R.color.fb_primary))
-                    },
-                    LinearLayout.LayoutParams(dp(3), dp(14)).apply { marginEnd = dp(8) }
-                )
-                lp.topMargin = dp(12)
-            }
-            else -> lp.topMargin = dp(6)
+                ).apply { marginEnd = dp(5) }
+            )
         }
 
-        val indent = when (node.level) {
-            1 -> 0
-            2 -> dp(14)
-            3 -> dp(32)
-            else -> dp(48)
-        }
-        val sizeRes = when (node.level) {
-            1 -> R.dimen.fb_text_item_title
+        val sizeRes = when (depth) {
+            0 -> R.dimen.fb_text_item_title
+            1 -> R.dimen.fb_text_body_size
             2 -> R.dimen.fb_text_body_size
             else -> R.dimen.fb_text_body_sm
         }
-        val colorRes = when (node.level) {
+        val colorRes = when (depth) {
+            0 -> R.color.fb_primary
             1 -> R.color.fb_text_title
             2 -> R.color.fb_text_primary
-            3 -> R.color.fb_text_secondary
-            else -> R.color.fb_text_meta
+            else -> R.color.fb_text_secondary
         }
-        val text = TextView(context).apply {
-            this.text = if (node.level >= 3) "· ${node.text}" else node.text
+        val body = TextView(ctx).apply {
+            text = if (depth >= 3) "· ${node.text}" else node.text
             setTextSize(TypedValue.COMPLEX_UNIT_PX, resources.getDimension(sizeRes))
-            setTextColor(ContextCompat.getColor(context, colorRes))
+            setTextColor(ContextCompat.getColor(ctx, colorRes))
             setLineSpacing(dp(4).toFloat(), 1f)
             includeFontPadding = false
-            if (node.level == 1) setTypeface(null, Typeface.BOLD)
-            setPadding(indent, 0, 0, 0)
+            if (depth <= 1) setTypeface(null, Typeface.BOLD)
+            if (depth == 0) {
+                setPadding(dp(9), dp(3), dp(9), dp(3))
+                background = rounded(ContextCompat.getColor(ctx, R.color.fb_primary_soft), 5)
+            }
         }
         row.addView(
-            text,
+            body,
             LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         )
-        row.layoutParams = lp
+        row.layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = if (depth <= 1) dp(10) else dp(5) }
+
+        if (hasKids) {
+            row.isClickable = true
+            row.isFocusable = true
+            row.setOnClickListener { onToggle() }
+        }
         return row
     }
 
     /** 「内涵连线 · 14 组   开始配对」 */
-    private fun pairRow(page: MindMapPage): View {
+    private fun pairRow(topic: MindMapTopic): View {
         val context = requireContext()
         val row = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -233,7 +391,7 @@ class MindMapFragment : Fragment() {
         row.addView(
             TextView(context).apply {
                 text = getString(R.string.mindmap_pair_section) + " · " +
-                    getString(R.string.mindmap_pair_count_fmt, page.pairs.size)
+                    getString(R.string.mindmap_pair_count_fmt, topic.pairs.size)
                 setTextSize(TypedValue.COMPLEX_UNIT_PX, resources.getDimension(R.dimen.fb_text_body_sm))
                 setTextColor(ContextCompat.getColor(context, R.color.fb_text_secondary))
                 includeFontPadding = false
@@ -250,7 +408,7 @@ class MindMapFragment : Fragment() {
                 setPadding(dp(10), dp(6), dp(10), dp(6))
                 background = ripple()
                 isClickable = true
-                setOnClickListener { showPairs(page) }
+                setOnClickListener { showPairs(topic) }
             }
         )
         return row
@@ -263,9 +421,9 @@ class MindMapFragment : Fragment() {
      * 先点左再点右：配对正确两边变绿并锁定；错了闪一下红再让人重选。
      * 期望答案就是资产里 pairs 的对应关系，不含序号，展示时也不给提示。
      */
-    private fun showPairs(page: MindMapPage) {
+    private fun showPairs(topic: MindMapTopic) {
         val context = requireContext()
-        val pairs = page.pairs
+        val pairs = topic.pairs
         val total = pairs.size
         val matched = BooleanArray(total)
         var selectedLeft = -1
@@ -429,4 +587,12 @@ class MindMapFragment : Fragment() {
 
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density + 0.5f).toInt()
+
+    private companion object {
+        const val TYPE_HEAD = 0
+        const val TYPE_CARD = 1
+
+        /** 默认摊开到第几层：0 是中心主题，1 是一级分支的子节点 */
+        const val DEFAULT_OPEN_DEPTH = 2
+    }
 }

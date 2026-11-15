@@ -3,6 +3,7 @@
      点一下卡片 = 展开这道题的完整资料（材料 / 解析），再点收起；
      从成绩报告点某题跳过来时，落点那题默认就是展开的。 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     style="@style/FbListCard"
     android:clickable="true"
     android:focusable="true"
@@ -55,6 +56,16 @@
         android:id="@+id/tvStem"
         style="@style/FbStem"
         android:layout_marginTop="@dimen/fb_space_12" />
+
+    <!-- 题干带表格时整块渲染在这里（试卷详情是只读预览，表格要看得清） -->
+    <LinearLayout
+        android:id="@+id/stemRich"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/fb_space_8"
+        android:orientation="vertical"
+        android:visibility="gone"
+        tools:visibility="gone" />
 
     <TextView
         android:id="@+id/tvOptions"
