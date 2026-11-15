@@ -1,6 +1,8 @@
 package com.lytree.qbank.ui.recite
 
+import android.content.res.ColorStateList
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.TypedValue
 import android.view.GestureDetector
 import android.view.HapticFeedbackConstants
@@ -8,6 +10,7 @@ import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.addCallback
@@ -55,6 +58,7 @@ class ReciteDrillFragment : Fragment() {
     private val binding get() = _binding!!
 
     private lateinit var library: ReciteLibrary
+    private lateinit var modeAction: ImageView
     private lateinit var fontAction: TextView
 
     /** 本次背诵的序列（同标签同来源 / 同主题），按资产原始顺序 */
@@ -70,6 +74,12 @@ class ReciteDrillFragment : Fragment() {
 
     /** 长按偷看：只在手指按住期间显示 */
     private var peeking = false
+
+    /** 本轮点了「还不熟」的条目：小结里可以只再背这几条 */
+    private val hardIds = LinkedHashSet<String>()
+
+    /** 边缘提示是否正在显示：避免连滑几次叠一串延时任务 */
+    private var edgeHintPosted = false
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -92,13 +102,25 @@ class ReciteDrillFragment : Fragment() {
         // 系统返回键同样回大纲：本页是从大纲顶上开出来的一层，一按就退出 App 太粗暴
         requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner) { openOutline() }
 
-        fontAction = binding.titleBar.addTextAction("") { cycleFont() }
+        // 背诵页也能切「答案常显」：常识页开着它就带着进来，这里没开关的话没法改回去
+        modeAction = binding.titleBar.addIconAction(
+            R.drawable.ic_recite_mode,
+            getString(R.string.recite_mode)
+        ) { setReciteMode(!reciteMode) }
+        updateModeAction()
+
+        fontAction = binding.titleBar.addTextAction("") { chooseFont() }
         fontAction.setTextColor(ContextCompat.getColor(context, R.color.fb_text_secondary))
         updateFontAction()
 
-        binding.btnHard.setOnClickListener { step(1) }
+        binding.btnHard.setOnClickListener {
+            // 点「还不熟」就是明确表态这条没记住：记下来，小结里可以只过这几条
+            scope.getOrNull(index)?.let { hardIds += it.id }
+            step(1)
+        }
         binding.btnKnown.setOnClickListener { markAndNext() }
         binding.btnAgain.setOnClickListener { restart() }
+        binding.btnHardOnly.setOnClickListener { drillHardOnly() }
         binding.btnBackOutline.setOnClickListener { openOutline() }
 
         val anchor = library.items.firstOrNull { it.id == requireArguments().getString(ARG_ANCHOR) }
@@ -158,6 +180,9 @@ class ReciteDrillFragment : Fragment() {
 
         binding.tvCrumb.text = tagLabel(item)
         binding.tvCounter.text = getString(R.string.drill_counter_fmt, index + 1, scope.size)
+        // 进度条是「第几条」，不是「背会了多少」：读屏也要听到同一个口径
+        binding.progressBar.contentDescription =
+            getString(R.string.drill_progress_desc_fmt, index + 1, scope.size)
 
         // 进度条用权重分摊，省得自己算像素宽度
         val fill = ((index + 1f) / scope.size * WEIGHT_TOTAL).toInt().coerceIn(0, WEIGHT_TOTAL)
@@ -176,6 +201,8 @@ class ReciteDrillFragment : Fragment() {
             if (item.id in done) R.string.drill_next else R.string.drill_known
         )
         binding.card.isVisible = true
+        binding.card.animate().cancel()
+        binding.card.translationX = 0f
         binding.doneBox.isVisible = false
         binding.bottomBar.isVisible = true
         // 新条目从顶部读起；换上文字后布局才更新，滚动得等下一帧
@@ -211,7 +238,11 @@ class ReciteDrillFragment : Fragment() {
 
     private fun step(delta: Int) {
         val next = index + delta
-        if (next < 0) return
+        if (next < 0) {
+            // 第一条再往右滑：没有上一条可去，给一下回弹 + 一句话，别让人以为滑动失灵
+            nudgeEdge(forward = false)
+            return
+        }
         if (next >= scope.size) {
             showSummary()
             return
@@ -236,10 +267,57 @@ class ReciteDrillFragment : Fragment() {
         index = 0
         revealed = false
         peeking = false
+        hardIds.clear()
         render()
     }
 
+    /** 只背本轮标了「还不熟」的几条：背完一次小结还在，可以继续收窄 */
+    private fun drillHardOnly() {
+        val hard = scope.filter { it.id in hardIds }
+        if (hard.isEmpty()) return
+        scope = hard
+        index = 0
+        revealed = false
+        peeking = false
+        hardIds.clear()
+        render()
+    }
+
+    /**
+     * 边缘回弹：卡片朝该滑的方向顶一下再弹回，同时把底下那行提示临时换成
+     * 「已经是第一条 / 最后一条了」。提示只挂一次，连滑不会叠任务。
+     */
+    private fun nudgeEdge(forward: Boolean) {
+        if (_binding == null) return
+        binding.card.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+        val shift = dp(14).toFloat() * if (forward) -1 else 1
+        binding.card.animate().cancel()
+        binding.card.translationX = 0f
+        binding.card.animate()
+            .translationX(shift)
+            .setDuration(90)
+            .withEndAction {
+                _binding?.card?.animate()?.translationX(0f)?.setDuration(140)?.start()
+            }
+            .start()
+
+        if (edgeHintPosted) return
+        edgeHintPosted = true
+        binding.tvHint.setText(
+            if (forward) R.string.drill_edge_last else R.string.drill_edge_first
+        )
+        binding.tvHint.postDelayed({
+            edgeHintPosted = false
+            if (_binding != null) renderText()
+        }, 1200)
+    }
+
     private fun showSummary() {
+        val hardCount = scope.count { it.id in hardIds }
+        binding.btnHardOnly.isVisible = hardCount > 0
+        if (hardCount > 0) {
+            binding.btnHardOnly.text = getString(R.string.drill_hard_only_fmt, hardCount)
+        }
         binding.tvDoneMsg.text = getString(
             R.string.drill_done_msg,
             scope.size,
@@ -272,16 +350,22 @@ class ReciteDrillFragment : Fragment() {
      */
     private fun setupGestures() {
         val slop = dp(44)
+        // 手势内累计的位移：只认「甩」的话，慢慢拖过去毫无反应，和提示里的「左右滑」对不上
+        var swipeDx = 0f
+        var swipeDy = 0f
+        var swipeConsumed = false
         val detector = GestureDetector(
             requireContext(),
             object : GestureDetector.SimpleOnGestureListener() {
-                override fun onDown(e: MotionEvent): Boolean = true
+                override fun onDown(e: MotionEvent): Boolean {
+                    swipeDx = 0f
+                    swipeDy = 0f
+                    swipeConsumed = false
+                    return true
+                }
 
                 override fun onSingleTapUp(e: MotionEvent): Boolean {
-                    if (!reciteMode) {
-                        revealed = !revealed
-                        renderText()
-                    }
+                    onCardTapped()
                     return true
                 }
 
@@ -292,6 +376,22 @@ class ReciteDrillFragment : Fragment() {
                     renderText()
                 }
 
+                override fun onScroll(
+                    e1: MotionEvent?,
+                    e2: MotionEvent,
+                    distanceX: Float,
+                    distanceY: Float
+                ): Boolean {
+                    if (swipeConsumed) return false
+                    swipeDx -= distanceX
+                    swipeDy -= distanceY
+                    // 不够远、或竖向占主导（长条目还要靠 ScrollView 滚），都不算切条
+                    if (abs(swipeDx) < slop || abs(swipeDx) < abs(swipeDy) * 1.6f) return false
+                    swipeConsumed = true
+                    step(if (swipeDx < 0) 1 else -1)
+                    return true
+                }
+
                 override fun onFling(
                     e1: MotionEvent?,
                     e2: MotionEvent,
@@ -299,6 +399,8 @@ class ReciteDrillFragment : Fragment() {
                     velocityY: Float
                 ): Boolean {
                     if (e1 == null) return false
+                    // 慢拖已经在 onScroll 里切过了，别甩手再来一次
+                    if (swipeConsumed) return false
                     val dx = e2.x - e1.x
                     val dy = e2.y - e1.y
                     // 竖向为主的滑动算滚动，不算切条（长条目在页内要能滚）
@@ -321,6 +423,46 @@ class ReciteDrillFragment : Fragment() {
         }
         binding.cardScroll.setOnTouchListener(observer)
         binding.card.setOnTouchListener(observer)
+        // 卡片补 OnClickListener：读屏才认得出这是可操作区域；手势与点击同时到达时按时间戳去重
+        binding.card.setOnClickListener { onCardTapped() }
+    }
+
+    private var lastTapAt = 0L
+
+    /** 轻点卡片 = 揭示 / 收起答案（背诵模式下答案常显，不动） */
+    private fun onCardTapped() {
+        val now = SystemClock.uptimeMillis()
+        if (now - lastTapAt < 150) return
+        lastTapAt = now
+        if (reciteMode) return
+        revealed = !revealed
+        renderText()
+    }
+
+    // ---------------------------------------------------------------- 背诵模式
+
+    /** 顶栏睁眼 = 答案常显，与常识页同一套语义：随时能开能关，不用退回列表 */
+    private fun setReciteMode(on: Boolean) {
+        if (reciteMode == on) return
+        reciteMode = on
+        ReciteRepository.setReciteMode(requireContext(), on)
+        updateModeAction()
+        renderText()
+    }
+
+    private fun updateModeAction() {
+        val context = requireContext()
+        modeAction.imageTintList = ColorStateList.valueOf(
+            ContextCompat.getColor(context, if (reciteMode) R.color.fb_primary else R.color.fb_icon)
+        )
+        modeAction.background = if (reciteMode) {
+            ContextCompat.getDrawable(context, R.drawable.bg_recite_mode_on)
+        } else {
+            null
+        }
+        modeAction.isSelected = reciteMode
+        modeAction.contentDescription =
+            getString(if (reciteMode) R.string.recite_mode_on else R.string.recite_mode)
     }
 
     // ---------------------------------------------------------------- 字号 / 导航
@@ -334,13 +476,14 @@ class ReciteDrillFragment : Fragment() {
         fontAction.text = getString(R.string.recite_font_fmt, getString(labels[fontLevel]))
     }
 
-    private fun cycleFont() {
-        fontLevel = (fontLevel + 1) % 3
-        ReciteRepository.setFontLevel(requireContext(), fontLevel)
-        updateFontAction()
-        val size = 18f + fontLevel * 2
-        binding.tvText.setTextSize(TypedValue.COMPLEX_UNIT_SP, size)
-        binding.tvText.setLineSpacing(dp(8 + fontLevel * 2).toFloat(), 1f)
+    private fun chooseFont() {
+        ReciteFontPicker.show(requireContext(), fontLevel) { level ->
+            fontLevel = level
+            ReciteRepository.setFontLevel(requireContext(), level)
+            updateFontAction()
+            binding.tvText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f + level * 2)
+            binding.tvText.setLineSpacing(dp(8 + level * 2).toFloat(), 1f)
+        }
     }
 
     private fun openOutline() {

@@ -10,10 +10,9 @@
     android:gravity="center_vertical"
     android:orientation="horizontal"
     android:paddingStart="@dimen/fb_page_pad"
-    android:paddingTop="4dp"
-    android:paddingEnd="@dimen/fb_page_pad"
-    android:paddingBottom="4dp">
+    android:paddingEnd="@dimen/fb_page_pad">
 
+    <!-- 三个切换项：视觉仍是「文字 + 下划线」，但每项高 48dp，手指够得着（文字基线不变） -->
     <LinearLayout
         android:id="@+id/switchWords"
         android:layout_width="wrap_content"
@@ -21,8 +20,9 @@
         android:clickable="true"
         android:focusable="true"
         android:gravity="center_horizontal"
+        android:minHeight="48dp"
         android:orientation="vertical"
-        android:paddingTop="4dp"
+        android:paddingTop="8dp"
         android:paddingEnd="24dp"
         android:paddingBottom="2dp">
 
@@ -51,8 +51,9 @@
         android:clickable="true"
         android:focusable="true"
         android:gravity="center_horizontal"
+        android:minHeight="48dp"
         android:orientation="vertical"
-        android:paddingTop="4dp"
+        android:paddingTop="8dp"
         android:paddingEnd="24dp"
         android:paddingBottom="2dp">
 
@@ -81,8 +82,9 @@
         android:clickable="true"
         android:focusable="true"
         android:gravity="center_horizontal"
+        android:minHeight="48dp"
         android:orientation="vertical"
-        android:paddingTop="4dp"
+        android:paddingTop="8dp"
         android:paddingBottom="2dp">
 
         <TextView

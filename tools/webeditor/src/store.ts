@@ -1,6 +1,6 @@
 import { computed, reactive } from 'vue'
 import { api } from './api'
-import type { ConfirmRequired, PublishResponse } from './api'
+import type { ConfirmRequired, McpKeyResult, PublishResponse } from './api'
 import type {
   EditorPaper, EditorView, Filter, Group, Issue, LibraryCatalog, LibraryItem, LibrarySaveResult,
   LibraryTag, MindMapCatalog, MindMapNode, MindMapSaveResult,
@@ -44,6 +44,7 @@ type WaitingKind =
   | 'recite-save' | 'recite-reset'
   | 'mindmap-save' | 'mindmap-reset'
   | 'library-save' | 'library-reset'
+  | 'mcp'
 
 /* ------------------------------------------------------------------ 状态 */
 
@@ -558,7 +559,11 @@ async function waitPhone(
   req: ConfirmRequired,
   message: string,
   extra: string,
-): Promise<PublishResponse | ReciteSaveResult | LibrarySaveResult | null> {
+  failText: { rejected: string; expired: string } = {
+    rejected: '手机上点了「不」，题库没动',
+    expired: '请求已作废，要发就再点一次',
+  },
+): Promise<PublishResponse | ReciteSaveResult | LibrarySaveResult | McpKeyResult | null> {
   ui.busy = false
   ui.waitingId = req.requestId
   ui.waitingKind = kind
@@ -598,13 +603,40 @@ async function waitPhone(
     finishWaiting()
     if (s.status === 'approved' && s.result) return s.result
     if (s.status === 'rejected') {
-      toast(s.error ? `手机上确认了，但没成功：${s.error}` : '手机上点了「不」，题库没动', s.error ? 'err' : '')
+      toast(s.error ? `手机上确认了，但没成功：${s.error}` : failText.rejected, s.error ? 'err' : '')
     } else {
-      toast('请求已作废，要发就再点一次', 'err')
+      toast(failText.expired, 'err')
     }
     return null
   }
   return null
+}
+
+/**
+ * 取 MCP 配置（含写入口令）。
+ *
+ * 网页没有写权限：服务端只登记一条请求，手机上点「确认提供」才把 key 交出来，
+ * 拒绝或超时就当没拿到。返回值是可直接粘贴的整段 JSON。
+ */
+export async function requestMcpConfig(): Promise<string | null> {
+  if (ui.waitingId) {
+    toast('还有一条请求在等手机处理，等它结束再取', 'err')
+    return null
+  }
+  try {
+    const r = await api.mcpInfo()
+    const result = await waitPhone(
+      'mcp',
+      { needConfirm: true, requestId: r.requestId, title: 'MCP 配置', detail: '', ttlSec: r.ttlSec },
+      '获取 AI（MCP）写入口令',
+      '确认之后网页就能拿到写入口令，配到 AI 客户端里可直接发布 / 回滚 / 保存；不想给就点「不给」。',
+      { rejected: '手机上没同意，没拿到 MCP 配置', expired: '等太久没确认，重新点一次「复制 MCP」' },
+    )
+    return (result as McpKeyResult | null)?.config ?? null
+  } catch (e) {
+    await showErrors('拿不到 MCP 配置', e instanceof Error ? e.message : '请求失败')
+    return null
+  }
 }
 
 /* ------------------------------------------------------------------ 题目操作 */

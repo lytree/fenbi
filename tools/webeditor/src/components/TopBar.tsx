@@ -1,7 +1,6 @@
 import { defineComponent } from 'vue'
-import { api } from '../api'
 import {
-  issueCounts, markDirty, markReciteDirty, publish, recite, resetRecite, saveRecite,
+  issueCounts, markDirty, markReciteDirty, publish, recite, requestMcpConfig, resetRecite, saveRecite,
   showErrors, state, switchMode, toast, ui,
 } from '../store'
 import { theme, toggleTheme } from '../theme'
@@ -45,25 +44,21 @@ export default defineComponent({
     /**
      * 复制 MCP 配置（含写入口令）。
      *
-     * 口令是固定的（设了密码就是密码，没设就是手机首次生成后保存的那串），
-     * 复制一次可以长期用；剪贴板被拦时把配置弹出来让人手动抄。
+     * 口令要手机上点「确认提供」才会给：这里先发申请，等手机同意后再复制。
+     * 拒绝 / 超时就直接跳过；剪贴板被拦时把配置弹出来让人手动抄。
      * key 不回显在按钮旁边：口令只落在剪贴板和一次性弹层里，不常驻页面。
      */
     const copyMcp = async () => {
-      try {
-        const r = await api.mcpInfo()
-        if (await copyText(r.config)) {
-          toast('MCP 配置已复制（含写入口令），粘到客户端的 mcpServers 里', 'ok')
-          return
-        }
-        await showErrors(
-          '复制失败，请手动复制',
-          `${r.config}\n\n（写入口令 QBANK_KEY 就在上面 JSON 里。）`,
-        )
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : '拿不到 MCP 配置'
-        await showErrors('拿不到 MCP 配置', msg)
+      const config = await requestMcpConfig()
+      if (!config) return
+      if (await copyText(config)) {
+        toast('MCP 配置已复制（含写入口令），粘到客户端的 mcpServers 里', 'ok')
+        return
       }
+      await showErrors(
+        '复制失败，请手动复制',
+        `${config}\n\n（写入口令 QBANK_KEY 就在上面 JSON 里。）`,
+      )
     }
 
     return () => {
@@ -149,7 +144,7 @@ export default defineComponent({
           <div class="top-actions">
             <button
               class="ghost sm"
-              title="复制 AI（MCP）配置 JSON，含固定不变的写入口令，配一次可长期使用"
+              title="复制 AI（MCP）配置 JSON：写入口令要手机上点「确认提供」才会给"
               onClick={() => void copyMcp()}
             >
               复制 MCP

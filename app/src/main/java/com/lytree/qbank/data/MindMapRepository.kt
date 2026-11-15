@@ -1,6 +1,7 @@
 package com.lytree.qbank.data
 
 import android.content.Context
+import com.lytree.qbank.data.db.QBankDb
 import com.lytree.qbank.data.model.MindMapCatalog
 import com.lytree.qbank.data.model.MindMapNode
 import com.lytree.qbank.data.model.MindMapPair
@@ -143,6 +144,18 @@ object MindMapRepository {
         userFile(context).delete()
         cache = null
     }
+
+    // ---------------------------------------------------------------- 板块筛选
+
+    /** 上次筛的板块 id；空串 = 全部。重进页面沿用，和背诵进度一样属于阅读状态 */
+    fun sectionFilter(context: Context): String? =
+        QBankDb.get(context).getSetting(KEY_SECTION)?.takeIf { it.isNotBlank() }
+
+    fun setSectionFilter(context: Context, id: String?) {
+        QBankDb.get(context).setSetting(KEY_SECTION, id.orEmpty())
+    }
+
+    private const val KEY_SECTION = "mindmap_section"
 
     // ---------------------------------------------------------------- 解析
 

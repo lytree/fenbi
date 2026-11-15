@@ -46,8 +46,9 @@
             tools:text="3 / 42" />
     </LinearLayout>
 
-    <!-- 本组进度：细条，比数字更直观地知道还剩多少 -->
+    <!-- 本组进度：细条，比数字更直观地知道还剩多少（语义见 progressBar 的 contentDescription） -->
     <LinearLayout
+        android:id="@+id/progressBar"
         android:layout_width="match_parent"
         android:layout_height="3dp"
         android:orientation="horizontal">
@@ -82,7 +83,8 @@
             android:layout_height="match_parent"
             android:background="@drawable/bg_fb_card"
             android:clickable="true"
-            android:focusable="true">
+            android:focusable="true"
+            android:foreground="?attr/selectableItemBackground">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -147,10 +149,31 @@
                 android:gravity="center"
                 tools:text="共 42 条 · 已背 40 条" />
 
+            <!-- 小结备注：再背一遍只是重新过一遍，不动已背标记 -->
+            <TextView
+                android:id="@+id/tvDoneNote"
+                style="@style/FbCaption"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/fb_space_4"
+                android:gravity="center"
+                android:text="@string/drill_done_note" />
+
+            <!-- 本轮「还不熟」的那几条：只过它们，不用从头再背一遍 -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnHardOnly"
+                style="@style/FbGhostButton"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/fb_btn_h"
+                android:layout_marginTop="@dimen/fb_space_24"
+                android:visibility="gone"
+                tools:text="只背不熟的 6 条"
+                tools:visibility="visible" />
+
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/fb_space_24"
+                android:layout_marginTop="@dimen/fb_space_12"
                 android:orientation="horizontal">
 
                 <com.google.android.material.button.MaterialButton

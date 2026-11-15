@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  顶栏「遮答预览」开关：划掉的眼睛 = 遮住答案。
+  和「背诵模式」（睁眼 = 答案常显）刻意用两个图标：两页开关语义相反，图标一样会让人点错。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M2.6,12C5.2,7.7 8.5,5.6 12,5.6c3.5,0 6.8,2.1 9.4,6.4c-2.6,4.3 -5.9,6.4 -9.4,6.4c-3.5,0 -6.8,-2.1 -9.4,-6.4Z"
+        android:strokeColor="@color/fb_icon"
+        android:strokeLineJoin="round"
+        android:strokeWidth="1.7" />
+    <path
+        android:fillColor="@color/fb_icon"
+        android:pathData="M12,9.1a2.9,2.9 0 1 1 0,5.8a2.9,2.9 0 0 1 0,-5.8Z" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M4.6,4.6L19.4,19.4"
+        android:strokeColor="@color/fb_icon"
+        android:strokeLineCap="round"
+        android:strokeWidth="1.7" />
+</vector>

@@ -23,6 +23,7 @@
         tools:text="更新于 2026-10-26 · 共 86 个考点" />
 
     <androidx.core.widget.NestedScrollView
+        android:id="@+id/catalogScroll"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="@dimen/fb_space_12"

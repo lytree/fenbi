@@ -120,16 +120,17 @@
                     android:text="@string/recite_hint_reveal" />
             </LinearLayout>
 
+            <!-- 星标：视觉 22dp，热区 44dp（margin+padding 内缩，位置与原来一致） -->
             <ImageView
                 android:id="@+id/btnStar"
-                android:layout_width="30dp"
-                android:layout_height="30dp"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
                 android:layout_gravity="top|end"
-                android:layout_marginTop="@dimen/fb_space_12"
-                android:layout_marginEnd="@dimen/fb_space_12"
+                android:layout_marginTop="5dp"
+                android:layout_marginEnd="5dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/recite_favorite"
-                android:padding="4dp"
+                android:padding="11dp"
                 android:src="@drawable/ic_fb_star" />
         </FrameLayout>
 

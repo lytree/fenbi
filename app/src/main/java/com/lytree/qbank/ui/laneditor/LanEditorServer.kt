@@ -492,7 +492,7 @@ class LanEditorServer(
                 else -> jsonError(400, "读词条请用 /api/words 列表")
             }
 
-            // ---- MCP 配置：给网页上的「复制 MCP 配置」按钮 ----
+            // ---- MCP 配置：网页申请，手机确认后才把写入口令交出去 ----
             "/api/mcp" -> handleMcpInfo()
 
             else -> jsonError(404, "接口不存在：$path")
@@ -769,20 +769,21 @@ class LanEditorServer(
     }
 
     /**
-     * MCP 配置给网页复制。
+     * MCP 配置给网页复制，但口令不直接返回。
      *
-     * 写入口令是固定的：设了访问密码就是那串密码，没设就是 [accessKey]
-     * （首次生成后不再变）。所以网页拿一次就能长期用，不用每次重启回来重抄。
-     * 没设密码时网页也能取到写入口令——这类部署本来整站就对着同一 Wi-Fi 开放，
-     * 想要写权限只掌握在自己手里，请在手机上设一个访问密码。
+     * 先登记一条手机确认请求，网页拿 requestId 轮询 `/api/publish/status`；
+     * 手机上点「确认提供」之后 result 里才有 key 和整段配置，拒绝 / 超时则什么都拿不到。
+     * key 固定不变（设了密码即密码，没设即 [accessKey]），所以授权一次就能长期用。
      */
     private fun handleMcpInfo(): Resp {
         val key = password ?: accessKey
+        val r = LanEditorConfirm.requestMcpKey(context, pageUrl, key)
         return json(
             JSONObject()
+                .put("needConfirm", true)
+                .put("requestId", r.id)
                 .put("url", pageUrl)
-                .put("key", key)
-                .put("config", LanEditorMcpConfig.json(pageUrl, key))
+                .put("ttlSec", 600)
         )
     }
 

@@ -105,9 +105,10 @@ class LanEditorActivity : AppCompatActivity() {
             LanEditorConfirm.KIND_RESET_MINDMAP -> "重置思维导图"
             LanEditorConfirm.KIND_SAVE_LIBRARY -> "保存政治大纲"
             LanEditorConfirm.KIND_RESET_LIBRARY -> "重置政治大纲"
+            LanEditorConfirm.KIND_MCP_KEY -> "获取 MCP 写入口令"
             else -> "删除"
         }
-        val okText = "确认$action"
+        val okText = if (req.kind == LanEditorConfirm.KIND_MCP_KEY) "确认提供" else "确认$action"
         val cancelText = when (req.kind) {
             LanEditorConfirm.KIND_PUBLISH -> "不发布"
             LanEditorConfirm.KIND_RESTORE -> "不回滚"
@@ -117,11 +118,17 @@ class LanEditorActivity : AppCompatActivity() {
             LanEditorConfirm.KIND_RESET_MINDMAP -> "不重置"
             LanEditorConfirm.KIND_SAVE_LIBRARY -> "不保存"
             LanEditorConfirm.KIND_RESET_LIBRARY -> "不重置"
+            LanEditorConfirm.KIND_MCP_KEY -> "不给"
             else -> "不删"
+        }
+        val message = if (req.kind == LanEditorConfirm.KIND_MCP_KEY) {
+            "电脑上的题库编辑器请求获取 MCP 写入口令。\n\n${req.detail}"
+        } else {
+            "电脑上的题库编辑器请求${action}「${req.title}」。\n\n${req.detail}"
         }
         FbDialog.confirm(
             this,
-            message = "电脑上的题库编辑器请求${action}「${req.title}」。\n\n${req.detail}",
+            message = message,
             okText = okText,
             cancelText = cancelText,
             cancelable = false,
@@ -131,7 +138,11 @@ class LanEditorActivity : AppCompatActivity() {
             },
             onCancel = {
                 LanEditorConfirm.reject(applicationContext, req.id)
-                Toast.makeText(this, "已拒绝，题库没有动", Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    this,
+                    if (req.kind == LanEditorConfirm.KIND_MCP_KEY) "已拒绝，没有提供口令" else "已拒绝，题库没有动",
+                    Toast.LENGTH_SHORT,
+                ).show()
             },
         )
     }

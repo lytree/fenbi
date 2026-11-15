@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.drawable.GradientDrawable
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -86,6 +87,7 @@ internal object MindMapPairs {
         val rightViews = ArrayList<TextView>(total)
         // 右列第 pos 个位置放的是原书第 rightOriginal[pos] 组的内涵
         val rightOriginal = ArrayList<Int>(total)
+        var dialogRef: AlertDialog? = null
 
         fun paint(view: TextView, bg: Int, textColor: Int) {
             view.background = rounded(view.context, bg, 6)
@@ -94,8 +96,14 @@ internal object MindMapPairs {
 
         fun clearPending() {
             for (i in 0 until total) {
-                if (!matched[i]) paint(leftViews[i], bgNormal, textNormal)
-                if (!matched[rightOriginal[i]]) paint(rightViews[i], bgNormal, textNormal)
+                if (!matched[i]) {
+                    paint(leftViews[i], bgNormal, textNormal)
+                    leftViews[i].text = pairs[i].left
+                }
+                if (!matched[rightOriginal[i]]) {
+                    paint(rightViews[i], bgNormal, textNormal)
+                    rightViews[i].text = pairs[rightOriginal[i]].right
+                }
             }
             selectedLeft = -1
         }
@@ -124,17 +132,34 @@ internal object MindMapPairs {
                     matchedCount++
                     paint(leftViews[leftIndex], bgRight, textRight)
                     paint(view, bgRight, textRight)
+                    // 对错不只靠颜色：✓ / ✗ 图标 + 震动，色弱和盲操都能感知
+                    leftViews[leftIndex].text = "✓ " + pairs[leftIndex].left
+                    view.text = "✓ " + pairs[original].right
                     leftViews[leftIndex].isClickable = false
                     view.isClickable = false
                     selectedLeft = -1
+                    view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                     progress.text = if (matchedCount == total) {
                         context.getString(R.string.mindmap_pair_done, total)
                     } else {
                         context.getString(R.string.mindmap_pair_progress, matchedCount, total)
                     }
+                    if (matchedCount == total) {
+                        // 全配完了，正按钮从「关闭」变成「再开一局」，不用退出去重进
+                        dialogRef?.getButton(AlertDialog.BUTTON_POSITIVE)?.apply {
+                            setText(R.string.mindmap_pair_again)
+                            setOnClickListener {
+                                dialogRef?.dismiss()
+                                show(context, pairs)
+                            }
+                        }
+                    }
                 } else {
                     paint(leftViews[leftIndex], bgWrong, textWrong)
                     paint(view, bgWrong, textWrong)
+                    leftViews[leftIndex].text = "✗ " + pairs[leftIndex].left
+                    view.text = "✗ " + pairs[original].right
+                    view.performHapticFeedback(HapticFeedbackConstants.REJECT)
                     selectedLeft = -1
                     view.postDelayed({ clearPending() }, 650)
                 }
@@ -148,11 +173,12 @@ internal object MindMapPairs {
             addView(root)
             isVerticalScrollBarEnabled = true
         }
-        AlertDialog.Builder(context)
+        dialogRef = AlertDialog.Builder(context)
             .setTitle(context.getString(R.string.mindmap_pair_section))
             .setView(scroll)
             .setPositiveButton(R.string.mindmap_pair_close, null)
-            .show()
+            .create()
+            .also { it.show() }
     }
 
     private fun columnTitle(context: Context, text: String): TextView =

@@ -323,15 +323,19 @@
     <string name="title_recite_politics">政治背诵</string>
     <string name="title_recite_common">常识背诵</string>
     <string name="recite_favorite">标为重点</string>
+    <string name="recite_favorite_remove">取消重点</string>
+    <string name="recite_unfavorited">已取消重点</string>
     <string name="recite_font_fmt">A%1$s</string>
+    <string name="recite_font_title">字号</string>
     <string name="recite_font_small">小</string>
     <string name="recite_font_medium">中</string>
     <string name="recite_font_large">大</string>
     <string name="recite_hint_reveal">长按显示答案 · 左右滑动切题</string>
-    <string name="recite_hint_peek_reveal">长按看答案，松手隐藏 · 左右滑动切题</string>
-    <string name="recite_hint_peeking">松手隐藏 · 轻点常显 · 左右滑动切题</string>
     <string name="recite_hint_hide">轻点收起答案 · 左右滑动切题</string>
     <string name="recite_hint_mode">背诵模式 · 答案已显示</string>
+    <string name="recite_loop_first">已回到第 1 张</string>
+    <string name="recite_loop_last">已跳到最后一张</string>
+    <string name="recite_single_card">这个范围只有这一张</string>
     <string name="recite_mode">背诵模式</string>
     <string name="recite_mode_on">背诵模式已开启 · 答案常显</string>
     <string name="recite_mode_off">背诵模式已关闭 · 长按看答案</string>
@@ -365,7 +369,6 @@
 
     <!-- 思维导图浏览页 -->
     <string name="mindmap_title">思维导图</string>
-    <string name="mindmap_entry">思维导图</string>
     <string name="mindmap_empty">导图内容还没整理好</string>
     <string name="mindmap_intro_fmt">共 %1$d 个板块 %2$d 个主题 · 点主题看图，双指缩放</string>
     <string name="mindmap_section_all">全部（%1$d）</string>
@@ -384,7 +387,9 @@
     <string name="mindmap_pair_right">内涵</string>
     <string name="mindmap_pair_wrong">这一组不对，再想想</string>
     <string name="mindmap_pair_close">关闭</string>
+    <string name="mindmap_pair_again">再开一局</string>
     <string name="mindmap_graph_hint">双指缩放 · 拖动平移 · 点节点展开或收起</string>
+    <string name="mindmap_graph_desc_fmt">%1$s：%2$d 个分支、%3$d 条要点。可双指缩放、拖动平移，点节点展开或收起</string>
     <string name="mindmap_graph_meta_fmt">%1$s · %2$d 个分支 · %3$d 条要点</string>
     <string name="mindmap_graph_fit">适应屏幕</string>
     <string name="mindmap_graph_expand">展开全部</string>
@@ -397,6 +402,7 @@
     <string name="lib_only_unmastered">只看未背</string>
     <string name="lib_untagged">未归类</string>
     <string name="lib_empty">内容还没整理好</string>
+    <string name="lib_empty_unmastered">没有未背的内容了 · 关掉「只看未背」看全部</string>
     <string name="lib_blind">遮答预览</string>
     <string name="lib_blind_on">遮答预览已开 · 点行揭示</string>
     <string name="lib_blind_off">遮答预览已关 · 整篇可读</string>
@@ -408,18 +414,33 @@
     <string name="lib_reset_ok">已重置</string>
     <string name="lib_mark_done">标为已背</string>
     <string name="lib_mark_undone">取消已背</string>
+    <string name="lib_search">搜索</string>
+    <string name="lib_search_close">收起搜索</string>
+    <string name="lib_search_cancel">取消</string>
+    <string name="lib_search_hint">搜条目 / 标签 / 来源</string>
+    <string name="lib_search_hit_fmt">%1$d 条命中</string>
+    <string name="lib_search_empty_fmt">没有找到「%1$s」</string>
+    <string name="lib_expand_all">全部展开</string>
+    <string name="lib_collapse_all">全部折叠</string>
+    <string name="lib_expanded">已展开，点按收起</string>
+    <string name="lib_collapsed">已收起，点按展开</string>
 
     <!-- 聚焦背诵页（大纲里点某一条进来，一条一屏） -->
     <string name="drill_title">背诵</string>
-    <string name="drill_counter_fmt">%1$d / %2$d</string>
+    <string name="drill_counter_fmt">第 %1$d / %2$d 条</string>
+    <string name="drill_progress_desc_fmt">已到第 %1$d 条，共 %2$d 条</string>
     <string name="drill_unknown">还不熟</string>
     <string name="drill_known">背会了</string>
     <string name="drill_next">下一条</string>
-    <string name="drill_hint_reveal">轻点揭示 · 长按偷看</string>
-    <string name="drill_hint_revealed">轻点收起</string>
-    <string name="drill_hint_peeking">松手隐藏</string>
-    <string name="drill_hint_mode">答案常显</string>
+    <string name="drill_hint_reveal">轻点揭示 · 长按偷看 · 左右滑切条</string>
+    <string name="drill_hint_revealed">轻点收起 · 左右滑切条</string>
+    <string name="drill_hint_peeking">松手隐藏 · 左右滑切条</string>
+    <string name="drill_hint_mode">答案常显 · 左右滑切条</string>
     <string name="drill_hint_plain">整条读一遍 · 左右滑切条</string>
+    <string name="drill_edge_first">已经是第一条了</string>
+    <string name="drill_edge_last">已经是最后一条了</string>
+    <string name="drill_hard_only_fmt">只背不熟的 %1$d 条</string>
+    <string name="drill_done_note">再背一遍只是重新过一遍，已背标记会保留</string>
     <string name="drill_done_title">这一组背完了</string>
     <string name="drill_done_msg">共 %1$d 条 · 已背 %2$d 条</string>
     <string name="drill_again">再背一遍</string>

@@ -14,6 +14,7 @@ import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.FragmentManager
 import com.lytree.qbank.R
 import com.lytree.qbank.data.MindMapRepository
+import com.lytree.qbank.data.ReciteRepository
 import com.lytree.qbank.databinding.DialogMindmapGraphBinding
 
 /**
@@ -82,6 +83,11 @@ class MindMapGraphDialog : DialogFragment() {
             R.string.mindmap_graph_meta_fmt, topic.label, topic.branchCount, topic.nodeCount
         )
 
+        binding.graph.setFontLevel(ReciteRepository.fontLevel(requireContext()))
+        // 画布里的节点是 Canvas 画的，读屏读不到逐条文字；至少给整图一句能听的概述
+        binding.graph.contentDescription = getString(
+            R.string.mindmap_graph_desc_fmt, topic.name, topic.branchCount, topic.nodeCount
+        )
         binding.graph.setNodes(topic.nodes)
         binding.btnFit.setOnClickListener { binding.graph.fitToView() }
         binding.btnExpand.setOnClickListener {

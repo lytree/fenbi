@@ -22,6 +22,52 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content" />
 
+    <!-- 搜索：默认收起，顶栏放大镜点开；命中条目正文 / 答案 / 来源 / 主题 -->
+    <LinearLayout
+        android:id="@+id/searchRow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="@dimen/fb_page_pad"
+        android:paddingTop="2dp"
+        android:paddingEnd="@dimen/fb_page_pad"
+        android:paddingBottom="6dp"
+        android:visibility="gone"
+        tools:visibility="visible">
+
+        <EditText
+            android:id="@+id/searchInput"
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_fb_search"
+            android:drawableStart="@drawable/ic_search"
+            android:drawablePadding="@dimen/fb_space_8"
+            android:gravity="center_vertical"
+            android:hint="@string/lib_search_hint"
+            android:imeOptions="actionSearch"
+            android:includeFontPadding="false"
+            android:inputType="text"
+            android:maxLines="1"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:textColor="@color/fb_text_body"
+            android:textColorHint="@color/fb_text_hint"
+            android:textSize="@dimen/fb_text_body_size" />
+
+        <TextView
+            android:id="@+id/searchCancel"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:gravity="center"
+            android:paddingStart="@dimen/fb_space_12"
+            android:paddingEnd="@dimen/fb_space_4"
+            android:text="@string/lib_search_cancel"
+            android:textColor="@color/fb_primary"
+            android:textSize="@dimen/fb_text_body_size" />
+    </LinearLayout>
+
     <!-- 进度 + 只看未背：进度按条算（卡片与导图行一起数） -->
     <LinearLayout
         android:layout_width="match_parent"
@@ -45,6 +91,30 @@
             android:id="@+id/chipUnmastered"
             style="@style/FbChip"
             android:text="@string/lib_only_unmastered" />
+    </LinearLayout>
+
+    <!-- 细进度条：与聚焦背诵页同一口径，让「已背多少」一眼有长度感 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="3dp"
+        android:layout_marginStart="@dimen/fb_page_pad"
+        android:layout_marginEnd="@dimen/fb_page_pad"
+        android:layout_marginBottom="@dimen/fb_space_8"
+        android:orientation="horizontal">
+
+        <View
+            android:id="@+id/progressFill"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="@color/fb_primary" />
+
+        <View
+            android:id="@+id/progressRest"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="@color/fb_divider" />
     </LinearLayout>
 
     <androidx.recyclerview.widget.RecyclerView

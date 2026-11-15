@@ -93,6 +93,21 @@ export interface DeleteRequestResponse {
   ttlSec: number
 }
 
+/** 申请 MCP 写入口令：手机上确认后才通过 publish/status 的 result 拿到配置 */
+export interface McpKeyRequest {
+  needConfirm: true
+  requestId: string
+  url: string
+  ttlSec: number
+}
+
+/** 手机同意后交回的整段 MCP 配置 */
+export interface McpKeyResult {
+  url: string
+  key: string
+  config: string
+}
+
 export interface ResourcesResponse {
   setId: number
   /** 这一组的图片目录，形如 images/12 */
@@ -263,11 +278,13 @@ export const api = {
     request<{ ok: boolean; id: number }>(`/api/word?id=${id}`, { method: 'DELETE' }),
 
   /**
-   * MCP 配置（含写入口令）。口令固定不变：设了访问密码时就是密码，
-   * 没设时是手机首次生成后保存的那串，所以复制一次可以长期用。
+   * 申请 MCP 配置（含写入口令）。
+   *
+   * 口令不直接返回：服务端只登记一条待确认请求，手机上点「确认提供」后，
+   * 轮询 /api/publish/status 的 `result` 里才有 `config`；拒绝或超时就拿不到。
    */
   mcpInfo: () =>
-    request<{ url: string; key: string; config: string }>('/api/mcp'),
+    request<McpKeyRequest>('/api/mcp', jsonPost({})),
 }
 
 export type { EditorPaper }

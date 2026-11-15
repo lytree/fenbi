@@ -4,6 +4,7 @@ import android.content.res.ColorStateList
 import android.graphics.Typeface
 import android.graphics.drawable.RippleDrawable
 import android.os.Bundle
+import android.os.SystemClock
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.style.BackgroundColorSpan
@@ -28,6 +29,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import androidx.core.os.bundleOf
 import androidx.core.view.isVisible
+import androidx.core.widget.NestedScrollView
 import androidx.fragment.app.Fragment
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.lytree.qbank.R
@@ -86,16 +88,10 @@ class ReciteFragment : Fragment() {
     private var currentId: String? = null
     private var revealed = false
 
-    /** 政治「按住偷看」：长按期间临时显示答案，松手即隐藏（不落库、不进恢复状态） */
-    private var peeking = false
     private var fontLevel = 0
 
     /** 背诵模式：答案直接显示，不再需要长按 */
     private var reciteMode = false
-
-    /** 政治启用「按住偷看」长按；常识保持松手仍在的老交互 */
-    private val peekMode: Boolean
-        get() = subject == ReciteSubject.POLITICS
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -126,14 +122,7 @@ class ReciteFragment : Fragment() {
             R.drawable.ic_recite_mode,
             getString(R.string.recite_mode)
         ) { setReciteMode(!reciteMode) }
-        // 导图是政治理论这本书的内容，只在政治这块给入口
-        if (subject == ReciteSubject.POLITICS) {
-            binding.titleBar.addIconAction(
-                R.drawable.ic_recite_mindmap,
-                getString(R.string.mindmap_entry)
-            ) { openMindMap() }
-        }
-        fontAction = binding.titleBar.addTextAction("") { cycleFont() }
+        fontAction = binding.titleBar.addTextAction("") { chooseFont() }
         fontAction.setTextColor(ContextCompat.getColor(context, R.color.fb_text_secondary))
 
         // 范围入口就在筛选行的胶囊上（与词库页的胶囊同一个位置），顶栏不再重复放图标
@@ -216,13 +205,6 @@ class ReciteFragment : Fragment() {
             .commit()
     }
 
-    /** 打开思维导图浏览页：整本导图按页还原成层级大纲，不再走填空卡 */
-    private fun openMindMap() {
-        parentFragmentManager.beginTransaction()
-            .replace(R.id.container, MindMapFragment())
-            .commit()
-    }
-
     // ---------------------------------------------------------------- 渲染
 
     private fun render(animate: Boolean, forward: Boolean = true) {
@@ -276,16 +258,14 @@ class ReciteFragment : Fragment() {
     }
 
     private fun bindCard(card: ReciteCard) {
-        val showAnswer = reciteMode || revealed || peeking
+        val showAnswer = reciteMode || revealed
         binding.cardText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f + fontLevel * 2)
         binding.cardText.setLineSpacing(dp(7 + fontLevel).toFloat(), 1f)
         binding.cardText.text = cardSpanned(card, reveal = showAnswer)
         binding.cardHint.setText(
             when {
                 reciteMode -> R.string.recite_hint_mode
-                peeking -> R.string.recite_hint_peeking
                 revealed -> R.string.recite_hint_hide
-                peekMode -> R.string.recite_hint_peek_reveal
                 else -> R.string.recite_hint_reveal
             }
         )
@@ -298,7 +278,8 @@ class ReciteFragment : Fragment() {
         } else {
             ColorStateList.valueOf(ContextCompat.getColor(requireContext(), R.color.fb_text_meta))
         }
-        binding.btnStar.contentDescription = getString(R.string.recite_favorite)
+        binding.btnStar.contentDescription =
+            getString(if (favorite) R.string.recite_favorite_remove else R.string.recite_favorite)
         renderProgress()
     }
 
@@ -399,26 +380,47 @@ class ReciteFragment : Fragment() {
      */
     private fun setupCardGestures() {
         val slop = dp(44)
+        // 手势内累计位移：慢拖也要能切题，不能只认「甩」
+        var swipeDx = 0f
+        var swipeDy = 0f
+        var swipeConsumed = false
         val detector = android.view.GestureDetector(
             requireContext(),
             object : android.view.GestureDetector.SimpleOnGestureListener() {
-                override fun onDown(e: MotionEvent): Boolean = true
+                override fun onDown(e: MotionEvent): Boolean {
+                    swipeDx = 0f
+                    swipeDy = 0f
+                    swipeConsumed = false
+                    return true
+                }
 
                 override fun onSingleTapUp(e: MotionEvent): Boolean {
-                    if (!reciteMode) toggleReveal()
+                    onCardTapped()
                     return true
                 }
 
                 override fun onLongPress(e: MotionEvent) {
                     if (reciteMode || revealed) return
                     binding.card.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                    if (peekMode) {
-                        // 政治：按住偷看，答案只在手指按住期间显示，松手 / 滚动抢走事件即隐藏
-                        peeking = true
-                    } else {
-                        revealed = true
-                    }
+                    // 长按 = 直接显示答案；松手不收回，轻点才收起（常识一直是这个手感）
+                    revealed = true
                     currentCard()?.let { bindCard(it) }
+                }
+
+                override fun onScroll(
+                    e1: MotionEvent?,
+                    e2: MotionEvent,
+                    distanceX: Float,
+                    distanceY: Float
+                ): Boolean {
+                    if (swipeConsumed) return false
+                    swipeDx -= distanceX
+                    swipeDy -= distanceY
+                    // 不够远、或竖向占主导（长题干在页内滚），都不算切题
+                    if (abs(swipeDx) < slop || abs(swipeDx) < abs(swipeDy) * 1.6f) return false
+                    swipeConsumed = true
+                    step(if (swipeDx < 0) 1 else -1)
+                    return true
                 }
 
                 override fun onFling(
@@ -428,6 +430,8 @@ class ReciteFragment : Fragment() {
                     velocityY: Float
                 ): Boolean {
                     if (e1 == null) return false
+                    // 慢拖已经在 onScroll 里切过了，别甩手再来一次
+                    if (swipeConsumed) return false
                     val dx = e2.x - e1.x
                     val dy = e2.y - e1.y
                     // 竖向为主的滑动不算切题（长题干可能在页内滚）
@@ -441,17 +445,23 @@ class ReciteFragment : Fragment() {
         // 点击 / 长按 / 左右滑由 GestureDetector 顺带识别，不影响滚动。
         val observer = View.OnTouchListener { _, event ->
             detector.onTouchEvent(event)
-            // 政治「按住偷看」的收尾：手指抬起（UP）或 ScrollView 抢走事件（CANCEL）即隐藏
-            if (peeking &&
-                (event.action == MotionEvent.ACTION_UP || event.action == MotionEvent.ACTION_CANCEL)
-            ) {
-                peeking = false
-                currentCard()?.let { bindCard(it) }
-            }
             false
         }
         binding.cardScroll.setOnTouchListener(observer)
         binding.card.setOnTouchListener(observer)
+        // TalkBack / 点击事件也走同一条路径：卡片本身带 OnClickListener 才读得出「双击可操作」，
+        // 手势识别在上面也监听，所以两边都进来时用时间戳去重，别翻两下
+        binding.card.setOnClickListener { onCardTapped() }
+    }
+
+    private var lastTapAt = 0L
+
+    /** 轻点卡片 = 揭示 / 收起答案 */
+    private fun onCardTapped() {
+        val now = SystemClock.uptimeMillis()
+        if (now - lastTapAt < 150) return
+        lastTapAt = now
+        if (!reciteMode) toggleReveal()
     }
 
     private fun toggleReveal() {
@@ -489,17 +499,42 @@ class ReciteFragment : Fragment() {
         else -> catalog.categories.firstOrNull { it.id == id }?.name ?: ""
     }
 
-    /** 左右滑动切题：循环取下一张（到头回到第一张） */
+    /** 左右滑动切题：循环取下一张（到头绕回另一端，并说明一句） */
     private fun step(delta: Int) {
         val list = cardsInScope()
-        if (list.size <= 1) return
-        val current = currentId
-        val index = list.indexOfFirst { it.id == current }.let { if (it < 0) 0 else it }
-        val next = list[((index + delta) % list.size + list.size) % list.size]
+        if (list.isEmpty()) return
+        if (list.size == 1) {
+            // 范围内只有这一张：滑动照样给反馈，别让人以为手势失灵
+            nudgeCard(delta)
+            toast(R.string.recite_single_card)
+            return
+        }
+        val index = list.indexOfFirst { it.id == currentId }.let { if (it < 0) 0 else it }
+        val raw = index + delta
+        val next = list[((raw % list.size) + list.size) % list.size]
+        // 序号从 1 突然跳到 86 很像出错，明确说一句「已回到第 1 张」
+        when {
+            raw >= list.size -> toast(R.string.recite_loop_first)
+            raw < 0 -> toast(R.string.recite_loop_last)
+        }
         currentId = next.id
         revealed = false
-        peeking = false
         render(animate = true, forward = delta > 0)
+    }
+
+    /** 单卡反馈：卡片朝滑动方向顶一下再弹回 */
+    private fun nudgeCard(delta: Int) {
+        binding.card.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+        val shift = dp(12).toFloat() * if (delta > 0) -1 else 1
+        binding.card.animate().cancel()
+        binding.card.translationX = 0f
+        binding.card.animate()
+            .translationX(shift)
+            .setDuration(90)
+            .withEndAction {
+                _binding?.card?.animate()?.translationX(0f)?.setDuration(140)?.start()
+            }
+            .start()
     }
 
     private fun toggleFavorite() {
@@ -507,6 +542,8 @@ class ReciteFragment : Fragment() {
         val add = card.id !in favorites
         ReciteRepository.setFavorite(requireContext(), subject, card.id, add)
         if (add) favorites.add(card.id) else favorites.remove(card.id)
+        // 取消不是撤销式的破坏操作，但星标自己变灰太安静了，补一句轻提示
+        if (!add) toast(R.string.recite_unfavorited)
 
         if (!add && favoriteOnly) {
             val after = cardsInScope()
@@ -524,7 +561,6 @@ class ReciteFragment : Fragment() {
         ReciteRepository.rememberCategory(requireContext(), subject, categoryId)
         currentId = null
         revealed = false
-        peeking = false
         render(animate = true)
     }
 
@@ -570,16 +606,18 @@ class ReciteFragment : Fragment() {
         fontAction.text = getString(R.string.recite_font_fmt, getString(labels[fontLevel]))
     }
 
-    private fun cycleFont() {
-        fontLevel = (fontLevel + 1) % 3
-        ReciteRepository.setFontLevel(requireContext(), fontLevel)
-        updateFontAction()
-        currentCard()?.let { bindCard(it) }
+    private fun chooseFont() {
+        ReciteFontPicker.show(requireContext(), fontLevel) { level ->
+            fontLevel = level
+            ReciteRepository.setFontLevel(requireContext(), level)
+            updateFontAction()
+            currentCard()?.let { bindCard(it) }
+        }
     }
 
     // ---------------------------------------------------------------- 考点范围弹层
 
-    private fun showCatalog() {
+    private fun showCatalog(restoreScroll: Int = 0) {
         val context = requireContext()
         val sheet = BottomSheetDialog(context)
         val view = LayoutInflater.from(context).inflate(R.layout.sheet_recite_catalog, null)
@@ -656,6 +694,11 @@ class ReciteFragment : Fragment() {
 
         sheet.setContentView(view)
         sheet.show()
+        // 分组改完重开面板时回到原来的位置，不从头顶再来一遍
+        if (restoreScroll > 0) {
+            val scrollView = view.findViewById<NestedScrollView>(R.id.catalogScroll)
+            scrollView.post { scrollView.scrollTo(0, restoreScroll) }
+        }
     }
 
     /** categoryId 为 null 时统计全部考点 */
@@ -1015,10 +1058,11 @@ class ReciteFragment : Fragment() {
             .show()
     }
 
-    /** 分组操作后重开弹层，让列表按最新分组重排 */
+    /** 分组操作后重开弹层，让列表按最新分组重排；滚动位置跟着带过去 */
     private fun reloadCatalog(sheet: BottomSheetDialog) {
+        val scroll = sheet.findViewById<View>(R.id.catalogScroll)?.scrollY ?: 0
         sheet.dismiss()
-        binding.root.post { if (isAdded) showCatalog() }
+        binding.root.post { if (isAdded) showCatalog(scroll) }
     }
 
     private fun loadGroups() {

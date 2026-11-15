@@ -22,7 +22,8 @@ import org.json.JSONObject
  *
  * 例外是 AI（MCP）：它在配置里带 `X-Lan-Key` 请求头，
  * [LanEditorServer] 认出这个头就直接执行，不在这里排队——否则一次批量导入要点几十次手机。
- * 那串 key 不出现在网页 URL 上，只有主动复制给 AI 客户端的人才有。
+ * 但**网页要拿这串 key 本身也要过这里**（[requestMcpKey]），点「确认提供」才交出去，
+ * 所以网页永远没法自己把自己升级成写权限。
  *
  * 请求只活在服务进程里：10 分钟没人理就作废，服务一停全部作废。
  * 页面那边靠轮询 [status] 拿结果，所以这里不能持久化——重启后旧的 requestId 一律当过期。
@@ -38,6 +39,7 @@ object LanEditorConfirm {
     const val KIND_RESET_MINDMAP = "reset_mindmap"
     const val KIND_SAVE_LIBRARY = "save_library"
     const val KIND_RESET_LIBRARY = "reset_library"
+    const val KIND_MCP_KEY = "mcp_key"
 
     const val STATUS_PENDING = "pending"
     const val STATUS_APPROVED = "approved"
@@ -205,6 +207,22 @@ object LanEditorConfirm {
     }
 
     /**
+     * 网页点「复制 MCP」：写入口令不直接给，先在这里登记，手机上点「确认提供」才交出去。
+     *
+     * 网页本身没有写权限；key 一旦拿到就能让 AI 直发发布 / 回滚 / 保存，
+     * 所以这一步和发布、删除一样过手机。拒绝或超时，配置就不给——网页当没这回事。
+     */
+    fun requestMcpKey(context: Context, url: String, key: String): Request {
+        val detail = "确认后网页会拿到 MCP 写入口令（配到 AI 客户端里可长期使用），" +
+            "AI 带着它能直接发布 / 回滚 / 保存，不用再逐条点手机。不想给就点「不给」。"
+        val payload = JSONObject()
+            .put("url", url)
+            .put("key", key)
+            .put("config", LanEditorMcpConfig.json(url, key))
+        return requestByTitle(context, KIND_MCP_KEY, "MCP 配置", detail, payload)
+    }
+
+    /**
      * 整份覆盖类请求（背诵词库 / 思维导图）：同一块内容还在等确认时，
      * 用最新内容顶掉旧请求，还回同一个 id——连点两下不该在手机上弹两次。
      */
@@ -365,6 +383,9 @@ object LanEditorConfirm {
 
             KIND_RESET_LIBRARY -> LanEditorLibrary.executeReset(ctx)
 
+            // 只是把登记时算好的配置原样交回去，不动库
+            KIND_MCP_KEY -> req.payload
+
             else -> throw IllegalStateException("不认识的操作：${req.kind}")
         }
     }
@@ -427,6 +448,7 @@ object LanEditorConfirm {
             KIND_RESET_MINDMAP -> "重置思维导图"
             KIND_SAVE_LIBRARY -> "保存政治大纲"
             KIND_RESET_LIBRARY -> "重置政治大纲"
+            KIND_MCP_KEY -> "获取 MCP 写入口令"
             else -> "删除"
         }
         val notif = NotificationCompat.Builder(context, CHANNEL_ID)

@@ -14,6 +14,7 @@ import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
+import android.widget.OverScroller
 import androidx.core.content.ContextCompat
 import com.lytree.qbank.R
 import com.lytree.qbank.data.model.MindMapNode
@@ -111,6 +112,12 @@ class MindMapGraphView @JvmOverloads constructor(
     /** 第一次拿到尺寸 / 换主题后需要重新适应屏幕 */
     private var fitPending = true
 
+    /** 甩动后的惯性滚动（点的坐标就是 translate 值，直接滚它） */
+    private val overScroller = OverScroller(context)
+
+    /** 字号档位（与背诵页共用 recite_font_level） */
+    private var fontLevel = 0
+
     private val linkPath = Path()
 
     // ---------------------------------------------------------------- 手势
@@ -128,7 +135,11 @@ class MindMapGraphView @JvmOverloads constructor(
     private val gestureDetector = GestureDetector(
         context,
         object : GestureDetector.SimpleOnGestureListener() {
-            override fun onDown(e: MotionEvent): Boolean = true
+            override fun onDown(e: MotionEvent): Boolean {
+                // 手指按下就刹住惯性，否则拖拽开始时画布还在自己滚
+                overScroller.forceFinished(true)
+                return true
+            }
 
             override fun onScroll(
                 e1: MotionEvent?,
@@ -145,12 +156,40 @@ class MindMapGraphView @JvmOverloads constructor(
                 return true
             }
 
-            override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+            override fun onSingleTapUp(e: MotionEvent): Boolean {
+                // 用 TapUp 而不是 TapConfirmed：确认要等双击超时，点一下折叠要慢半拍
                 nodeAt(e.x, e.y)?.let { toggle(it) }
                 return true
             }
 
+            override fun onFling(
+                e1: MotionEvent?,
+                e2: MotionEvent,
+                velocityX: Float,
+                velocityY: Float,
+            ): Boolean {
+                if (e1 == null || scaleDetector.isInProgress) return false
+                val w = contentWidth * scale
+                val h = contentHeight * scale
+                if (w <= width && h <= height) return false
+                val minX = if (w <= width) ((width - w) / 2f).toInt()
+                else (width - w - contentPad).toInt()
+                val maxX = if (w <= width) ((width - w) / 2f).toInt() else contentPad.toInt()
+                val minY = if (h <= height) ((height - h) / 2f).toInt()
+                else (height - h - contentPad).toInt()
+                val maxY = if (h <= height) ((height - h) / 2f).toInt() else contentPad.toInt()
+                overScroller.fling(
+                    translateX.toInt(), translateY.toInt(),
+                    -velocityX.toInt(), -velocityY.toInt(),
+                    minX, maxX, minY, maxY,
+                )
+                invalidate()
+                return true
+            }
+
             override fun onDoubleTap(e: MotionEvent): Boolean {
+                // 点在节点上时别缩放：那两下已经被 TapUp 当成折叠 / 展开了
+                if (nodeAt(e.x, e.y) != null) return true
                 if (scale < 0.95f) zoomTo(1f, e.x, e.y) else fitToView()
                 return true
             }
@@ -182,6 +221,15 @@ class MindMapGraphView @JvmOverloads constructor(
     fun expandAll() {
         collapsed.clear()
         relayout()
+        invalidate()
+    }
+
+    /** 接背诵页的 A小 / A中 / A大：节点跟着重新量宽，字大了也不会溢出 */
+    fun setFontLevel(level: Int) {
+        if (fontLevel == level) return
+        fontLevel = level
+        relayout()
+        if (width > 0 && height > 0) post { fitToView() }
         invalidate()
     }
 
@@ -294,7 +342,7 @@ class MindMapGraphView @JvmOverloads constructor(
     private fun measure(node: LNode) {
         // 颜色必须在这里定：StaticLayout 会拷一份 TextPaint，画的时候改原对象不生效
         val paint = TextPaint(if (node.depth <= 1) boldText else normalText).apply {
-            textSize = sp(if (node.depth <= 1) 13f else 12f)
+            textSize = sp(if (node.depth <= 1) 13f + fontLevel else 12f + fontLevel)
             color = when (node.depth) {
                 0 -> cRootText
                 1 -> cBranchText
@@ -440,24 +488,65 @@ class MindMapGraphView @JvmOverloads constructor(
         if (fitPending || oldw == 0 || oldh == 0) fitToView()
     }
 
+    override fun computeScroll() {
+        if (overScroller.computeScrollOffset()) {
+            translateX = overScroller.currX.toFloat()
+            translateY = overScroller.currY.toFloat()
+            invalidate()
+        }
+    }
+
     private fun nodeAt(px: Float, py: Float): LNode? {
         if (scale <= 0f) return null
         val x = (px - translateX) / scale
         val y = (py - translateY) / scale
-        var hit: LNode? = null
+        // 节点本身可能只有 20~30dp 高：在内容坐标里把命中区撑到 48dp（屏幕口径），
+        // 缩小看时按比例放大，手指不用瞄准
+        val minSize = dp(48f) / scale
+        var best: LNode? = null
+        var bestDist = Float.MAX_VALUE
         forEachLayout { node ->
-            if (hit == null && node.rect.contains(x, y)) hit = node
+            val rect = node.rect
+            val dx = ((minSize - rect.width()) / 2f).coerceAtLeast(0f)
+            val dy = ((minSize - rect.height()) / 2f).coerceAtLeast(0f)
+            if (x >= rect.left - dx && x <= rect.right + dx &&
+                y >= rect.top - dy && y <= rect.bottom + dy
+            ) {
+                // 命中区重叠时取离中心最近的那个，避免总是选到上层的大节点
+                val cx = x - rect.centerX()
+                val cy = y - rect.centerY()
+                val dist = cx * cx + cy * cy
+                if (dist < bestDist) {
+                    bestDist = dist
+                    best = node
+                }
+            }
         }
-        return hit
+        return best
     }
 
     private fun toggle(node: LNode) {
         // 叶子节点没什么可折的；有隐藏子节点的点一下展开
         val hasKids = node.hiddenCount > 0 || node.children.isNotEmpty()
         if (!hasKids) return
-        if (node.path in collapsed) collapsed.remove(node.path) else collapsed.add(node.path)
+        // 以被点的节点为锚：重排后让它留在原来的屏幕位置，视野不会跳走
+        val anchorX = translateX + node.rect.left * scale
+        val anchorY = translateY + node.rect.top * scale
+        val path = node.path
+        if (!collapsed.remove(path)) collapsed.add(path)
         relayout()
+        findLayoutByPath(path)?.let { moved ->
+            translateX = anchorX - moved.rect.left * scale
+            translateY = anchorY - moved.rect.top * scale
+            clampTranslation()
+        }
         invalidate()
+    }
+
+    private fun findLayoutByPath(path: String): LNode? {
+        var found: LNode? = null
+        forEachLayout { if (found == null && it.path == path) found = it }
+        return found
     }
 
     private fun zoomTo(target: Float, focusX: Float, focusY: Float) {

@@ -40,7 +40,7 @@ import com.lytree.qbank.ui.word.WordListFragment
  *
  * · 卡片上给的信息：书页号、章节名、分支数 / 要点数 /（有的话）连线组数
  * · 「内涵连线」不挂在列表上，进导图页后单独配对自测
- * · 板块筛选状态只存内存，退出重进回到「全部」
+ * · 板块筛选跟着上次选的那一个（落库），退出重进不用从头再筛
  */
 class MindMapFragment : Fragment() {
 
@@ -52,6 +52,9 @@ class MindMapFragment : Fragment() {
 
     /** 当前筛的板块 id；null = 全部板块 */
     private var activeSection: String? = null
+
+    /** 胶囊视图与它对应的板块 id：切筛选时只改选中态，不整排重建 */
+    private val chipViews = ArrayList<Pair<String?, TextView>>()
 
     private val rows = ArrayList<Row>()
 
@@ -108,8 +111,13 @@ class MindMapFragment : Fragment() {
         binding.emptyText.isVisible = empty
 
         if (!empty) {
+            // 上次筛的板块还在就沿用；资产更新后板块没了就退回「全部」
+            activeSection = MindMapRepository.sectionFilter(requireContext())
+                ?.takeIf { id -> catalog.sections.any { it.id == id } }
             buildChips()
             rebuildRows()
+            // 布局完才有宽度，等一帧再把选中的胶囊滚进视野
+            binding.sectionBar.post { if (_binding != null) revealSelectedChip(smooth = false) }
         }
     }
 
@@ -150,24 +158,29 @@ class MindMapFragment : Fragment() {
     private fun buildChips() {
         val bar = binding.sectionChips
         bar.removeAllViews()
-        bar.addView(
-            chip(
-                text = getString(R.string.mindmap_section_all, catalog.topicCount),
-                on = activeSection == null,
-            ) { selectSection(null) }
+        chipViews.clear()
+        addChip(
+            bar,
+            null,
+            getString(R.string.mindmap_section_all, catalog.topicCount),
         )
         for (section in catalog.sections) {
-            bar.addView(
-                chip(
-                    text = getString(R.string.mindmap_section_chip_fmt, section.name, section.topics.size),
-                    on = activeSection == section.id,
-                ) { selectSection(section.id) }
+            addChip(
+                bar,
+                section.id,
+                getString(R.string.mindmap_section_chip_fmt, section.name, section.topics.size),
             )
         }
     }
 
+    private fun addChip(bar: LinearLayout, id: String?, text: String) {
+        val view = chip(text, id == activeSection) { selectSection(id) }
+        bar.addView(view)
+        chipViews.add(id to view)
+    }
+
     /** 板块胶囊：与词库 / 背诵页筛选行同一套（30dp 高、浅底 / 主蓝实心） */
-    private fun chip(text: String, on: Boolean, onClick: () -> Unit): View {
+    private fun chip(text: String, on: Boolean, onClick: () -> Unit): TextView {
         val ctx = requireContext()
         val view = TextView(ctx).apply {
             this.text = text
@@ -175,20 +188,11 @@ class MindMapFragment : Fragment() {
             includeFontPadding = false
             gravity = Gravity.CENTER
             setPadding(dp(12), 0, dp(12), 0)
-            setBackgroundResource(
-                if (on) R.drawable.bg_fb_chip_selected else R.drawable.bg_fb_chip
-            )
-            setTextColor(
-                ContextCompat.getColor(
-                    ctx,
-                    if (on) R.color.fb_text_on_primary else R.color.fb_text_secondary
-                )
-            )
-            setTypeface(null, if (on) Typeface.BOLD else Typeface.NORMAL)
             isClickable = true
             isFocusable = true
             setOnClickListener { onClick() }
         }
+        styleChip(view, on)
         return view.apply {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -197,12 +201,45 @@ class MindMapFragment : Fragment() {
         }
     }
 
+    /** 胶囊两态；切筛选时只动这一下，不重建整排视图 */
+    private fun styleChip(view: TextView, on: Boolean) {
+        val ctx = requireContext()
+        view.setBackgroundResource(
+            if (on) R.drawable.bg_fb_chip_selected else R.drawable.bg_fb_chip
+        )
+        view.setTextColor(
+            ContextCompat.getColor(
+                ctx,
+                if (on) R.color.fb_text_on_primary else R.color.fb_text_secondary
+            )
+        )
+        view.setTypeface(null, if (on) Typeface.BOLD else Typeface.NORMAL)
+        view.isSelected = on
+    }
+
     private fun selectSection(id: String?) {
         if (activeSection == id) return
         activeSection = id
-        buildChips()
+        MindMapRepository.setSectionFilter(requireContext(), id)
+        // 只更新选中态：整排重建会让横滑位置和焦点一起丢
+        chipViews.forEach { (chipId, view) -> styleChip(view, chipId == id) }
+        revealSelectedChip(smooth = true)
         rebuildRows()
-        binding.list.scrollToPosition(0)
+        binding.list.smoothScrollToPosition(0)
+    }
+
+    /** 让当前选中的胶囊滑进可视区（横滑条可能已经滚到别的板块） */
+    private fun revealSelectedChip(smooth: Boolean) {
+        val target = chipViews.firstOrNull { it.first == activeSection }?.second ?: return
+        val bar = binding.sectionBar
+        val viewport = bar.width
+        if (viewport == 0) return
+        val targetScroll = when {
+            target.left < bar.scrollX -> target.left - dp(16)
+            target.right > bar.scrollX + viewport -> target.right - viewport + dp(16)
+            else -> return
+        }.coerceAtLeast(0)
+        if (smooth) bar.smoothScrollTo(targetScroll, 0) else bar.scrollTo(targetScroll, 0)
     }
 
     // ---------------------------------------------------------------- 列表
