@@ -33,6 +33,8 @@ class QuestionListAdapter(
     var revealed: Set<Long> = emptySet(),
     private val policyProvider: () -> Policy,
     var fontScale: Float = 1f,
+    /** 选项布局：false = 单列（1×4），true = 两列（2×2），透传给 [QuestionCardBinder] */
+    var optionTwoColumn: Boolean = false,
     /** 夜间模式：透传给 [QuestionCardBinder]，切换后靠 notifyDataSetChanged 重绑生效 */
     var night: Boolean = false,
     /** 分屏右栏：材料在左栏展示，所有卡片都不再重复渲染材料 */
@@ -113,6 +115,7 @@ class QuestionListAdapter(
             fontScale = fontScale,
             cb = cb,
             night = night,
+            optionTwoColumn = optionTwoColumn,
             // 资料分析常是一则材料带多题：材料只在材料组的第一题渲染一次，
             // 后面的题接着往下排（对齐参考应用的连续卷面）
             hideMaterial = hideAllMaterials || !structure.isGroupStart(position),

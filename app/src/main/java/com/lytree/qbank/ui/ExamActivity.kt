@@ -66,6 +66,8 @@ class ExamActivity : AppCompatActivity() {
         private const val KEY_MULTI_BROWSE = "multi_browse"
         private const val KEY_AUTO_NEXT = "auto_next"
         private const val KEY_PRACTICE = "practice_mode"
+        /** 选项布局：false = 单列（1×4），true = 两列（2×2）；解析页读同一份 */
+        private const val KEY_OPTION_TWO_COLUMN = "option_two_column"
 
         /**
          * 草稿记录的来源标记（存在 records.mode）。
@@ -153,6 +155,8 @@ class ExamActivity : AppCompatActivity() {
     private var multiBrowse = true
     /** 夜间模式 */
     private var nightMode = false
+    /** 选项布局：false = 单列（1×4），true = 两列（2×2） */
+    private var optionTwoColumn = false
     /** 单选题作答后自动滚到下一题 */
     private var autoNext = true
     /** 当前最靠上的题目位置（答题卡高亮「当前题」用） */
@@ -351,6 +355,7 @@ class ExamActivity : AppCompatActivity() {
             revealed = revealed,
             policyProvider = { judgePolicy },
             fontScale = fontScale,
+            optionTwoColumn = optionTwoColumn,
             onMarkToggle = { q -> toggleMark(q) },
             onFavoriteToggle = { q -> toggleFavorite(q) },
             onNoteClicked = { q -> showNoteDialog(q) },
@@ -393,6 +398,7 @@ class ExamActivity : AppCompatActivity() {
             favorites = favorites,
             policyProvider = { judgePolicy },
             fontScale = fontScale,
+            optionTwoColumn = optionTwoColumn,
             revealAnswers = revealAnswers,
             revealed = revealed,
             onMarkToggle = { q -> toggleMark(q) },
@@ -504,6 +510,8 @@ class ExamActivity : AppCompatActivity() {
         binding.btnNight.setOnClickListener { setNightMode(true) }
         binding.btnMultiBrowse.setOnClickListener { setBrowseMode(true) }
         binding.btnSingleBrowse.setOnClickListener { setBrowseMode(false) }
+        binding.btnOptionColumn.setOnClickListener { setOptionTwoColumn(false) }
+        binding.btnOptionTwoColumn.setOnClickListener { setOptionTwoColumn(true) }
 
         // 开关：参考应用风格的小号胶囊开关（自绘，避免 Material Switch 被拉大）
         binding.switchAutoNext.setChecked(autoNext, animate = false)
@@ -863,8 +871,26 @@ class ExamActivity : AppCompatActivity() {
         if (splitMode) renderSplitMaterial()
     }
 
-    private fun setNightMode(on: Boolean) {
-        if (nightMode == on) return
+    /**
+     * 选项布局：单列（1×4）↔ 两列（2×2）。
+     *
+     * 只动文字选项——全图选项本来就是一横排；两套容器（列表 / 单题）都要重绘，
+     * 分屏右栏也跟着换，否则切过去又变回单列。
+     */
+    private fun setOptionTwoColumn(two: Boolean) {
+        if (optionTwoColumn == two) return
+        optionTwoColumn = two
+        savePrefs()
+        refreshMorePanelState()
+        adapter.optionTwoColumn = two
+        adapter.notifyDataSetChanged()
+        pagerAdapter.optionTwoColumn = two
+        pagerAdapter.notifyDataSetChanged()
+        splitListAdapter?.optionTwoColumn = two
+        splitListAdapter?.notifyDataSetChanged()
+    }
+
+    private fun setNightMode(on: Boolean) {        if (nightMode == on) return
         nightMode = on
         savePrefs()
         refreshMorePanelState()
@@ -1548,6 +1574,9 @@ class ExamActivity : AppCompatActivity() {
 
         styleSegment(binding.btnMultiBrowse, multiBrowse)
         styleSegment(binding.btnSingleBrowse, !multiBrowse)
+
+        styleSegment(binding.btnOptionColumn, !optionTwoColumn)
+        styleSegment(binding.btnOptionTwoColumn, optionTwoColumn)
     }
 
     /** 字号档位：参考应用是三个不同字号的「Aa」，选中加深、未选浅灰 */
@@ -1725,6 +1754,7 @@ class ExamActivity : AppCompatActivity() {
         multiBrowse = p.getBoolean(KEY_MULTI_BROWSE, true)
         autoNext = p.getBoolean(KEY_AUTO_NEXT, true)
         practiceMode = p.getBoolean(KEY_PRACTICE, false)
+        optionTwoColumn = p.getBoolean(KEY_OPTION_TWO_COLUMN, false)
     }
 
     private fun savePrefs() {
@@ -1734,6 +1764,7 @@ class ExamActivity : AppCompatActivity() {
             putBoolean(KEY_MULTI_BROWSE, multiBrowse)
             putBoolean(KEY_AUTO_NEXT, autoNext)
             putBoolean(KEY_PRACTICE, practiceMode)
+            putBoolean(KEY_OPTION_TWO_COLUMN, optionTwoColumn)
         }.apply()
     }
 

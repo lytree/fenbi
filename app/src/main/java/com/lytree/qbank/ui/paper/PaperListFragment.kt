@@ -64,6 +64,12 @@ class PaperListFragment : Fragment(), Refreshable {
     /** 最近一次读到的树数据：展开 / 折叠时只重排节点，不再查库 */
     private var sets: List<PaperSet> = emptyList()
 
+    /** 归档的组：默认不在树上，点顶栏「归档」才列出来（可恢复） */
+    private var archivedSets: List<PaperSet> = emptyList()
+
+    /** 顶栏「归档」动作，归档数量变了要改文案 */
+    private var archiveAction: android.widget.TextView? = null
+
     /** 试卷列表直接补答案：不必进答题页，也不用重做 */
     private val answerPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         val paper = pendingPaper
@@ -89,6 +95,7 @@ class PaperListFragment : Fragment(), Refreshable {
         binding.titleBar.usePageTitleStyle()
         binding.titleBar.setTitle(getString(R.string.page_papers))
         binding.titleBar.addTextAction(getString(R.string.action_import)) { openImport() }
+        archiveAction = binding.titleBar.addTextAction(getString(R.string.action_archive)) { showArchivedSets() }
 
         binding.list.layoutManager = LinearLayoutManager(requireContext())
         binding.list.adapter = adapter
@@ -196,20 +203,28 @@ class PaperListFragment : Fragment(), Refreshable {
     }
 
     /**
-     * 长按标题：整组作答 / 重命名 / 删除整组。
-     * 「未分组」是兜底伪组（没有组行），只能改名以外的删除，也没有整组作答。
+     * 长按标题：整组作答 / 重命名 / 归档 / 删除整组。
+     * 「未分组」是兜底伪组（没有组行），只能改名以外的删除，也没有整组作答与归档。
      */
     private fun showSetActions(set: PaperSet) {
         val canAnswerGroup = set.id > 0 && set.papers.isNotEmpty()
         val items = ArrayList<String>()
         if (canAnswerGroup) items.add(getString(R.string.tree_answer_group))
-        if (set.id > 0) items.add("重命名标题")
+        val answerIndex = if (canAnswerGroup) items.size - 1 else -1
+        val renameIndex = if (set.id > 0) {
+            items.add("重命名标题"); items.size - 1
+        } else {
+            -1
+        }
+        val archiveIndex = if (set.id > 0) {
+            items.add("归档这一组（${set.paperCount} 份试卷）"); items.size - 1
+        } else {
+            -1
+        }
         items.add(
             if (set.id > 0) "删除这一组（${set.paperCount} 份试卷）"
             else "删除这些试卷（${set.paperCount} 份）"
         )
-        val answerIndex = if (canAnswerGroup) 0 else -1
-        val renameIndex = if (set.id > 0) items.lastIndex - 1 else -1
         FbDialog.list(
             context = requireContext(),
             title = set.title,
@@ -236,8 +251,49 @@ class PaperListFragment : Fragment(), Refreshable {
                             }
                         }
                     )
+                    archiveIndex -> archiveSet(set)
                     else -> confirmDeleteSet(set)
                 }
+            }
+        )
+    }
+
+    /** 归档一整组：数据一点不动，只是首页默认不显示，顶栏「归档」里随时能恢复 */
+    private fun archiveSet(set: PaperSet) {
+        db.setPaperSetArchived(set.id, true)
+        collapsed.remove(adapter.keyOf(set))
+        saveCollapsed()
+        refresh()
+    }
+
+    /** 顶栏「归档」：列出已归档的组，选一组确认恢复 */
+    private fun showArchivedSets() {
+        if (archivedSets.isEmpty()) {
+            FbDialog.alert(
+                requireContext(),
+                "还没有归档的组。长按组标题选「归档这一组」，就会收进这里；题目和作答记录都保留。"
+            )
+            return
+        }
+        val items = archivedSets
+            .map { "${it.title}（${it.paperCount} 份试卷 · ${it.questionCount} 题）" }
+            .toTypedArray()
+        FbDialog.list(
+            context = requireContext(),
+            title = "已归档的组",
+            message = "选一组恢复回首页。归档不影响原有题目与作答记录。",
+            items = items,
+            onPick = { which ->
+                val set = archivedSets.getOrNull(which) ?: return@list
+                FbDialog.confirm(
+                    requireContext(),
+                    "恢复「${set.title}」？恢复后回到首页，题目、作答记录、错题都还在。",
+                    okText = "恢复",
+                    onOk = {
+                        db.setPaperSetArchived(set.id, false)
+                        refresh()
+                    }
+                )
             }
         )
     }
@@ -320,9 +376,13 @@ class PaperListFragment : Fragment(), Refreshable {
         if (_binding == null) return
         refreshJob?.cancel()
         refreshJob = viewLifecycleOwner.lifecycleScope.launch {
-            val loaded = withContext(Dispatchers.IO) { db.listPaperSets() }
+            val loaded = withContext(Dispatchers.IO) {
+                db.listPaperSets(includeArchived = true)
+            }
             if (_binding == null) return@launch
-            sets = loaded
+            archivedSets = loaded.filter { it.archived }
+            sets = loaded.filterNot { it.archived }
+            updateArchiveAction()
             // 卷被删 / 重组后，缓存里的结构与展开状态跟着失效，别在树上留下点不开的行
             val ids = loaded.flatMap { set -> set.papers.map { it.id } }.toHashSet()
             structures.keys.retainAll(ids)
@@ -336,10 +396,28 @@ class PaperListFragment : Fragment(), Refreshable {
                 if (_binding == null) return@launch
                 loadedStructures.forEach { (id, structure) -> structures[id] = structure }
             }
-            binding.emptyBox.visibility = if (isTreeEmpty()) View.VISIBLE else View.GONE
-            binding.emptyAction.visibility = if (isTreeEmpty()) View.VISIBLE else View.GONE
-            binding.empty.setText(if (isTreeEmpty()) getString(R.string.empty_papers) else "")
+            val empty = isTreeEmpty()
+            binding.emptyBox.visibility = if (empty) View.VISIBLE else View.GONE
+            binding.emptyAction.visibility = if (empty) View.VISIBLE else View.GONE
+            binding.empty.setText(
+                when {
+                    !empty -> ""
+                    // 全归档了：别显示「还没有试卷」，否则看着像数据丢了
+                    sets.isEmpty() && archivedSets.isNotEmpty() -> getString(R.string.empty_papers_archived)
+                    else -> getString(R.string.empty_papers)
+                }
+            )
             render()
+        }
+    }
+
+    /** 顶栏「归档」：有归档内容时带上数量，一眼能看出里面有东西 */
+    private fun updateArchiveAction() {
+        val action = archiveAction ?: return
+        action.text = if (archivedSets.isEmpty()) {
+            getString(R.string.action_archive)
+        } else {
+            getString(R.string.action_archive_count, archivedSets.size)
         }
     }
 

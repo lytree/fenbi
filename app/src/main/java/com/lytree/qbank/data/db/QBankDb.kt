@@ -33,6 +33,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         createV10Tables(db)
         createV11Tables(db)
         createV13Tables(db)
+        createV14Columns(db)
     }
 
     /**
@@ -143,6 +144,8 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         // v12：只改了未交卷进度串的编码（表结构不变），11 → 12 是空迁移，不重建、不清数据
         // v13：分模块答题——记录与未交卷进度按「答题范围」分桶（整卷 / 一个大类 / 一则材料）
         if (oldVersion < 13) createV13Tables(db)
+        // v14：导入组可归档——首页默认不显示，网页编辑器收进「归档」区，题目与记录都保留
+        if (oldVersion < 14) createV14Columns(db)
     }
 
     /** v3：收藏表 + 答题进度表（对齐参考应用「收藏跨会话保留 / 中途退出可续做」） */
@@ -233,7 +236,8 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 title TEXT NOT NULL,
                 source TEXT DEFAULT '',
-                created_at INTEGER DEFAULT 0
+                created_at INTEGER DEFAULT 0,
+                archived INTEGER NOT NULL DEFAULT 0
             )""".trimIndent()
         )
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_set_created ON paper_sets(created_at)")
@@ -311,6 +315,19 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         )
         db.execSQL("DROP TABLE IF EXISTS exam_progress")
         db.execSQL("ALTER TABLE exam_progress_v13 RENAME TO exam_progress")
+    }
+
+    /**
+     * v14：**导入组可归档**。
+     *
+     * 归档只是「先收起来」——题目、作答记录、错题本都原样留着，首页默认不显示，
+     * 网页编辑器里收进「归档」区，随时能恢复。单卷不作归档：网页发布是按组整组重写卷子，
+     * 卷级的归档位在下次发布时会被冲掉，只有组级归档稳定。
+     */
+    private fun createV14Columns(db: SQLiteDatabase) {
+        if (!hasColumn(db, "paper_sets", "archived")) {
+            db.execSQL("ALTER TABLE paper_sets ADD COLUMN archived INTEGER NOT NULL DEFAULT 0")
+        }
     }
 
     /** 旧卷子按来源文件回填成组：同一份「导入自 X」的卷归一组，没有来源的落到「历史试卷」 */
@@ -819,7 +836,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
             val reusable = HashMap<String, Set<Long>>()
             if (replace) {
                 val titles = usable.map { it.title }.toSet()
-                listPaperSets(withPapers = false)
+                listPaperSets(withPapers = false, includeArchived = true)
                     .filter { it.id > 0 && it.title in titles }
                     .forEach { old ->
                         if (reuseQuestionIds) {
@@ -1011,7 +1028,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
     }
 
     fun findPaperSetByTitle(title: String): PaperSet? =
-        listPaperSets(withPapers = false).firstOrNull { it.title == title }
+        listPaperSets(withPapers = false, includeArchived = true).firstOrNull { it.title == title }
 
     /**
      * 列表用：组 + 组内试卷（不含题目正文）。
@@ -1019,8 +1036,11 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
      * 按导入时间倒序，最新的那批在最上面；组内按建卷顺序（id 升序），
      * 也就是文件里第 1 个工作表排第 1，不会因为先插进去的时间戳差几毫秒而乱序。
      * `set_id = 0` 的漏网卷子兜底归到「未分组」，不让它从列表里消失。
+     *
+     * @param includeArchived 归档的组要不要一起读。默认不读（首页、网页侧栏都只显示在用的），
+     *   归档区与「按标题查重」这类内部查询要传 true，否则归档组会被当成不存在。
      */
-    fun listPaperSets(withPapers: Boolean = true): List<PaperSet> {
+    fun listPaperSets(withPapers: Boolean = true, includeArchived: Boolean = false): List<PaperSet> {
         val sets = ArrayList<PaperSet>()
         readableDatabase.rawQuery(
             """SELECT s.id, s.title, s.source, s.created_at,
@@ -1029,8 +1049,10 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
                          WHERE p.set_id = s.id),
                       (SELECT COUNT(*) FROM paper_questions pq JOIN papers p ON p.id = pq.paper_id
                          JOIN questions q ON q.id = pq.question_id
-                         WHERE p.set_id = s.id AND TRIM(IFNULL(q.answer, '')) = '')
-               FROM paper_sets s ORDER BY s.created_at DESC, s.id DESC""",
+                         WHERE p.set_id = s.id AND TRIM(IFNULL(q.answer, '')) = ''),
+                      IFNULL(s.archived, 0)
+               FROM paper_sets s${if (includeArchived) "" else " WHERE IFNULL(s.archived, 0) = 0"}
+               ORDER BY s.created_at DESC, s.id DESC""",
             null
         ).use { c ->
             while (c.moveToNext()) {
@@ -1042,7 +1064,8 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
                         createdAt = c.getLong(3),
                         paperCount = c.getInt(4),
                         questionCount = c.getInt(5),
-                        missingAnswers = c.getInt(6)
+                        missingAnswers = c.getInt(6),
+                        archived = c.getInt(7) != 0
                     )
                 )
             }
@@ -1080,6 +1103,17 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         writableDatabase.update(
             "paper_sets",
             ContentValues().apply { put("title", name) },
+            "id = ?",
+            arrayOf(id.toString())
+        )
+    }
+
+    /** 归档 / 恢复一整组：题目、作答记录、错题都不动，只是默认列表里收起来 */
+    fun setPaperSetArchived(id: Long, archived: Boolean) {
+        if (id <= 0) return
+        writableDatabase.update(
+            "paper_sets",
+            ContentValues().apply { put("archived", if (archived) 1 else 0) },
             "id = ?",
             arrayOf(id.toString())
         )
@@ -2090,8 +2124,11 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
          * v12：表结构没变，只有 `exam_progress.answers` 的编码从 `id,value;` 换成了 US 分隔
          * （见 [encodeProgressAnswers]）。读旧串仍兼容，但**新串老版本读不了**，
          * 所以提一版，让老 App 在恢复 v12 备份时直接拒绝，而不是静默把进度读丢。
+         *
+         * v14：`paper_sets` 加 `archived` 列（组归档）。纯增列、老数据默认 0，
+         * 老 App 读到这一版备份会拒绝恢复（数据本身不会丢）。
          */
-        const val DB_VERSION = 13
+        const val DB_VERSION = 14
 
         /** 重练卷统一挂的组名 */
         private const val RETRY_SET_TITLE = "错题重练"
@@ -2279,6 +2316,8 @@ data class PaperSet(
     val questionCount: Int = 0,
     /** 组里还缺标准答案的题数 */
     val missingAnswers: Int = 0,
+    /** 已归档：默认列表不显示，数据（题目 / 记录）都在 */
+    val archived: Boolean = false,
     val papers: List<Paper> = emptyList()
 )
 

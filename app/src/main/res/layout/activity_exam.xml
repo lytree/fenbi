@@ -415,6 +415,27 @@
                 android:text="@string/mode_single_browse" />
         </LinearLayout>
 
+        <!-- 选项布局：单列（1×4）/ 两列（2×2） -->
+        <LinearLayout
+            android:id="@+id/rowOptionLayout"
+            android:layout_width="match_parent"
+            android:layout_height="30dp"
+            android:layout_marginTop="@dimen/fb_space_8"
+            android:background="@drawable/bg_fb_segment_track"
+            android:orientation="horizontal"
+            android:padding="3dp">
+
+            <TextView
+                android:id="@+id/btnOptionColumn"
+                style="@style/FbSegmentPill"
+                android:text="@string/mode_option_column" />
+
+            <TextView
+                android:id="@+id/btnOptionTwoColumn"
+                style="@style/FbSegmentPill"
+                android:text="@string/mode_option_two_column" />
+        </LinearLayout>
+
         <!-- 自动展示下一题 -->
         <LinearLayout
             android:layout_width="match_parent"

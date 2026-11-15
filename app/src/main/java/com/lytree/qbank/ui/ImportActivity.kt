@@ -596,7 +596,10 @@ class ImportActivity : AppCompatActivity() {
                 val first = loaded.first()
                 fileName = if (loaded.size == 1) first.first else ""
                 // 已有标题列表跟解析一起在后台拿，预览页装配时不再查库
-                val existing = withContext(Dispatchers.IO) { db.listPaperSets(withPapers = false) }
+                // （归档的组也算「已存在」：同名再导会覆盖它而不是并排多出一组）
+                val existing = withContext(Dispatchers.IO) {
+                    db.listPaperSets(withPapers = false, includeArchived = true)
+                }
                 hideLoading()
                 applyParsed(built, existing)
             } catch (e: CancellationException) {

@@ -97,6 +97,8 @@
     <string name="action_confirm">确定</string>
     <string name="action_cancel">取消</string>
     <string name="action_delete">删除</string>
+    <string name="action_archive">归档</string>
+    <string name="action_archive_count">归档 %1$d</string>
     <string name="action_rename">重命名</string>
     <string name="action_close">关闭</string>
     <string name="action_back">返回</string>
@@ -235,6 +237,7 @@
     <string name="material_sheet_scale">字号 %1$d%%</string>
 
     <string name="empty_papers">还没有试卷，导入一份 Excel（.xlsx）就能开练：每个文件成一个标题，有几个工作表就建几份卷</string>
+    <string name="empty_papers_archived">试卷都在「归档」里了。点右上角「归档」选一组恢复，题目和作答记录都还在</string>
     <string name="empty_paper_questions">这份试卷暂无题目</string>
     <string name="empty_records">还没有考试记录</string>
 
@@ -303,6 +306,8 @@
     <string name="mode_night">夜间</string>
     <string name="mode_multi_browse">多题浏览</string>
     <string name="mode_single_browse">单题浏览</string>
+    <string name="mode_option_column">选项单列</string>
+    <string name="mode_option_two_column">选项两列</string>
     <string name="mode_auto_next">自动展示下一题</string>
     <string name="action_download">下载</string>
     <string name="font_small">小</string>

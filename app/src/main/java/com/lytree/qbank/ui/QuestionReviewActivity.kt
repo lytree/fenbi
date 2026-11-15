@@ -45,6 +45,8 @@ class QuestionReviewActivity : AppCompatActivity() {
 
         private const val PREFS = "exam_prefs"
         private const val KEY_FONT_SCALE = "font_scale"
+        /** 选项布局：与答题页「更多 → 选项布局」同一个 key */
+        private const val KEY_OPTION_TWO_COLUMN = "option_two_column"
         /** 与答题页同一组字号档位，复习时字号不该和做题时不一样 */
         private val FONT_SCALES = floatArrayOf(0.9f, 1.0f, 1.15f)
     }
@@ -104,6 +106,7 @@ class QuestionReviewActivity : AppCompatActivity() {
             policy = policy,
             materialCounts = materialCounts,
             fontScale = fontScale(),
+            optionTwoColumn = optionTwoColumn(),
             onMaterialExpand = { q -> openMaterial(q) }
         )
         binding.pager.offscreenPageLimit = 1
@@ -174,6 +177,10 @@ class QuestionReviewActivity : AppCompatActivity() {
         val idx = getSharedPreferences(PREFS, MODE_PRIVATE).getInt(KEY_FONT_SCALE, 1)
         return FONT_SCALES.getOrElse(idx) { 1f }
     }
+
+    /** 选项布局偏好与答题页同一个 key（单列 / 两列），复习页照同一套版式渲染 */
+    private fun optionTwoColumn(): Boolean =
+        getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(KEY_OPTION_TWO_COLUMN, false)
 }
 
 /**
@@ -189,6 +196,8 @@ private class ReviewPagerAdapter(
     private val policy: Policy,
     private val materialCounts: Map<String, Int>,
     private val fontScale: Float,
+    /** 与答题页共用「选项布局」偏好：复习时选项排布跟着用户在答题页选的那一档 */
+    private val optionTwoColumn: Boolean,
     private val onMaterialExpand: (Question) -> Unit
 ) : RecyclerView.Adapter<ReviewPagerAdapter.VH>() {
 
@@ -233,7 +242,8 @@ private class ReviewPagerAdapter(
             materialGroupSize = materialCounts[r.question.material] ?: 1,
             moduleHeader = null,
             showDivider = false,
-            readOnly = true
+            readOnly = true,
+            optionTwoColumn = optionTwoColumn
         )
         // 复用的页可能停在上一题滚到一半的位置
         holder.page.pageScroll.scrollTo(0, 0)

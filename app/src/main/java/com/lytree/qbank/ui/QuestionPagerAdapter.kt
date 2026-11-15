@@ -47,6 +47,8 @@ class QuestionPagerAdapter(
     private val favorites: MutableSet<Long>,
     private val policyProvider: () -> Policy,
     var fontScale: Float = 1f,
+    /** 选项布局：false = 单列（1×4），true = 两列（2×2），透传给 [QuestionCardBinder] */
+    var optionTwoColumn: Boolean = false,
     var revealAnswers: Boolean = false,
     /** 练习模式：已触发即时判分的题 id（作答后立即出对错与解析） */
     var revealed: Set<Long> = emptySet(),
@@ -276,6 +278,7 @@ class QuestionPagerAdapter(
                 fontScale = fontScale,
                 cb = cb,
                 night = night,
+                optionTwoColumn = optionTwoColumn,
                 // 组页里材料只在第一题渲染一次，后面的小题接着往下排
                 hideMaterial = hideMaterial || k > 0,
                 // 「弹出材料」只给一材料多题留入口：单题材料这一页材料整段在卡上，不必再弹
@@ -398,6 +401,7 @@ class QuestionPagerAdapter(
                 fontScale = fontScale,
                 cb = cb,
                 night = night,
+                optionTwoColumn = optionTwoColumn,
                 // 材料已在上区整块展示，题目卡不再重复渲染（「弹出材料」入口随之收起）
                 hideMaterial = true,
                 moduleHeader = null,

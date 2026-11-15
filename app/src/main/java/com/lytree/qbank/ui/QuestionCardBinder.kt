@@ -144,7 +144,12 @@ object QuestionCardBinder {
         /** 材料节点标题里的序号（「材料 2」）；null 时退回光秃秃的「材料」 */
         materialLabel: String? = null,
         /** 材料正文是否已收起：标题栏照留，正文不占地方（折叠状态由适配器持有） */
-        materialCollapsed: Boolean = false
+        materialCollapsed: Boolean = false,
+        /**
+         * 选项布局：false = 单列（1×4，默认）；true = 两列（2×2）。
+         * 只影响**文字选项**——全图选项本来就是一横排（见 [buildImageOptionsRow]）。
+         */
+        optionTwoColumn: Boolean = false
     ) {
         val ctx = b.root.context
         val res = ctx.resources
@@ -292,7 +297,7 @@ object QuestionCardBinder {
 
         // ---- 选项 ----
         b.optionsBox.removeAllViews()
-        buildOptions(b, q, answers, fontScale, cb, night, revealNow, readOnly)
+        buildOptions(b, q, answers, fontScale, cb, night, revealNow, readOnly, optionTwoColumn)
 
         // ---- 作答小结 + 解析（交卷后 / 练习模式即时判分后）----
         // 版式与配色集中在 AnswerBlock，分屏右栏、解析页用的是同一份
@@ -400,7 +405,9 @@ object QuestionCardBinder {
         cb: Callbacks,
         night: Boolean,
         revealNow: Boolean,
-        readOnly: Boolean = false
+        readOnly: Boolean = false,
+        /** 两列布局（「更多 → 选项布局」里选的 2×2）；默认单列 1×4 */
+        optionTwoColumn: Boolean = false
     ) {
         val ctx = b.root.context
         val inflater = LayoutInflater.from(ctx)
@@ -505,7 +512,36 @@ object QuestionCardBinder {
             return item
         }
 
-        // 文字选项一律单列（对齐参考应用手机端：即便「2个 / 3个」这种超短选项也是竖排一列）
+        // 文字选项默认单列（对齐参考应用手机端：即便「2个 / 3个」这种超短选项也是竖排一列）；
+        // 「更多 → 选项布局」选两列时，2~4 个选项两两一行（2×2），短选项一眼看全。
+        if (optionTwoColumn && q.options.size in 2..4) {
+            val gap = (10 * ctx.resources.displayMetrics.density).toInt()
+            var start = 0
+            while (start < q.options.size) {
+                val line = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
+                b.optionsBox.addView(
+                    line,
+                    LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    )
+                )
+                val end = minOf(start + 2, q.options.size)
+                for (i in start until end) {
+                    val root = bindOption(q.options[i]).root
+                    line.addView(
+                        root,
+                        LinearLayout.LayoutParams(
+                            0,
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            1f
+                        ).apply { if (i < end - 1) marginEnd = gap }
+                    )
+                }
+                start = end
+            }
+            return
+        }
         q.options.forEach { opt -> b.optionsBox.addView(bindOption(opt).root) }
     }
 
