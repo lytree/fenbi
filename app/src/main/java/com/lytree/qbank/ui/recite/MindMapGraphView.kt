@@ -230,6 +230,9 @@ class MindMapGraphView @JvmOverloads constructor(
         var y = 0f
         var subtreeHeight = 0f
         val rect = RectF()
+
+        /** 量过才有 [layout]；绘制前用它挡一下，别让没量的节点把整页画崩 */
+        val isMeasured: Boolean get() = ::layout.isInitialized
     }
 
     private fun relayout() {
@@ -247,7 +250,9 @@ class MindMapGraphView @JvmOverloads constructor(
             return
         }
 
-        built.forEach { measure(it) }
+        // 整棵树都要量：列宽和行高都靠 measure 的结果，只量子节点以外的部分会让
+        // 没量到的节点在绘制时拿不到 StaticLayout（lateinit 没初始化 → 直接崩）
+        forEachLayout { measure(it) }
 
         forEachLayout { node ->
             while (columnWidths.size <= node.depth) columnWidths.add(0f)
@@ -390,6 +395,8 @@ class MindMapGraphView @JvmOverloads constructor(
     }
 
     private fun drawNode(canvas: Canvas, node: LNode) {
+        // 兜底：万一有节点没走 measure（以后改布局容易漏），宁可这一块不画也别崩
+        if (!node.isMeasured) return
         val bg = when (node.depth) {
             0 -> cRootBg
             1 -> cBranchBg

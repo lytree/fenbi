@@ -48,6 +48,9 @@ class FbTitleBar @JvmOverloads constructor(
     private val baseHeight = resources.getDimensionPixelSize(R.dimen.fb_bar_h)
     private var lastInset = -1
 
+    /** Tab 页样式的标题左边距（px）；0 表示还没切到「左对齐大标题」 */
+    private var pageTitleMarginStart = 0
+
     /** 返回键回调；不设置时默认 finish() */
     var onBack: (() -> Unit)? = null
 
@@ -115,10 +118,34 @@ class FbTitleBar @JvmOverloads constructor(
             resources.getDimension(R.dimen.fb_text_page_title)
         )
         btnBack.visibility = View.GONE
+        pageTitleMarginStart = (marginStart * density).toInt()
+        applyPageTitleMargin()
     }
 
     fun showBack(show: Boolean) {
         btnBack.visibility = if (show) View.VISIBLE else View.GONE
+        // 二级页也可能是 Tab 页样式（设置 / 备份 / 导图）：标题要跟着让开返回键
+        applyPageTitleMargin()
+    }
+
+    /**
+     * 左对齐大标题时，返回键占住「13dp 边距 + 28dp 图标」这一块，
+     * 标题得从它右侧 8dp 起排——否则图标直接压在第一个字上。
+     * 只在 [usePageTitleStyle] 用过的页面里生效，居中标题本来就有 56dp padding，不用管。
+     */
+    private fun applyPageTitleMargin() {
+        if (pageTitleMarginStart <= 0) return
+        val target = if (btnBack.visibility == View.VISIBLE) {
+            resources.getDimensionPixelSize(R.dimen.fb_bar_padding_left) +
+                resources.getDimensionPixelSize(R.dimen.fb_bar_item_width) +
+                resources.getDimensionPixelSize(R.dimen.fb_space_8)
+        } else {
+            pageTitleMarginStart
+        }
+        val lp = tvTitle.layoutParams as LayoutParams
+        if (lp.marginStart == target) return
+        lp.marginStart = target
+        tvTitle.layoutParams = lp
     }
 
     fun showDivider(show: Boolean) {
