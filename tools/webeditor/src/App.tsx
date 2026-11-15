@@ -10,6 +10,7 @@ import IssuePane from './components/IssuePane'
 import VersionPane from './components/VersionPane'
 import ResourcePane from './components/ResourcePane'
 import RecitePane from './components/RecitePane'
+import LibraryPane from './components/LibraryPane'
 import WordsPane from './components/WordsPane'
 import MindMapPane from './components/MindMapPane'
 import RecitePreview from './components/RecitePreview'
@@ -17,9 +18,9 @@ import ModalHost from './components/ModalHost'
 import Toast from './components/Toast'
 import {
   TYPE_SHORT, addQuestion, cancelWaiting, closeModal, currentQuestions, filtersActive, flushDraft,
-  handleImportFiles, issueCounts, level1Options, level2Options, loadSets, loadVersions,
-  maybeRestoreDraft, openPasteDialog, openSet, publish, recite, resetFilters, saveMindMap,
-  saveRecite, showErrors, startDraftAutoSave, state,
+  handleImportFiles, issueCounts, library, level1Options, level2Options, loadSets, loadVersions,
+  maybeRestoreDraft, openPasteDialog, openSet, publish, recite, resetFilters, saveLibrary,
+  saveMindMap, saveRecite, showErrors, startDraftAutoSave, state,
   stopDraftAutoSave, switchMode, toast, typeCounts, ui, visibleIndexes,
 } from './store'
 import type { QuestionType } from './types'
@@ -125,7 +126,7 @@ export default defineComponent({
     }
 
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (!state.dirty && !recite.dirty) return
+      if (!state.dirty && !recite.dirty && !library.dirty) return
       // 背诵词库的改动没有草稿兜底，只能靠浏览器自己的离开确认提醒一句
       flushDraft()
       e.preventDefault()
@@ -137,7 +138,8 @@ export default defineComponent({
       if (mod && e.key.toLowerCase() === 's') {
         e.preventDefault()
         if (state.mode === 'recite') {
-          if (recite.subject === 'mindmap') void saveMindMap()
+          if (recite.subject === 'library') void saveLibrary()
+          else if (recite.subject === 'mindmap') void saveMindMap()
           else void saveRecite()
         }
         else publish()
@@ -183,6 +185,8 @@ export default defineComponent({
               <section class="editor recite-editor">
                 {recite.subject === 'words'
                   ? <WordsPane />
+                  : recite.subject === 'library'
+                  ? <LibraryPane />
                   : recite.subject === 'mindmap' ? <MindMapPane /> : <RecitePane />}
               </section>
             )

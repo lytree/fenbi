@@ -36,6 +36,8 @@ object LanEditorConfirm {
     const val KIND_RESET_RECITE = "reset_recite"
     const val KIND_SAVE_MINDMAP = "save_mindmap"
     const val KIND_RESET_MINDMAP = "reset_mindmap"
+    const val KIND_SAVE_LIBRARY = "save_library"
+    const val KIND_RESET_LIBRARY = "reset_library"
 
     const val STATUS_PENDING = "pending"
     const val STATUS_APPROVED = "approved"
@@ -190,6 +192,16 @@ object LanEditorConfirm {
     /** 网页点「重置思维导图」：删掉用户覆盖文件 */
     fun requestMindMapReset(context: Context, title: String, detail: String, payload: JSONObject): Request {
         return requestByTitle(context, KIND_RESET_MINDMAP, title, detail, payload)
+    }
+
+    /** 网页点「保存政治大纲」：统一库整份覆盖，同样要过手机确认 */
+    fun requestLibrarySave(context: Context, title: String, detail: String, payload: JSONObject): Request {
+        return requestByTitle(context, KIND_SAVE_LIBRARY, title, detail, payload)
+    }
+
+    /** 网页点「重置政治大纲」：删掉统一库的覆盖文件 */
+    fun requestLibraryReset(context: Context, title: String, detail: String, payload: JSONObject): Request {
+        return requestByTitle(context, KIND_RESET_LIBRARY, title, detail, payload)
     }
 
     /**
@@ -349,6 +361,10 @@ object LanEditorConfirm {
 
             KIND_RESET_MINDMAP -> LanEditorMindMap.executeReset(ctx)
 
+            KIND_SAVE_LIBRARY -> LanEditorLibrary.executeSave(ctx, req.payload)
+
+            KIND_RESET_LIBRARY -> LanEditorLibrary.executeReset(ctx)
+
             else -> throw IllegalStateException("不认识的操作：${req.kind}")
         }
     }
@@ -407,6 +423,10 @@ object LanEditorConfirm {
             KIND_RESTORE -> "回滚"
             KIND_SAVE_RECITE -> "保存背诵词库"
             KIND_RESET_RECITE -> "重置背诵词库"
+            KIND_SAVE_MINDMAP -> "保存思维导图"
+            KIND_RESET_MINDMAP -> "重置思维导图"
+            KIND_SAVE_LIBRARY -> "保存政治大纲"
+            KIND_RESET_LIBRARY -> "重置政治大纲"
             else -> "删除"
         }
         val notif = NotificationCompat.Builder(context, CHANNEL_ID)

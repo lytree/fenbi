@@ -825,16 +825,20 @@ export function formatReciteSubjects(
   subjects: ReciteSubjectInfo[],
   wordsTotal: number
 ): string {
-  const lines = ['手机里现有的背诵内容（App「背诵」Tab：词库 / 政治 / 常识）：', '']
+  const lines = ['手机里现有的背诵内容（App「背诵」Tab：词库 / 政治大纲 / 常识 / 导图）：', '']
   for (const s of subjects) {
-    lines.push(
-      `${s.id} 「${s.title}」—— ${s.categoryCount} 分类 · ${s.cardCount} 卡` +
-        (s.hasEdits ? '（有网页 / AI 存过的覆盖版）' : '（App 内置版）')
-    )
+    const meta = s.kind === 'library'
+      ? `${s.tagCount ?? 0} 标签 · ${s.itemCount ?? 0} 条（政治页读的就是这份，改名 / 改正文请在网页编辑器的「政治理论大纲」里做）`
+      : `${s.categoryCount ?? 0} 分类 · ${s.cardCount ?? 0} 卡`
+    lines.push(`${s.id} 「${s.title}」—— ${meta}` + (s.hasEdits ? '（有覆盖版）' : '（App 内置版）'))
     if (s.intro) lines.push(`   ${clip(s.intro, 120)}`)
   }
   lines.push(`words 词条词库 —— 共 ${wordsTotal} 条（搜索 / 增改用 qbank_words_search / qbank_word_save）`)
-  lines.push('', '读卡：qbank_recite_get_cards(subject)；改卡：qbank_recite_save_cards(subject, patches/additions/deletions)')
+  lines.push(
+    '',
+    '政治卡片库已退场：政治页现在读统一库（上面 id 为 library 的那条），卡片读写工具只服务常识；',
+    '读卡：qbank_recite_get_cards(subject=common)；改卡：qbank_recite_save_cards(...)'
+  )
   return lines.join('\n')
 }
 

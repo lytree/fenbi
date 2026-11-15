@@ -12,8 +12,9 @@ import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * 背诵数据。政治、常识各有一份随 App 内置的资产
- * （assets/recite_politics.json、assets/recite_common.json），
+ * 背诵数据。常识有一份随 App 内置的资产（assets/recite_common.json）；
+ * 政治卡片库已经退场（政治页改读 `recite_library.json` 的大纲页），
+ * 这里读政治只会得到空目录，保留枚举只是为了共用跳转与进度 key。
  * 掌握状态 / 重点收藏 / 分组编排走 settings 表，换设备升级后仍然保留。
  *
  * 内容本身也可以在设备上改：局域网编辑器（网页 / AI）保存的词库落在

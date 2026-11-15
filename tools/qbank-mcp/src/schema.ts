@@ -141,11 +141,20 @@ export interface RecordDetail extends RecordSummary {
 /** 背诵内容的一块：政治 / 常识（App「背诵」Tab 下的两块背诵卡内容） */
 export interface ReciteSubjectInfo {
   id: string
+  /**
+   * `library` = 政治理论统一库（App 政治页那份，标签 + 条目，只有网页编辑器能改）；
+   * `cards` = 还活着的卡片库（现在只剩常识）。缺省按 cards 处理。
+   */
+  kind?: 'library' | 'cards'
   title: string
   intro: string
   updated: string
-  categoryCount: number
-  cardCount: number
+  /** 仅 cards */
+  categoryCount?: number
+  cardCount?: number
+  /** 仅 library */
+  tagCount?: number
+  itemCount?: number
   /** 是否有网页 / AI 存过的覆盖版（false = 还是 App 内置那份） */
   hasEdits: boolean
 }

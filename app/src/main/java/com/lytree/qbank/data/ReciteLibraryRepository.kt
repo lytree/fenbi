@@ -12,8 +12,9 @@ import java.io.File
 /**
  * 政治理论统一内容库（assets/recite_library.json）。
  *
- * 由 `tools/build_library.cs` 把原来的考点卡与思维导图合并而成：去重、剥离连线题伪节点、
- * 长句断句、打标签，产出「标签 + 条目」两层，**原来的板块 / 章节分组已经不在资产里**。
+ * 由 `tools/build_politics_recite.cs` 从《重点背诵（汇总版）》拆出来：一句一条、按节分章，
+ * 挖空只取原文里的中文引号短语与年份，再打上「内容标签 + 来源标签」两层。
+ * **原来的板块 / 章节分组已经不在资产里**（章只留在标签的 `group` 语义上，不在库里）。
  *
  * 和背诵词库、导图一个套路：设备上可以改，网页 / AI 保存的内容落在 filesDir 的覆盖文件里，
  * 读取时优先于内置资产；删掉覆盖文件就回到内置内容（[resetToAsset]）。
@@ -56,6 +57,99 @@ object ReciteLibraryRepository {
         userFile(context).delete()
         cache = null
     }
+
+    /**
+     * 保存网页 / AI 送来的整份统一库（结构校验通过后写覆盖文件）。
+     *
+     * 先写临时文件再改名：写一半被杀最多丢这次保存，不会把旧内容写坏。
+     */
+    fun saveUserCatalog(context: Context, root: JSONObject) {
+        validateUserCatalog(root)
+        val file = userFile(context)
+        val tmp = File(file.parentFile, file.name + ".tmp")
+        tmp.writeText(root.toString(), Charsets.UTF_8)
+        if (!tmp.renameTo(file)) {
+            tmp.delete()
+            throw IllegalStateException("覆盖文件写入失败（重命名没成功）")
+        }
+        cache = null
+    }
+
+    /**
+     * 整份统一库的结构校验。这些错了 App 里会显示成空白分支 / 挖空对不上答案，
+     * 不如存的时候就拦下来。校验失败抛 [IllegalArgumentException]，消息直接给网页看。
+     *
+     * 口径与导图（[MindMapRepository.validateUserCatalog]）、旧词库
+     * （[ReciteRepository.validateUserCatalog]）一致：id 唯一、正文非空、
+     * 引用得到东西、`____` 数 = 答案数。
+     */
+    fun validateUserCatalog(root: JSONObject) {
+        val tagsJson = root.optJSONArray("tags")
+            ?: throw IllegalArgumentException("tags 缺失或不是数组")
+        if (tagsJson.length() == 0) {
+            throw IllegalArgumentException("至少要保留一个标签（大纲按内容标签分组）")
+        }
+        val tagIds = HashSet<String>(tagsJson.length())
+        for (i in 0 until tagsJson.length()) {
+            val t = tagsJson.optJSONObject(i)
+                ?: throw IllegalArgumentException("tags[$i] 不是对象")
+            val id = t.optString("id").trim()
+            if (id.isEmpty()) throw IllegalArgumentException("tags[$i] 缺少 id")
+            if (!tagIds.add(id)) throw IllegalArgumentException("标签 id 重复：$id")
+            if (t.optString("name").isBlank()) throw IllegalArgumentException("标签「$id」缺少 name")
+            val kind = t.optString("kind", LibraryTag.KIND_TOPIC)
+            if (kind != LibraryTag.KIND_TOPIC && kind != LibraryTag.KIND_SOURCE) {
+                throw IllegalArgumentException("标签「$id」的 kind 只能是 ${LibraryTag.KIND_TOPIC} / ${LibraryTag.KIND_SOURCE}")
+            }
+        }
+
+        val itemsJson = root.optJSONArray("items")
+            ?: throw IllegalArgumentException("items 缺失或不是数组")
+        if (itemsJson.length() == 0) {
+            throw IllegalArgumentException("至少要保留一条内容")
+        }
+        val seen = HashSet<String>(itemsJson.length())
+        for (i in 0 until itemsJson.length()) {
+            val o = itemsJson.optJSONObject(i)
+                ?: throw IllegalArgumentException("items[$i] 不是对象")
+            val id = o.optString("id").trim()
+            if (id.isEmpty()) throw IllegalArgumentException("items[$i] 缺少 id")
+            if (!seen.add(id)) throw IllegalArgumentException("条目 id 重复：$id")
+            val text = o.optString("text")
+            if (text.isBlank()) throw IllegalArgumentException("条目「$id」正文为空")
+            val answers = o.optJSONArray("answers") ?: JSONArray()
+            val blanks = blankCount(text)
+            if (blanks != answers.length()) {
+                throw IllegalArgumentException(
+                    "条目「$id」正文有 $blanks 个 ____，但给了 ${answers.length()} 个答案"
+                )
+            }
+            val kind = o.optString("kind", LibraryItem.KIND_CARD)
+            if (kind != LibraryItem.KIND_CARD && kind != LibraryItem.KIND_LINE) {
+                throw IllegalArgumentException("条目「$id」的 kind 只能是 ${LibraryItem.KIND_CARD} / ${LibraryItem.KIND_LINE}")
+            }
+            val itemTags = o.optJSONArray("tags") ?: JSONArray()
+            for (j in 0 until itemTags.length()) {
+                val tid = itemTags.optString(j).trim()
+                if (tid.isNotEmpty() && !tagIds.contains(tid)) {
+                    throw IllegalArgumentException("条目「$id」引用了不存在的标签：$tid")
+                }
+            }
+        }
+    }
+
+    /** 正文里 `____` 的个数（与旧词库同一个口径） */
+    private fun blankCount(text: String): Int {
+        var n = 0
+        var i = text.indexOf(BLANK)
+        while (i >= 0) {
+            n++
+            i = text.indexOf(BLANK, i + BLANK.length)
+        }
+        return n
+    }
+
+    private const val BLANK = "____"
 
     private fun parse(text: String): ReciteLibrary {
         val root = JSONObject(text)

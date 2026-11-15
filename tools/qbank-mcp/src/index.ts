@@ -445,10 +445,11 @@ server.registerTool(
 server.registerTool(
   'qbank_recite_subjects',
   {
-    title: '列出背诵内容（政治 / 常识 / 词库）',
+    title: '列出背诵内容（政治大纲 / 常识 / 词库）',
     description:
-      '列出手机「背诵」Tab 下的内容块：政治、常识两块背诵卡（各多少分类 / 卡片、是否有覆盖版），' +
-      '以及词条词库的总条数。做任何背诵内容操作之前先调它拿 subject（politics / common）和分类 id。',
+      '列出手机「背诵」Tab 下的内容块：政治理论大纲（统一库，标签 + 条目数）、常识卡片库' +
+      '（分类 / 卡片数、是否有覆盖版），以及词条词库的总条数。' +
+      '注意政治已经不是卡片：politics 只剩跳转用途，卡片读写工具只服务 common。',
     inputSchema: {},
     annotations: { readOnlyHint: true },
   },
@@ -468,11 +469,12 @@ server.registerTool(
   {
     title: '读背诵卡片',
     description:
-      '读政治 / 常识的背诵卡片（按分类、关键词过滤，分页）。每张卡带 id 和分类，' +
+      '读常识的背诵卡片（按分类、关键词过滤，分页）。每张卡带 id 和分类，' +
+      '政治已经改成统一库大纲（不是卡片），传 politics 会报错；' +
       '改卡 / 删卡要用这个 id。默认每次 10 张，最多 50；正文超长会截断并标注，' +
       '要按原文改写时先加 full=true。保存入口是 qbank_recite_save_cards（整份保存）。',
     inputSchema: {
-      subject: z.enum(['politics', 'common']).describe('politics = 政治，common = 常识'),
+      subject: z.enum(['politics', 'common']).describe('common = 常识（政治已改统一库，不是卡片）'),
       cat: z.string().optional().describe('只看某个分类（分类 id）'),
       q: z.string().optional().describe('关键词，搜正文 / 答案 / 备注 / 来源'),
       offset: z.number().int().min(0).optional().describe('从第几张开始，默认 0'),
@@ -500,7 +502,7 @@ server.registerTool(
       '硬规则：正文里的 ____（四个下划线）数量必须与 answers 数量一致，任何一条不对整份都不保存。' +
       '带 QBANK_KEY 时直接落盘；没带 key 会等手机确认。删掉的卡在 App 里的收藏会失效（进度按 id 保留）。',
     inputSchema: {
-      subject: z.enum(['politics', 'common']).describe('politics = 政治，common = 常识'),
+      subject: z.enum(['politics', 'common']).describe('common = 常识（政治已改统一库，不是卡片）'),
       title: z.string().optional().describe('改弹层标题；不传保持原样'),
       intro: z.string().optional().describe('改弹层说明；不传保持原样'),
       patches: z
@@ -567,7 +569,7 @@ server.registerTool(
       '删掉某块背诵内容（politics / common）的覆盖版，回到 APK 内置的那份。' +
       '带 QBANK_KEY 时直接执行；没带 key 会等手机确认。',
     inputSchema: {
-      subject: z.enum(['politics', 'common']).describe('politics = 政治，common = 常识'),
+      subject: z.enum(['politics', 'common']).describe('common = 常识（政治已改统一库，不是卡片）'),
     },
     annotations: { destructiveHint: true },
   },

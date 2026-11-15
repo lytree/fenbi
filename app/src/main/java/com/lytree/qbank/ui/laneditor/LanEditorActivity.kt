@@ -103,6 +103,8 @@ class LanEditorActivity : AppCompatActivity() {
             LanEditorConfirm.KIND_RESET_RECITE -> "重置背诵词库"
             LanEditorConfirm.KIND_SAVE_MINDMAP -> "保存思维导图"
             LanEditorConfirm.KIND_RESET_MINDMAP -> "重置思维导图"
+            LanEditorConfirm.KIND_SAVE_LIBRARY -> "保存政治大纲"
+            LanEditorConfirm.KIND_RESET_LIBRARY -> "重置政治大纲"
             else -> "删除"
         }
         val okText = "确认$action"
@@ -113,6 +115,8 @@ class LanEditorActivity : AppCompatActivity() {
             LanEditorConfirm.KIND_RESET_RECITE -> "不重置"
             LanEditorConfirm.KIND_SAVE_MINDMAP -> "不保存"
             LanEditorConfirm.KIND_RESET_MINDMAP -> "不重置"
+            LanEditorConfirm.KIND_SAVE_LIBRARY -> "不保存"
+            LanEditorConfirm.KIND_RESET_LIBRARY -> "不重置"
             else -> "不删"
         }
         FbDialog.confirm(

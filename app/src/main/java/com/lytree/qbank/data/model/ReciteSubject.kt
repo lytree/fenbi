@@ -4,10 +4,13 @@ import androidx.annotation.StringRes
 import com.lytree.qbank.R
 
 /**
- * 背诵模块（「背诵」Tab 下的两块背诵内容）。
+ * 背诵模块（「背诵」Tab 下的两块内容）。
  *
- * 政治与常识各是一套独立内容：各自的内置资产、各自的分类分组、各自的重点收藏与
- * 上次背到哪张卡。字号和「背诵模式」是使用习惯，两边共用。
+ * **现在只有常识还走卡片流**：政治早已换成统一库的大纲页（`recite_library.json`，
+ * 见 `ReciteOutlineFragment`），[POLITICS] 只剩「从哪儿跳回政治」和进度 key 的用途，
+ * 它的卡片资产 `recite_politics.json` 已经删了，读到空内容是正常的。
+ *
+ * 两块内容各有分类分组、重点收藏、上次背到哪张卡；字号与「背诵模式」共用。
  */
 enum class ReciteSubject(
     /** 存库时用作 key 的一部分，改了就相当于换一套数据，别动 */

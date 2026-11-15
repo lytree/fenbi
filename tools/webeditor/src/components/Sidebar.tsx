@@ -112,7 +112,9 @@ export default defineComponent({
                   <div>
                     <div class="nm">{s.title}</div>
                     <div class="mt">
-                      {s.categoryCount} 分类 · {s.cardCount} 卡
+                      {s.kind === 'library'
+                        ? `${s.tagCount ?? 0} 标签 · ${s.itemCount ?? 0} 条`
+                        : `${s.categoryCount ?? 0} 分类 · ${s.cardCount ?? 0} 卡`}
                       {s.hasEdits ? <span class="tag">有覆盖版</span> : <span class="tag">内置</span>}
                     </div>
                   </div>
@@ -139,7 +141,7 @@ export default defineComponent({
             </div>
             <div class="side-foot">
               <span class="dot"></span>
-              <span>政治 / 常识整份保存要手机确认</span>
+              <span>大纲 / 常识整份保存要手机确认</span>
             </div>
           </aside>
         )

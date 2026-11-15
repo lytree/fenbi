@@ -1,5 +1,6 @@
 import type {
-  ConfirmStatus, EditorPaper, MindMapCatalog, MindMapSaveResult, MigrationReport, PaperSetInfo,
+  ConfirmStatus, EditorPaper, LibraryCatalog, LibrarySaveResult, MindMapCatalog, MindMapSaveResult,
+  MigrationReport, PaperSetInfo,
   ReciteCatalog, ReciteSaveResult, ReciteSubjectInfo, ResourceFile, Sheet, VersionInfo,
   WireSheet, WordItem, WordsResponse,
 } from './types'
@@ -229,6 +230,20 @@ export const api = {
 
   mindmapReset: () =>
     request<MindMapSaveResult | ConfirmRequired>('/api/mindmap/reset', jsonPost({})),
+
+  /* ------------ 政治理论大纲（统一库，整份读整份写） ------------ */
+
+  library: () => request<LibraryCatalog>('/api/library'),
+
+  /**
+   * 整份保存大纲。响应同样分两路：AI（带 key）直发拿到 `LibrarySaveResult`；
+   * 网页拿到 `ConfirmRequired`，轮询 /api/publish/status。
+   */
+  librarySave: (payload: LibraryCatalog) =>
+    request<LibrarySaveResult | ConfirmRequired>('/api/library/save', jsonPost(payload)),
+
+  libraryReset: () =>
+    request<LibrarySaveResult | ConfirmRequired>('/api/library/reset', jsonPost({})),
 
   /* ------------ 词库（词条 CRUD） ------------ */
 

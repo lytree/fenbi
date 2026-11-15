@@ -69,11 +69,18 @@ class MindMapFragment : Fragment() {
 
         binding.titleBar.usePageTitleStyle()
         binding.titleBar.setTitle(getString(R.string.mindmap_title))
-        // 系统返回键回到政治背诵：本页是政治那段下面开出来的一页，别一按就退出 App
+        // 顶栏返回键：本页是从大纲页「鸟瞰导图」开出来的二级页，切回政治大纲
+        binding.titleBar.showBack(true)
+        binding.titleBar.onBack = { backToOutline() }
+        // 系统返回键同样回政治背诵：别一按就退出 App
         requireActivity().onBackPressedDispatcher.addCallback(
             viewLifecycleOwner,
             object : OnBackPressedCallback(true) {
-                override fun handleOnBackPressed() = openRecite()
+                override fun handleOnBackPressed() {
+                    // 先关掉自己再换页：否则事务排队期间又按一次会连着导航两次
+                    isEnabled = false
+                    backToOutline()
+                }
             }
         )
 
@@ -111,8 +118,16 @@ class MindMapFragment : Fragment() {
         _binding = null
     }
 
-    /** 回政治：本页是从大纲页「鸟瞰导图」开出来的二级页 */
+    /** 回政治大纲：本页是从大纲页「鸟瞰导图」开出来的二级页 */
+    private fun backToOutline() {
+        if (!isAdded || parentFragmentManager.isStateSaved) return
+        parentFragmentManager.beginTransaction()
+            .replace(R.id.container, ReciteOutlineFragment())
+            .commit()
+    }
+
     private fun openRecite(subject: ReciteSubject = ReciteSubject.POLITICS) {
+        if (!isAdded || parentFragmentManager.isStateSaved) return
         val page = if (subject == ReciteSubject.POLITICS) {
             ReciteOutlineFragment()
         } else {
@@ -124,6 +139,7 @@ class MindMapFragment : Fragment() {
     }
 
     private fun openWords() {
+        if (!isAdded || parentFragmentManager.isStateSaved) return
         parentFragmentManager.beginTransaction()
             .replace(R.id.container, WordListFragment())
             .commit()

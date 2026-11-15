@@ -1,6 +1,7 @@
 package com.lytree.qbank.ui.laneditor
 
 import android.content.Context
+import com.lytree.qbank.data.ReciteLibraryRepository
 import com.lytree.qbank.data.ReciteRepository
 import com.lytree.qbank.data.model.ReciteSubject
 import org.json.JSONArray
@@ -22,20 +23,47 @@ import java.util.Locale
  *
  * 词库（词条 CRUD）在 [LanEditorWords]，那边是逐条小改，不在这里。
  *
- * ⚠️ 政治这一块**改了暂时不生效**：政治页已经改读统一库（`assets/recite_library.json`，
- * 由 `tools/build_library.cs` 合成），这里写的是旧的 `recite_politics.json` 覆盖文件。
- * 等 P1 把编辑器接到 `recite_library_user.json` 再放开，别以为这是 bug。
+ * ⚠️ 这里只剩**常识**：政治页早就改读统一库（`assets/recite_library.json`），
+ * 政治卡片库 `recite_politics.json` 已经退场，编辑器改大纲走 [LanEditorLibrary]
+ * （`/api/library`，落 `recite_library_user.json`）。[subjects] 里政治那条不再列出，
+ * 免得对着没人读的内容白改。
  */
 object LanEditorRecite {
 
-    /** 两块内容一起列：网页左侧列表用 */
+    /** 统一库在网页列表里的伪科目 id（不是 [ReciteSubject]，走 [LanEditorLibrary]） */
+    const val LIBRARY = "library"
+
+    const val KIND_LIBRARY = "library"
+    const val KIND_CARDS = "cards"
+
+    /**
+     * 网页左侧列表用：先给统一库（政治大纲），再把还有内容的卡片库列出来。
+     *
+     * 政治那条只留大纲：政治页不再读卡片，列出来只会误导人去改一份没人看的内容。
+     */
     fun subjects(context: Context): JSONObject {
         val arr = JSONArray()
+
+        val library = ReciteLibraryRepository.library(context)
+        arr.put(
+            JSONObject()
+                .put("id", LIBRARY)
+                .put("kind", KIND_LIBRARY)
+                .put("title", library.title.ifBlank { "政治理论大纲" })
+                .put("intro", library.intro)
+                .put("updated", library.updated)
+                .put("tagCount", library.tags.size)
+                .put("itemCount", library.items.size)
+                .put("hasEdits", ReciteLibraryRepository.hasUserEdits(context))
+        )
+
         for (subject in ReciteSubject.entries) {
             val catalog = ReciteRepository.catalog(context, subject)
+            if (catalog.cards.isEmpty()) continue
             arr.put(
                 JSONObject()
                     .put("id", subject.id)
+                    .put("kind", KIND_CARDS)
                     .put("title", catalog.title.ifBlank { titleOf(context, subject) })
                     .put("intro", catalog.intro)
                     .put("updated", catalog.updated)
@@ -51,7 +79,10 @@ object LanEditorRecite {
     fun catalog(context: Context, subjectId: String): JSONObject {
         val subject = ReciteSubject.of(subjectId)
         if (ReciteSubject.entries.none { it.id == subjectId }) {
-            throw IllegalArgumentException("不认识的背诵词库：$subjectId（政治 politics / 常识 common）")
+            throw IllegalArgumentException(
+                "不认识的背诵词库：$subjectId"
+                    + "（卡片库只剩常识 common；政治大纲是统一库，走 /api/library）"
+            )
         }
         val catalog = ReciteRepository.catalog(context, subject)
 
@@ -101,7 +132,10 @@ object LanEditorRecite {
     fun parseSave(context: Context, payload: JSONObject): Pair<ReciteSubject, JSONObject> {
         val subjectId = payload.optString("subject")
         if (ReciteSubject.entries.none { it.id == subjectId }) {
-            throw IllegalArgumentException("不认识的背诵词库：$subjectId（政治 politics / 常识 common）")
+            throw IllegalArgumentException(
+                "不认识的背诵词库：$subjectId"
+                    + "（卡片库只剩常识 common；政治大纲是统一库，走 /api/library）"
+            )
         }
         val subject = ReciteSubject.of(subjectId)
 
@@ -171,7 +205,10 @@ object LanEditorRecite {
     /** 重置回内置资产：删覆盖文件 */
     fun executeReset(context: Context, subjectId: String): JSONObject {
         if (ReciteSubject.entries.none { it.id == subjectId }) {
-            throw IllegalArgumentException("不认识的背诵词库：$subjectId（政治 politics / 常识 common）")
+            throw IllegalArgumentException(
+                "不认识的背诵词库：$subjectId"
+                    + "（卡片库只剩常识 common；政治大纲是统一库，走 /api/library）"
+            )
         }
         val subject = ReciteSubject.of(subjectId)
         val had = ReciteRepository.hasUserEdits(context, subject)

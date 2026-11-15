@@ -2,7 +2,8 @@ import { computed, reactive } from 'vue'
 import { api } from './api'
 import type { ConfirmRequired, PublishResponse } from './api'
 import type {
-  EditorPaper, EditorView, Filter, Group, Issue, MindMapCatalog, MindMapNode, MindMapSaveResult,
+  EditorPaper, EditorView, Filter, Group, Issue, LibraryCatalog, LibraryItem, LibrarySaveResult,
+  LibraryTag, MindMapCatalog, MindMapNode, MindMapSaveResult,
   MindMapSection, MindMapTopic, PaperSetInfo,
   QIssue, Question, QuestionType, ReciteCard, ReciteCatalog, ReciteCategory,
   ReciteSaveResult, ReciteSubjectInfo, ResourceFile, Sheet, SubjectFilter,
@@ -42,6 +43,7 @@ type WaitingKind =
   | 'publish' | 'restore' | 'delete'
   | 'recite-save' | 'recite-reset'
   | 'mindmap-save' | 'mindmap-reset'
+  | 'library-save' | 'library-reset'
 
 /* ------------------------------------------------------------------ 状态 */
 
@@ -556,7 +558,7 @@ async function waitPhone(
   req: ConfirmRequired,
   message: string,
   extra: string,
-): Promise<PublishResponse | ReciteSaveResult | null> {
+): Promise<PublishResponse | ReciteSaveResult | LibrarySaveResult | null> {
   ui.busy = false
   ui.waitingId = req.requestId
   ui.waitingKind = kind
@@ -1551,7 +1553,7 @@ function nextReciteCardId(): string {
 
 export async function switchMode(mode: 'paper' | 'recite'): Promise<void> {
   if (state.mode === mode) return
-  if (mode === 'recite' && recite.dirty) {
+  if (mode === 'recite' && (recite.dirty || library.dirty)) {
     const ok = await askConfirm(
       '背诵词库还有没保存的改动',
       '切回题库编辑不会丢内容，但改动要记得保存；确定切换吗？',
@@ -1562,8 +1564,8 @@ export async function switchMode(mode: 'paper' | 'recite'): Promise<void> {
   state.mode = mode
   if (mode === 'recite' && !recite.subjects.length) {
     await loadReciteSubjects()
-    // 第一次进来默认打开政治，别让人对着空页面猜
-    if (!recite.subject) await openReciteSubject('politics')
+    // 第一次进来默认打开政治大纲（App 政治页就是这份库），别让人对着空页面猜
+    if (!recite.subject) await openReciteSubject('library')
   }
 }
 
@@ -1581,7 +1583,7 @@ export async function loadReciteSubjects(): Promise<void> {
 /** 打开一块内容。'words' = 词条词库，'mindmap' = 思维导图，其余 = 背诵内容 */
 export async function openReciteSubject(id: string, opts: { force?: boolean } = {}): Promise<void> {
   if (recite.subject === id && !opts.force) return
-  if ((recite.dirty || mindmap.dirty) && !opts.force) {
+  if ((recite.dirty || mindmap.dirty || library.dirty) && !opts.force) {
     const ok = await askConfirm(
       '还有没保存的改动',
       '换一块内容不会丢改动（改动还在内存里），但先保存更稳。直接换吗？',
@@ -1604,6 +1606,8 @@ export async function openReciteSubject(id: string, opts: { force?: boolean } = 
     await loadWords()
   } else if (id === 'mindmap') {
     await loadMindMap(opts.force === true)
+  } else if (id === 'library') {
+    await loadLibrary(opts.force === true)
   } else {
     recite.loading = true
     try {
@@ -1815,7 +1819,8 @@ export async function saveRecite(): Promise<boolean> {
     await loadReciteSubjects()
     await openReciteSubject(cat.subject, { force: true })
     const cardCount = 'cardCount' in result ? result.cardCount : undefined
-    toast(`已保存「${result.title ?? cat.title}」· ${cardCount ?? '?'} 张卡片，回手机就能背`, 'ok')
+    const savedTitle = 'title' in result ? result.title : cat.title
+    toast(`已保存「${savedTitle ?? cat.title}」· ${cardCount ?? '?'} 张卡片，回手机就能背`, 'ok')
     return true
   } catch (e) {
     await showErrors('保存没成功', e instanceof Error ? e.message : '保存失败')
@@ -2520,4 +2525,341 @@ export function mindMapPreviewTopic(): MindMapTopic | null {
   }
   const sections = mindMapVisibleSections.value
   return sections[0]?.topics[0] ?? null
+}
+
+/* ------------------------------------------------------------------ 政治理论大纲（统一库） */
+
+/**
+ * 大纲编辑器自己的状态。政治页在 App 里就是这一份库（`recite_library.json`），
+ * 所以网页这边改的也是它——旧的卡片库（`recite_politics.json`）已经退场。
+ *
+ * 整份读、整份写：保存要过手机确认（和词库 / 导图同一套闸门）。
+ * 1400 多条一次全渲染会卡，按标签分段 + 每段先出 30 条，点「显示更多」再放。
+ */
+export const library = reactive({
+  catalog: null as LibraryCatalog | null,
+  loading: false,
+  /** 有没保存到手机的改动（保存成功后清掉） */
+  dirty: false,
+  query: '',
+  /** 标签筛选：'all' = 全部 */
+  tag: 'all' as string,
+  /** 来源筛选：item.source 的原值，'all' = 全部 */
+  source: 'all' as string,
+  /** 正在展开编辑的条目 id */
+  expanded: [] as string[],
+  /** 每个标签当前渲染多少条（key = 标签 id 或 'all'） */
+  limit: {} as Record<string, number>,
+})
+
+/** 每段先渲染这么多条：1400+ 条全铺出来，滚一下都掉帧 */
+export const LIBRARY_PAGE = 30
+
+/** 正文里的挖空标记，和 App 的 blankCount 同一个口径 */
+export const LIBRARY_BLANK = '____'
+
+/** 正文里 `____` 的个数 */
+export function libraryBlankCount(text: string): number {
+  return text.split(LIBRARY_BLANK).length - 1
+}
+
+let librarySeq = 0
+
+export function markLibraryDirty() {
+  library.dirty = true
+}
+
+export async function loadLibrary(force = false): Promise<void> {
+  if (library.catalog && !force) return
+  library.loading = true
+  try {
+    library.catalog = await api.library()
+    library.dirty = false
+    library.tag = 'all'
+    library.source = 'all'
+    library.query = ''
+    library.expanded = []
+    library.limit = {}
+  } catch (e) {
+    toast(e instanceof Error ? e.message : '读取政治大纲失败', 'err')
+  } finally {
+    library.loading = false
+  }
+}
+
+/* ---------------- 取值 ---------------- */
+
+export const libraryTopicTags = computed<LibraryTag[]>(
+  () => (library.catalog?.tags ?? []).filter((t) => t.kind === 'topic'),
+)
+
+export const librarySourceTags = computed<LibraryTag[]>(
+  () => (library.catalog?.tags ?? []).filter((t) => t.kind === 'source'),
+)
+
+const libraryTopicIds = computed(() => new Set(libraryTopicTags.value.map((t) => t.id)))
+
+/** 条目挂在哪个内容标签下（第一个内容标签；没有就是空串） */
+export function libraryMainTag(item: LibraryItem): string {
+  return item.tags.find((t) => libraryTopicIds.value.has(t)) ?? ''
+}
+
+/** 来源（节名）清单，做筛选下拉用；按出现顺序排，读起来跟书一致 */
+export const librarySources = computed<string[]>(() => {
+  const seen: string[] = []
+  for (const item of library.catalog?.items ?? []) {
+    if (item.source && !seen.includes(item.source)) seen.push(item.source)
+  }
+  return seen
+})
+
+export const libraryVisibleItems = computed<LibraryItem[]>(() => {
+  const items = library.catalog?.items ?? []
+  const tag = library.tag
+  const source = library.source
+  const kw = library.query.trim().toLowerCase()
+  return items.filter((item) => {
+    if (tag !== 'all' && !item.tags.includes(tag)) return false
+    if (source !== 'all' && item.source !== source) return false
+    if (kw
+      && !item.text.toLowerCase().includes(kw)
+      && !item.source.toLowerCase().includes(kw)
+      // 搜答案也命中：背到「2035」想找回原句很常见
+      && !item.answers.some((a) => a.toLowerCase().includes(kw))) return false
+    return true
+  })
+})
+
+/** 按内容标签分段：`tag = null` 是没打上标签的一撮（「未归类」） */
+export interface LibraryGroup {
+  tag: LibraryTag | null
+  items: LibraryItem[]
+}
+
+export const libraryGroups = computed<LibraryGroup[]>(() => {
+  const items = libraryVisibleItems.value
+  if (library.tag !== 'all') {
+    const tag = libraryTopicTags.value.find((t) => t.id === library.tag) ?? null
+    return [{ tag, items }]
+  }
+  const groups: LibraryGroup[] = []
+  const byId = new Map<string, LibraryGroup>()
+  for (const item of items) {
+    const id = libraryMainTag(item)
+    let group = byId.get(id)
+    if (!group) {
+      group = { tag: libraryTopicTags.value.find((t) => t.id === id) ?? null, items: [] }
+      byId.set(id, group)
+      groups.push(group)
+    }
+    group.items.push(item)
+  }
+  return groups
+})
+
+export function libraryLimitOf(key: string): number {
+  return library.limit[key] ?? LIBRARY_PAGE
+}
+
+export function libraryShowMore(key: string) {
+  library.limit[key] = libraryLimitOf(key) + LIBRARY_PAGE
+}
+
+/** 当前这一组里已经渲染的条目 */
+export function libraryShown(group: LibraryGroup): LibraryItem[] {
+  const key = group.tag?.id ?? '_none'
+  return group.items.slice(0, libraryLimitOf(key))
+}
+
+/* ---------------- 编辑 ---------------- */
+
+export function toggleLibraryItem(id: string) {
+  library.expanded = library.expanded.includes(id)
+    ? library.expanded.filter((x) => x !== id)
+    : [...library.expanded, id]
+}
+
+export function libraryItemById(id: string): LibraryItem | null {
+  return library.catalog?.items.find((x) => x.id === id) ?? null
+}
+
+export function addLibraryItem(tagId?: string): LibraryItem | null {
+  const cat = library.catalog
+  if (!cat) return null
+  const tag = tagId || libraryTopicTags.value[0]?.id || ''
+  if (!tag) { toast('先有至少一个内容标签才能加条目', 'err'); return null }
+  const sourceTag = librarySourceTags.value[0]?.id
+  librarySeq++
+  const item: LibraryItem = {
+    id: `web-${Date.now().toString(36)}-${librarySeq.toString(36)}`,
+    kind: 'card',
+    text: '',
+    answers: [],
+    source: library.source === 'all' ? '' : library.source,
+    tags: sourceTag ? [tag, sourceTag] : [tag],
+  }
+  cat.items.unshift(item)
+  library.expanded = [item.id]
+  markLibraryDirty()
+  return item
+}
+
+export function removeLibraryItem(id: string) {
+  const cat = library.catalog
+  if (!cat) return
+  cat.items = cat.items.filter((x) => x.id !== id)
+  library.expanded = library.expanded.filter((x) => x !== id)
+  markLibraryDirty()
+}
+
+/**
+ * 改正文，顺便把答案数组对齐挖空数：
+ * 多出来的空补空串、少了就把尾部答案丢掉。不对齐的话保存会被服务端拦下来。
+ */
+export function updateLibraryItemText(id: string, text: string) {
+  const item = libraryItemById(id)
+  if (!item) return
+  item.text = text
+  const want = libraryBlankCount(text)
+  while (item.answers.length < want) item.answers.push('')
+  if (item.answers.length > want) item.answers = item.answers.slice(0, want)
+  markLibraryDirty()
+}
+
+export function updateLibraryItemAnswer(id: string, index: number, value: string) {
+  const item = libraryItemById(id)
+  if (!item || index < 0 || index >= item.answers.length) return
+  item.answers[index] = value
+  markLibraryDirty()
+}
+
+export function updateLibraryItemSource(id: string, source: string) {
+  const item = libraryItemById(id)
+  if (!item) return
+  item.source = source
+  markLibraryDirty()
+}
+
+/** 换内容标签：内容标签放最前，来源标签原样留着 */
+export function moveLibraryItemToTag(id: string, tagId: string) {
+  const item = libraryItemById(id)
+  if (!item || !tagId) return
+  const rest = item.tags.filter((t) => !libraryTopicIds.value.has(t))
+  item.tags = [tagId, ...rest]
+  markLibraryDirty()
+}
+
+/* ---------------- 校验 ---------------- */
+
+export function libraryItemIssue(item: LibraryItem): string | null {
+  if (!item.text.trim()) return '正文是空的'
+  const blanks = libraryBlankCount(item.text)
+  if (blanks !== item.answers.length) {
+    return `正文有 ${blanks} 个 ____，答案是 ${item.answers.length} 个`
+  }
+  if (!item.tags.some((t) => libraryTopicIds.value.has(t))) return '没挂到任何内容标签'
+  return null
+}
+
+export function libraryIssueCount(): number {
+  return (library.catalog?.items ?? []).reduce((n, item) => n + (libraryItemIssue(item) ? 1 : 0), 0)
+}
+
+/* ---------------- 保存 / 重置 ---------------- */
+
+export async function saveLibrary(): Promise<boolean> {
+  const cat = library.catalog
+  if (!cat) return false
+  const items = cat.items ?? []
+  if (!items.length) { toast('大纲里一条内容都没有，先加一条', 'err'); return false }
+  const bad = items.find((item) => libraryItemIssue(item))
+  if (bad) {
+    const why = libraryItemIssue(bad) ?? '内容不对'
+    toast(`第「${bad.id}」条有问题：${why}`, 'err')
+    return false
+  }
+  if (ui.waitingId) {
+    toast('还有一条请求在等手机处理，等它结束再发', 'err')
+    return false
+  }
+
+  ui.busy = true
+  try {
+    const payload: LibraryCatalog = {
+      ...cat,
+      tags: cat.tags.map((t) => ({ id: t.id, name: t.name, kind: t.kind })),
+      items: cat.items.map((x) => ({
+        id: x.id,
+        kind: x.kind,
+        text: x.text,
+        answers: [...x.answers],
+        source: x.source,
+        tags: [...x.tags],
+      })),
+    }
+    const r = await api.librarySave(payload)
+    const result = 'needConfirm' in r
+      ? await waitPhone(
+        'library-save',
+        r,
+        `保存「${r.title}」`,
+        '确认后 App 里政治大纲会换成网页上这一版（覆盖文件，删掉就回内置内容）。',
+      )
+      : r
+    if (!result) return false
+    library.dirty = false
+    await loadLibrary(true)
+    await loadReciteSubjects()
+    const count = 'itemCount' in result ? result.itemCount : undefined
+    toast(`已保存政治大纲 · ${count ?? '?'} 条内容，回手机大纲页就能看`, 'ok')
+    return true
+  } catch (e) {
+    await showErrors('保存没成功', e instanceof Error ? e.message : '保存失败')
+    return false
+  } finally {
+    ui.busy = false
+  }
+}
+
+export async function resetLibrary(): Promise<void> {
+  const cat = library.catalog
+  if (!cat) return
+  const ok = await askConfirm(
+    '把政治大纲重置回 App 内置内容？',
+    '会删掉网页 / AI 存过的那版大纲，回到 APK 里内置的重点背诵。' +
+      (cat.hasEdits ? '\n\n现在有覆盖版，重置后当前网页上的未保存改动也一并丢弃。' : ''),
+    '发到手机确认',
+  )
+  if (!ok) return
+  if (ui.waitingId) { toast('还有一条请求在等手机处理，等它结束再发', 'err'); return }
+  ui.busy = true
+  try {
+    const r = await api.libraryReset()
+    const result = 'needConfirm' in r
+      ? await waitPhone('library-reset', r, '重置政治大纲', '重置会删掉覆盖版，回到内置内容。')
+      : r
+    if (!result) return
+    library.dirty = false
+    await loadLibrary(true)
+    await loadReciteSubjects()
+    const wasReset = 'reset' in result ? result.reset : undefined
+    toast(wasReset === false ? '本来就没有覆盖版，内置内容原样' : '已重置回内置大纲', 'ok')
+  } catch (e) {
+    toast(e instanceof Error ? e.message : '重置失败', 'err')
+  } finally {
+    ui.busy = false
+  }
+}
+
+/* ---------------- 右栏预览取值 ---------------- */
+
+/** 大纲：最近展开编辑的那条，一个都没展开就取当前筛选下第一条 */
+export function libraryPreviewItem(): LibraryItem | null {
+  const items = libraryVisibleItems.value
+  if (!items.length) return null
+  for (let i = library.expanded.length - 1; i >= 0; i--) {
+    const hit = items.find((x) => x.id === library.expanded[i])
+    if (hit) return hit
+  }
+  return items[0]
 }

@@ -58,7 +58,7 @@ import kotlin.math.abs
  * · 页面无底部按钮，切题全靠左右滑动，卡面留给正文
  *
  * 掌握、重点、背诵模式、字号、上次停在哪张卡都按「模块 + 考点 id」存库，退出重进仍在；
- * 分词正文与答案来自 assets（政治 recite_politics.json，常识 recite_common.json）。
+ * 分词正文与答案来自 assets（常识 recite_common.json；政治卡片已退场，那块走大纲页）。
  */
 class ReciteFragment : Fragment() {
 

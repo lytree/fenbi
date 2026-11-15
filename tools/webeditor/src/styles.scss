@@ -3503,3 +3503,206 @@ body.pane-dragging {
   .rcp { padding: 12px; }
   .rcp-body { font-size: 14px; }
 }
+
+/* =============================================================================
+ * 政治理论大纲（背诵模式里的统一库）
+ * 标签分段 → 一句一条；折叠时按 App 的样子把挖空画成编号方格，点开才是可编辑原文
+ * ========================================================================== */
+
+.lib-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.lib-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-elevated);
+
+  .search { width: 220px; }
+  .grow { flex: 1; }
+}
+
+.lib-groups {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 12px 40px;
+}
+
+.lib-group {
+  margin-top: 18px;
+
+  &:first-child { margin-top: 0; }
+}
+
+.lib-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 2px 8px;
+
+  .bar {
+    width: 3px;
+    height: 14px;
+    border-radius: 2px;
+    background: var(--primary);
+  }
+
+  .nm {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .mt {
+    font-size: 12px;
+    color: var(--text-tertiary);
+  }
+
+  .grow { flex: 1; }
+}
+
+.lib-item {
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+
+  &:hover { background: var(--bg-fill); }
+
+  &.open {
+    border-color: var(--line);
+    background: var(--bg-elevated);
+    margin: 6px 0;
+  }
+
+  &.bad .lib-sum { color: var(--error); }
+}
+
+.lib-sum {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
+.lib-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: var(--line-strong);
+
+  &.bad { background: var(--error); }
+}
+
+.lib-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--text);
+
+  p { margin: 0; }
+}
+
+.lib-tags {
+  flex: none;
+  display: flex;
+  gap: 4px;
+  padding-top: 2px;
+}
+
+.lib-count {
+  flex: none;
+  padding-top: 3px;
+  font-size: 11px;
+  color: var(--text-quaternary);
+  white-space: nowrap;
+}
+
+.lib-edit {
+  padding: 4px 8px 10px;
+}
+
+.lib-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lib-fields-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 200px) 1fr;
+  gap: 10px;
+}
+
+.lib-answers {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lib-answer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  .ridx {
+    flex: none;
+    width: 18px;
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-quaternary);
+  }
+
+  input {
+    flex: 1;
+    min-width: 0;
+    height: 28px;
+    padding: 0 8px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+    color: var(--text);
+    font: inherit;
+    font-size: 13px;
+
+    &:focus { outline: none; border-color: var(--primary-border); }
+  }
+}
+
+.lib-issue {
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--error-fill, rgba(255, 77, 79, .08));
+  color: var(--error);
+  font-size: 12px;
+}
+
+.lib-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  .grow { flex: 1; }
+}
+
+.lib-more {
+  display: block;
+  margin: 8px auto 0;
+}
+
+/* 窄屏：标签 / 空数不挤在正文右侧，折到下一行 */
+@media (max-width: 900px) {
+  .lib-fields-row { grid-template-columns: 1fr; }
+  .lib-sum { flex-wrap: wrap; }
+  .lib-text { flex-basis: 100%; }
+}

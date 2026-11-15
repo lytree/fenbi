@@ -2,6 +2,7 @@ import { defineComponent, ref, watch } from 'vue'
 import type { MindMapNode, MindMapTopic } from '../types'
 import { renderRecite, renderRich } from '../markdown'
 import {
+  library, libraryBlankCount, libraryMainTag, libraryPreviewItem, libraryTopicTags,
   mindMapPreviewTopic, mindMapSectionOf, recite, recitePreviewCard, wordPreviewItem,
   WORD_CATEGORY_LABEL,
 } from '../store'
@@ -12,7 +13,8 @@ import { esc } from '../util'
  *
  * 三块内容各有一套版式：
  * - 词库：词条 + 拼音 + 分类标签 + 释义（释义里的表格也排成真表格）
- * - 政治 / 常识：卡片正面（挖空）与背面（填答案）可翻，答案清单 / 备注 / 来源在下面
+ * - 政治大纲：一条内容的正面（挖空）与背面（填答案）可翻，标签 / 节名 / 空数在上方
+ * - 常识：卡片正面（挖空）与背面（填答案）可翻，答案清单 / 备注 / 来源在下面
  * - 思维导图：一个主题的树（可折叠）+ 连线配对
  *
  * 「当前这一条」由 store 的 *_preview_* 取值函数决定：点开哪张，右栏就是哪张。
@@ -101,6 +103,59 @@ export default defineComponent({
       )
     }
 
+    // ---------------- 政治大纲 ----------------
+
+    const LibraryView = () => {
+      const item = libraryPreviewItem()
+      if (!item) return <div class="rcp-empty">当前筛选下没有条目</div>
+      const tagId = libraryMainTag(item)
+      const tag = libraryTopicTags.value.find((t) => t.id === tagId)
+      const blanks = libraryBlankCount(item.text)
+      const sourceTags = item.tags.filter((t) => t !== tagId)
+      return (
+        <div class="rcp-card">
+          <div class="rcp-section">
+            <span class="bar"></span>
+            <span class="nm">{tag?.name ?? '未归类'}</span>
+          </div>
+          <div class="rcp-head">
+            <span class="tag">{blanks ? `${blanks} 空` : '无填空'}</span>
+            {item.source ? <span class="tag src">{item.source}</span> : null}
+            {sourceTags.map((t) => {
+              const name = library.catalog?.tags.find((x) => x.id === t)?.name ?? t
+              return <span class="tag src">{name}</span>
+            })}
+            {blanks
+              ? (
+                <button class="ghost sm rcp-flip" onClick={() => { reveal.value = !reveal.value }}>
+                  {reveal.value ? '看正面' : '看答案'}
+                </button>
+              )
+              : null}
+          </div>
+          <div
+            class={['rcp-body', reveal.value && 'revealed']}
+            title={blanks ? '点一下翻面' : undefined}
+            onClick={() => { if (blanks) reveal.value = !reveal.value }}
+            innerHTML={renderRecite(item.text, item.answers, reveal.value)}
+          />
+          {reveal.value && item.answers.length
+            ? (
+              <div class="rcp-answers">
+                {item.answers.map((a, i) => (
+                  <div class="rcp-answer" key={i}>
+                    <span class="ridx">{i + 1}</span>
+                    <span>{a || <i class="rcp-hint-inline">（未填）</i>}</span>
+                  </div>
+                ))}
+              </div>
+            )
+            : null}
+          <div class="rcp-line"><span class="k">条目</span>{item.id}</div>
+        </div>
+      )
+    }
+
     // ---------------- 思维导图 ----------------
 
     const NodeRow = ({ topic, node, path, depth }: {
@@ -172,6 +227,8 @@ export default defineComponent({
         <div class="rcp-tip">这一栏按 App 里的样子排，编辑不影响它；点开左边哪张，这里就是哪张。</div>
         {recite.subject === 'words'
           ? <WordsView />
+          : recite.subject === 'library'
+          ? <LibraryView />
           : recite.subject === 'mindmap' ? <MindMapView /> : <CardView />}
       </div>
     )

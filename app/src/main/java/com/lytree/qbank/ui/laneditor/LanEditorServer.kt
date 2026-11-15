@@ -460,6 +460,16 @@ class LanEditorServer(
 
             "/api/mindmap/reset" -> handleMindMapReset(req)
 
+            // ---- 政治大纲（统一库）：整份读，整份写 ----
+            "/api/library" -> runCatching { LanEditorLibrary.catalog(context) }.fold(
+                onSuccess = ::json,
+                onFailure = { jsonError(500, it.message ?: "读取政治大纲失败") },
+            )
+
+            "/api/library/save" -> handleLibrarySave(req)
+
+            "/api/library/reset" -> handleLibraryReset(req)
+
             // ---- 词库（词条 CRUD）：逐条小改，直接写库 ----
             "/api/words" -> runCatching { LanEditorWords.list(context, req.query) }.fold(
                 onSuccess = ::json,
@@ -674,6 +684,59 @@ class LanEditorServer(
     }
 
     /** 重置思维导图：删用户覆盖文件、回到内置资产 */
+    private fun handleLibrarySave(req: Req): Resp {
+        val body = readJson(req) ?: return jsonError(400, "请求不是合法 JSON")
+
+        // 先校验再问：____ 与答案对不上这类问题，别让手机白弹一次确认框
+        val normalized = runCatching { LanEditorLibrary.parseSave(context, body) }.fold(
+            onSuccess = { it },
+            onFailure = { return jsonError(400, it.message ?: "大纲内容校验没通过") },
+        )
+
+        if (hasAccessKey(req)) {
+            return runCatching { LanEditorLibrary.executeSave(context, body) }.fold(
+                onSuccess = { json(it) },
+                onFailure = { jsonError(400, it.message ?: "保存失败") },
+            )
+        }
+
+        val itemCount = normalized.optJSONArray("items")?.length() ?: 0
+        val tagCount = normalized.optJSONArray("tags")?.length() ?: 0
+        val title = "政治理论大纲"
+        val detail = "会把大纲整份换成网页上这版：$tagCount 个标签、$itemCount 条内容。" +
+            "覆盖文件删掉才能回到内置内容；App 里已背进度按条目 id 记，不受影响。"
+        val r = LanEditorConfirm.requestLibrarySave(context, title, detail, normalized)
+        return json(
+            JSONObject()
+                .put("needConfirm", true)
+                .put("requestId", r.id)
+                .put("title", title)
+                .put("detail", detail)
+                .put("ttlSec", 600),
+        )
+    }
+
+    private fun handleLibraryReset(req: Req): Resp {
+        if (hasAccessKey(req)) {
+            return runCatching { LanEditorLibrary.executeReset(context) }.fold(
+                onSuccess = { json(it) },
+                onFailure = { jsonError(400, it.message ?: "重置失败") },
+            )
+        }
+
+        val title = "重置政治大纲"
+        val detail = "会删掉网页上改过的大纲，回到 App 内置的那份（重点背诵 1434 条）。"
+        val r = LanEditorConfirm.requestLibraryReset(context, title, detail, JSONObject())
+        return json(
+            JSONObject()
+                .put("needConfirm", true)
+                .put("requestId", r.id)
+                .put("title", title)
+                .put("detail", detail)
+                .put("ttlSec", 600),
+        )
+    }
+
     private fun handleMindMapReset(req: Req): Resp {
         if (hasAccessKey(req)) {
             return runCatching { LanEditorMindMap.executeReset(context) }.fold(

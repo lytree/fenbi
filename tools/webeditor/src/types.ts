@@ -148,14 +148,25 @@ export interface MigrationReport {
 
 /* ------------------------------------------------------------------ 背诵词库（政治 / 常识） */
 
-/** 背诵内容的一块：政治 / 常识 */
+/**
+ * 网页左侧「背诵」列表里的一项。
+ *
+ * `kind` 决定点开是哪种编辑器：
+ * - `library`：政治理论统一库（大纲页那份，标签 + 条目）；
+ * - `cards`：还活着的卡片库（现在只剩常识）。
+ */
 export interface ReciteSubjectInfo {
   id: string
+  kind?: 'library' | 'cards'
   title: string
   intro: string
   updated: string
-  categoryCount: number
-  cardCount: number
+  /** 仅 cards */
+  categoryCount?: number
+  cardCount?: number
+  /** 仅 library */
+  tagCount?: number
+  itemCount?: number
   /** 是否有网页 / AI 存过的覆盖内容（false = 还是 App 内置那份） */
   hasEdits: boolean
 }
@@ -197,6 +208,55 @@ export interface ReciteSaveResult {
   title?: string
   categoryCount?: number
   cardCount?: number
+  updated?: string
+  /** 仅重置：是否真的删过覆盖文件（false = 本来就没有） */
+  reset?: boolean
+}
+
+/* ------------------------------------------------------------------ 政治理论大纲（统一库） */
+
+/** 大纲的一级分支：内容标签（话题）或来源标签（只能用来筛） */
+export interface LibraryTag {
+  id: string
+  name: string
+  kind: 'topic' | 'source'
+  /** 命中的条目数（服务端算好，保存时按条目重算） */
+  count?: number
+}
+
+/**
+ * 大纲里的一条内容。正文用 `____` 标挖空，`answers` 按顺序对应每个空——
+ * 个数必须相等，否则 App 里会显示成没有答案的下划线（保存前会拦）。
+ */
+export interface LibraryItem {
+  id: string
+  /** card = 一句话一条；line = 导图还原出来的行（历史数据，编辑器不再新建） */
+  kind: 'card' | 'line'
+  text: string
+  answers: string[]
+  /** 来自哪一节，大纲里作视觉分段的小标题 */
+  source: string
+  /** 命中的标签 id，内容标签在前、来源标签在后 */
+  tags: string[]
+}
+
+/** 整份统一库（服务端整读整写，编辑在前端做完一次提交） */
+export interface LibraryCatalog {
+  version: number
+  title: string
+  intro: string
+  updated: string
+  hasEdits: boolean
+  itemCount?: number
+  tags: LibraryTag[]
+  items: LibraryItem[]
+}
+
+/** 保存 / 重置成功后的摘要 */
+export interface LibrarySaveResult {
+  ok: boolean
+  itemCount?: number
+  tagCount?: number
   updated?: string
   /** 仅重置：是否真的删过覆盖文件（false = 本来就没有） */
   reset?: boolean

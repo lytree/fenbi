@@ -58,6 +58,9 @@ tmp/
 .temp/
 /gen_exam_csv.py
 
+# ---- PaddleOCR 推理模型（约 28MB，按 tools/ocr_pdf.cs 头部说明自行下载）----
+tools/qbank/models/
+
 # ---- 工具与会话目录 ----
 .codebuddy/
 .workbuddy/
