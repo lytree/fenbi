@@ -496,7 +496,7 @@ object MaterialRenderer {
     /** 图片行尾的尺寸标记：`{size=full}`、`{满宽}`、`{natural}` */
     private val SIZE_SUFFIX = Regex(
         "(?i)\\{\\s*(?:(?:size|尺寸|fit|适配)\\s*[:=]\\s*)?" +
-            "(full|fill|natural|original|满宽|铺满|原尺寸|原图)\\s*}\\s*$"
+            "(full|fill|natural|original|满宽|铺满|原尺寸|原图)\\s*\\}\\s*$"
     )
 
     /** 选项正文里夹着的图片：`![说明](地址)`、`[图片](地址)` 两种写法，路径允许带空格 */
