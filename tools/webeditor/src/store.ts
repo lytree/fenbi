@@ -97,7 +97,26 @@ export const state = reactive({
   resourceSetId: 0,
   focused: null as number | null,
   groups: [] as Group[],
+  /** 卷面预览的选项排布：false = 单列（1×4，对齐 App 默认），true = 两列（2×2） */
+  previewTwoCol: false,
 })
+
+/** 卷面预览选项布局：纯显示偏好，存在本机，不参与发布 */
+const PREVIEW_TWO_COL_KEY = 'webeditor.preview_two_col'
+try {
+  state.previewTwoCol = localStorage.getItem(PREVIEW_TWO_COL_KEY) === '1'
+} catch {
+  // 隐私模式禁了 localStorage：用默认的单列就行
+}
+
+export function setPreviewTwoCol(two: boolean) {
+  state.previewTwoCol = two
+  try {
+    localStorage.setItem(PREVIEW_TWO_COL_KEY, two ? '1' : '0')
+  } catch {
+    // 同上，存不了就只影响这一次会话
+  }
+}
 
 export const ui = reactive({
   toastText: '',
@@ -375,6 +394,36 @@ export async function loadSets() {
   const r = await api.sets()
   state.sets = r.sets ?? []
   state.questionTotal = r.questionTotal ?? 0
+}
+
+/**
+ * 归档 / 恢复一组。
+ *
+ * 归档不删任何东西：题目、作答记录都留着，App 首页与网页侧栏默认不再显示，
+ * 随时能恢复——所以这一步不走手机确认。归档的正好是当前打开的那组时，
+ * 顺手把编辑器关掉，免得对着一个已经收起的组继续改。
+ */
+export async function setSetArchived(id: number, archived: boolean): Promise<boolean> {
+  const title = state.sets.find((s) => s.id === id)?.title ?? state.paper?.name ?? ''
+  try {
+    await api.archiveSet(id, archived)
+  } catch (e) {
+    toast(e instanceof Error ? e.message : '归档失败', 'err')
+    return false
+  }
+  if (archived && state.paper?.id === id) {
+    state.paper = null
+    state.dirty = false
+    state.sheet = 0
+    state.expanded = []
+    state.focused = null
+  }
+  await loadSets()
+  toast(
+    archived ? `已归档「${title}」，点「归档」里的「恢复」可以拿回来` : `「${title}」已恢复`,
+    'ok',
+  )
+  return true
 }
 
 export async function openSet(id: number, opts: { force?: boolean } = {}): Promise<boolean> {

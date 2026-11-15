@@ -42,11 +42,11 @@ class LanEditorStore(private val context: Context) {
      * 就把「已有同名组」告诉它，否则等手机点了确认才报错，白等一分钟。
      */
     fun findSetIdByTitle(title: String): Long? =
-        db.listPaperSets(withPapers = false).firstOrNull { it.title == title }?.id
+        db.listPaperSets(withPapers = false, includeArchived = true).firstOrNull { it.title == title }?.id
 
-    /** 组列表：左侧栏用，只带计数，不带题目正文 */
+    /** 组列表：左侧栏用，只带计数，不带题目正文。归档的组也一起给（带 `archived` 标记），网页自己分区显示 */
     fun listSets(): JSONObject {
-        val sets = db.listPaperSets(withPapers = true)
+        val sets = db.listPaperSets(withPapers = true, includeArchived = true)
         val arr = JSONArray()
         sets.forEach { s ->
             arr.put(
@@ -58,6 +58,7 @@ class LanEditorStore(private val context: Context) {
                     .put("questionCount", s.questionCount)
                     .put("missingAnswers", s.missingAnswers)
                     .put("editable", s.id > 0)
+                    .put("archived", s.archived)
                     .put(
                         "papers", JSONArray().apply {
                             s.papers.forEach { p ->
@@ -73,10 +74,12 @@ class LanEditorStore(private val context: Context) {
                     )
             )
         }
+        // 顶部统计只算在用的组：归档的不占「共 N 题」的账，侧栏脚注会把归档单独写一句
+        val active = sets.filterNot { it.archived }
         return JSONObject()
             .put("sets", arr)
-            .put("questionTotal", sets.sumOf { it.questionCount })
-            .put("paperTotal", sets.sumOf { it.paperCount })
+            .put("questionTotal", active.sumOf { it.questionCount })
+            .put("paperTotal", active.sumOf { it.paperCount })
     }
 
     /**
@@ -88,7 +91,7 @@ class LanEditorStore(private val context: Context) {
      */
     fun loadSet(setId: Long, limit: Int = MAX_EDIT_QUESTIONS): JSONObject {
         require(setId > 0) { "「未分组」里的卷不支持在线编辑，请先在 App 里把它们归到某个标题下" }
-        val set = db.listPaperSets(withPapers = true).firstOrNull { it.id == setId }
+        val set = db.listPaperSets(withPapers = true, includeArchived = true).firstOrNull { it.id == setId }
             ?: throw IllegalArgumentException("找不到这组试卷（可能已在 App 里被删掉）")
 
         val sheets = JSONArray()
@@ -238,7 +241,8 @@ class LanEditorStore(private val context: Context) {
         reason: String = "publish",
     ): JSONObject {
         if (sheets.length() == 0) throw IllegalArgumentException("至少要有一份试卷")
-        val existing = db.listPaperSets(withPapers = false).firstOrNull { it.title == title }
+        val existing = db.listPaperSets(withPapers = false, includeArchived = true)
+            .firstOrNull { it.title == title }
         if (existing != null && !replace) {
             throw IllegalArgumentException("已经有同名的组「$title」，确认覆盖请点「覆盖发布」")
         }
@@ -327,7 +331,7 @@ class LanEditorStore(private val context: Context) {
     fun restoreVersion(id: String, targetSetId: Long = 0): JSONObject {
         val snap = archive.read(id) ?: throw IllegalArgumentException("这个版本找不到了（可能已被清理）")
         val current = if (targetSetId > 0) {
-            db.listPaperSets(withPapers = false).firstOrNull { it.id == targetSetId }
+            db.listPaperSets(withPapers = false, includeArchived = true).firstOrNull { it.id == targetSetId }
         } else {
             null
         }
@@ -343,11 +347,32 @@ class LanEditorStore(private val context: Context) {
         return JSONObject().put("ok", true)
     }
 
+    // ---------------------------------------------------------------- 归档 / 恢复（不用手机确认）
+
+    /**
+     * 归档 / 恢复一整组。
+     *
+     * 归档只是「先收起来」：题目、作答记录、错题都原样留着，只是 App 首页与网页侧栏
+     * 默认不再显示。和删除不同，这一步不删任何东西，所以**不走手机确认**，点错了再点一次就回来了。
+     */
+    fun setArchived(setId: Long, archived: Boolean): JSONObject {
+        require(setId > 0) { "「未分组」不支持归档，请先在 App 里把它们归到某个标题下" }
+        val set = db.listPaperSets(withPapers = false, includeArchived = true)
+            .firstOrNull { it.id == setId }
+            ?: throw IllegalArgumentException("这组已经不存在了")
+        db.setPaperSetArchived(setId, archived)
+        return JSONObject()
+            .put("ok", true)
+            .put("setId", setId)
+            .put("title", set.title)
+            .put("archived", archived)
+    }
+
     // ---------------------------------------------------------------- 删除（要手机确认）
 
     /** 删除确认弹窗要显示的信息：多少卷、多少题、多少条作答记录 */
     fun setBrief(setId: Long): JSONObject {
-        val set = db.listPaperSets(withPapers = true).firstOrNull { it.id == setId }
+        val set = db.listPaperSets(withPapers = true, includeArchived = true).firstOrNull { it.id == setId }
             ?: throw IllegalArgumentException("这组已经不存在了")
         return JSONObject()
             .put("id", set.id)
@@ -360,7 +385,7 @@ class LanEditorStore(private val context: Context) {
     /** 真正删掉一组：只在手机上点过「确认删除」之后才会走到这里 */
     fun deleteSet(setId: Long): JSONObject {
         require(setId > 0) { "「未分组」不支持在这里删，请回 App 里操作" }
-        val set = db.listPaperSets(withPapers = true).firstOrNull { it.id == setId }
+        val set = db.listPaperSets(withPapers = true, includeArchived = true).firstOrNull { it.id == setId }
             ?: throw IllegalArgumentException("这组已经不存在了")
         db.deletePaperSet(setId)
         // 图是按组编号分目录存的，组没了就一并清掉，不留孤儿文件
@@ -665,7 +690,7 @@ class LanEditorStore(private val context: Context) {
      * @param setId 只整理这一组；传 0 整理所有组。
      */
     fun migrateImages(setId: Long = 0): JSONObject {
-        val all = db.listPaperSets(withPapers = true)
+        val all = db.listPaperSets(withPapers = true, includeArchived = true)
         val sets = all.filter { it.id > 0 && (setId <= 0 || it.id == setId) }
         if (setId > 0 && sets.isEmpty()) {
             throw IllegalArgumentException("找不到这组试卷（可能已在 App 里被删掉）")

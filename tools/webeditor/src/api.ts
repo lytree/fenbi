@@ -179,6 +179,16 @@ export const api = {
   requestDelete: (setId: number) =>
     request<DeleteRequestResponse>('/api/delete/request', jsonPost({ setId })),
 
+  /**
+   * 归档 / 恢复一整组。归档只是「收起来」：题目、作答记录都留着，
+   * 随时能恢复，所以这一步不用手机确认。
+   */
+  archiveSet: (setId: number, archived: boolean) =>
+    request<{ ok: boolean; setId: number; title: string; archived: boolean }>(
+      '/api/archive/set',
+      jsonPost({ setId, archived }),
+    ),
+
   deleteStatus: (id: string) =>
     request<{ status: ConfirmStatus; error?: string | null }>(
       `/api/delete/status?id=${encodeURIComponent(id)}`,

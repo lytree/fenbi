@@ -753,6 +753,40 @@ button {
   line-height: 1.5715;
 }
 
+/* 侧栏「归档」区：默认收在列表最下面，一条条列出来，只有「恢复」一个动作 */
+.side-archive {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border-secondary);
+
+  .side-archive-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 4px 12px 6px;
+    @include label;
+    color: var(--text-tertiary);
+
+    .hint { color: var(--text-quaternary); }
+  }
+}
+
+.side-item.archived {
+  cursor: default;
+  background: transparent;
+
+  .nm { color: var(--text-secondary); }
+  .mt { color: var(--text-quaternary); }
+
+  .ops.always { opacity: 1; }
+}
+
+/* 「归档」按钮走中性色（红色留给删除） */
+.side-item .ops button.arch:hover {
+  background: var(--bg-fill);
+  color: var(--primary);
+}
+
 /* =============================================================================
    5. 校样台（编辑区）
    ========================================================================== */
@@ -1638,6 +1672,22 @@ body.pane-dragging {
 
   .pv-head-t { font-size: 14px; font-weight: 600; color: var(--text); }
   .pv-head-n { @include label; color: var(--text-tertiary); }
+
+  /* 选项布局开关：页眉右侧的小胶囊，点一下在 1×4 / 2×2 之间切 */
+  .pv-layout {
+    margin-left: auto;
+    height: 22px;
+    padding: 0 8px;
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    background: var(--bg-container);
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+    transition: border-color .2s, color .2s;
+
+    &:hover { border-color: var(--primary-border); color: var(--primary); }
+  }
 }
 
 .pv-q {
@@ -1718,7 +1768,19 @@ body.pane-dragging {
 .pv-ph { color: var(--text-quaternary); }
 .pv-pending { color: var(--warning-text); }
 
-.pv-opts { margin-top: 8px; display: grid; gap: 8px; }
+.pv-opts {
+  margin-top: 8px;
+  display: grid;
+  gap: 8px;
+
+  /* 两列（2×2）：列宽均分，选项短的时候一眼看全；窄窗口还是退回单列，别挤成竖条 */
+  &.two {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 16px;
+
+    @media (max-width: 1100px) { grid-template-columns: 1fr; }
+  }
+}
 
 .pv-opt {
   display: flex;
@@ -2857,18 +2919,86 @@ body.pane-dragging {
   overflow: hidden;
 }
 
+/*
+ * 分页条：贴在列表底部的浮条（sticky），页码是圆角方块，当前页用主色实底。
+ * 页数多时中间用 … 收掉，只留当前页附近 5 页 + 首尾。
+ */
 .pager {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  padding: 8px 0 24px;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--bg-container);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 -2px 12px rgba(0, 0, 0, .05);
   font-size: 13px;
   color: var(--text-secondary);
 
-  .select { width: auto; }
+  .pager-step {
+    height: 30px;
+    padding: 0 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--bg-container);
+    color: var(--text-secondary);
+    font: inherit;
+    cursor: pointer;
+    transition: border-color .2s, color .2s;
 
-  .pager-info { color: var(--text-tertiary); }
+    &:hover:not(:disabled) { border-color: var(--primary-border); color: var(--primary); }
+    &:disabled { opacity: .45; cursor: not-allowed; }
+  }
+
+  .pager-pages { display: flex; align-items: center; gap: 4px; }
+
+  .pager-num {
+    min-width: 30px;
+    height: 30px;
+    padding: 0 6px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    cursor: pointer;
+    transition: background-color .2s, color .2s;
+
+    &:hover { background: var(--bg-fill); color: var(--text); }
+
+    &.on {
+      background: var(--primary-solid);
+      border-color: var(--primary-solid);
+      color: var(--on-primary);
+      font-weight: 500;
+    }
+  }
+
+  .pager-gap {
+    min-width: 20px;
+    text-align: center;
+    color: var(--text-quaternary);
+    user-select: none;
+  }
+
+  .pager-info { color: var(--text-tertiary); margin-left: 4px; }
+}
+
+/* 窄屏：页码条只留上一页 / 下一页 + 条数，别把手机屏挤成两行 */
+@media (max-width: 720px) {
+  .pager {
+    gap: 6px;
+    padding: 8px;
+
+    .pager-pages { display: none; }
+    .pager-step { padding: 0 8px; }
+    .pager-info { margin-left: 0; font-size: 12px; }
+  }
 }
 
 /* 窄屏：背诵编辑态的两列并一列 */

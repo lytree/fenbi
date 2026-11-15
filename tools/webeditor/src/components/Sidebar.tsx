@@ -1,7 +1,8 @@
 import { defineComponent } from 'vue'
+import type { PaperSetInfo } from '../types'
 import {
   askConfirm, askText, loadReciteSubjects, loadSets, newPaper, openReciteSubject,
-  openSet, recite, requestDeleteSet, state, toast,
+  openSet, recite, requestDeleteSet, setSetArchived, state, toast,
 } from '../store'
 
 /** 左侧：题库模式 = App 里的「导入组」列表；背诵模式 = 词库 / 政治 / 常识 三块内容 */
@@ -54,6 +55,36 @@ export default defineComponent({
 
     const refreshRecite = () => void loadReciteSubjects()
 
+    /** 归档一整组：数据不删，只是从列表和 App 首页收起来，随时能恢复 */
+    const archive = async (s: PaperSetInfo) => {
+      if (state.paper?.id === s.id && state.dirty) {
+        const ok = await askConfirm(
+          '正在编辑的这一组还没发布',
+          '归档后编辑器会关掉，这些没发布的改动不会保留。确定归档吗？',
+          '归档',
+        )
+        if (!ok) return
+      } else {
+        const ok = await askConfirm(
+          `归档「${s.title}」？`,
+          '归档后这组不再出现在列表和 App 首页，题目、作答记录都保留，随时能恢复。',
+          '归档',
+        )
+        if (!ok) return
+      }
+      await setSetArchived(s.id, true)
+    }
+
+    const restore = async (s: PaperSetInfo) => {
+      const ok = await askConfirm(
+        `恢复「${s.title}」？`,
+        '恢复后这组回到编辑列表，App 首页也会重新显示。',
+        '恢复',
+      )
+      if (!ok) return
+      await setSetArchived(s.id, false)
+    }
+
     return () => {
       if (state.mode === 'recite') {
         return (
@@ -99,6 +130,9 @@ export default defineComponent({
         )
       }
 
+      const active = state.sets.filter((s) => !s.archived)
+      const archived = state.sets.filter((s) => s.archived)
+
       return (
         <aside class="sidebar">
           <div class="side-head">
@@ -109,43 +143,89 @@ export default defineComponent({
           <div class="side-list">
             {state.sets.length === 0
               ? <div class="side-empty">App 里还没有试卷<br />点上面「新建一组」开始</div>
-              : state.sets.map((s) => (
-                <div
-                  key={s.id}
-                  class={['side-item', state.paper?.id === s.id && 'active']}
-                  title={s.title}
-                  onClick={() => pick(s.id, s.editable)}
-                >
-                  <div>
-                    <div class="nm">{s.title}</div>
-                    <div class="mt">
-                      {s.paperCount} 卷 · {s.questionCount} 题
-                      {s.missingAnswers ? ` · 缺 ${s.missingAnswers} 答案` : ''}
-                      {s.editable ? null : <span class="tag">未归组</span>}
+              : active.length === 0
+                ? <div class="side-empty">试卷都归档了<br />在下面「归档」里点「恢复」就能拿回来</div>
+                : active.map((s) => (
+                  <div
+                    key={s.id}
+                    class={['side-item', state.paper?.id === s.id && 'active']}
+                    title={s.title}
+                    onClick={() => pick(s.id, s.editable)}
+                  >
+                    <div>
+                      <div class="nm">{s.title}</div>
+                      <div class="mt">
+                        {s.paperCount} 卷 · {s.questionCount} 题
+                        {s.missingAnswers ? ` · 缺 ${s.missingAnswers} 答案` : ''}
+                        {s.editable ? null : <span class="tag">未归组</span>}
+                      </div>
                     </div>
+                    {s.editable
+                      ? (
+                        <div class="ops">
+                          <button
+                            class="arch"
+                            title="归档这一组：题目与记录都保留，随时能恢复"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              void archive(s)
+                            }}
+                          >
+                            归档
+                          </button>
+                          <button
+                            title="删除这一组：请求会发到手机上确认"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              requestDeleteSet(s.id, s.title)
+                            }}
+                          >
+                            删除
+                          </button>
+                        </div>
+                      )
+                      : null}
                   </div>
-                  {s.editable
-                    ? (
-                      <div class="ops">
+                ))}
+
+            {archived.length > 0
+              ? (
+                <div class="side-archive">
+                  <div class="side-archive-head">
+                    <span>归档（{archived.length}）</span>
+                    <span class="hint">点「恢复」回到列表</span>
+                  </div>
+                  {archived.map((s) => (
+                    <div key={s.id} class="side-item archived" title={s.title}>
+                      <div>
+                        <div class="nm">{s.title}</div>
+                        <div class="mt">{s.paperCount} 卷 · {s.questionCount} 题</div>
+                      </div>
+                      <div class="ops always">
                         <button
-                          title="删除这一组：请求会发到手机上确认"
+                          class="arch restore"
+                          title="恢复到编辑列表与 App 首页"
                           onClick={(e) => {
                             e.stopPropagation()
-                            requestDeleteSet(s.id, s.title)
+                            void restore(s)
                           }}
                         >
-                          删除
+                          恢复
                         </button>
                       </div>
-                    )
-                    : null}
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )
+              : null}
           </div>
 
           <div class="side-foot">
             <span class="dot"></span>
-            <span>{state.sets.length} 组 · 共 {state.questionTotal} 题</span>
+            <span>
+              {active.length} 组 · 共 {state.questionTotal} 题
+              {archived.length ? ` · 归档 ${archived.length}` : ''}
+            </span>
           </div>
         </aside>
       )

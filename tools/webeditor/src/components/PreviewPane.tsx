@@ -1,6 +1,8 @@
 import { defineComponent, nextTick, onMounted, ref, watch } from 'vue'
 import type { Question } from '../types'
-import { ansSet, currentQuestions, focusQuestion, groupsOf, state, TYPE_LABEL } from '../store'
+import {
+  ansSet, currentQuestions, focusQuestion, groupsOf, setPreviewTwoCol, state, TYPE_LABEL,
+} from '../store'
 import { esc } from '../util'
 import { renderInline, renderMaterial } from '../markdown'
 import { LEVEL_NONE, level1Of, level2Of } from '../xingce'
@@ -50,7 +52,9 @@ export default defineComponent({
       h += `<div class="pv-stem">${renderInline(q.stem) || '<span class="pv-ph">（题干为空）</span>'}</div>`
 
       if (opts.length) {
-        h += '<div class="pv-opts">'
+        // 选项排布跟着右上角「选项：单列 / 两列」走，和 App 答题页「更多 → 选项布局」同一套口径
+        const two = state.previewTwoCol && opts.length >= 2
+        h += `<div class="pv-opts${two ? ' two' : ''}">`
         h += opts
           .map(
             (o) =>
@@ -75,7 +79,9 @@ export default defineComponent({
       const groups = groupsOf(qs)
       // 样张页眉：一行小字说明「这是卷面、不是编辑器」，跟左边的校样条区分开
       let out = '<div class="pv-head"><span class="pv-head-t">卷面样张</span>' +
-        `<span class="pv-head-n">${qs.length} 题 · 与 App 答题页同版式</span></div>`
+        `<span class="pv-head-n">${qs.length} 题 · 与 App 答题页同版式</span>` +
+        `<button class="pv-layout" data-act="layout" title="切换选项排布：单列（1×4）/ 两列（2×2）">` +
+        `选项：${state.previewTwoCol ? '两列' : '单列'}</button></div>`
       let i = 0
       while (i < qs.length) {
         const g = groups.find((x) => x.start === i)
@@ -93,7 +99,13 @@ export default defineComponent({
     }
 
     const onClick = (e: MouseEvent) => {
-      const hit = (e.target as HTMLElement).closest('.pv-q') as HTMLElement | null
+      const target = e.target as HTMLElement
+      // 页眉上的「选项：单列 / 两列」：只切预览的排布，不动题目数据
+      if (target.closest('.pv-layout')) {
+        setPreviewTwoCol(!state.previewTwoCol)
+        return
+      }
+      const hit = target.closest('.pv-q') as HTMLElement | null
       if (!hit) return
       const uid = Number(hit.dataset.uid)
       const index = currentQuestions().findIndex((q) => q._uid === uid)

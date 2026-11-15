@@ -296,6 +296,18 @@ class LanEditorServer(
 
             "/api/papers" -> json(store.listSets())
 
+            // 归档 / 恢复一组：不删数据、随时能撤回，所以不用手机确认
+            "/api/archive/set" -> {
+                val body = readJson(req) ?: return jsonError(400, "请求不是合法 JSON")
+                val setId = body.optLong("setId", 0L)
+                if (setId <= 0L) return jsonError(400, "缺少试卷组 id")
+                val archived = body.optBoolean("archived", true)
+                runCatching { store.setArchived(setId, archived) }.fold(
+                    onSuccess = ::json,
+                    onFailure = { jsonError(400, it.message ?: "归档失败") },
+                )
+            }
+
             "/api/paper" -> {
                 val id = req.query["id"]?.toLongOrNull() ?: return jsonError(400, "缺少试卷组 id")
                 json(store.loadSet(id))

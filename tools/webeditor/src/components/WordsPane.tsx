@@ -98,6 +98,23 @@ const WordEditor = defineComponent({
 })
 
 /** 词条词库（App「背诵 → 词库」页的内容）：搜索 / 筛选 + 逐条编辑 */
+
+/**
+ * 分页条的页码序列：页数少就全列，多了只留首尾 + 当前页前后各 2 页，
+ * 中间断开处用 '…' 占位（渲染成不可点的省略号）。
+ */
+function pageWindow(page: number, count: number): (number | '…')[] {
+  if (count <= 7) return Array.from({ length: count }, (_, i) => i + 1)
+  const out: (number | '…')[] = [1]
+  const start = Math.max(2, page - 2)
+  const end = Math.min(count - 1, page + 2)
+  if (start > 2) out.push('…')
+  for (let p = start; p <= end; p++) out.push(p)
+  if (end < count - 1) out.push('…')
+  out.push(count)
+  return out
+}
+
 export default defineComponent({
   name: 'WordsPane',
   setup() {
@@ -184,19 +201,24 @@ export default defineComponent({
             {recite.words.length > recite.wordPageSize
               ? (
                 <div class="pager">
-                  <button class="ghost sm" disabled={page <= 1} onClick={() => setWordPage(page - 1)}>上一页</button>
-                  <select
-                    class="select"
-                    title="跳到某一页"
-                    value={page}
-                    onChange={(e) => setWordPage(Number((e.target as HTMLSelectElement).value))}
-                  >
-                    {Array.from({ length: pageCount }, (_, i) => (
-                      <option key={i + 1} value={i + 1}>第 {i + 1} 页</option>
-                    ))}
-                  </select>
-                  <button class="ghost sm" disabled={page >= pageCount} onClick={() => setWordPage(page + 1)}>下一页</button>
-                  <span class="pager-info">共 {recite.words.length} 条</span>
+                  <button class="pager-step" disabled={page <= 1} onClick={() => setWordPage(page - 1)}>上一页</button>
+                  <div class="pager-pages">
+                    {pageWindow(page, pageCount).map((p, i) =>
+                      p === '…'
+                        ? <span key={`gap-${i}`} class="pager-gap">…</span>
+                        : (
+                          <button
+                            key={p}
+                            class={['pager-num', p === page && 'on']}
+                            title={`第 ${p} 页`}
+                            onClick={() => setWordPage(p)}
+                          >
+                            {p}
+                          </button>
+                        ))}
+                  </div>
+                  <button class="pager-step" disabled={page >= pageCount} onClick={() => setWordPage(page + 1)}>下一页</button>
+                  <span class="pager-info">共 {recite.words.length} 条 · {pageCount} 页</span>
                 </div>
               )
               : null}

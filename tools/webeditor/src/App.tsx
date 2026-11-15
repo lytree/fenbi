@@ -95,7 +95,8 @@ export default defineComponent({
         // 上次还有没发布的改动就问一句要不要接着改；不然就从手机上当前内容打开
         const restored = await maybeRestoreDraft()
         if (restored) return
-        const first = state.sets.find((s) => s.id > 0)
+        // 自动打开的「第一组」跳过归档的：归档组不在编辑列表里，打开它只会让人以为点错了
+        const first = state.sets.find((s) => s.id > 0 && !s.archived)
         if (first) await openSet(first.id, { force: true })
       } catch (e) {
         // 这里也可能是「这组太大，超过单卷上限」这类业务错误，别一律说成连不上

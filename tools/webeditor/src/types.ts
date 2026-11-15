@@ -59,6 +59,8 @@ export interface PaperSetInfo {
   questionCount: number
   missingAnswers: number
   editable: boolean
+  /** 已归档：侧栏收进「归档」区，不再出现在编辑列表里；数据都还在 */
+  archived: boolean
   papers: SetPaperInfo[]
 }
 
