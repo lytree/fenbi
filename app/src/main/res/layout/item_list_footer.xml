@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 列表尾部状态行（分页用）：还在取下一页时转圈，取完了说明一句「已经到底」，
+     别让人对着列表底部猜是卡住了还是没有更多 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center"
+    android:orientation="horizontal"
+    android:paddingStart="@dimen/fb_page_pad"
+    android:paddingTop="@dimen/fb_space_16"
+    android:paddingEnd="@dimen/fb_page_pad"
+    android:paddingBottom="@dimen/fb_space_24">
+
+    <ProgressBar
+        android:id="@+id/footerProgress"
+        android:layout_width="14dp"
+        android:layout_height="14dp"
+        android:layout_marginEnd="@dimen/fb_space_8"
+        android:indeterminateTint="@color/fb_text_meta"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/footerText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="@color/fb_text_meta"
+        android:textSize="@dimen/fb_text_item_sub"
+        tools:text="正在加载…" />
+</LinearLayout>

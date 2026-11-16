@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  长文本弹窗（导图节点全文这类）：白卡 + 标题 + 可滚动正文 + 一颗「关闭」。
+  卡片高度由代码限制在六成屏高，超出的部分正文自己滚，不会把按钮顶出屏幕。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    style="@style/FbDialogCard">
+
+    <TextView
+        android:id="@+id/tvTitle"
+        style="@style/FbDialogTitle"
+        android:gravity="start"
+        tools:text="节点全文" />
+
+    <ScrollView
+        android:id="@+id/scroll"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/fb_space_12"
+        android:fadeScrollbars="false"
+        android:scrollbars="vertical">
+
+        <TextView
+            android:id="@+id/tvBody"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:lineSpacingExtra="6dp"
+            android:textColor="@color/fb_dialog_text"
+            android:textSize="@dimen/fb_text_item_title"
+            tools:text="习近平新时代中国…同中国具体实际相结合、同中华优秀传统文化相结合的重大成果。" />
+    </ScrollView>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/fb_space_20"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/btnOk"
+            style="@style/FbDialogActionPrimary"
+            android:text="@string/action_close" />
+    </LinearLayout>
+</LinearLayout>

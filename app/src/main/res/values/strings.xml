@@ -256,6 +256,10 @@
     <string name="record_actions">更多操作</string>
     <string name="record_action_open">查看成绩报告</string>
     <string name="record_action_resume">继续答题</string>
+    <!-- 列表尾部：记录多了要分页，到底时说清楚，别让人以为还有 -->
+    <string name="record_footer_loading">正在加载…</string>
+    <string name="record_footer_more">上滑加载更多</string>
+    <string name="record_footer_end">共 %1$d 条记录，全部在这了</string>
 
     <string name="title_import">导入</string>
     <string name="import_pick">选择试卷文件</string>
@@ -390,12 +394,19 @@
     <string name="mindmap_pair_wrong">这一组不对，再想想</string>
     <string name="mindmap_pair_close">关闭</string>
     <string name="mindmap_pair_again">再开一局</string>
-    <string name="mindmap_graph_hint">双指缩放 · 拖动平移 · 点节点展开或收起</string>
-    <string name="mindmap_graph_desc_fmt">%1$s：%2$d 个分支、%3$d 条要点。可双指缩放、拖动平移，点节点展开或收起</string>
+    <string name="mindmap_graph_hint">单指拖动 · 双指缩放（也可用下方 － ＋）· 点节点展开或收起 · 长按看全文</string>
+    <string name="mindmap_node_fulltext">节点全文</string>
+    <string name="mindmap_graph_desc_fmt">%1$s：%2$d 个分支、%3$d 条要点。可双指缩放、拖动平移，点节点展开或收起，长按节点可听全文</string>
     <string name="mindmap_graph_meta_fmt">%1$s · %2$d 个分支 · %3$d 条要点</string>
     <string name="mindmap_graph_fit">适应屏幕</string>
+    <string name="mindmap_graph_zoom_in">放大</string>
+    <string name="mindmap_graph_zoom_out">缩小</string>
+    <string name="mindmap_graph_zoom_in_glyph">＋</string>
+    <string name="mindmap_graph_zoom_out_glyph">－</string>
     <string name="mindmap_graph_expand">展开全部</string>
     <string name="mindmap_graph_collapse">只看主干</string>
+    <string name="mindmap_graph_night">夜读</string>
+    <string name="mindmap_graph_day">日读</string>
 
     <!-- 政治理论大纲页（内容库里板块 / 章节已取消，只剩标签分支） -->
     <string name="lib_progress_fmt">已背 %1$d / %2$d</string>

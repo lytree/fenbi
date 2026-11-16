@@ -1,12 +1,22 @@
-import { defineComponent, ref } from 'vue'
+import { defineComponent, nextTick, ref } from 'vue'
 import type { MindMapNode, MindMapTopic } from '../types'
 import {
   addMindMapChild, addMindMapPair, addMindMapRoot, addMindMapSibling, addMindMapTopic, askConfirm,
-  indentMindMapNode, loadMindMap, mindMapCount, mindMapIsOpen, mindmap, mindMapVisibleSections,
-  moveMindMapNode, outdentMindMapNode, removeMindMapNode, removeMindMapPair, removeMindMapTopic,
-  renameMindMapLabel, renameMindMapTopic, resetMindMap, saveMindMap, toggleMindMapNode,
-  toggleMindMapTopic, updateMindMapNode, updateMindMapPair,
+  indentMindMapNode, loadMindMap, mindMapCount, mindMapIsOpen, mindmap, mindMapNodeKey,
+  mindMapVisibleSections, moveMindMapNode, outdentMindMapNode, removeMindMapNode, removeMindMapPair,
+  removeMindMapTopic, renameMindMapLabel, renameMindMapTopic, resetMindMap, saveMindMap,
+  toggleMindMapNode, toggleMindMapTopic, updateMindMapNode, updateMindMapPair,
 } from '../store'
+import { theme } from '../theme'
+import { graphNodeCount } from '../mindmap/tree'
+import MindMapGraph from './MindMapGraph'
+
+/** 看图时只需要这三个动作，不必把 Markmap 实例整个露给外面 */
+type GraphHandle = {
+  fit: () => void
+  foldToLevel: (level: number) => void
+  expandAll: () => void
+}
 
 /** 树里命中关键字的次数（含主题名），用于搜索时只留命中的主题 */
 function hitsOf(topic: MindMapTopic, kw: string): number {
@@ -32,6 +42,9 @@ function grow(el: HTMLTextAreaElement) {
  * 树可以直接改字、加同/子节点、缩进反缩进、上下移动、删节点——原书导图从坐标还原出来，
  * 连线题被错落成父子关系是常事，这里就是给它收拾的手工位。
  *
+ * 两个视图共用同一份数据：**大纲**是唯一的写入口，**图**是 markmap 画的只读画布
+ * （折叠 / 缩放 / 拖动）。图上点节点会跳回大纲对应那行——看图时想改字，不用自己找。
+ *
  * 整份读、整份写：保存要过手机确认（和背诵词库、发布同一套闸门）。
  */
 export default defineComponent({
@@ -39,6 +52,12 @@ export default defineComponent({
   setup() {
     const query = ref('')
     const kw = () => query.value.trim().toLowerCase()
+
+    /** 大纲 / 图；刷新页面回到大纲，看图是临时动作 */
+    const view = ref<'outline' | 'graph'>('outline')
+    /** 图里当前看的是哪一页书，空串表示「跟着筛选结果的第一条走」 */
+    const graphTopicId = ref('')
+    const graphRef = ref<GraphHandle | null>(null)
 
     const beginLoad = () => { void loadMindMap() }
     if (!mindmap.catalog && !mindmap.loading) beginLoad()
@@ -79,6 +98,27 @@ export default defineComponent({
       removeMindMapNode(topic.id, path)
     }
 
+    /**
+     * 图上点了一个节点：切回大纲，把这一支展开，滚到那一行并闪一下。
+     * 祖先逐个标展开——deep 节点点进来时，中间任何一层收着都定位不到。
+     */
+    const jumpTo = (topic: MindMapTopic, path: number[]) => {
+      if (!mindmap.openTopics.includes(topic.id)) toggleMindMapTopic(topic.id)
+      for (let i = 1; i < path.length; i++) {
+        mindmap.openNodes[mindMapNodeKey(topic.id, path.slice(0, i))] = true
+      }
+      mindmap.openNodes[mindMapNodeKey(topic.id, path)] = true
+      view.value = 'outline'
+      const sel = `[data-topic="${topic.id}"] [data-path="${path.join('.')}"]`
+      void nextTick(() => {
+        const row = document.querySelector<HTMLElement>(sel)
+        if (!row) return
+        row.scrollIntoView({ block: 'center' })
+        row.classList.add('flash')
+        window.setTimeout(() => row.classList.remove('flash'), 1400)
+      })
+    }
+
     /** 递归渲染：折叠的分支不下钻，所以一次只画看得见的行 */
     const renderNode = (
       topic: MindMapTopic,
@@ -90,7 +130,7 @@ export default defineComponent({
       const open = mindMapIsOpen(topic.id, path, depth)
       const index = path[path.length - 1]
       const rows: any[] = [
-        <div key={path.join('.')} class={['mm-row', `d${Math.min(depth, 4)}`]}>
+        <div key={path.join('.')} class={['mm-row', `d${Math.min(depth, 4)}`]} data-path={path.join('.')}>
           <button
             class={['mm-twist', !kids.length && 'leaf']}
             title={kids.length ? (open ? '收起这一支' : '展开这一支') : '没有子节点'}
@@ -154,50 +194,147 @@ export default defineComponent({
         .filter((s) => s.topics.length > 0)
 
       const shownTopics = sections.reduce((n, s) => n + s.topics.length, 0)
+      const topics = sections.flatMap((s) => s.topics)
+      const selected = topics.find((t) => t.id === graphTopicId.value) ?? topics[0]
+      const isGraph = view.value === 'graph'
+      // 接口偶尔只给 sections 不给 topicCount（内置资产就是这样），别在标题上写「0 主题」
+      const totalTopics = cat.topicCount
+        ?? cat.sections.reduce((n, s) => n + s.topics.length, 0)
 
       return (
         <>
           <div class="toolbar">
-            <select
-              class="select"
-              title="只看某个板块"
-              value={mindmap.section}
-              onChange={(e) => { mindmap.section = (e.target as HTMLSelectElement).value }}
-            >
-              <option value="all">全部板块（{cat.sections.length} / {cat.topicCount ?? 0} 主题）</option>
-              {cat.sections.map((s) => (
-                <option key={s.id} value={s.id}>{s.name}（{s.topics.length}）</option>
-              ))}
-            </select>
-            <input
-              class="search"
-              spellcheck={false}
-              value={query.value}
-              placeholder="搜主题 / 节点文字…"
-              onInput={(e) => { query.value = (e.target as HTMLInputElement).value }}
-            />
-            {k ? <span class="pill">{shownTopics} 个主题命中</span> : null}
-            {mindmap.dirty ? <span class="pill hot">有未保存改动</span> : null}
-            <div class="toolbar-actions">
-              <button
-                class="ghost sm"
-                title="把展开的主题都收起来"
-                onClick={() => { mindmap.openTopics = []; mindmap.openNodes = {} }}
-              >全部收起</button>
-              <button class="ghost sm" onClick={() => void resetMindMap()}>重置为内置</button>
-              <button
-                class="ghost sm"
-                title="在当前板块下加一个新主题"
-                onClick={() => {
-                  const target = mindmap.section !== 'all' ? mindmap.section : cat.sections[0]?.id
-                  if (target) addMindMapTopic(target)
-                }}
-              >＋ 主题</button>
-              <button class="primary sm" onClick={() => void saveMindMap()}>保存导图</button>
+            <div class="tb-row">
+              <div class="seg" title="大纲可改字；图只看结构，点节点跳回大纲">
+                <button
+                  class={['seg-btn', !isGraph && 'on']}
+                  data-view="outline"
+                  onClick={() => { view.value = 'outline' }}
+                >大纲</button>
+                <button
+                  class={['seg-btn', isGraph && 'on']}
+                  data-view="graph"
+                  title="只看结构：折叠 / 缩放 / 拖动"
+                  onClick={() => {
+                    // 第一次进图，优先看大纲里正展开的那一页，没有就取筛选后的第一条
+                    if (!graphTopicId.value) {
+                      const opened = topics.find((t) => mindmap.openTopics.includes(t.id))
+                      graphTopicId.value = opened?.id ?? topics[0]?.id ?? ''
+                    }
+                    view.value = 'graph'
+                  }}
+                >图</button>
+              </div>
+
+              {isGraph
+                ? (
+                  <select
+                    class="select mm-topic-select"
+                    title="看哪一页书"
+                    value={selected?.id ?? ''}
+                    onChange={(e) => { graphTopicId.value = (e.target as HTMLSelectElement).value }}
+                  >
+                    {sections.map((s) => (
+                      <optgroup key={s.id} label={s.name}>
+                        {s.topics.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.label} · {t.name}（{graphNodeCount(t)} 条）
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                )
+                : (
+                  <select
+                    class="select"
+                    title="只看某个板块"
+                    value={mindmap.section}
+                    onChange={(e) => { mindmap.section = (e.target as HTMLSelectElement).value }}
+                  >
+                    <option value="all">全部板块（{cat.sections.length} / {totalTopics} 主题）</option>
+                    {cat.sections.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}（{s.topics.length}）</option>
+                    ))}
+                  </select>
+                )}
+
+              {isGraph
+                ? null
+                : (
+                  <input
+                    class="search"
+                    spellcheck={false}
+                    value={query.value}
+                    placeholder="搜主题 / 节点文字…"
+                    onInput={(e) => { query.value = (e.target as HTMLInputElement).value }}
+                  />
+                )}
+              {!isGraph && k ? <span class="pill">{shownTopics} 个主题命中</span> : null}
+              {isGraph && selected
+                ? <span class="pill">{selected.nodes.length} 个根 · {graphNodeCount(selected)} 节点</span>
+                : null}
+              {mindmap.dirty ? <span class="pill hot">有未保存改动</span> : null}
+              <div class="toolbar-actions">
+                {isGraph
+                  ? (
+                    <>
+                      <button class="ghost sm" title="只留主题与第一层分支" onClick={() => graphRef.value?.foldToLevel(2)}>折到 2 层</button>
+                      <button class="ghost sm" onClick={() => graphRef.value?.expandAll()}>全部展开</button>
+                      <button class="ghost sm" onClick={() => graphRef.value?.fit()}>适应窗口</button>
+                    </>
+                  )
+                  : (
+                    <button
+                      class="ghost sm"
+                      title="把展开的主题都收起来"
+                      onClick={() => { mindmap.openTopics = []; mindmap.openNodes = {} }}
+                    >全部收起</button>
+                  )}
+                <button class="ghost sm" onClick={() => void resetMindMap()}>重置为内置</button>
+                {isGraph
+                  ? null
+                  : (
+                    <button
+                      class="ghost sm"
+                      title="在当前板块下加一个新主题"
+                      onClick={() => {
+                        const target = mindmap.section !== 'all' ? mindmap.section : cat.sections[0]?.id
+                        if (target) addMindMapTopic(target)
+                      }}
+                    >＋ 主题</button>
+                  )}
+                <button class="primary sm" onClick={() => void saveMindMap()}>保存导图</button>
+              </div>
             </div>
+
+            {isGraph
+              ? (
+                <div class="tb-row mm-graphbar">
+                  <span class="hint">
+                    拖动画布 / 滚轮缩放 / 点圆点折叠；点节点跳回大纲那一行——改字仍在大纲里做。
+                  </span>
+                </div>
+              )
+              : null}
           </div>
 
-          <div class="qlist rlist">
+          {isGraph
+            ? (selected
+                ? (
+                  <div class="mm-graph">
+                    <MindMapGraph
+                      key={selected.id}
+                      ref={graphRef}
+                      topic={selected}
+                      mode={theme.mode}
+                      onPick={(path: number[]) => jumpTo(selected, path)}
+                    />
+                  </div>
+                )
+                : <div class="empty-inline">这个筛选下没有主题可看</div>)
+            : (
+              <div class="qlist rlist">
             {sections.length === 0
               ? <div class="empty-inline">{k ? '没有命中的主题' : '这份导图还没有内容'}</div>
               : sections.map((section) => (
@@ -212,7 +349,7 @@ export default defineComponent({
                     const total = topic.nodes.reduce((n, x) => n + 1 + mindMapCount(x.children ?? []), 0)
                     const hits = hitsOf(topic, k)
                     return (
-                      <div key={topic.id} class={['rcard', 'mm-card', open && 'open']}>
+                      <div key={topic.id} class={['rcard', 'mm-card', open && 'open']} data-topic={topic.id}>
                         <div class="qhead" onClick={() => toggleMindMapTopic(topic.id)}>
                           <div class="rgrow">
                             <div class="mm-title">
@@ -307,7 +444,8 @@ export default defineComponent({
                   })}
                 </div>
               ))}
-          </div>
+              </div>
+            )}
         </>
       )
     }

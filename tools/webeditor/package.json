@@ -12,6 +12,9 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@markmap/core": "1.1.0",
+    "@markmap/render": "1.1.0",
+    "@markmap/view": "1.1.0",
     "vue": "3.6.0-rc.14",
     "vue-jsx": "3.3.0-rc.6",
     "xlsx": "^0.18.5"

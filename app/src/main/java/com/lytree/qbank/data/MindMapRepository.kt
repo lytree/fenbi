@@ -157,6 +157,23 @@ object MindMapRepository {
 
     private const val KEY_SECTION = "mindmap_section"
 
+    // ---------------------------------------------------------------- 夜读
+
+    /**
+     * 导图页的夜读开关。
+     *
+     * 背诵模块没有全局夜间（夜间只做在答题页），导图是全屏看图的页面、
+     * 晚上看白底刺眼，所以这一页自带一个开关；选择与板块筛选一样存库，重进沿用。
+     */
+    fun nightMode(context: Context): Boolean =
+        QBankDb.get(context).getSetting(KEY_NIGHT) == "1"
+
+    fun setNightMode(context: Context, on: Boolean) {
+        QBankDb.get(context).setSetting(KEY_NIGHT, if (on) "1" else "0")
+    }
+
+    private const val KEY_NIGHT = "mindmap_graph_night"
+
     // ---------------------------------------------------------------- 解析
 
     private fun parse(text: String): MindMapCatalog {

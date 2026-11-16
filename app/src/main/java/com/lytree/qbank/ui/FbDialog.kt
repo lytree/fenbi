@@ -19,6 +19,7 @@ import com.lytree.qbank.R
 import com.lytree.qbank.databinding.DialogFbConfirmBinding
 import com.lytree.qbank.databinding.DialogFbInputBinding
 import com.lytree.qbank.databinding.DialogFbSheetBinding
+import com.lytree.qbank.databinding.DialogFbTextBinding
 
 /**
  * 全站统一弹窗。四种形态，一套视觉：
@@ -93,6 +94,42 @@ object FbDialog {
 
         centerCard(context, dialog)
         dialog.show()
+        return dialog
+    }
+
+    // ---------------------------------------------------------------- 长文本
+
+    /**
+     * 只读长文本：导图节点被截成一小块、缩小时看不清时，长按把整句摊开。
+     *
+     * 正文超长时卡片封顶六成屏高，剩下的交给 ScrollView——不封顶的话
+     * 一页九百字的节点能把「关闭」按钮顶到屏幕外面去。
+     */
+    fun text(
+        context: Context,
+        message: CharSequence,
+        title: CharSequence? = null,
+        okText: CharSequence = context.getString(R.string.action_close)
+    ): Dialog {
+        val b = DialogFbTextBinding.inflate(LayoutInflater.from(context))
+        val dialog = Dialog(context)
+        dialog.setContentView(b.root)
+        dialog.setCanceledOnTouchOutside(true)
+
+        b.tvTitle.text = title ?: context.getString(R.string.mindmap_node_fulltext)
+        b.tvBody.text = message
+        b.btnOk.text = okText
+        b.btnOk.setOnClickListener { dialog.dismiss() }
+
+        centerCard(context, dialog)
+        dialog.show()
+
+        val maxH = (context.resources.displayMetrics.heightPixels * 0.6f).toInt()
+        b.scroll.post {
+            if (b.scroll.height > maxH) {
+                b.scroll.layoutParams = b.scroll.layoutParams.apply { height = maxH }
+            }
+        }
         return dialog
     }
 

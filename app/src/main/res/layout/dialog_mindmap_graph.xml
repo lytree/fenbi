@@ -5,6 +5,7 @@
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/root"
     style="@style/FbPage"
     android:orientation="vertical">
 
@@ -29,7 +30,9 @@
         android:layout_height="0dp"
         android:layout_weight="1" />
 
-    <View style="@style/FbDivider" />
+    <View
+        android:id="@+id/divider"
+        style="@style/FbDivider" />
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -45,6 +48,18 @@
             android:id="@+id/btnFit"
             style="@style/FbGraphAction"
             android:text="@string/mindmap_graph_fit" />
+
+        <TextView
+            android:id="@+id/btnZoomOut"
+            style="@style/FbGraphAction"
+            android:contentDescription="@string/mindmap_graph_zoom_out"
+            android:text="@string/mindmap_graph_zoom_out_glyph" />
+
+        <TextView
+            android:id="@+id/btnZoomIn"
+            style="@style/FbGraphAction"
+            android:contentDescription="@string/mindmap_graph_zoom_in"
+            android:text="@string/mindmap_graph_zoom_in_glyph" />
 
         <TextView
             android:id="@+id/btnExpand"

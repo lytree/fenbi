@@ -1810,16 +1810,44 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
      *
      * 按记录 id 倒序，最新练的在最上面；未完成的点进去就能接着做。
      */
-    fun listRecords(): List<ExamRecord> {
+    fun listRecords(): List<ExamRecord> = queryRecords()
+
+    /**
+     * 分页取一页记录：从第 [offset] 条起取 [limit] 条（顺序同上，最新在前）。
+     *
+     * 记录只会越攒越多（每进一次答题页就落一条），全量读会一天天变慢；记录列表改成
+     * 一页一页取，配 [countRecords] 判断还有没有下一页。
+     */
+    fun listRecords(limit: Int, offset: Int): List<ExamRecord> =
+        queryRecords(limit = limit.coerceAtLeast(1), offset = offset.coerceAtLeast(0))
+
+    /** 记录总条数：列表分页用来判断「到底了没有」 */
+    fun countRecords(): Int = readableDatabase
+        .rawQuery("SELECT COUNT(*) FROM records", null)
+        .use { if (it.moveToFirst()) it.getInt(0) else 0 }
+
+    /** 按 id 取单条记录（不带逐题作答）：报告页 / 继续答题只用得上这一条，不必为此读全表 */
+    fun recordById(id: Long): ExamRecord? =
+        queryRecords(where = "r.id = ?", args = arrayOf(id.toString()), limit = 1).firstOrNull()
+
+    private fun queryRecords(
+        where: String? = null,
+        args: Array<String>? = null,
+        limit: Int? = null,
+        offset: Int = 0
+    ): List<ExamRecord> {
         val out = ArrayList<ExamRecord>()
+        val filter = if (where.isNullOrBlank()) "" else " WHERE $where"
+        // 不传 limit 就是整表（MCP / 备份这类确实要全量的调用方），传了才拼分页
+        val page = if (limit == null) "" else " LIMIT $limit OFFSET $offset"
         readableDatabase.rawQuery(
             """SELECT r.id, r.paper_id, r.name, r.mode, r.started_at, r.submitted_at,
                       r.duration_sec, r.total_count, r.answered_count, r.correct_count,
                       r.partial_count, r.score, r.full_score, r.marked,
                       IFNULL(r.status, ''), IFNULL(p.name, ''), IFNULL(r.scope, '')
-               FROM records r LEFT JOIN papers p ON p.id = r.paper_id
-               ORDER BY r.id DESC""",
-            null
+               FROM records r LEFT JOIN papers p ON p.id = r.paper_id$filter
+               ORDER BY r.id DESC$page""",
+            args
         ).use { c ->
             while (c.moveToNext()) {
                 out.add(
@@ -1842,7 +1870,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
 
     /** 载入一条记录及其逐题作答 */
     fun getRecord(id: Long): ExamRecord? {
-        val base = listRecords().firstOrNull { it.id == id } ?: return null
+        val base = recordById(id) ?: return null
         val results = ArrayList<com.lytree.qbank.data.model.AnswerResult>()
         readableDatabase.rawQuery(
             """SELECT q.*, ra.user_answer, ra.earned, ra.correct

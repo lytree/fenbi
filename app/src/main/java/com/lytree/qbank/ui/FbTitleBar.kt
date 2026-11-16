@@ -152,6 +152,24 @@ class FbTitleBar @JvmOverloads constructor(
         divider.visibility = if (show) View.VISIBLE else View.GONE
     }
 
+    /**
+     * 夜间配色（只给自带夜间开关的全屏页用，比如夜读导图）。
+     *
+     * 默认仍是白底黑字：本 App 的夜间是「页面自己换色」，不走系统 DayNight，
+     * 所以标题栏也要由调用方显式告知，不能靠资源限定符自动变。
+     */
+    fun applyNightMode(on: Boolean) {
+        setBackgroundColor(ContextCompat.getColor(context, if (on) R.color.fb_night_bar else R.color.fb_bar_bg))
+        tvTitle.setTextColor(ContextCompat.getColor(context, if (on) R.color.fb_night_text else R.color.fb_text_title))
+        // 图标本身是 @color/fb_icon 描边，靠 tint 换色；关掉时恢复成原色
+        btnBack.setColorFilter(
+            ContextCompat.getColor(context, if (on) R.color.fb_night_icon else R.color.fb_icon)
+        )
+        divider.setBackgroundColor(
+            ContextCompat.getColor(context, if (on) R.color.fb_night_divider else R.color.fb_divider)
+        )
+    }
+
     fun clearActions() = actions.removeAllViews()
 
     /** 右侧文字动作（主蓝 13sp），最后一个动作不再留右边距 */

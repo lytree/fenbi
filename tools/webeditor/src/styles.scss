@@ -3324,6 +3324,47 @@ body.pane-dragging {
   border-top: 1px dashed var(--line);
 }
 
+/* 只读画布：图吃掉工具条以下的全部高度。缩放/平移在图里自己处理，外层不滚动 */
+.mm-graph {
+  flex: 1;
+  min-height: 0;
+  margin: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--bg-container);
+  overflow: hidden;
+}
+
+.mm-graph-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  font-family: var(--font);
+  touch-action: none;
+}
+
+.mm-topic-select { max-width: 460px; }
+
+.mm-graphbar {
+  gap: 8px;
+
+  .hint { font-size: 12px; color: var(--text-tertiary); }
+}
+
+/* 从图上点回来时闪一下：滚到这一行是定位，闪这一下才是「就是它」 */
+.mm-row.flash { animation: mm-flash 1.4s ease-out; }
+
+@keyframes mm-flash {
+  0%, 35% {
+    background: var(--primary-bg);
+    box-shadow: inset 0 0 0 1px var(--primary-border);
+  }
+  100% {
+    background: transparent;
+    box-shadow: none;
+  }
+}
+
 /* 一行一个节点。缩进按深度递进，跟 App 里同一套层级感 */
 .mm-row {
   display: flex;
@@ -3473,6 +3514,7 @@ body.pane-dragging {
   .mm-ops { opacity: 1; }
   .mm-row.d3 { padding-left: 36px; }
   .mm-row.d4 { padding-left: 44px; }
+  .mm-graph { margin: 8px; }
 }
 
 /* =============================================================================
