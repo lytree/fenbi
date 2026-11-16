@@ -174,27 +174,16 @@
         app:layout_constraintStart_toStartOf="@id/splitDivider"
         app:layout_constraintTop_toBottomOf="@id/topDivider" />
 
-    <!-- ===== 右栏：题目 ===== -->
-    <androidx.core.widget.NestedScrollView
+    <!-- ===== 右栏：整组小题铺成一条连续卷面，左右滑动整组翻页 =====
+         分页器在运行时塞进来（一组题一页），这里只留容器 -->
+    <FrameLayout
         android:id="@+id/rightPane"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:fillViewport="true"
-        android:scrollbars="none"
         app:layout_constraintBottom_toTopOf="@id/bottomBar"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toEndOf="@id/splitDivider"
-        app:layout_constraintTop_toBottomOf="@id/topDivider">
-
-        <LinearLayout
-            android:id="@+id/questionList"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:paddingStart="@dimen/fb_content_padding_h"
-            android:paddingTop="@dimen/fb_space_8"
-            android:paddingEnd="@dimen/fb_content_padding_h" />
-    </androidx.core.widget.NestedScrollView>
+        app:layout_constraintTop_toBottomOf="@id/topDivider" />
 
     <!-- 遮盖层（可写，覆盖全屏，两栏都能标）：写画模式打开时才铺纸画笔迹，退出后不显示 -->
     <com.lytree.qbank.ui.InkOverlay

@@ -66,6 +66,10 @@ class ExamActivity : AppCompatActivity() {
         private const val KEY_FONT_SCALE = "font_scale"
         private const val KEY_NIGHT = "night_mode"
         private const val KEY_MULTI_BROWSE = "multi_browse"
+        /** 平板新版式（材料组一题一页）只清一次老的「多题浏览」标记 */
+        private const val KEY_TABLET_SPLIT_SEEN = "tablet_split_seen"
+        /** 就地分屏「材料 / 题目」上下占比（0.2～0.8，默认材料 45%） */
+        private const val KEY_SPLIT_RATIO = "split_material_ratio"
         private const val KEY_AUTO_NEXT = "auto_next"
         private const val KEY_PRACTICE = "practice_mode"
 
@@ -321,6 +325,8 @@ class ExamActivity : AppCompatActivity() {
 
             // 「收起材料」：退出就地分屏，还原浏览模式
             binding.btnSplitCollapse.setOnClickListener { closeSplit() }
+            // 中缝手柄：上下拖动改「材料 / 题目」占比（比例记忆）
+            setupSplitResize()
 
             // 启动时就把上次选的浏览模式落到位（旧实现只在点按钮时才应用，偏好读了等于没读）
             applyBrowseMode()
@@ -407,7 +413,9 @@ class ExamActivity : AppCompatActivity() {
             onNoteClicked = { q -> showNoteDialog(q) },
             onInkClicked = { q -> startInkFor(q) },
             onAnswerChanged = { q -> onAnswered(q) },
-            onMaterialExpand = { q -> showMaterialPopup(q) }
+            onMaterialExpand = { q -> showMaterialPopup(q) },
+            // 平板：材料组一题一页、材料固定上区（上下分栏），不用再点「弹出材料」
+            tabletSplit = isTablet
         )
         binding.pager.offscreenPageLimit = 1
         binding.pager.adapter = pagerAdapter
@@ -854,8 +862,52 @@ class ExamActivity : AppCompatActivity() {
         refreshSplitProgress()
     }
 
+    /**
+     * 就地分屏（上材料 / 下题目）的中缝：上下拖动改两者占比，比例存偏好、重进沿用。
+     *
+     * 材料常常比题目长得多：固定五五分要么材料翻半天、要么题目只剩两行字；
+     * 学生看表格的时候把材料拉大，读题的时候再收回去。
+     */
+    private fun setupSplitResize() {
+        val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
+
+        fun applyRatio(pct: Float) {
+            val r = pct.coerceIn(0.2f, 0.8f)
+            val top = binding.splitLeftPane.layoutParams as? android.widget.LinearLayout.LayoutParams
+                ?: return
+            val bottom = binding.splitQuestionPane.layoutParams as? android.widget.LinearLayout.LayoutParams
+                ?: return
+            // 权重按 0~1000 分（LinearLayout 只认整数权重，用浮点会四舍五入到 1:1）
+            top.weight = r * 1000f
+            bottom.weight = 1000f - top.weight
+            binding.splitLeftPane.layoutParams = top
+            binding.splitQuestionPane.layoutParams = bottom
+        }
+        applyRatio(prefs.getFloat(KEY_SPLIT_RATIO, 0.45f))
+
+        val bodyLoc = IntArray(2)
+        binding.splitHandle.setOnTouchListener { v, ev ->
+            when (ev.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> true
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    binding.splitBody.getLocationOnScreen(bodyLoc)
+                    val h = binding.splitBody.height.coerceAtLeast(1)
+                    applyRatio((ev.rawY - bodyLoc[1]) / h)
+                    binding.inkOverlay.invalidate()
+                    true
+                }
+                android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                    val lp = binding.splitLeftPane.layoutParams as android.widget.LinearLayout.LayoutParams
+                    prefs.edit().putFloat(KEY_SPLIT_RATIO, lp.weight / 1000f).apply()
+                    v.performClick()
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
     private fun renderSplitMaterial() {
-        // 半屏空间比题目卡里还窄，图表不额外放大
         MaterialRenderer.render(this, binding.splitMaterialContent, splitGroup.first().material, nightMode, fontScale)
         binding.splitMaterialContent.applyNavBarBottomPadding()
         binding.splitMaterialScroll.scrollTo(0, 0)
@@ -1093,11 +1145,11 @@ class ExamActivity : AppCompatActivity() {
         }
         // 工具条按钮（笔 / 橡皮 / 撤销 / 重做 / 遮盖 / 笔色 / 清空 / 退出）在控制器里统一绑好
 
-        // 写画模式的滚动通道：分屏时左半屏滚材料、右半屏滚当前题；
+        // 写画模式的滚动通道：分屏时上半屏滚材料、下半屏滚当前题；
         // 多题滚列表，单题滚当前页；材料组页上下分栏，按纵向落点分流（上滚材料 / 下滚题目）
-        binding.inkOverlay.scrollTargetResolver = { x, y ->
+        binding.inkOverlay.scrollTargetResolver = { _, y ->
             when {
-                splitMode && x <= binding.splitLeftPane.right -> binding.splitMaterialScroll
+                splitMode && y <= binding.splitQuestionPane.top -> binding.splitMaterialScroll
                 splitMode -> currentSplitPageScroll()
                 multiBrowse -> binding.questionList
                 else -> currentPageScrollForInk(y)
@@ -1839,13 +1891,15 @@ class ExamActivity : AppCompatActivity() {
         // 系统栏跟着顶栏走，否则深色顶栏上会压一条白状态栏
         applySystemBars(night, barBg)
 
-        // 弹出材料就地分屏：左栏材料底 / 材料标签 / 进度 / 收起按钮 / 分隔线
+        // 弹出材料就地分屏（上材料 / 下题目）：材料底 / 材料标签 / 进度 / 收起按钮 / 中缝手柄
         binding.splitLeftPane.setBackgroundColor(color(if (night) R.color.fb_night_material_bg else R.color.fb_bar_bg))
         binding.tvSplitTag.setBackgroundResource(if (night) R.drawable.bg_fb_tag_night else R.drawable.bg_fb_material_tag)
         binding.tvSplitTag.setTextColor(color(if (night) R.color.fb_night_tag_text else R.color.fb_blue_ink))
         binding.tvSplitProgress.setTextColor(metaColor)
         binding.btnSplitCollapse.setTextColor(metaColor)
-        binding.splitPaneDivider.setBackgroundColor(color(if (night) R.color.fb_night_table_line else R.color.fb_table_line))
+        binding.splitHandleBar.setBackgroundResource(
+            if (night) R.drawable.bg_fb_drag_bar_night else R.drawable.bg_fb_drag_bar
+        )
         // 分屏右栏：当前页那道题（一页一题，锚点只算这一张卡）
         splitPagerAdapter?.night = night
         splitPagerAdapter?.notifyDataSetChanged()
@@ -1877,7 +1931,13 @@ class ExamActivity : AppCompatActivity() {
         val p = getSharedPreferences(PREFS, MODE_PRIVATE)
         fontScale = FONT_SCALES.getOrElse(p.getInt(KEY_FONT_SCALE, 1)) { 1f }
         nightMode = p.getBoolean(KEY_NIGHT, false)
-        multiBrowse = p.getBoolean(KEY_MULTI_BROWSE, true)
+        // 平板默认单题浏览：材料组页是「上材料 / 下题目」一题一页，多题连续卷面用不上这套版式
+        multiBrowse = p.getBoolean(KEY_MULTI_BROWSE, !isTablet)
+        // 老安装里存着「多题浏览」，会把平板新的一题一页盖掉：平板头一次进来清一次，之后按用户选的来
+        if (isTablet && !p.getBoolean(KEY_TABLET_SPLIT_SEEN, false)) {
+            multiBrowse = false
+            p.edit().putBoolean(KEY_TABLET_SPLIT_SEEN, true).apply()
+        }
         autoNext = p.getBoolean(KEY_AUTO_NEXT, true)
         practiceMode = p.getBoolean(KEY_PRACTICE, false)
     }

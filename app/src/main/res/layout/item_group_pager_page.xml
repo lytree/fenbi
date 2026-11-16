@@ -50,6 +50,15 @@
             style="@style/FbTag"
             android:text="@string/tag_material" />
 
+        <!-- 平板一题一页：告诉用户这是这则材料的第几题（手机整组一页时不显示） -->
+        <TextView
+            android:id="@+id/tvGroupProgress"
+            style="@style/FbCaption"
+            android:layout_marginStart="@dimen/fb_space_8"
+            android:visibility="gone"
+            tools:text="第 3/5 题"
+            tools:visibility="visible" />
+
         <View
             android:layout_width="0dp"
             android:layout_height="1dp"

@@ -5,10 +5,14 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.widget.NestedScrollView
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.RecyclerView
+import androidx.viewpager2.widget.ViewPager2
 import com.lytree.qbank.R
 import com.lytree.qbank.data.db.DbWrites
 import com.lytree.qbank.data.db.ExamProgress
@@ -30,11 +34,15 @@ import kotlinx.coroutines.withContext
 import java.util.Locale
 
 /**
- * 资料分析分屏页。
+ * 资料分析分屏页（「更多 → 开启左右分屏」进来的独立页）。
  *
- * 对应参考应用的「资料分析左右分屏」：左侧是材料（表格渲染成真表格），右侧是这一组材料
- * 对应的若干道题。资料分析的特点是「一道材料带 3~5 问」，逐题翻页时材料会反复出现，
- * 分屏能让材料始终停在左边，做题时可以直接对着数据看。
+ * 对应参考应用的「资料分析左右分屏」：左侧是材料（表格渲染成真表格），右侧是**这一组材料
+ * 对应的整组小题，铺成一条连续卷面**；左右滑动整组翻页，左栏材料跟着换。
+ *
+ * 与平板答题页的区别（那边是上下栏、一页一题）：
+ * - 左栏材料永远在屏，一组题摊成一条卷面，改答案 / 对照上下两题不用来回翻页；
+ * - 换组 = 换一整套（材料 + 整组题），不是一题一翻；
+ * - 进写画（「手写标注」）时题目自动回到顶部：笔迹按卡片坐标钉在题目上，从题首开始画最稳。
  *
  * 进入方式：答题页「更多 → 开启左右分屏」，或资料分析题组的入口。
  */
@@ -43,7 +51,7 @@ class SplitExamActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_PAPER_ID = "paper_id"
         const val EXTRA_PAPER_NAME = "paper_name"
-        /** 只显示这组题（同一份材料）；为空则显示整卷 */
+        /** 进来时停在哪一组（按材料文本定位）；为空则停在第一组 */
         const val EXTRA_GROUP_KEY = "group_key"
         /**
          * 答题范围：与答题页同一个口径（空串 = 整卷，`s:` 大类，`m:` 材料）。
@@ -70,10 +78,10 @@ class SplitExamActivity : AppCompatActivity() {
     private var recordId = 0L
     /** 每题用时：切题时把上一题的秒数累加进库 */
     private lateinit var questionTimer: QuestionTimer
-    /** 本页显示的题（可能只是整卷里的一个材料组） */
+    /** 本次范围的题目（整卷 or 一个模块）：每一题都会出现在右栏某一组里 */
     private var questions: List<Question> = emptyList()
-    /** 本次范围的题目：交卷与进度统计都以它为准，分屏页只显示其中一组 */
-    private var allQuestions: List<Question> = emptyList()
+    /** 范围按卷面顺序切成的组：一页 = 一组（材料 + 它的全部小题） */
+    private var groups: List<PaperStructure.Group> = emptyList()
     private lateinit var structure: PaperStructure
     private val answers = HashMap<Long, String>()
     private val marked = HashSet<Long>()
@@ -86,15 +94,30 @@ class SplitExamActivity : AppCompatActivity() {
     private var submitted = false
     private var revealAnswers = false
     private var inkMode = false
+    /** 当前看的是范围里的第几题（0 起）：页内滚到哪就跟着走，计时 / 笔迹 / 答题卡都用它 */
     private var currentIndex = 0
-    /** 本组题在整卷里的起始序号：右栏题号与顶部进度都按整卷编号 */
-    private var indexOffset = 0
     private lateinit var inkToolbar: InkToolbarController
     private lateinit var tvIndex: TextView
     /** 判题规则：进页面时一次读回，解析区渲染与交卷判分复用（不再每题渲染查一次库） */
     private var judgePolicy: Policy = Policy.DEFAULT
     /** 卷名：启动批量读里一起取回，交卷记录用（不再交卷时再查一次库） */
     private var paperTitle = ""
+
+    /** 右栏的分页器：一页 = 一组题（整组铺成一条连续卷面） */
+    private var pager: ViewPager2? = null
+    private var sheetAdapter: SheetAdapter? = null
+    /**
+     * 答题卡跳题时的落点题号（-1 = 没有）。
+     *
+     * 换页回调默认把当前题拨到组首、并把卷面滚到顶；从答题卡跳到组内第 3 题时这两件事都不该做，
+     * 所以先把落点记下来，回调里只切材料，滚动交给 [scrollToQuestion]。
+     */
+    private var pendingJump = -1
+    /**
+     * 每题的选项行刷新器：作答 / 打叉后就地刷新那几行，不重建整页。
+     * 重建会把页内滚动位置顶回顶部——一条卷面几十行，答一题跳回组首根本没法用。
+     */
+    private val optionRefreshers = HashMap<Long, MutableList<() -> Unit>>()
 
     /**
      * 进页面时一次性批量读回的数据。
@@ -166,21 +189,22 @@ class SplitExamActivity : AppCompatActivity() {
             }
             val paper = data.paper
 
-            // 按材料分组：直接用试卷结构里的材料组——同一材料跨大类会断成两组，
+            // 按组切：直接用试卷结构里的组——同一材料跨大类会断成两组，
             // 按文本 filter 会把它们并成一组、题号也会错，这里取的正是这题所属的那一组
             structure = PaperStructure(data.questions)
+            questions = data.questions
+            groups = structure.groups
             val groupKey = intent.getStringExtra(EXTRA_GROUP_KEY)?.trim().orEmpty()
-            val group = if (groupKey.isEmpty()) {
-                null
+            val startPage = if (groupKey.isEmpty()) {
+                0
             } else {
-                structure.groups.firstOrNull {
+                groups.indexOfFirst {
                     it.isMaterialGroup && it.material.material.trim() == groupKey
-                }
+                }.takeIf { it >= 0 } ?: 0
             }
-            allQuestions = data.questions
-            questions = group?.questions ?: data.questions
-            // 题号接着整卷往下排（参考应用分屏右栏显示的是 106./107./108.，不是 1./2./3.）
-            indexOffset = group?.startIndex ?: 0
+            currentIndex = groups.getOrNull(
+                startPage.coerceIn(0, (groups.size - 1).coerceAtLeast(0))
+            )?.startIndex ?: 0
 
             startedAt = data.sessionStartWall
             recordId = data.recordId
@@ -210,7 +234,7 @@ class SplitExamActivity : AppCompatActivity() {
             binding.btnInk.setOnClickListener { toggleInk() }
             // 左栏只有半屏宽，图 / 表挤在一起时弹到独立页面看（不再用 Dialog 浮层）
             binding.btnMaterialExpand.setOnClickListener {
-                val material = groupMaterial()
+                val material = currentMaterial()
                 if (material.isNotBlank()) {
                     startActivity(Intent(this@SplitExamActivity, MaterialPopupActivity::class.java).apply {
                         putExtra(MaterialPopupActivity.EXTRA_MATERIAL, material)
@@ -239,39 +263,215 @@ class SplitExamActivity : AppCompatActivity() {
             )
             inkToolbar.onModeChanged = { on ->
                 inkMode = on
-                if (on) binding.inkOverlay.bindQuestion(questions.getOrNull(currentIndex)?.id ?: 0L)
+                if (on) {
+                    // 进写画先把这一组题回到顶部：笔迹钉在卡片上，从题首开始画才对得上
+                    scrollSheetToTop()
+                    binding.inkOverlay.bindQuestion(questions.getOrNull(currentIndex)?.id ?: 0L)
+                }
             }
 
             // 写画模式的滚动通道：手势落在左半屏滚材料、右半屏滚题目（分屏的意义就是两边对着看）
             binding.inkOverlay.scrollTargetResolver = { x, _ ->
-                if (x <= binding.leftPane.right) binding.materialScroll else binding.rightPane
+                if (x <= binding.leftPane.right) binding.materialScroll else rightScroll()
             }
             // 左边缘也放一条手柄，写画时材料还能翻
             binding.inkOverlay.leftRailEnabled = true
             // 工具条在顶上，右侧轨道可以用到底
             binding.inkOverlay.scrollBarBottomInset = 0
 
-            // 笔迹钉在题目卡上（右栏每张卡一道题），滚材料 / 滚题目都不再和圈画错位
+            // 笔迹钉在题目卡上（右栏一组题一条卷面），滚材料 / 滚题目都不再和圈画错位
             binding.inkOverlay.anchorSource = { inkAnchors() }
             binding.root.viewTreeObserver.addOnScrollChangedListener {
                 binding.inkOverlay.invalidate()
             }
 
+            setupSheetPager(startPage)
             renderMaterial()
-            renderQuestions()
             updateHeader()
         }
     }
 
+    // ---------------- 右栏：一组题一页 ----------------
+
     /**
-     * 遮盖层的内容锚点：右栏每张题目卡 + 左栏材料，各自独立。
+     * 右栏分页器：**一组题一页**、左右滑动整组翻页。
+     *
+     * 与平板答题页的「一页一题」相反——左右分栏的场景是「对着这则材料连做几道小题」，
+     * 整组铺成一条卷面才不用为了对数据反复翻页；换组时左栏材料跟着整块换掉。
+     */
+    private fun setupSheetPager(startPage: Int) {
+        val viewPager = ViewPager2(this).apply {
+            orientation = ViewPager2.ORIENTATION_HORIZONTAL
+            // 左右各留一页：滑到下一组时卷面已经绑好，不会白一下
+            offscreenPageLimit = 1
+        }
+        val adapter = SheetAdapter()
+        viewPager.adapter = adapter
+        viewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
+            override fun onPageSelected(position: Int) {
+                val group = groups.getOrNull(position) ?: return
+                // 左栏材料整块换成这一组的
+                renderMaterial()
+                if (pendingJump >= 0) {
+                    // 答题卡跳题：当前题与页内落位由 onActivityResult 负责，这里不滚回组首
+                    currentIndex = pendingJump
+                } else {
+                    currentIndex = group.startIndex
+                    // 换组：题目回到这一组的第一题
+                    scrollSheetToTop()
+                }
+                updateHeader()
+                binding.inkOverlay.invalidate()
+            }
+        })
+
+        binding.rightPane.removeAllViews()
+        binding.rightPane.addView(
+            viewPager,
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+        )
+        pager = viewPager
+        sheetAdapter = adapter
+        // 初次定位不带动画，也不触发翻页回调：材料 / 顶部状态手动刷一次
+        viewPager.setCurrentItem(startPage.coerceIn(0, (groups.size - 1).coerceAtLeast(0)), false)
+    }
+
+    /** 一组题一页：页内是**连续卷面**（组内小题自上而下依次排开，照常作答） */
+    private inner class SheetAdapter : RecyclerView.Adapter<SheetHolder>() {
+
+        override fun getItemCount(): Int = groups.size
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): SheetHolder {
+            val hPad = resources.getDimensionPixelSize(R.dimen.fb_content_padding_h)
+            val topPad = resources.getDimensionPixelSize(R.dimen.fb_space_8)
+            val bottomPad = resources.getDimensionPixelSize(R.dimen.fb_space_24)
+            val page = NestedScrollView(parent.context).apply {
+                layoutParams = RecyclerView.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                isFillViewport = true
+                overScrollMode = View.OVER_SCROLL_NEVER
+                // 页底留白铺在滚动区里，滚到底最后一道题不会贴着底栏
+                setPadding(0, 0, 0, bottomPad)
+                clipToPadding = false
+            }
+            val list = LinearLayout(parent.context).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                setPadding(hPad, topPad, hPad, 0)
+            }
+            page.addView(list)
+            // 页内滚动 → 当前题跟着走（计时 / 笔迹 / 顶栏题号都按它）
+            page.setOnScrollChangeListener(
+                NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, _ ->
+                    onSheetScrolled(list, scrollY)
+                }
+            )
+            return SheetHolder(page, list)
+        }
+
+        override fun onBindViewHolder(holder: SheetHolder, position: Int) {
+            val group = groups.getOrNull(position) ?: return
+            val list = holder.list
+            // 组结构没变就复用卡片：作答重绑 / 翻回来都不重建，页内滚动位置保住
+            if (holder.startIndex != group.startIndex || list.childCount != group.count) {
+                list.removeAllViews()
+                val inflater = LayoutInflater.from(list.context)
+                group.questions.forEachIndexed { k, _ ->
+                    val card = ItemSplitQuestionBinding.inflate(inflater, list, false)
+                    card.root.tag = SheetCard(group.startIndex + k, card)
+                    list.addView(card.root)
+                }
+                holder.startIndex = group.startIndex
+            }
+            group.questions.forEachIndexed { k, q ->
+                val card = (list.getChildAt(k).tag as SheetCard).binding
+                bindCard(card, q, group.startIndex + k, isLast = k == group.count - 1)
+            }
+        }
+    }
+
+    /** 一页的载体：滚动容器 + 页内卡片列 */
+    private class SheetHolder(val scroll: NestedScrollView, val list: LinearLayout) :
+        RecyclerView.ViewHolder(scroll) {
+        /** 这页装的是哪一组（组首题号），用来判断能不能复用页内卡片 */
+        var startIndex: Int = -1
+    }
+
+    /** 页内一张卡：整卷题号 + 卡片绑定，重绑时按题号判断能否复用 */
+    private class SheetCard(val index: Int, val binding: ItemSplitQuestionBinding)
+
+    /**
+     * 页内滚动：把「当前题」拨到最上面露出来的那道。
+     *
+     * 一条卷面装整组小题，只有题号跟着滚才谈得上「每题用时」和「笔迹绑哪一题」；
+     * 每帧都算太费，只在下标真的变了才刷新顶栏与计时。
+     */
+    private fun onSheetScrolled(list: LinearLayout, scrollY: Int) {
+        val line = scrollY + (resources.displayMetrics.density * 24).toInt()
+        var index = -1
+        for (i in 0 until list.childCount) {
+            val child = list.getChildAt(i)
+            if (child.top <= line) index = (child.tag as? SheetCard)?.index ?: index
+        }
+        if (index < 0 || index == currentIndex) return
+        currentIndex = index
+        updateHeader()
+    }
+
+    private fun rightScroll(): View? = currentPageScroll() ?: binding.rightPane
+
+    /** 当前页（正在看的这一组）的滚动容器 */
+    private fun currentPageScroll(): NestedScrollView? = currentPageRoot() as? NestedScrollView
+
+    /** 当前页的根视图（ViewPager2 里真正承载这一页的 View） */
+    private fun currentPageRoot(): View? {
+        val p = pager ?: return null
+        val rv = p.getChildAt(0) as? RecyclerView ?: return null
+        for (i in 0 until rv.childCount) {
+            val page = rv.getChildAt(i) ?: continue
+            if (rv.getChildAdapterPosition(page) == p.currentItem) return page
+        }
+        return null
+    }
+
+    private fun currentPageList(): LinearLayout? =
+        currentPageScroll()?.getChildAt(0) as? LinearLayout
+
+    /** 题目回到这一组的第一题 */
+    private fun scrollSheetToTop() = currentPageScroll()?.scrollTo(0, 0)
+
+    /** 把页内某道题顶到可视区顶部（答题卡跳题用） */
+    private fun scrollToQuestion(questionIndex: Int, smooth: Boolean = false) {
+        val list = currentPageList() ?: return
+        val scroll = currentPageScroll() ?: return
+        for (i in 0 until list.childCount) {
+            val child = list.getChildAt(i)
+            val card = child.tag as? SheetCard ?: continue
+            if (card.index != questionIndex) continue
+            if (smooth) scroll.smoothScrollTo(0, child.top) else scroll.scrollTo(0, child.top)
+            return
+        }
+    }
+
+    /** 题号 → 它所在的组（页）下标；找不到退回 0 */
+    private fun pageOfQuestion(questionIndex: Int): Int =
+        groups.indexOfFirst { questionIndex in it.startIndex until it.endIndex }.takeIf { it >= 0 } ?: 0
+
+    // ---------------- 笔迹锚点 ----------------
+
+    /**
+     * 遮盖层的内容锚点：右栏当前页每张题目卡 + 左栏材料，各自独立。
      *
      * 题目锚点取「卡片左边 + 题干顶边」，与答题页同一口径，两种页面之间来回看不会整体错位；
      * 材料锚点取材料正文（`materialContent`）的位置，target 用材料组首题 id，
      * 与题目分开存——在材料上画的圈不会因为题干换行而偏移。
      */
     private fun inkAnchors(): List<InkOverlay.Anchor> {
-        val out = ArrayList<InkOverlay.Anchor>(questions.size + 1)
+        val out = ArrayList<InkOverlay.Anchor>(groups.size + 1)
         val base = IntArray(2)
         binding.inkOverlay.getLocationOnScreen(base)
 
@@ -288,14 +488,13 @@ class SplitExamActivity : AppCompatActivity() {
         }
 
         // 左栏材料：材料在独立滚动容器里，命中区裁到容器可视范围
-        val materialQ = questions.firstOrNull { it.material.isNotBlank() }
+        val group = groups.getOrNull(pager?.currentItem ?: 0)
+        val materialQ = group?.takeIf { it.isMaterialGroup }?.material
         if (materialQ != null) {
             val content = rectOf(binding.materialContent)
             if (content != null) {
-                val materialId = structure.groupOf(materialQ)?.questions?.first()?.id
-                    ?: materialQ.id
                 val anchor = InkOverlay.Anchor(
-                    InkOverlay.TargetKind.MATERIAL, materialId,
+                    InkOverlay.TargetKind.MATERIAL, materialQ.id,
                     content[0], content[1], content[2], content[3]
                 )
                 val viewport = rectOf(binding.materialScroll)
@@ -311,9 +510,12 @@ class SplitExamActivity : AppCompatActivity() {
             }
         }
 
-        for (i in 0 until binding.questionList.childCount) {
-            val card = binding.questionList.getChildAt(i)
-            val q = questions.getOrNull(i) ?: continue
+        // 右栏：只算当前这一页的卡（别页的卡在屏幕外，锚点算出来是错的）
+        val list = currentPageList() ?: return out
+        for (i in 0 until list.childCount) {
+            val card = list.getChildAt(i)
+            val index = (card.tag as? SheetCard)?.index ?: continue
+            val q = questions.getOrNull(index) ?: continue
             if (card.width <= 0 || card.height <= 0) continue
             val cardLoc = IntArray(2)
             card.getLocationOnScreen(cardLoc)
@@ -396,9 +598,9 @@ class SplitExamActivity : AppCompatActivity() {
     // ---------------- 左栏：材料 ----------------
 
     private fun renderMaterial() {
-        val material = groupMaterial()
+        val material = currentMaterial()
+        binding.materialContent.removeAllViews()
         if (material.isBlank()) {
-            binding.materialContent.removeAllViews()
             val tip = TextView(this)
             tip.text = "本组题目无材料"
             tip.setTextSize(
@@ -407,140 +609,182 @@ class SplitExamActivity : AppCompatActivity() {
             )
             tip.setTextColor(ContextCompat.getColor(this, R.color.fb_text_meta))
             binding.materialContent.addView(tip)
+            binding.materialScroll.scrollTo(0, 0)
             return
         }
         MaterialRenderer.render(this, binding.materialContent, material)
+        binding.materialScroll.scrollTo(0, 0)
     }
 
-    /** 本组共用的一份材料（同一材料的题分到一组） */
-    private fun groupMaterial(): String =
-        questions.firstOrNull { it.material.isNotBlank() }?.material.orEmpty()
+    /** 当前这一组共用的那份材料（一组 = 一则材料 + 它带的全部小题） */
+    private fun currentMaterial(): String =
+        groups.getOrNull(pager?.currentItem ?: 0)
+            ?.takeIf { it.isMaterialGroup }?.material?.material.orEmpty()
 
-    // ---------------- 右栏：题目 ----------------
+    // ---------------- 右栏：题目卡 ----------------
 
-    private fun renderQuestions() {
-        binding.questionList.removeAllViews()
-        val inflater = LayoutInflater.from(this)
-
-        questions.forEachIndexed { i, q ->
-            val card = ItemSplitQuestionBinding.inflate(inflater, binding.questionList, false)
-            card.tvNum.text = "${i + 1 + indexOffset}."
-            card.tvType.text = q.type.label
-            // 题干里夹的图片摘到图区渲染，文字仍留在 TextView（与主卷面同一套口径）；
-            // 带表格的题干整块走材料渲染器，`|` 才会变成真表格
-            if (MaterialRenderer.stemHasTable(q.stem)) {
-                card.tvStem.visibility = android.view.View.GONE
-                card.tvStem.text = ""
-                card.stemMedia.visibility = android.view.View.GONE
+    /**
+     * 一页里的一道题：题号 + 题干 + 选项 + （已交卷时）解析。
+     *
+     * 题干里夹的图片摘到图区渲染，文字仍留在 TextView（与主卷面同一套口径）；
+     * 带表格的题干整块走材料渲染器，`|` 才会变成真表格。
+     */
+    private fun bindCard(
+        card: ItemSplitQuestionBinding,
+        q: Question,
+        index: Int,
+        isLast: Boolean
+    ) {
+        card.tvNum.text = "${index + 1}."
+        card.tvType.text = q.type.label
+        if (MaterialRenderer.stemHasTable(q.stem)) {
+            card.tvStem.visibility = View.GONE
+            card.tvStem.text = ""
+            card.stemMedia.visibility = View.GONE
+            card.stemMedia.removeAllViews()
+            card.stemRich.visibility = View.VISIBLE
+            MaterialRenderer.renderStemRich(
+                this, card.stemRich, q.stem, night = false, maxImageHeightDp = 360f
+            )
+        } else {
+            card.stemRich.visibility = View.GONE
+            card.stemRich.removeAllViews()
+            val stem = MaterialRenderer.splitInline(q.stem)
+            card.tvStem.text = stem.text
+            card.tvStem.visibility = if (stem.text.isBlank()) View.GONE else View.VISIBLE
+            if (stem.hasImages) {
+                card.stemMedia.visibility = View.VISIBLE
+                MaterialRenderer.renderOptionImages(
+                    this, card.stemMedia, stem.images, night = false, maxHeightDp = 360f
+                )
+            } else {
+                card.stemMedia.visibility = View.GONE
                 card.stemMedia.removeAllViews()
-                card.stemRich.visibility = android.view.View.VISIBLE
-                MaterialRenderer.renderStemRich(
-                    this, card.stemRich, q.stem, night = false, maxImageHeightDp = 360f
-                )
-            } else {
-                card.stemRich.visibility = android.view.View.GONE
-                card.stemRich.removeAllViews()
-                val stem = MaterialRenderer.splitInline(q.stem)
-                card.tvStem.text = stem.text
-                card.tvStem.visibility = if (stem.text.isBlank()) android.view.View.GONE else android.view.View.VISIBLE
-                if (stem.hasImages) {
-                    card.stemMedia.visibility = android.view.View.VISIBLE
-                    MaterialRenderer.renderOptionImages(
-                        this, card.stemMedia, stem.images, night = false, maxHeightDp = 360f
-                    )
-                } else {
-                    card.stemMedia.visibility = android.view.View.GONE
-                    card.stemMedia.removeAllViews()
-                }
             }
+        }
 
-            val multi = q.type == com.lytree.qbank.data.model.QuestionType.MULTI ||
-                q.type == com.lytree.qbank.data.model.QuestionType.UNCERTAIN
-            val selected = (answers[q.id] ?: "").split(',', '，', ' ')
-                .map { it.trim().uppercase() }
-                .filter { it.isNotEmpty() }
-                .toMutableSet()
+        val multi = q.type == com.lytree.qbank.data.model.QuestionType.MULTI ||
+            q.type == com.lytree.qbank.data.model.QuestionType.UNCERTAIN
+        val selected = (answers[q.id] ?: "").split(',', '，', ' ')
+            .map { it.trim().uppercase() }
+            .filter { it.isNotEmpty() }
+            .toMutableSet()
 
-            // 选中某项 → 记答案、刷新整栏（分屏页选项少，直接重绘最省事）
-            val pick: (String) -> Unit = { key ->
-                if (multi) {
-                    if (selected.contains(key)) selected.remove(key) else selected.add(key)
-                } else {
-                    selected.clear()
-                    selected.add(key)
-                }
+        card.optionsBox.removeAllViews()
+        // 这一题的选项行刷新器：作答 / 打叉后就地重刷这几行，不整页重建
+        val refreshers = ArrayList<() -> Unit>(q.options.size)
+        optionRefreshers[q.id] = refreshers
+
+        // 选中某项 → 记答案、刷新这一题的选项行（页内滚动位置不动）
+        val pick: (String) -> Unit = { key ->
+            if (multi) {
+                if (selected.contains(key)) selected.remove(key) else selected.add(key)
+            } else {
+                selected.clear()
+                selected.add(key)
+            }
+            answers[q.id] = selected.sorted().joinToString(",")
+            currentIndex = index
+            updateHeader()
+            refreshers.forEach { it() }
+            binding.inkOverlay.bindQuestion(q.id)
+        }
+
+        // 打叉排除一个已选项：排除与「已选」互斥，答案跟着撤；重画由选项行自己负责，
+        // 这里不整页重绘——长按调用的还是被按住的这一行，重建会把手指下的 View 拆掉
+        val deselectCrossed: (String, Boolean) -> Unit = { key, crossed ->
+            if (crossed && selected.remove(key)) {
                 answers[q.id] = selected.sorted().joinToString(",")
-                currentIndex = i
+                currentIndex = index
                 updateHeader()
-                renderQuestions()
-                binding.inkOverlay.bindQuestion(q.id)
             }
+        }
 
-            // 打叉排除一个已选项：排除与「已选」互斥，答案跟着撤；重画由选项行自己负责，
-            // 这里不整栏重绘——长按调用的还是被按住的这一行，重建会把手指下的 View 拆掉
-            val deselectCrossed: (String, Boolean) -> Unit = { key, crossed ->
-                if (crossed && selected.remove(key)) {
-                    answers[q.id] = selected.sorted().joinToString(",")
-                    currentIndex = i
-                    updateHeader()
-                }
-            }
-
-            // 图形推理「四个选项就是四张图」：和主答题页同口径，横排一行、按格宽缩图
-            if (QuestionCardBinder.isImageOnlyOptions(q)) {
-                card.optionsBox.addView(
-                    QuestionCardBinder.buildImageOptionsRow(
-                        card.optionsBox, q, { selected }, night = false,
-                        applyRowPadding = false, onPick = pick,
-                        onCrossChanged = deselectCrossed
+        // 图形推理「四个选项就是四张图」：和主答题页同口径，横排一行、按格宽缩图
+        if (QuestionCardBinder.isImageOnlyOptions(q)) {
+            // 图片行不会自己重画选中态（以前靠整页重建兜住），选完就地刷一遍
+            var imageRow: View? = null
+            val row = QuestionCardBinder.buildImageOptionsRow(
+                card.optionsBox, q, { selected }, night = false,
+                applyRowPadding = false,
+                onPick = { key ->
+                    pick(key)
+                    imageRow?.let { refreshImageOptionRow(it, q) }
+                },
+                onCrossChanged = deselectCrossed
+            )
+            imageRow = row
+            card.optionsBox.addView(row)
+        } else {
+            val inflater = LayoutInflater.from(this)
+            q.options.forEach { opt ->
+                val item = ItemOptionBinding.inflate(inflater, card.optionsBox, false)
+                item.tvKey.text = opt.key
+                // 卷面已经给了左右留白（fb_content_padding_h），选项行不再二次缩进，否则会比题干多缩一截
+                item.root.setPadding(0, item.root.paddingTop, 0, item.root.paddingBottom)
+                val key = opt.key.uppercase()
+                val refresh: () -> Unit = {
+                    QuestionCardBinder.applyOptionState(
+                        item, selected.contains(key), OptionCross.isCrossed(q.id, key)
                     )
-                )
-            } else {
-                q.options.forEach { opt ->
-                    val item = ItemOptionBinding.inflate(inflater, card.optionsBox, false)
-                    item.tvKey.text = opt.key
-                    // 卷面已经给了左右留白（fb_content_padding_h），选项行不再二次缩进，否则会比题干多缩一截
-                    item.root.setPadding(0, item.root.paddingTop, 0, item.root.paddingBottom)
-                    val key = opt.key.uppercase()
-                    val refresh: () -> Unit = {
-                        QuestionCardBinder.applyOptionState(
-                            item, selected.contains(key), OptionCross.isCrossed(q.id, key)
-                        )
+                }
+                // 文字 + 配图（图形推理的选项可能就是一张图）；分屏页暂无夜间配色。
+                // 图上的长按要接回「打叉」，否则图片可点会吃掉整行的长按
+                QuestionCardBinder.bindOptionBody(
+                    item, opt.text, night = false,
+                    onImageLongPress = {
+                        val crossed = OptionCross.toggle(q.id, key)
+                        deselectCrossed(key, crossed)
+                        refresh()
                     }
-                    // 文字 + 配图（图形推理的选项可能就是一张图）；分屏页暂无夜间配色。
-                    // 图上的长按要接回「打叉」，否则图片可点会吃掉整行的长按
-                    QuestionCardBinder.bindOptionBody(
-                        item, opt.text, night = false,
-                        onImageLongPress = {
-                            val crossed = OptionCross.toggle(q.id, key)
-                            deselectCrossed(key, crossed)
-                            refresh()
-                        }
-                    )
-                    refresh()
-                    // 点 = 选，长按 = 打叉，点已打叉的项 = 恢复可选（与主答题页同一套手感）
-                    QuestionCardBinder.bindOptionInteractions(
-                        item, q.id, key,
-                        onPick = { pick(key) },
-                        onCrossChanged = { crossed ->
-                            deselectCrossed(key, crossed)
-                            refresh()
-                        }
-                    )
-                    card.optionsBox.addView(item.root)
-                }
-            }
-
-            if (revealAnswers) {
-                // 作答小结与解析走主卷面同一块（左边「正确答案」右「你的答案」）
-                AnswerBlock.bind(
-                    card.answerBlock, q, answers[q.id] ?: "", judgePolicy, night = false
                 )
-            } else {
-                AnswerBlock.hide(card.answerBlock)
+                refresh()
+                refreshers.add(refresh)
+                // 点 = 选，长按 = 打叉，点已打叉的项 = 恢复可选（与主答题页同一套手感）
+                QuestionCardBinder.bindOptionInteractions(
+                    item, q.id, key,
+                    onPick = { pick(key) },
+                    onCrossChanged = { crossed ->
+                        deselectCrossed(key, crossed)
+                        refresh()
+                    }
+                )
+                card.optionsBox.addView(item.root)
             }
+        }
 
-            binding.questionList.addView(card.root)
+        if (revealAnswers) {
+            // 作答小结与解析走主卷面同一块（左边「正确答案」右「你的答案」）
+            AnswerBlock.bind(
+                card.answerBlock, q, answers[q.id] ?: "", judgePolicy, night = false
+            )
+        } else {
+            AnswerBlock.hide(card.answerBlock)
+        }
+
+        // 题间细线：组内最后一题下面没有下一题，不画
+        val divider = (card.root as? ViewGroup)?.getChildAt(card.root.childCount - 1)
+        divider?.visibility = if (isLast) View.GONE else View.VISIBLE
+    }
+
+    /**
+     * 图形选项行（四个选项都是图）重画选中 / 打叉态。
+     *
+     * 行内的刷新闭包不外露，这里按答案重新算一遍：不重建行本身，
+     * 图片不用重新解码，点一下也就不会闪。
+     */
+    private fun refreshImageOptionRow(row: View, q: Question) {
+        val selected = (answers[q.id] ?: "").split(',', '，', ' ')
+            .map { it.trim().uppercase() }
+            .filter { it.isNotEmpty() }
+            .toSet()
+        val box = row as? ViewGroup ?: return
+        for (i in 0 until box.childCount) {
+            val item = box.getChildAt(i).tag as? ItemOptionBinding ?: continue
+            val key = item.tvKey.text?.toString()?.uppercase().orEmpty()
+            QuestionCardBinder.applyOptionState(
+                item, selected.contains(key), OptionCross.isCrossed(q.id, key)
+            )
         }
     }
 
@@ -570,7 +814,7 @@ class SplitExamActivity : AppCompatActivity() {
         inkToolbar.toggle()
     }
 
-    /** 遮盖层跟着「当前题」走：翻题后笔迹跟着换到新题 */
+    /** 遮盖层跟着「当前题」走：滚到哪一题就绑哪一题 */
     private fun syncInkQuestion() {
         if (!::inkToolbar.isInitialized) return
         val q = questions.getOrNull(currentIndex)
@@ -598,10 +842,19 @@ class SplitExamActivity : AppCompatActivity() {
             val jump = data.getIntExtra(AnswerCardActivity.EXTRA_JUMP, -1)
             if (jump in questions.indices) {
                 currentIndex = jump
+                // 跳到别组：整页换过去，再把这道题顶到页顶
+                val page = pageOfQuestion(jump)
+                if (page != pager?.currentItem) {
+                    // 先记落点：换页回调别把题号和滚动重置到组首
+                    pendingJump = jump
+                    pager?.setCurrentItem(page, false)
+                }
                 updateHeader()
                 binding.inkOverlay.bindQuestion(questions[jump].id)
-                val card = binding.questionList.getChildAt(jump)
-                card?.let { binding.rightPane.smoothScrollTo(0, it.top) }
+                binding.rightPane.post {
+                    scrollToQuestion(jump)
+                    pendingJump = -1
+                }
             }
         }
     }
@@ -615,8 +868,8 @@ class SplitExamActivity : AppCompatActivity() {
     /**
      * 把本页作答并进整卷进度再落库。
      *
-     * 分屏页只显示一组题，直接覆盖会把答题页做的其它题冲掉，所以用 merge；
-     * 返回的合并结果用于统计整卷作答数与交卷判分。
+     * 分屏页显示的是整个范围（可跨组翻页），但进度与答题页是同一份；
+     * 用 merge 才不会把答题页刚做的题冲掉。
      */
     private fun saveMergedProgress(): Map<Long, String> =
         db.saveProgress(paperId, answers, marked, elapsedForRecord(), merge = true, scope = scopeKey)
@@ -669,11 +922,10 @@ class SplitExamActivity : AppCompatActivity() {
         // 交卷整条链路放进 try：先合并本页作答，再走统一交卷事务。
         // 任一步失败就回到可重试状态——答案还在内存与库里，不会被清掉。
         val rid = try {
-            // 分屏页只显示一组题：先把本页作答并进整卷进度，再按**整卷**判分。
-            // 直接拿这一组的结果交卷，会把与答题页共享的草稿记录写成「只有这一组」的已完成记录
+            // 与答题页共用同一份进度：先合并，再按**整个范围**判分
             val elapsed = elapsedForRecord()
             val merged = saveMergedProgress()
-            val results = allQuestions.map { Judge.judge(it, merged[it.id] ?: "", policy) }
+            val results = questions.map { Judge.judge(it, merged[it.id] ?: "", policy) }
             val summary = Judge.summarize(results)
             val now = System.currentTimeMillis()
 
@@ -714,6 +966,8 @@ class SplitExamActivity : AppCompatActivity() {
         }
 
         revealAnswers = true
+        // 答完立刻把对错铺在卷面上（整组一页，整页重绑一次就全带上了）
+        sheetAdapter?.notifyDataSetChanged()
         // 告知答题页本页已交卷，让它退出，避免它再用内存里的旧作答覆盖这条已完成记录
         setResult(RESULT_OK, Intent().putExtra(EXTRA_SUBMITTED, true))
         startActivity(
@@ -773,7 +1027,7 @@ class SplitExamActivity : AppCompatActivity() {
         val markedCopy = marked.toSet()
         val elapsed = elapsedForRecord()
         val rid = recordId
-        val total = allQuestions.size
+        val total = questions.size
         val scope = scopeKey
         DbWrites.submit {
             val merged = db.saveProgress(paperId, answersCopy, markedCopy, elapsed, merge = true, scope = scope)

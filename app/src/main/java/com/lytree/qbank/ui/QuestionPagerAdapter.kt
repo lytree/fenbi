@@ -54,6 +54,13 @@ class QuestionPagerAdapter(
     var night: Boolean = false,
     /** 分屏右栏：材料已在左栏展示，卡片不再重复渲染材料 */
     var hideMaterial: Boolean = false,
+    /**
+     * 平板版式：材料组**按题拆页**，每页一道题，材料固定在这页上区（上下分栏）。
+     *
+     * 平板一屏够宽、竖向够高，材料常驻上面、题目一次只铺一道，才不用点「弹出材料」再分成
+     * 左右两半；页内中缝手柄上下拖动调占比（比例与手机材料组页共用一份偏好）。
+     */
+    private val tabletSplit: Boolean = false,
     onMarkToggle: (Question) -> Unit,
     onFavoriteToggle: (Question) -> Unit,
     onNoteClicked: (Question) -> Unit,
@@ -103,6 +110,8 @@ class QuestionPagerAdapter(
     /**
      * 页码表：按 [PaperStructure] 走一遍——每个大类先来一页说明页（name 非空时），
      * 然后每个材料组一页（材料组页 / 单题页）。
+     *
+     * 平板（[tabletSplit]）另有口径：材料组**一题一页**，材料跟着每页一起上屏。
      */
     private fun buildPages(): List<Page> {
         val out = ArrayList<Page>(questions.size + structure.sections.size)
@@ -110,11 +119,23 @@ class QuestionPagerAdapter(
             // subject 为空的大类不插说明页（与卷面内嵌版口径一致）
             if (section.name != null) out += Page(section.startIndex, 0, isModuleIntro = true)
             for (group in section.groups) {
-                out += Page(group.startIndex, group.count, isModuleIntro = false)
+                if (tabletSplit && group.isMaterialGroup) {
+                    // 平板：材料组不整组一页，拆成「一题一页」——材料固定在这页上区
+                    for (i in group.startIndex until group.endIndex) {
+                        out += Page(i, 1, isModuleIntro = false)
+                    }
+                } else {
+                    out += Page(group.startIndex, group.count, isModuleIntro = false)
+                }
             }
         }
         return out
     }
+
+    /** 这一页是不是「上材料 / 下题目」的上下分栏页（平板一题一页的材料页） */
+    private fun isSplitPage(page: Page): Boolean =
+        tabletSplit && !page.isModuleIntro && page.questionCount == 1 &&
+            questions.getOrNull(page.start)?.material?.isNotBlank() == true
 
     private fun buildPageIndex(): IntArray =
         IntArray(questions.size) { -1 }.also { arr ->
@@ -180,7 +201,8 @@ class QuestionPagerAdapter(
 
     override fun getItemViewType(position: Int): Int = when {
         pages[position].isModuleIntro -> TYPE_MODULE
-        pages[position].isGroup -> TYPE_GROUP
+        // 平板材料页与多题材料组页共用一套版式（上材料 / 下题目 + 中缝手柄）
+        pages[position].isGroup || isSplitPage(pages[position]) -> TYPE_GROUP
         else -> TYPE_QUESTION
     }
 
@@ -203,7 +225,7 @@ class QuestionPagerAdapter(
         val page = pages[position]
         when {
             page.isModuleIntro -> bindModuleIntro(holder as ModuleVH, page)
-            page.isGroup -> bindGroupPage(holder as GroupVH, page)
+            page.isGroup || isSplitPage(page) -> bindGroupPage(holder as GroupVH, page)
             else -> bindQuestionPage(holder as QuestionVH, page)
         }
     }
@@ -350,9 +372,23 @@ class QuestionPagerAdapter(
         )
         b.tvGroupMaterialExpand.setTextColor(metaColor)
         b.icGroupMaterialExpand.setColorFilter(metaColor)
+        // 平板一题一页：材料就在这页上区，「弹出材料」再弹一遍没意义；给的是组内第几题
+        val splitPage = isSplitPage(page)
         b.btnGroupMaterialExpand.visibility =
-            if (!hideMaterial && expandMaterial != null) View.VISIBLE else View.GONE
+            if (!hideMaterial && expandMaterial != null && !splitPage) View.VISIBLE else View.GONE
         b.btnGroupMaterialExpand.setOnClickListener { expandMaterial?.invoke(questions[page.start]) }
+        val groupAtPage = structure.groupAt(page.start)
+        if (splitPage && groupAtPage != null && groupAtPage.count > 1) {
+            b.tvGroupProgress.visibility = View.VISIBLE
+            b.tvGroupProgress.setTextColor(metaColor)
+            b.tvGroupProgress.text = ctx.getString(
+                R.string.material_sheet_question_index,
+                page.start - groupAtPage.startIndex + 1,
+                groupAtPage.count
+            )
+        } else {
+            b.tvGroupProgress.visibility = View.GONE
+        }
 
         // 上下占比：偏好记忆（拖动结束时写回，见 attachGroupDrag）
         applyGroupRatio(b, groupRatioPrefs(ctx).getFloat(KEY_GROUP_RATIO, RATIO_DEFAULT))
