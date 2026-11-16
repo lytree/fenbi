@@ -144,15 +144,15 @@
     </androidx.constraintlayout.widget.ConstraintLayout>
 
     <!-- ===== 写画工具条 =====
-         进写画模式才出现，整条顶在卷面上方（卷面下推，不遮住第一道题）。
-         左起：退出 / 笔 / 橡皮 / 撤销 / 重做 / 遮盖档位 / 笔色 / 清空，图标等分。
+         进写画模式才出现，**悬浮**在卷面上方（不再把内容往下推，直接盖住顶部一条），
+         高度压缩到 40dp 少挡内容。左起：退出 / 笔 / 橡皮 / 撤销 / 重做 / 遮盖档位 / 清空，图标等分。
          对齐参考应用：纯图标、选中项用主色，不放文字。 -->
     <LinearLayout
         android:id="@+id/inkBar"
         android:layout_width="0dp"
         android:layout_height="@dimen/fb_ink_bar_h"
         android:background="@color/fb_bar_bg"
-        android:elevation="2dp"
+        android:elevation="10dp"
         android:orientation="horizontal"
         android:paddingStart="@dimen/fb_space_4"
         android:paddingEnd="@dimen/fb_space_4"
@@ -218,7 +218,7 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/inkBar" />
+        app:layout_constraintTop_toBottomOf="@id/topBar" />
 
     <!-- ===== 单题浏览：左右滑动切题（宽度规则同上，同样不设上限） ===== -->
     <androidx.viewpager2.widget.ViewPager2
@@ -229,7 +229,7 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/inkBar" />
+        app:layout_constraintTop_toBottomOf="@id/topBar" />
 
     <!-- ===== 弹出材料：就地左右分屏（左材料 / 右题目） ===== -->
     <LinearLayout
@@ -241,7 +241,7 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/inkBar">
+        app:layout_constraintTop_toBottomOf="@id/topBar">
 
         <!-- 左栏：材料，可收起（weight 1 = 与右栏五五分） -->
         <LinearLayout
@@ -317,7 +317,7 @@
     </LinearLayout>
 
     <!-- ===== 遮盖层（可写） =====
-         常驻可见：退出写画模式后笔迹仍留在题目上；写画模式打开时才铺遮盖纸并拦截触摸 -->
+         写画模式打开时才铺遮盖纸、拦触摸、画笔迹；退出（确认）后笔迹不再显示在题目上 -->
     <com.lytree.qbank.ui.InkOverlay
         android:id="@+id/inkOverlay"
         android:layout_width="0dp"
@@ -325,7 +325,7 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/inkBar" />
+        app:layout_constraintTop_toBottomOf="@id/topBar" />
 
     <!-- ===== 更多面板（字号 / 日夜 / 浏览模式 / 自动下一题） ===== -->
     <LinearLayout

@@ -12,6 +12,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import com.lytree.qbank.R
 import com.lytree.qbank.data.db.DbWrites
@@ -24,6 +25,7 @@ import com.lytree.qbank.data.model.PaperRef
 import com.lytree.qbank.data.model.PaperStructure
 import com.lytree.qbank.data.model.Question
 import com.lytree.qbank.databinding.ActivityExamBinding
+import com.lytree.qbank.databinding.ItemQuestionPageBinding
 import com.lytree.qbank.engine.Judge
 import com.lytree.qbank.engine.Policy
 import kotlinx.coroutines.Dispatchers
@@ -73,8 +75,8 @@ class ExamActivity : AppCompatActivity() {
          */
         private const val DRAFT_SOURCE = "exam"
 
-        /** 字号档位：小 / 中 / 大 */
-        private val FONT_SCALES = floatArrayOf(0.9f, 1.0f, 1.15f)
+        /** 字号档位：小 / 中 / 大（整组比最初放大一号，默认「中」= 1.15，做题字太小看不清） */
+        private val FONT_SCALES = floatArrayOf(1.0f, 1.15f, 1.3f)
     }
 
     private lateinit var binding: ActivityExamBinding
@@ -372,7 +374,7 @@ class ExamActivity : AppCompatActivity() {
                     ?.let {
                         if (it >= 0 && it != currentPos) {
                             currentPos = it
-                            // 遮盖层常驻可见，滚动换题时要跟着换绑笔迹
+                            // 遮盖层一直挂在那（只是退出写画后不画），滚动换题时要跟着换绑笔迹
                             syncInkQuestion()
                         }
                     }
@@ -649,39 +651,107 @@ class ExamActivity : AppCompatActivity() {
         if (isTablet) {
             openSplit(q, group)
         } else {
-            showMaterialSheet(q.material)
+            showMaterialSheet(q, group)
         }
     }
 
-    /** 「弹出材料」手机端：底部半屏浮层（材料独立滚动 + 字号调节），替代原先的整页跳转 */
-    private fun showMaterialSheet(material: String) {
+    /**
+     * 「弹出材料」手机端：底部浮层，替代原先的整页跳转。
+     *
+     * 一则材料带多道小题时（资料分析 / 阅读理解……），浮层分上下两段：
+     * - 上段材料独立滚动 + A- / A+ 调字号；
+     * - 下段是该材料组的小题，**一页一题、左右滑动切换**，复用卷面同一套卡片渲染
+     *   （[QuestionCardBinder]），答案 / 标记 / 收藏与卷面共享同一份数据，作答即时互通。
+     */
+    private fun showMaterialSheet(q: Question, group: List<Question>) {
         val sheet = com.google.android.material.bottomsheet.BottomSheetDialog(this)
         val v = layoutInflater.inflate(R.layout.sheet_material, null)
         val box = v.findViewById<android.view.ViewGroup>(R.id.sheetMaterialContent)
         val scroll = v.findViewById<androidx.core.widget.NestedScrollView>(R.id.sheetScroll)
         val ratio = v.findViewById<TextView>(R.id.tvSheetRatio)
+        val pager = v.findViewById<ViewPager2>(R.id.sheetQuestionPager)
+        val tvIndex = v.findViewById<TextView>(R.id.tvSheetQuestionIndex)
 
-        // 浮层高度 ≈ 65% 屏高（与「上下分块」的材料区上限一致，保证正文还能瞥到一眼）
+        // 浮层高度 ≈ 80% 屏高：下半段还要装小题，比纯材料时的 65% 高一档
         v.findViewById<View>(R.id.sheetRoot).layoutParams =
             ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                (resources.displayMetrics.heightPixels * 0.65f).toInt()
+                (resources.displayMetrics.heightPixels * 0.8f).toInt()
             )
 
+        // 小题 pager：一页一题。卡片里的作答直接写共享的 answers，卷面与浮层天然同步
+        val sheetAdapter = object : RecyclerView.Adapter<SheetQuestionHolder>() {
+            override fun getItemCount() = group.size
+
+            override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): SheetQuestionHolder {
+                val scrollPage = androidx.core.widget.NestedScrollView(parent.context).apply {
+                    layoutParams = RecyclerView.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                    isFillViewport = true
+                }
+                val card = ItemQuestionPageBinding.inflate(
+                    layoutInflater, scrollPage, false
+                )
+                scrollPage.addView(card.root)
+                return SheetQuestionHolder(scrollPage, card)
+            }
+
+            override fun onBindViewHolder(holder: SheetQuestionHolder, position: Int) {
+                // 卡片左上角的题号用的是整卷题号，跟卷面完全一致
+                val qi = questions.indexOfFirst { it.id == group[position].id }.coerceAtLeast(0)
+                QuestionCardBinder.bind(
+                    b = holder.card,
+                    position = qi,
+                    q = questions[qi],
+                    answers = answers,
+                    marked = marked,
+                    favorites = favorites,
+                    revealAnswers = revealAnswers,
+                    revealed = revealed,
+                    policy = judgePolicy,
+                    fontScale = fontScale,
+                    cb = sheetQuestionCallbacks {
+                        // 点击回调可能发生在卡片被回收之后（position = -1），此时不重绑
+                        holder.bindingAdapterPosition.takeIf { it >= 0 }
+                            ?.let { notifyItemChanged(it) }
+                    },
+                    night = nightMode,
+                    // 材料已在浮层上半段整段展示，卡片不再重复渲染
+                    hideMaterial = true,
+                    moduleHeader = null,
+                    showDivider = false
+                )
+            }
+        }
+        pager.adapter = sheetAdapter
+        pager.offscreenPageLimit = 1
+        pager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
+            override fun onPageSelected(position: Int) {
+                val qi = questions.indexOfFirst { it.id == group[position].id } + 1
+                tvIndex.text = getString(R.string.material_sheet_question_index, qi, group.size)
+            }
+        })
+
         var scale = fontScale
-        fun render() {
-            MaterialRenderer.render(this, box, material, nightMode, scale, chartScale = 1.3f)
+        fun renderMaterial() {
+            MaterialRenderer.render(this, box, q.material, nightMode, scale, chartScale = 1.3f)
             ratio.text = getString(R.string.material_sheet_scale, (scale * 100).toInt())
             scroll.scrollTo(0, 0)
         }
         v.findViewById<TextView>(R.id.btnFontMinus).setOnClickListener {
-            scale = (scale - 0.15f).coerceAtLeast(0.85f); render()
+            scale = (scale - 0.15f).coerceAtLeast(0.85f)
+            renderMaterial()
+            sheetAdapter.notifyItemChanged(pager.currentItem)
         }
         v.findViewById<TextView>(R.id.btnFontPlus).setOnClickListener {
-            scale = (scale + 0.15f).coerceAtMost(1.6f); render()
+            scale = (scale + 0.15f).coerceAtMost(1.6f)
+            renderMaterial()
+            sheetAdapter.notifyItemChanged(pager.currentItem)
         }
         v.findViewById<View>(R.id.btnSheetClose).setOnClickListener { sheet.dismiss() }
-        render()
+        renderMaterial()
 
         // 夜间模式：浮层底色 / 标签跟答题页一起换
         if (nightMode) {
@@ -692,7 +762,43 @@ class ExamActivity : AppCompatActivity() {
         }
         sheet.setContentView(v)
         sheet.show()
+
+        // 页码指示：初始页（position 0）不走翻页回调，手动填一次
+        val firstQi = questions.indexOfFirst { it.id == group.first().id } + 1
+        tvIndex.text = getString(R.string.material_sheet_question_index, firstQi, group.size)
     }
+
+    /**
+     * 浮层小题卡的交互回调：与卷面共用同一份数据与动作。
+     * 标记 / 收藏 / 作答后还要把浮层当前页重绑一次，让卡片上的图标、对错与解析即时跟上；
+     * [rebind] 由适配器在绑定时传进来（重绑当前页）。
+     */
+    private fun sheetQuestionCallbacks(rebind: () -> Unit): QuestionCardBinder.Callbacks =
+        QuestionCardBinder.Callbacks(
+            onMarkToggle = { qq ->
+                toggleMark(qq)
+                rebind()
+            },
+            onFavoriteToggle = { qq ->
+                toggleFavorite(qq)
+                rebind()
+            },
+            // 浮层里没有遮盖层（遮盖只铺在卷面上）：「笔」在这里退回笔记输入
+            onInkClicked = { qq -> showNoteDialog(qq) },
+            onNoteClicked = { qq -> showNoteDialog(qq) },
+            onAnswerChanged = { qq ->
+                onAnswered(qq)
+                // 卷面卡片就地刷新（浮层里的作答要反映到卷面上）
+                refreshCard(qq)
+                rebind()
+            }
+        )
+
+    /** 浮层小题页：一个独立滚动的容器装一张题目卡 */
+    private class SheetQuestionHolder(
+        val scrollPage: androidx.core.widget.NestedScrollView,
+        val card: ItemQuestionPageBinding
+    ) : RecyclerView.ViewHolder(scrollPage)
 
     /** 进入就地分屏：左材料 / 右题目（一屏一题），定位到打开分屏的那道题 */
     private fun openSplit(q: Question, group: List<Question>) {
@@ -1173,8 +1279,9 @@ class ExamActivity : AppCompatActivity() {
     /**
      * 把遮盖层绑到「当前题」。
      *
-     * 遮盖层常驻可见——退出写画模式后笔迹还留在题目上，所以切题 / 翻页 / 滚动时都要换绑，
-     * 否则撤销、清空会落到上一题头上。画面上并不是只画这一题：所有可见题的笔迹都由
+     * 遮盖层一直挂着——笔迹数据还在，切题 / 翻页 / 滚动时都要换绑，
+     * 否则撤销、清空会落到上一题头上；退出写画后只是不再绘制。
+     * 画面上并不是只画这一题：所有可见题的笔迹都由
      * [inkAnchors] 逐卡绘制，材料组页里同页其它小题的圈画照样显示。
      *
      * 工具条上的「标记」跟随当前题。

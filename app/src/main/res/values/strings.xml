@@ -235,6 +235,8 @@
 
     <!-- 弹出材料半屏浮层 -->
     <string name="material_sheet_scale">字号 %1$d%%</string>
+    <string name="material_sheet_question_index">第 %1$d/%2$d 题</string>
+    <string name="material_sheet_question_hint">左右滑动切换小题</string>
 
     <string name="empty_papers">还没有试卷，导入一份 Excel（.xlsx）就能开练：每个文件成一个标题，有几个工作表就建几份卷</string>
     <string name="empty_papers_archived">试卷都在「归档」里了。点右上角「归档」选一组恢复，题目和作答记录都还在</string>

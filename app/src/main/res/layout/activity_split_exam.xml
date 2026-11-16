@@ -24,13 +24,13 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/titleBar" />
 
-    <!-- ===== 写画工具条：与答题页同款八格图标条，顶在分屏内容上方 ===== -->
+    <!-- ===== 写画工具条：与答题页同款图标条，**悬浮**在分屏内容上方（不再下推内容） ===== -->
     <LinearLayout
         android:id="@+id/inkBar"
         android:layout_width="0dp"
         android:layout_height="@dimen/fb_ink_bar_h"
         android:background="@color/fb_bar_bg"
-        android:elevation="2dp"
+        android:elevation="10dp"
         android:orientation="horizontal"
         android:paddingStart="@dimen/fb_space_4"
         android:paddingEnd="@dimen/fb_space_4"
@@ -94,7 +94,7 @@
         app:layout_constraintBottom_toTopOf="@id/bottomBar"
         app:layout_constraintEnd_toStartOf="@id/splitDivider"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/inkBar"
+        app:layout_constraintTop_toBottomOf="@id/topDivider"
         app:layout_constraintWidth_percent="0.5">
 
         <LinearLayout
@@ -162,7 +162,7 @@
         app:layout_constraintBottom_toTopOf="@id/bottomBar"
         app:layout_constraintEnd_toStartOf="@id/rightPane"
         app:layout_constraintStart_toEndOf="@id/leftPane"
-        app:layout_constraintTop_toBottomOf="@id/inkBar" />
+        app:layout_constraintTop_toBottomOf="@id/topDivider" />
 
     <View
         android:id="@+id/splitHandle"
@@ -172,7 +172,7 @@
         app:layout_constraintBottom_toTopOf="@id/bottomBar"
         app:layout_constraintEnd_toEndOf="@id/splitDivider"
         app:layout_constraintStart_toStartOf="@id/splitDivider"
-        app:layout_constraintTop_toBottomOf="@id/inkBar" />
+        app:layout_constraintTop_toBottomOf="@id/topDivider" />
 
     <!-- ===== 右栏：题目 ===== -->
     <androidx.core.widget.NestedScrollView
@@ -184,7 +184,7 @@
         app:layout_constraintBottom_toTopOf="@id/bottomBar"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toEndOf="@id/splitDivider"
-        app:layout_constraintTop_toBottomOf="@id/inkBar">
+        app:layout_constraintTop_toBottomOf="@id/topDivider">
 
         <LinearLayout
             android:id="@+id/questionList"
@@ -196,7 +196,7 @@
             android:paddingEnd="@dimen/fb_content_padding_h" />
     </androidx.core.widget.NestedScrollView>
 
-    <!-- 遮盖层（可写，覆盖全屏，两栏都能标）：常驻可见，退出写画后笔迹仍留在原处 -->
+    <!-- 遮盖层（可写，覆盖全屏，两栏都能标）：写画模式打开时才铺纸画笔迹，退出后不显示 -->
     <com.lytree.qbank.ui.InkOverlay
         android:id="@+id/inkOverlay"
         android:layout_width="0dp"
@@ -204,7 +204,7 @@
         app:layout_constraintBottom_toTopOf="@id/bottomBar"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/inkBar" />
+        app:layout_constraintTop_toBottomOf="@id/topDivider" />
 
     <!-- ===== 底部操作区（全站统一底栏：白底 + 上方 0.5dp 分割线 + 上下 10dp） ===== -->
     <View

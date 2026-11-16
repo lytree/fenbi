@@ -625,9 +625,9 @@
     <!-- 写画工具条图标按钮：44dp 高、等分占位，24dp 图标居中（选中 / 夜间由代码改 tint） -->
     <style name="FbInkIcon">
         <item name="android:layout_width">0dp</item>
-        <item name="android:layout_height">44dp</item>
+        <item name="android:layout_height">match_parent</item>
         <item name="android:layout_weight">1</item>
-        <item name="android:padding">10dp</item>
+        <item name="android:padding">8dp</item>
         <item name="android:scaleType">fitCenter</item>
         <item name="android:background">?attr/selectableItemBackgroundBorderless</item>
     </style>

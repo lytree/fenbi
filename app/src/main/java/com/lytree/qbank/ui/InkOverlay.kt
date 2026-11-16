@@ -35,8 +35,9 @@ import kotlin.math.hypot
  *    唯一的例外是屏幕右边缘那条细轨道：落在那里不画线，而是滚动下面的题目容器
  *    （见 [scrollTargetResolver]）——长题干折行多，写画时也得能翻下去。
  * 3. **手指直接写**——不再需要「允许手指绘制」开关，没笔也能写；多指（掌托）不会打断笔迹。
- * 4. **弃写仍可见**——退出写画模式后笔迹留在原处（[writeMode] = false 只是不再拦截），
- *    标注不会一「完成」就消失。
+ * 4. **只在写画时可见**——笔迹只画在遮盖层上：[writeMode] 打开才铺纸、画笔迹；
+ *    点「确认」（[writeMode] = false）退出后整层不再绘制，题目上不留标记。
+ *    笔迹数据仍在（换题往返、重进写画都能看到），只是普通做题视角始终是干净的卷面。
  * 5. **跟随作答记录持久化**——笔迹存 [QBankDb] 的 `record_inks` 表，按「本次作答记录 + 目标」
  *    维度存取：换一轮练习是另一套圈画，同一记录里每个目标只保留最新一份批注；
  *    撤销 / 清空即时落库，切题往返、退出重进都还在。
@@ -246,7 +247,7 @@ class InkOverlay @JvmOverloads constructor(
             onToolChanged?.invoke(value)
         }
 
-    /** 是否处于写画模式：true = 铺遮盖纸 + 拦截全部触摸 */
+    /** 是否处于写画模式：true = 铺遮盖纸 + 拦截触摸 + 显示笔迹；false = 整层不画（卷面干净） */
     var writeMode: Boolean = false
         set(value) {
             if (field == value) return
@@ -415,6 +416,9 @@ class InkOverlay @JvmOverloads constructor(
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+        // 笔迹只画在遮盖层上：退出写画模式（确认）后整层不再绘制，题目上看不到标记；
+        // 数据仍在缓存与库里，重新进写画就原样回来。
+        if (!writeMode) return
         drawShade(canvas)
 
         val anchors = anchorSource?.invoke().orEmpty()

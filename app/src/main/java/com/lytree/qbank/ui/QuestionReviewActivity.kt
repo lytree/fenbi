@@ -45,8 +45,8 @@ class QuestionReviewActivity : AppCompatActivity() {
 
         private const val PREFS = "exam_prefs"
         private const val KEY_FONT_SCALE = "font_scale"
-        /** 与答题页同一组字号档位，复习时字号不该和做题时不一样 */
-        private val FONT_SCALES = floatArrayOf(0.9f, 1.0f, 1.15f)
+        /** 与答题页同一组字号档位，复习时字号不该和做题时不一样（整体比最初放大一号） */
+        private val FONT_SCALES = floatArrayOf(1.0f, 1.15f, 1.3f)
     }
 
     private lateinit var binding: ActivityQuestionReviewBinding

@@ -1,10 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  「弹出材料」半屏浮层（手机端）：从屏幕底部弹出，占约 65% 屏高。
-  头部：材料标签 + A- / A+ 调字号 + 关闭；内容区：材料（表格/图表同套渲染）独立滚动。
+  「弹出材料」半屏浮层（手机端）：从屏幕底部弹出，占约 80% 屏高。
+  头部：材料标签 + A- / A+ 调字号 + 关闭；内容区上下两段：
+  · 上段：材料（表格/图表同套渲染）独立滚动；
+  · 下段：该材料组的小题，一页一题、左右滑动切换（复用卷面同一套卡片渲染）。
   平板端保持就地左右分屏，不走这个浮层。
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/sheetRoot"
     style="@style/FbSheet">
 
@@ -66,7 +69,7 @@
         android:id="@+id/sheetScroll"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
+        android:layout_weight="9"
         android:fillViewport="true"
         android:scrollbars="none">
 
@@ -77,4 +80,40 @@
             android:orientation="vertical"
             android:padding="@dimen/fb_space_16" />
     </androidx.core.widget.NestedScrollView>
+
+    <View style="@style/FbDivider" />
+
+    <!-- 小题区标题行：页码指示 + 滑动提示 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="28dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="@dimen/fb_space_16"
+        android:paddingEnd="@dimen/fb_space_16">
+
+        <TextView
+            android:id="@+id/tvSheetQuestionIndex"
+            style="@style/FbCaption"
+            android:textColor="@color/fb_text_secondary"
+            tools:text="第 1/5 题" />
+
+        <Space
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <TextView
+            android:id="@+id/tvSheetQuestionHint"
+            style="@style/FbCaption"
+            android:text="@string/material_sheet_question_hint"
+            android:textColor="@color/fb_text_meta" />
+    </LinearLayout>
+
+    <!-- 小题：一页一题，左右滑动切换 -->
+    <androidx.viewpager2.widget.ViewPager2
+        android:id="@+id/sheetQuestionPager"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="11" />
 </LinearLayout>
