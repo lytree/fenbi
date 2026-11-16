@@ -277,10 +277,11 @@ class ImportActivity : AppCompatActivity() {
         return "$base.${format.ext}"
     }
 
-    /** 「载入示例」：内置样例，普通单表 / 带图材料 / zip 试卷包 */
+    /** 「载入示例」：内置样例，普通单表 / 一材多题 / 带图材料 / zip 试卷包 */
     private fun loadSample() {
         val samples = arrayOf(
             "行测基础示例.xlsx" to "行测基础示例（11 题 · 覆盖全部选择题型）",
+            "材料题示例.xlsx" to "材料题示例（4 组材料 · 一材多题 13 题）",
             "多套卷示例.xlsx" to "多套卷示例（2 个工作表 · 一次导入 2 份试卷）",
             "资料分析示例.xlsx" to "资料分析示例（含图表材料）",
             "资料分析试卷包.zip" to "资料分析试卷包（Excel + 图片 · 图片随包）"

@@ -1,8 +1,9 @@
 // 生成 App 内置示例（app/src/main/assets/samples/）：
 //   资料分析示例.xlsx      —— 普通试卷（材料里的图用 asset:// 内置图，渲染期解析）
 //   资料分析试卷包.zip     —— 试卷包新结构：试卷.xlsx + images/资料分析折线图.png + README.txt
+//   材料题示例.xlsx        —— 一则材料带多道小题（4 组材料，题量 4/5/2/2），试「弹出材料」左右切题用
 //
-// 数据源：仓库根的 sample/资料分析示例.json（与旧版内置 JSON 示例同源）。
+// 数据源：仓库根的 sample/*.json（资料分析示例、行测基础示例、材料题示例）。
 // 用法：node tools/make_samples.js
 const fs = require('fs');
 const path = require('path');
@@ -213,3 +214,17 @@ for (const f of ['行测基础示例.csv', '行测基础示例.txt', '资料分�
   if (fs.existsSync(p2)) fs.unlinkSync(p2);
 }
 console.log('sample/ 已同步：行测基础示例.xlsx / 资料分析试卷包（试卷.xlsx + images/）');
+
+/* ---------------- 材料题示例.xlsx（一则材料带多道小题 · 多组） ---------------- */
+
+// 材料列的写法就是「同一段文本逐行重复」——一组材料的判据是**连续相同的材料文本**，
+// 所以这里不另建分组字段，直接按 JSON 里的 material 原样铺成行，靠行序把它们排在一起。
+const materialSrc = JSON.parse(fs.readFileSync(path.join(ROOT, 'sample/材料题示例.json'), 'utf8'));
+const materialRows = materialSrc.questions.map(q => toRow(q, q.material));
+const materialXlsx = Buffer.concat(
+  writeZipChunks(buildXlsx([{ name: '试卷', rows: [HEADERS, ...materialRows] }])));
+fs.writeFileSync(path.join(SAMPLES, '材料题示例.xlsx'), materialXlsx);
+fs.writeFileSync(path.join(SAMPLE_DIR, '材料题示例.xlsx'), materialXlsx);
+console.log(
+  `材料题示例.xlsx：${materialSrc.questions.length} 题 / ` +
+  `${new Set(materialSrc.questions.map(q => q.material)).size} 组材料`);
