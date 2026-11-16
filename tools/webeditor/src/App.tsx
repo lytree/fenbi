@@ -32,11 +32,13 @@ export default defineComponent({
   setup() {
     /** 低于这个宽度默认收起预览，把地方让给编辑区；手动开合后按手动来 */
     const NARROW_PREVIEW = 1180
-    const previewHidden = ref(typeof window !== 'undefined' && window.innerWidth < NARROW_PREVIEW)
+    // 用 <= 和样式里的 @media (max-width: 1180px) 对齐：正好 1180 时那边会把预览变成浮层，
+    // 不如这里先收起来，免得一进页面就被浮层盖住半个编辑区
+    const previewHidden = ref(typeof window !== 'undefined' && window.innerWidth <= NARROW_PREVIEW)
     let previewManual: boolean | null = null
 
     const syncViewport = () => {
-      const narrow = window.innerWidth < NARROW_PREVIEW
+      const narrow = window.innerWidth <= NARROW_PREVIEW
       previewHidden.value = previewManual ?? narrow
     }
 
@@ -197,113 +199,120 @@ export default defineComponent({
 
                   <div class="editor-main">
                     <div class="toolbar">
-                      <div class="seg" title="编辑视图：按题平铺 / 按材料成块">
-                        <button
-                          class={['seg-btn', state.view === 'list' && 'on']}
-                          data-view="list"
-                          onClick={() => { state.view = 'list' }}
-                        >
-                          题目 {currentQuestions().length}
-                        </button>
-                        <button
-                          class={['seg-btn', state.view === 'material' && 'on']}
-                          data-view="material"
-                          onClick={() => { state.view = 'material' }}
-                        >
-                          材料 {state.groups.length}
-                        </button>
-                        <button
-                          class={['seg-btn', state.view === 'board' && 'on']}
-                          data-view="board"
-                          title="拖拽题目分配材料组"
-                          onClick={() => { state.view = 'board' }}
-                        >
-                          分组 {state.groups.length}
-                        </button>
+                      {/* 上行：视图切换 + 搜索 + 动作；下行：四档筛选。分两行，窄窗口才不会挤成乱码 */}
+                      <div class="tb-row">
+                        <div class="seg" title="编辑视图：按题平铺 / 按材料成块">
+                          <button
+                            class={['seg-btn', state.view === 'list' && 'on']}
+                            data-view="list"
+                            onClick={() => { state.view = 'list' }}
+                          >
+                            题目 {currentQuestions().length}
+                          </button>
+                          <button
+                            class={['seg-btn', state.view === 'material' && 'on']}
+                            data-view="material"
+                            onClick={() => { state.view = 'material' }}
+                          >
+                            材料 {state.groups.length}
+                          </button>
+                          <button
+                            class={['seg-btn', state.view === 'board' && 'on']}
+                            data-view="board"
+                            title="拖拽题目分配材料组"
+                            onClick={() => { state.view = 'board' }}
+                          >
+                            分组 {state.groups.length}
+                          </button>
+                        </div>
+                        <input
+                          class="search"
+                          value={queryInput.value}
+                          spellcheck={false}
+                          placeholder="搜索题干 / 答案…"
+                          onInput={onQueryInput}
+                        />
+                        <div class="toolbar-actions">
+                          <button class="ghost sm" disabled={!state.paper} onClick={openPasteDialog}>批量粘贴</button>
+                          <button
+                            class="ghost sm"
+                            disabled={!state.paper}
+                            title="导入 Excel（.xlsx）：题目表追加成题；只有题号/答案/解析的文件按答案后补匹配当前卷"
+                            onClick={() => (document.getElementById('file-import') as HTMLInputElement | null)?.click()}
+                          >
+                            导入文件
+                          </button>
+                          <button class="primary sm" disabled={!state.paper} onClick={() => addQuestion()}>＋ 新题</button>
+                        </div>
                       </div>
-                      <input
-                        class="search"
-                        value={queryInput.value}
-                        spellcheck={false}
-                        placeholder="搜索题干 / 材料 / 答案…"
-                        onInput={onQueryInput}
-                      />
-                      <select
-                        class="select"
-                        title="按状态筛"
-                        value={state.filter}
-                        onChange={(e) => { state.filter = (e.target as HTMLSelectElement).value as typeof state.filter }}
-                      >
-                        <option value="all">全部题目</option>
-                        <option value="issue">只看有问题</option>
-                        <option value="noanswer">只看缺答案</option>
-                        <option value="image">只看带图</option>
-                        <option value="group">只看材料组</option>
-                      </select>
-                      <select
-                        class="select"
-                        title="按题型筛"
-                        value={state.typeFilter}
-                        onChange={(e) => { state.typeFilter = (e.target as HTMLSelectElement).value as typeof state.typeFilter }}
-                      >
-                        <option value="all">全部题型</option>
-                        {(Object.keys(TYPE_SHORT) as QuestionType[]).map((t) => {
-                          const n = typeCounts()[t] ?? 0
-                          return (
-                            <option key={t} value={t} disabled={!n}>
-                              {TYPE_SHORT[t]}（{n}）
-                            </option>
+
+                      <div class="tb-row tb-filters">
+                        <span class="tb-label">筛选</span>
+                        <select
+                          class="select"
+                          title="按状态筛"
+                          value={state.filter}
+                          onChange={(e) => { state.filter = (e.target as HTMLSelectElement).value as typeof state.filter }}
+                        >
+                          <option value="all">全部题目</option>
+                          <option value="issue">只看有问题</option>
+                          <option value="noanswer">只看缺答案</option>
+                          <option value="image">只看带图</option>
+                          <option value="group">只看材料组</option>
+                        </select>
+                        <select
+                          class="select"
+                          title="按题型筛"
+                          value={state.typeFilter}
+                          onChange={(e) => { state.typeFilter = (e.target as HTMLSelectElement).value as typeof state.typeFilter }}
+                        >
+                          <option value="all">全部题型</option>
+                          {(Object.keys(TYPE_SHORT) as QuestionType[]).map((t) => {
+                            const n = typeCounts()[t] ?? 0
+                            return (
+                              <option key={t} value={t} disabled={!n}>
+                                {TYPE_SHORT[t]}（{n}）
+                              </option>
+                            )
+                          })}
+                        </select>
+                        <select
+                          class="select"
+                          title="按一级题型筛（科目归一后的大类）"
+                          value={state.subjectFilter}
+                          onChange={(e) => {
+                            state.subjectFilter = (e.target as HTMLSelectElement).value
+                            // 换一级后二级的候选跟着变，留着上一级的二级只会筛出空列表
+                            state.subTopicFilter = 'all'
+                          }}
+                        >
+                          <option value="all">全部一级题型</option>
+                          {level1Options().map((o) => (
+                            <option key={o.value} value={o.value}>{o.label}（{o.count}）</option>
+                          ))}
+                        </select>
+                        <select
+                          class="select"
+                          title="按二级题型筛（知识点，跟一级联动）"
+                          value={state.subTopicFilter}
+                          onChange={(e) => { state.subTopicFilter = (e.target as HTMLSelectElement).value }}
+                        >
+                          <option value="all">全部二级题型</option>
+                          {level2Options().map((o) => (
+                            <option key={o.value} value={o.value}>{o.label}（{o.count}）</option>
+                          ))}
+                        </select>
+                        {filtersActive()
+                          ? (
+                            <>
+                              <span class="filter-info">
+                                筛出 {visibleIndexes().length} / {currentQuestions().length} 题
+                              </span>
+                              <button class="ghost sm" onClick={resetFilters}>清除筛选</button>
+                            </>
                           )
-                        })}
-                      </select>
-                      <select
-                        class="select"
-                        title="按一级题型筛（科目归一后的大类）"
-                        value={state.subjectFilter}
-                        onChange={(e) => {
-                          state.subjectFilter = (e.target as HTMLSelectElement).value
-                          // 换一级后二级的候选跟着变，留着上一级的二级只会筛出空列表
-                          state.subTopicFilter = 'all'
-                        }}
-                      >
-                        <option value="all">全部一级题型</option>
-                        {level1Options().map((o) => (
-                          <option key={o.value} value={o.value}>{o.label}（{o.count}）</option>
-                        ))}
-                      </select>
-                      <select
-                        class="select"
-                        title="按二级题型筛（知识点，跟一级联动）"
-                        value={state.subTopicFilter}
-                        onChange={(e) => { state.subTopicFilter = (e.target as HTMLSelectElement).value }}
-                      >
-                        <option value="all">全部二级题型</option>
-                        {level2Options().map((o) => (
-                          <option key={o.value} value={o.value}>{o.label}（{o.count}）</option>
-                        ))}
-                      </select>
-                    {filtersActive()
-                      ? (
-                        <>
-                          <span class="filter-info">
-                            筛出 {visibleIndexes().length} / {currentQuestions().length} 题
-                          </span>
-                          <button class="ghost sm" onClick={resetFilters}>清除筛选</button>
-                        </>
-                      )
-                      : null}
-                    <div class="toolbar-actions">
-                      <button class="ghost sm" disabled={!state.paper} onClick={openPasteDialog}>批量粘贴</button>
-                      <button
-                        class="ghost sm"
-                        disabled={!state.paper}
-                        title="导入 Excel（.xlsx）：题目表追加成题；只有题号/答案/解析的文件按答案后补匹配当前卷"
-                        onClick={() => (document.getElementById('file-import') as HTMLInputElement | null)?.click()}
-                      >
-                        导入文件
-                      </button>
-                      <button class="primary sm" disabled={!state.paper} onClick={() => addQuestion()}>＋ 新题</button>
-                    </div>
+                          : null}
+                      </div>
                     </div>
 
                     <div class="qlist">
@@ -337,9 +346,10 @@ export default defineComponent({
               // 背诵模式也有右栏：按 App 的样子预览当前这张卡 / 词条 / 导图主题
               <aside class="preview recite-preview">
                 <div class="pane-split" title="拖动调整预览宽度" onPointerdown={onSplitDown}></div>
-                <div class="ptabs">
-                  <button class="ptab active">背诵预览</button>
-                  <span class="grow"></span>
+                <div class="ptabs-wrap">
+                  <div class="ptabs">
+                    <button class="ptab active">背诵预览</button>
+                  </div>
                   <button class="icon-btn" title="收起预览" onClick={() => setPreviewHidden(true)}>⟩</button>
                 </div>
                 <RecitePreview />
@@ -351,37 +361,38 @@ export default defineComponent({
             ? (
               <aside class="preview">
                 <div class="pane-split" title="拖动调整预览宽度" onPointerdown={onSplitDown}></div>
-                <div class="ptabs">
-                  <button
-                    class={['ptab', state.pane === 'preview' && 'active']}
-                    onClick={() => { state.pane = 'preview' }}
-                  >
-                    卷面预览
-                  </button>
-                  <button
-                    class={['ptab', state.pane === 'issue' && 'active']}
-                    onClick={() => { state.pane = 'issue' }}
-                  >
-                    校验
-                    <span class={['pill', counts().errors > 0 && 'hot']}>
-                      {counts().errors + counts().warns}
-                    </span>
-                  </button>
-                  <button
-                    class={['ptab', state.pane === 'version' && 'active']}
-                    onClick={() => { state.pane = 'version'; void loadVersions() }}
-                  >
-                    版本
-                    <span class="pill">{state.versions.length}</span>
-                  </button>
-                  <button
-                    class={['ptab', state.pane === 'resource' && 'active']}
-                    data-pane="resource"
-                    onClick={() => { state.pane = 'resource' }}
-                  >
-                    资源
-                  </button>
-                  <span class="grow"></span>
+                <div class="ptabs-wrap">
+                  <div class="ptabs">
+                    <button
+                      class={['ptab', state.pane === 'preview' && 'active']}
+                      onClick={() => { state.pane = 'preview' }}
+                    >
+                      卷面预览
+                    </button>
+                    <button
+                      class={['ptab', state.pane === 'issue' && 'active']}
+                      onClick={() => { state.pane = 'issue' }}
+                    >
+                      校验
+                      <span class={['pill', counts().errors > 0 && 'hot']}>
+                        {counts().errors + counts().warns}
+                      </span>
+                    </button>
+                    <button
+                      class={['ptab', state.pane === 'version' && 'active']}
+                      onClick={() => { state.pane = 'version'; void loadVersions() }}
+                    >
+                      版本
+                      <span class="pill">{state.versions.length}</span>
+                    </button>
+                    <button
+                      class={['ptab', state.pane === 'resource' && 'active']}
+                      data-pane="resource"
+                      onClick={() => { state.pane = 'resource' }}
+                    >
+                      资源
+                    </button>
+                  </div>
                   <button class="icon-btn" title="收起预览" onClick={() => setPreviewHidden(true)}>⟩</button>
                 </div>
                 {state.pane === 'preview'

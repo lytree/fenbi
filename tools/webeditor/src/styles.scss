@@ -1,19 +1,20 @@
 // =============================================================================
-// 题库编辑器 · Ant Design v5 风格皮肤
+// 题库编辑器 · 淡紫瓷面（lilac porcelain）
 // =============================================================================
 //
-// 视觉口径照搬 antd v5（不是"像 antd"，是直接按它的设计令牌来写）：
+// 一套「白瓷板浮在薰衣草纸面上」的皮肤，令牌口径对齐 antd v5 的度量（32 高控件、
+// 14/1.5715 正文、600 的标题），颜色与骨架则统一到淡紫一族：
 //
-//   · 字      系统字体栈（-apple-system / Segoe UI / PingFang SC），正文 14/1.5715，
-//             标题同字体加粗到 600；不再用宋体，数字也不再单独走等宽（antd 只在表格里用 tabular）。
-//   · 色      主色 #7C5CFC（淡紫，与 App 端色板一致），成功 #43A35F、警告 #E0A123、错误 #E5484D；
-//             文字四档 rgba(31,22,55,.9/.62/.44/.26)，边框 #E1DAF1、次级边框 #EEE9F8，
-//             页面底 #F4F1FB（薰衣草纸面，叠两团紫雾径向渐变）、容器白。夜里换深紫墨：底 #0F0B1A、
-//             容器 #181223、浮层 #211A30、主色 #B49BFF，文字近白四档。
-//   · 形      控件高 32（小号 24），圆角 8；卡片圆角 12/14 + 1px 次级边框 + 紫调投影；
-//             标签圆角 5；分段控件是淡紫槽里嵌一块白瓷片；三块面板留 12px 缝隙浮在纸面上。
-//   · 态      hover 提亮一档（#9A78FF）、active 压深（#5F3FD6）、聚焦 3px 淡紫光圈；
-//             disabled 用 .26 透明；选中项用主色淡底 #F3EDFF + 主色字 + 左侧 3px 主色竖条。
+//   · 色      主色 #6F4FF2（淡紫，与 App 端同族），hover 提亮 #8E74FF、active 压深 #5636D6；
+//             纸面 #F7F5FE（薰衣草，顶部两团极淡紫雾），瓷面 #FFFFFF，内衬 #FBFAFF；
+//             文字四档紫墨 rgba(32,23,56,.9/.6/.42/.24)；描边 #E7E0F8，次级 #F1EDFB。
+//             语义色（成功 / 警告 / 错误）一律降饱和，淡底淡边，不抢主色。
+//             夜里同族压深：底 #0E0A18、瓷面 #171124、浮层 #20192E，主色抬到 #B9A2FF。
+//   · 形      控件高 32（小号 26），圆角 10；面板圆角 18，卡圆角 14，标签圆角 7；
+//             三块瓷板之间留 14px 紫雾缝隙，投影一律带紫（灰影子会把整页拉脏）。
+//   · 态      hover 只提一档，绝不下重手；聚焦是 3px 淡紫光圈；选中是主色淡底 + 主色字
+//             + 左侧 3px 主色竖条；禁用掉到 .24 透明。
+//   · 距      4 的倍数：4 / 8 / 12 / 16 / 20 / 24，面板两套内距（16 常规、20 舒展）。
 //
 // 两套皮只换变量：组件样式里只出现 var(--*)。
 // 类名与组件一一对应，改的是皮，不是骨。
@@ -24,48 +25,50 @@ $font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", 
   "Noto Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
 $font-code: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
 
-// ---- 亮色令牌：薰衣草纸面 + 紫墨字 ----
-$bg-layout: #f4f1fb;
+// ---- 亮色令牌：薰衣草纸面 + 紫墨字 + 白瓷板 ----
+$bg-layout: #f4f0fd;
 $bg-container: #ffffff;
 $bg-elevated: #ffffff;
-$bg-fill: rgba(89, 55, 190, .05);
-$bg-fill-strong: rgba(89, 55, 190, .085);
-$bg-mask: rgba(28, 18, 48, .5);
+/* 瓷板里的内衬（卡片流底、卷次栏、样张底）：比瓷面暗一档，不抢卡片的白 */
+$bg-sunken: #fbfaff;
+$bg-fill: rgba(108, 76, 228, .055);
+$bg-fill-strong: rgba(108, 76, 228, .095);
+$bg-mask: rgba(26, 17, 48, .42);
 
-$text: rgba(31, 22, 55, .9);
-$text-secondary: rgba(31, 22, 55, .62);
-$text-tertiary: rgba(31, 22, 55, .44);
-$text-quaternary: rgba(31, 22, 55, .26);
+$text: rgba(32, 23, 56, .9);
+$text-secondary: rgba(32, 23, 56, .6);
+$text-tertiary: rgba(32, 23, 56, .42);
+$text-quaternary: rgba(32, 23, 56, .24);
 
-$border: #e1daf1;
-$border-secondary: #eee9f8;
+$border: #e7e0f8;
+$border-secondary: #f1edfb;
 
-$primary: #7c5cfc;
-$primary-hover: #9a78ff;
-$primary-active: #5f3fd6;
-$primary-bg: #f3edff;
-$primary-border: #d7c7ff;
+$primary: #6f4ff2;
+$primary-hover: #8e74ff;
+$primary-active: #5636d6;
+$primary-bg: #f4efff;
+$primary-border: #ded2ff;
 
 /* 语义色统一降一点饱和度，跟淡紫底相处不打架 */
 $success: #43a35f;
 $success-bg: #f1faf4;
-$success-border: #c3e8d1;
+$success-border: #c6e9d3;
 $success-text: #2f7d4a;
 
-$warning: #e0a123;
+$warning: #d99a1e;
 $warning-bg: #fff9ec;
-$warning-border: #f6e2b4;
-$warning-text: #a06c08;
+$warning-border: #f5e1b3;
+$warning-text: #9a6606;
 
-$error: #e5484d;
-$error-bg: #fff2f2;
-$error-border: #ffd6d8;
-$error-text: #c02a35;
+$error: #e05258;
+$error-bg: #fff3f3;
+$error-border: #ffd8da;
+$error-text: #bf2b35;
 
 /* 投影一律带一点紫，避免灰影子把整页拉脏 */
-$shadow: 0 1px 2px 0 rgba(53, 32, 120, .04), 0 1px 6px -1px rgba(53, 32, 120, .03), 0 2px 4px 0 rgba(53, 32, 120, .03);
-$shadow-secondary: 0 18px 40px -16px rgba(45, 25, 100, .22), 0 6px 16px -6px rgba(45, 25, 100, .12), 0 2px 6px -2px rgba(45, 25, 100, .08);
-$shadow-tertiary: 0 12px 28px -16px rgba(45, 25, 100, .2), 0 4px 10px -4px rgba(45, 25, 100, .1), 0 1px 3px -1px rgba(45, 25, 100, .08);
+$shadow: 0 1px 2px rgba(52, 32, 110, .03), 0 6px 16px -12px rgba(52, 32, 110, .12);
+$shadow-secondary: 0 28px 64px -28px rgba(44, 24, 96, .26), 0 10px 24px -14px rgba(44, 24, 96, .14), 0 2px 6px -3px rgba(44, 24, 96, .08);
+$shadow-tertiary: 0 12px 28px -18px rgba(44, 24, 96, .2), 0 4px 12px -8px rgba(44, 24, 96, .1), 0 1px 3px -2px rgba(44, 24, 96, .06);
 
 @mixin tabular {
   font-variant-numeric: tabular-nums;
@@ -90,6 +93,7 @@ $shadow-tertiary: 0 12px 28px -16px rgba(45, 25, 100, .2), 0 4px 10px -4px rgba(
   --bg-layout: #{$bg-layout};
   --bg-container: #{$bg-container};
   --bg-elevated: #{$bg-elevated};
+  --bg-sunken: #{$bg-sunken};
   --bg-fill: #{$bg-fill};
   --bg-fill-strong: #{$bg-fill-strong};
   --bg-mask: #{$bg-mask};
@@ -101,6 +105,8 @@ $shadow-tertiary: 0 12px 28px -16px rgba(45, 25, 100, .2), 0 4px 10px -4px rgba(
 
   --border: #{$border};
   --border-secondary: #{$border-secondary};
+  /* 描边提亮一档（hover 用），比 --border 明显、又不至于像分割线 */
+  --border-strong: #d5c9f4;
 
   --primary: #{$primary};
   --primary-hover: #{$primary-hover};
@@ -126,20 +132,21 @@ $shadow-tertiary: 0 12px 28px -16px rgba(45, 25, 100, .2), 0 4px 10px -4px rgba(
   --error-border: #{$error-border};
   --error-text: #{$error-text};
 
-  --radius-sm: 5px;
-  --radius: 8px;
-  --radius-lg: 12px;
+  --radius-sm: 7px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
 
   --shadow: #{$shadow};
   --shadow-secondary: #{$shadow-secondary};
   --shadow-tertiary: #{$shadow-tertiary};
 
   /* 聚焦光圈 / 主色光晕：全站只认这两个，不再散落蓝色 rgba */
-  --focus-ring: 0 0 0 3px rgba(124, 92, 252, .16);
-  --primary-glow: 0 6px 18px -8px rgba(124, 92, 252, .6);
+  --focus-ring: 0 0 0 3px rgba(111, 79, 242, .16);
+  --primary-glow: 0 8px 20px -10px rgba(111, 79, 242, .55);
 
   --control-h: 32px;
-  --control-h-sm: 24px;
+  --control-h-sm: 26px;
   --header-h: 60px;
 
   // 旧名保留：组件里还有少量 var(--panel) 之类的引用
@@ -158,35 +165,37 @@ $shadow-tertiary: 0 12px 28px -16px rgba(45, 25, 100, .2), 0 4px 10px -4px rgba(
 }
 
 /* 夜里：同一张桌子关灯——底子从纯黑换成深紫墨，容器 / 浮层逐级抬亮，
-   主色抬到 #B49BFF（深底上 #7C5CFC 当文字太暗），实心块仍用 #7C5CFC */
+   主色抬到 #B9A2FF（深底上 #6F4FF2 当文字太暗），实心块仍用 #6F4FF2 */
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --bg-layout: #0f0b1a;
-  --bg-container: #181223;
-  --bg-elevated: #211a30;
-  --bg-fill: rgba(178, 150, 255, .09);
-  --bg-fill-strong: rgba(178, 150, 255, .14);
-  --bg-mask: rgba(6, 3, 14, .68);
+  --bg-layout: #0e0a18;
+  --bg-container: #171124;
+  --bg-elevated: #20192e;
+  --bg-sunken: #13101f;
+  --bg-fill: rgba(180, 156, 255, .085);
+  --bg-fill-strong: rgba(180, 156, 255, .13);
+  --bg-mask: rgba(6, 3, 14, .7);
 
   --text: rgba(244, 240, 255, .9);
-  --text-secondary: rgba(244, 240, 255, .64);
-  --text-tertiary: rgba(244, 240, 255, .44);
-  --text-quaternary: rgba(244, 240, 255, .26);
+  --text-secondary: rgba(244, 240, 255, .62);
+  --text-tertiary: rgba(244, 240, 255, .42);
+  --text-quaternary: rgba(244, 240, 255, .24);
 
-  --border: #342b4b;
-  --border-secondary: #271f3a;
+  --border: #332b4a;
+  --border-secondary: #251e37;
+  --border-strong: #4a3d6d;
 
-  /* 深底上 #7C5CFC 当文字太暗，文字 / 描边用亮一档的 #B49BFF，
-     实心块才用 #7C5CFC——白天和夜里实心块保持同一块紫 */
-  --primary: #b49bff;
-  --primary-hover: #cbb9ff;
-  --primary-active: #7c5cfc;
-  --primary-solid: #7c5cfc;
-  --primary-solid-hover: #a88bff;
-  --primary-solid-active: #5a3ad6;
-  --primary-bg: #1e1633;
-  --primary-border: #382a63;
+  /* 深底上 #6F4FF2 当文字太暗，文字 / 描边用亮一档的 #B9A2FF，
+     实心块才用 #6F4FF2——白天和夜里实心块保持同一块紫 */
+  --primary: #b9a2ff;
+  --primary-hover: #cfbcff;
+  --primary-active: #6f4ff2;
+  --primary-solid: #6f4ff2;
+  --primary-solid-hover: #8e74ff;
+  --primary-solid-active: #5636d6;
+  --primary-bg: #1d1630;
+  --primary-border: #37295f;
 
   --success: #58c07a;
   --success-bg: #10231a;
@@ -201,12 +210,12 @@ $shadow-tertiary: 0 12px 28px -16px rgba(45, 25, 100, .2), 0 4px 10px -4px rgba(
   --error-border: #5b2526;
   --error-text: #f0838a;
 
-  --shadow: 0 1px 2px 0 rgba(0, 0, 0, .32), 0 1px 6px -1px rgba(0, 0, 0, .24), 0 2px 4px 0 rgba(0, 0, 0, .18);
-  --shadow-secondary: 0 18px 44px -14px rgba(0, 0, 0, .6), 0 6px 18px -6px rgba(0, 0, 0, .5), 0 2px 8px -2px rgba(0, 0, 0, .45);
-  --shadow-tertiary: 0 12px 30px -14px rgba(0, 0, 0, .55), 0 4px 12px -4px rgba(0, 0, 0, .45), 0 1px 3px -1px rgba(0, 0, 0, .4);
+  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 18px -12px rgba(0, 0, 0, .5);
+  --shadow-secondary: 0 28px 64px -26px rgba(0, 0, 0, .66), 0 10px 26px -14px rgba(0, 0, 0, .55), 0 2px 8px -3px rgba(0, 0, 0, .45);
+  --shadow-tertiary: 0 14px 32px -20px rgba(0, 0, 0, .6), 0 4px 14px -8px rgba(0, 0, 0, .48), 0 1px 3px -2px rgba(0, 0, 0, .4);
 
-  --focus-ring: 0 0 0 3px rgba(180, 155, 255, .24);
-  --primary-glow: 0 8px 22px -10px rgba(124, 92, 252, .85);
+  --focus-ring: 0 0 0 3px rgba(185, 162, 255, .26);
+  --primary-glow: 0 10px 24px -12px rgba(111, 79, 242, .9);
 }
 
 * { box-sizing: border-box; }
@@ -222,10 +231,11 @@ body {
   font-size: 14px;
   line-height: 1.5715;
   color: var(--text);
-  /* 淡紫纸面：两团紫雾压在左上与右侧，底纹随主题换 */
+  /* 薰衣草纸面：左上主雾、右上淡雾、底部一抹极浅的兰，底纹随主题换 */
   background:
-    radial-gradient(1100px 560px at 6% -8%, rgba(176, 152, 255, .28), transparent 62%),
-    radial-gradient(900px 520px at 102% 0%, rgba(214, 190, 255, .22), transparent 58%),
+    radial-gradient(1180px 620px at 4% -14%, rgba(158, 128, 255, .34), transparent 60%),
+    radial-gradient(880px 520px at 102% -8%, rgba(196, 166, 255, .28), transparent 58%),
+    radial-gradient(760px 460px at 46% 112%, rgba(212, 174, 255, .18), transparent 62%),
     var(--bg-layout);
   background-attachment: fixed;
   overflow: hidden;
@@ -236,8 +246,8 @@ body {
 
 :root[data-theme="dark"] body {
   background:
-    radial-gradient(1100px 560px at 6% -8%, rgba(110, 77, 220, .26), transparent 62%),
-    radial-gradient(900px 520px at 102% 0%, rgba(76, 48, 160, .2), transparent 58%),
+    radial-gradient(1100px 560px at 6% -10%, rgba(96, 66, 205, .30), transparent 62%),
+    radial-gradient(880px 500px at 102% 0%, rgba(68, 42, 148, .24), transparent 58%),
     var(--bg-layout);
   background-attachment: fixed;
 }
@@ -248,20 +258,23 @@ code, kbd, samp { font-family: var(--font-code); }
 ::selection { background: var(--primary-bg); color: var(--text); }
 
 /* 细滚动条：拇指带一点紫，和纸面同族（悬停加深） */
-* { scrollbar-width: thin; scrollbar-color: rgba(124, 92, 252, .28) transparent; }
-*::-webkit-scrollbar { width: 8px; height: 8px; }
+* { scrollbar-width: thin; scrollbar-color: rgba(111, 79, 242, .26) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
 *::-webkit-scrollbar-track { background: transparent; }
 *::-webkit-scrollbar-thumb {
-  background: rgba(124, 92, 252, .22);
-  border-radius: 4px;
+  background: rgba(111, 79, 242, .2);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 10px;
 
-  &:hover { background: rgba(124, 92, 252, .42); }
+  &:hover { background: rgba(111, 79, 242, .4); background-clip: content-box; }
 }
-:root[data-theme="dark"] * { scrollbar-color: rgba(180, 155, 255, .3) transparent; }
+:root[data-theme="dark"] * { scrollbar-color: rgba(185, 162, 255, .28) transparent; }
 :root[data-theme="dark"] *::-webkit-scrollbar-thumb {
-  background: rgba(180, 155, 255, .22);
+  background: rgba(185, 162, 255, .22);
+  background-clip: content-box;
 
-  &:hover { background: rgba(180, 155, 255, .42); }
+  &:hover { background: rgba(185, 162, 255, .42); background-clip: content-box; }
 }
 
 :focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
@@ -273,31 +286,34 @@ code, kbd, samp { font-family: var(--font-code); }
    1. 通用件：按钮 / 字段 / 分段控件 / 标签
    ========================================================================== */
 
-/* 按钮：antd Default —— 白底 + #D9D9D9 描边 + 6px 圆角，hover 同时提亮描边与文字 */
+/* 按钮：白瓷片 + 淡紫描边，hover 只提一档描边和字色，不做阴影跳动 */
 button {
   cursor: pointer;
   height: var(--control-h);
-  padding: 0 15px;
+  padding: 0 14px;
   border-radius: var(--radius);
   border: 1px solid var(--border);
   background: var(--bg-container);
   color: var(--text);
   font-size: 14px;
-  box-shadow: 0 1px 2px -1px rgba(53, 32, 120, .08);
-  transition: background-color .2s, border-color .2s, color .2s, box-shadow .2s;
+  font-weight: 450;
+  box-shadow: none;
+  transition: background-color .18s, border-color .18s, color .18s, box-shadow .18s;
 
   &:hover {
     border-color: var(--primary-hover);
     color: var(--primary-hover);
+    background: var(--bg-container);
   }
   &:active {
     border-color: var(--primary-active);
     color: var(--primary-active);
+    background: var(--primary-bg);
   }
   &:disabled,
   &:disabled:hover {
     cursor: not-allowed;
-    border-color: var(--border);
+    border-color: var(--border-secondary);
     color: var(--text-quaternary);
     background: var(--bg-fill);
     box-shadow: none;
@@ -306,23 +322,23 @@ button {
   /* Primary：实心主色，hover 提亮、active 压深，字是纯白 */
   &.primary {
     background: var(--primary-solid);
-    background-image: linear-gradient(180deg, rgba(255, 255, 255, .16), rgba(255, 255, 255, 0));
-    border-color: var(--primary-solid);
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, .18), rgba(255, 255, 255, 0));
+    border-color: transparent;
     color: var(--on-primary);
     box-shadow: var(--primary-glow);
     font-weight: 500;
 
     &:hover {
       background: var(--primary-solid-hover);
-      border-color: var(--primary-solid-hover);
+      border-color: transparent;
       color: var(--on-primary);
-      box-shadow: 0 10px 24px -10px rgba(124, 92, 252, .85);
+      box-shadow: 0 10px 26px -12px rgba(111, 79, 242, .9);
     }
-    &:active { background: var(--primary-solid-active); border-color: var(--primary-solid-active); color: var(--on-primary); box-shadow: var(--primary-glow); }
+    &:active { background: var(--primary-solid-active); border-color: transparent; color: var(--on-primary); box-shadow: var(--primary-glow); }
     &:disabled,
     &:disabled:hover {
       background: var(--bg-fill);
-      border-color: var(--border);
+      border-color: var(--border-secondary);
       color: var(--text-quaternary);
       box-shadow: none;
     }
@@ -332,33 +348,33 @@ button {
       padding: 0 4px;
       font-size: 11px;
       line-height: 16px;
-      border-radius: 4px;
-      background: rgba(255, 255, 255, .2);
-      border: 1px solid rgba(255, 255, 255, .35);
+      border-radius: 5px;
+      background: rgba(255, 255, 255, .18);
+      border: 1px solid rgba(255, 255, 255, .3);
     }
   }
 
-  /* Text：无框按钮（antd type="text"），hover 铺一层 4% 的黑 */
+  /* Text：无框按钮，hover 铺一层淡紫 */
   &.ghost {
     background: transparent;
     border-color: transparent;
     box-shadow: none;
-    color: var(--text);
+    color: var(--text-secondary);
 
-    &:hover { background: var(--bg-fill); border-color: transparent; color: var(--text); }
-    &:active { background: var(--bg-fill-strong); color: var(--text); }
+    &:hover { background: var(--bg-fill); border-color: transparent; color: var(--primary); }
+    &:active { background: var(--bg-fill-strong); color: var(--primary-active); }
   }
 
-  /* 小号：高 24，左右 7（antd small） */
+  /* 小号：高 26，左右 9 */
   &.sm {
     height: var(--control-h-sm);
-    padding: 0 7px;
-    font-size: 14px;
+    padding: 0 10px;
+    font-size: 13px;
     border-radius: var(--radius-sm);
   }
 
   &.danger { color: var(--error); }
-  &.danger:hover { color: var(--error-text); border-color: var(--error-border); }
+  &.danger:hover { color: var(--error-text); border-color: var(--error-border); background: var(--error-bg); }
 }
 
 /* 纯文字按钮（预览面板里的「刷新」「复制」） */
@@ -421,23 +437,23 @@ button {
 
 .mini-hint { font-size: 12px; color: var(--text-tertiary); line-height: 1.5715; }
 
-/* 输入框 / 文本域：antd Input —— 32 高、6 圆角、hover 提亮描边、focus 主色 + 淡蓝光圈 */
+/* 输入框 / 文本域：白底 + 淡紫描边，hover 提亮描边、focus 主色 + 3px 光圈 */
 .field {
   width: 100%;
   min-height: var(--control-h);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 5px 11px;
+  padding: 6px 12px;
   background: var(--bg-container);
   resize: none;
   overflow: hidden;
   line-height: 1.5715;
   font-size: 14px;
   color: var(--text);
-  transition: border-color .2s, box-shadow .2s, background-color .2s;
+  transition: border-color .18s, box-shadow .18s, background-color .18s;
 
   &::placeholder { color: var(--text-quaternary); }
-  &:hover { border-color: var(--primary-hover); }
+  &:hover { border-color: var(--border-strong); }
 
   &:focus {
     outline: none;
@@ -451,49 +467,55 @@ button {
   &.mono { @include tabular; }
 }
 
+/* 搜索框：先给一块淡紫内衬，聚焦才亮出白瓷和描边——工具条里最安静的那一件 */
 .search {
   width: 204px;
   min-width: 132px;
   height: var(--control-h);
-  padding: 0 11px 0 32px;
-  border: 1px solid var(--border);
+  padding: 0 12px 0 32px;
+  border: 1px solid transparent;
   border-radius: var(--radius);
-  background-color: var(--bg-container);
+  background-color: var(--bg-fill);
   /* 一枚淡紫放大镜，省掉一个额外的图标节点 */
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23917fc4' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238d76d8' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: 11px center;
   font-size: 14px;
-  transition: border-color .2s, box-shadow .2s;
+  transition: border-color .18s, box-shadow .18s, background-color .18s;
 
-  &::placeholder { color: var(--text-quaternary); }
-  &:hover { border-color: var(--primary-hover); }
-  &:focus { outline: none; border-color: var(--primary); box-shadow: var(--focus-ring); }
+  &::placeholder { color: var(--text-tertiary); }
+  &:hover { border-color: var(--border-strong); background-color: var(--bg-container); }
+  &:focus {
+    outline: none;
+    border-color: var(--primary);
+    background-color: var(--bg-container);
+    box-shadow: var(--focus-ring);
+  }
 }
 
 .select {
   height: var(--control-h);
-  max-width: 168px;
-  padding: 0 8px;
+  max-width: 172px;
+  padding: 0 9px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg-container);
-  color: var(--text);
-  font-size: 14px;
+  color: var(--text-secondary);
+  font-size: 13px;
   text-overflow: ellipsis;
-  transition: border-color .2s, box-shadow .2s;
+  transition: border-color .18s, box-shadow .18s, color .18s;
 
-  &:hover { border-color: var(--primary-hover); }
-  &:focus { outline: none; border-color: var(--primary); box-shadow: var(--focus-ring); }
+  &:hover { border-color: var(--border-strong); color: var(--text); }
+  &:focus { outline: none; border-color: var(--primary); color: var(--text); box-shadow: var(--focus-ring); }
 }
 
 /* 筛选结果统计：淡紫胶囊，和旁边的「清除筛选」连成一组 */
 .filter-info {
   @include label;
-  height: 24px;
+  height: 26px;
   display: inline-flex;
   align-items: center;
-  padding: 0 10px;
+  padding: 0 11px;
   border-radius: 999px;
   border: 1px solid var(--primary-border);
   background: var(--primary-bg);
@@ -501,26 +523,26 @@ button {
   white-space: nowrap;
 }
 
-/* 分段控件：antd Segmented —— 灰底槽 + 选中一块白瓷片（浅投影），字色不变 */
+/* 分段控件：淡紫槽里嵌一块白瓷片（浅投影），字不选中时是次级色 */
 .seg {
   display: inline-flex;
   align-items: center;
   height: var(--control-h);
-  padding: 2px;
+  padding: 3px;
   border: none;
   border-radius: var(--radius);
   background: var(--bg-fill);
   box-shadow: none;
 
   .seg-btn {
-    height: 28px;
+    height: 26px;
     padding: 0 11px;
     border: none;
     border-radius: var(--radius-sm);
     background: transparent;
     box-shadow: none;
     color: var(--text-secondary);
-    font-size: 14px;
+    font-size: 13px;
     white-space: nowrap;
     @include tabular;
 
@@ -530,12 +552,12 @@ button {
       background: var(--bg-container);
       color: var(--primary);
       font-weight: 500;
-      box-shadow: 0 1px 2px 0 rgba(53, 32, 120, .1), 0 2px 6px -2px rgba(53, 32, 120, .1);
+      box-shadow: 0 1px 2px rgba(52, 32, 110, .08), 0 4px 10px -6px rgba(52, 32, 110, .18);
     }
   }
 }
 
-/* 标签：antd Tag 的三种底色（默认灰 / 主色 / 错误） */
+/* 标签：默认淡紫内衬 / 主色 / 错误三种底色 */
 .tag,
 .pill,
 .chip {
@@ -543,11 +565,11 @@ button {
   display: inline-flex;
   align-items: center;
   height: 22px;
-  padding: 0 7px;
+  padding: 0 8px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: var(--bg-layout);
-  color: var(--text);
+  background: var(--bg-sunken);
+  color: var(--text-secondary);
   white-space: nowrap;
 }
 
@@ -560,7 +582,7 @@ button {
 }
 
 /* =============================================================================
-   2. 顶栏：半透明纸片浮在紫雾上，一条发丝线与内容区断开
+   2. 顶栏：一层薄玻璃，压住后面的紫雾；内容与面板左沿对齐
    ========================================================================== */
 
 .topbar {
@@ -568,55 +590,57 @@ button {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 0 20px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, .9), rgba(252, 250, 255, .78));
-  backdrop-filter: blur(14px) saturate(1.15);
-  -webkit-backdrop-filter: blur(14px) saturate(1.15);
+  gap: 18px;
+  padding: 0 18px;
+  background: rgba(255, 255, 255, .62);
+  backdrop-filter: blur(20px) saturate(1.2);
+  -webkit-backdrop-filter: blur(20px) saturate(1.2);
   border-bottom: 1px solid var(--border-secondary);
   position: relative;
   z-index: 20;
   transition: background-color .2s ease, border-color .2s ease;
 
   :root[data-theme="dark"] & {
-    background: linear-gradient(180deg, rgba(24, 18, 35, .92), rgba(20, 15, 30, .82));
+    background: rgba(18, 13, 29, .68);
   }
 
   .brand {
     display: flex;
     align-items: center;
-    gap: 12px;
-    min-width: 214px;
+    gap: 11px;
+    min-width: 208px;
 
     /* 站点标识：紫雾渐变圆角块 + 白字 + 一圈内高光 */
     .logo {
-      width: 34px;
-      height: 34px;
-      border-radius: 11px;
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
       display: grid;
       place-items: center;
-      background: linear-gradient(145deg, #9b7cff, #6c48f0 62%, #5c38e0);
+      background: linear-gradient(150deg, #9c82ff, #6f4ff2 58%, #5636d6);
       color: var(--on-primary);
-      font-size: 17px;
+      font-size: 16px;
       font-weight: 600;
       line-height: 1;
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), var(--primary-glow);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .4), var(--primary-glow);
     }
 
     .brand-text {
       display: flex;
       flex-direction: column;
-      line-height: 1.4;
+      line-height: 1.35;
+      gap: 1px;
 
       b {
-        font-size: 16px;
+        font-size: 15px;
         font-weight: 600;
-        letter-spacing: -.01em;
+        letter-spacing: -.005em;
         color: var(--text);
       }
 
       .ws {
         @include label;
+        font-size: 11.5px;
         color: var(--text-tertiary);
         max-width: 210px;
         overflow: hidden;
@@ -626,15 +650,15 @@ button {
     }
   }
 
-  /* 模式切换做成一块淡紫瓷片，跟右侧动作区分开 */
+  /* 模式切换：一块淡紫瓷片，跟右侧动作区分开 */
   .mode-seg {
     background: var(--primary-bg);
     border: 1px solid var(--primary-border);
-    padding: 2px;
+    padding: 3px;
 
     .seg-btn {
-      height: 26px;
-      padding: 0 12px;
+      height: 24px;
+      padding: 0 14px;
       font-size: 13px;
       color: var(--text-secondary);
 
@@ -642,28 +666,29 @@ button {
         background: var(--bg-container);
         color: var(--primary);
         font-weight: 500;
-        box-shadow: 0 1px 3px rgba(72, 44, 160, .12);
+        box-shadow: 0 1px 3px rgba(72, 44, 160, .09);
       }
     }
   }
 
   .title-wrap { flex: 1; display: flex; align-items: center; gap: 10px; min-width: 0; }
 
-  /* 卷名：antd 的无框输入——平时只有字，hover / focus 才浮出一层灰底 */
+  /* 卷名：平时只有字，hover / focus 才浮出一层淡紫底 */
   .paper-name {
-    flex: 0 1 440px;
+    flex: 0 1 460px;
     min-width: 160px;
-    height: 32px;
-    padding: 0 8px;
+    height: 34px;
+    padding: 0 10px;
     border: 1px solid transparent;
     border-radius: var(--radius);
     background: transparent;
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 600;
+    letter-spacing: -.005em;
     color: var(--text);
-    transition: background-color .2s, border-color .2s, box-shadow .2s;
+    transition: background-color .18s, border-color .18s, box-shadow .18s;
 
-    &::placeholder { font-size: 14px; font-weight: 400; color: var(--text-quaternary); }
+    &::placeholder { font-size: 13px; font-weight: 400; color: var(--text-quaternary); }
 
     &:not([readonly]):hover { background: var(--bg-fill); border-color: transparent; }
     &:not([readonly]):focus {
@@ -687,42 +712,56 @@ button {
   display: grid;
   /* 侧栏 / 编辑区 / 预览都随窗口收缩，避免中等宽度下把编辑区挤没；
      预览宽度拖过分隔条后由 --preview-w 接管，没拖过还是按窗口自适应 */
-  grid-template-columns: clamp(196px, 14vw, 236px) minmax(0, 1fr) var(--preview-w, clamp(320px, 25vw, 420px));
+  grid-template-columns: clamp(204px, 14vw, 244px) minmax(0, 1fr) var(--preview-w, clamp(330px, 25vw, 430px));
   /* 单行高度必须被容器夹住，否则题目一多行高被内容撑开，内部 .qlist 的 overflow 永远不触发 */
   grid-template-rows: minmax(0, 1fr);
   min-width: 0;
-  /* 三块面板从纸面上"浮"起来：留出 12px 的紫雾缝隙 */
-  gap: 12px;
-  padding: 12px 14px 14px;
+  /* 三块瓷板从纸面上浮起来：留出 14px 的紫雾缝隙 */
+  gap: 14px;
+  padding: 14px 18px 18px;
   background: transparent;
 
   &.no-preview {
-    grid-template-columns: clamp(196px, 14vw, 236px) minmax(0, 1fr);
+    grid-template-columns: clamp(204px, 14vw, 244px) minmax(0, 1fr);
   }
 }
 
+/* 收起预览后，右边缘留一个小小的「拉手」：贴边竖条，不挡工具条和「＋ 新题」 */
 .preview-fab {
   position: fixed;
-  right: 16px;
-  top: calc(var(--header-h) + 12px);
+  right: 0;
+  /* 偏下一点：避开工具条上的「＋ 新题」，只在正文边缘占一条窄缝 */
+  top: 58%;
+  transform: translateY(-50%);
   z-index: 30;
-  width: 32px;
+  width: 26px;
+  height: 56px;
   padding: 0;
+  display: grid;
+  place-items: center;
   background: var(--bg-container);
-  border-color: var(--border);
-  border-radius: 50%;
-  box-shadow: var(--shadow-tertiary);
-  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-right: none;
+  border-radius: var(--radius) 0 0 var(--radius);
+  box-shadow: -8px 0 22px -14px rgba(44, 24, 96, .28);
+  color: var(--text-tertiary);
+
+  &:hover {
+    color: var(--primary);
+    border-color: var(--primary-border);
+    background: var(--primary-bg);
+    width: 30px;
+  }
 }
 
 /* =============================================================================
-   4. 目录（antd Menu 的菜单项：6px 圆角、40 高、选中用主色淡底）
+   4. 目录（菜单项：44 高、10 圆角、选中用主色淡底 + 左侧主色竖条）
    ========================================================================== */
 
 .sidebar {
-  background: linear-gradient(180deg, var(--bg-container), #fdfbff);
+  background: var(--bg-container);
   border: 1px solid var(--border-secondary);
-  border-radius: 14px;
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow);
   display: flex;
   flex-direction: column;
@@ -730,18 +769,18 @@ button {
   overflow: hidden;
   transition: background-color .2s ease, border-color .2s ease;
 
-  :root[data-theme="dark"] & {
-    background: linear-gradient(180deg, var(--bg-container), #15101f);
-  }
-
   .side-head {
     padding: 14px 14px 12px;
-    display: grid;
+    display: flex;
     gap: 8px;
     border-bottom: 1px solid var(--border-secondary);
+
+    /* 「新建一组」吃掉剩余宽度，「刷新」缩成一小块，两件并排不占两行 */
+    .primary { flex: 1; }
+    .ghost { flex: none; }
   }
 
-  .side-list { flex: 1; overflow-y: auto; padding: 8px; }
+  .side-list { flex: 1; overflow-y: auto; padding: 10px 10px 14px; }
 }
 
 .side-item {
@@ -749,21 +788,21 @@ button {
   grid-template-columns: 1fr auto;
   align-items: center;
   gap: 8px;
-  height: 44px;
-  padding: 0 12px;
-  margin-bottom: 4px;
+  min-height: 46px;
+  padding: 8px 12px;
+  margin-bottom: 2px;
   border-radius: var(--radius);
   border: none;
   background: transparent;
   cursor: pointer;
   position: relative;
-  transition: background-color .2s, color .2s;
+  transition: background-color .18s, color .18s;
 
   &:hover { background: var(--bg-fill); }
 
   /* 选中：淡紫底 + 左侧一小段主色竖条，扫一眼就知道当前在哪一组 */
   &.active {
-    background: linear-gradient(90deg, var(--primary-bg), rgba(243, 237, 255, .45));
+    background: var(--primary-bg);
     box-shadow: inset 3px 0 0 var(--primary);
 
     .nm { color: var(--primary); font-weight: 500; }
@@ -774,6 +813,7 @@ button {
   .nm {
     font-size: 14px;
     font-weight: 400;
+    letter-spacing: -.005em;
     color: var(--text);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -786,9 +826,13 @@ button {
     display: flex;
     gap: 6px;
     align-items: center;
-    margin-top: 2px;
+    margin-top: 3px;
+    /* 「1 卷 · 46 题 · 缺 3 答案」宁可省略号，也不要断成两行把条目撑高 */
+    white-space: nowrap;
+    overflow: hidden;
 
     .tag {
+      flex: none;
       height: 18px;
       padding: 0 5px;
       background: transparent;
@@ -850,11 +894,14 @@ button {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
-    padding: 4px 12px 6px;
+    gap: 8px;
+    padding: 6px 12px 8px;
     @include label;
     color: var(--text-tertiary);
+    letter-spacing: .02em;
 
-    .hint { color: var(--text-quaternary); }
+    /* 侧栏窄，「点恢复回到列表」这种口头说明挤成两行反而碍眼，直接不显示 */
+    .hint { display: none; }
   }
 }
 
@@ -886,16 +933,14 @@ button {
   position: relative;
   background: var(--bg-container);
   border: 1px solid var(--border-secondary);
-  border-radius: 14px;
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow);
   overflow: hidden;
 }
-.editor-body { flex: 1; display: grid; grid-template-columns: clamp(132px, 11vw, 188px) minmax(0, 1fr); min-height: 0; }
-.editor-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: #faf8fe; }
+.editor-body { flex: 1; display: grid; grid-template-columns: clamp(140px, 11vw, 196px) minmax(0, 1fr); min-height: 0; }
+.editor-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg-sunken); }
 
-:root[data-theme="dark"] .editor-main { background: #15101f; }
-
-/* 卷次（工作表）：antd Tabs 的竖排变体，白底 + 右侧发丝线 */
+/* 卷次（工作表）：竖向页签，白瓷底 + 右侧一道发丝线 */
 .sheetbar {
   display: flex;
   flex-direction: column;
@@ -903,7 +948,7 @@ button {
   padding: 0;
   min-height: 0;
   overflow: hidden;
-  background: linear-gradient(180deg, var(--bg-container), #fcfaff);
+  background: var(--bg-container);
   border-right: 1px solid var(--border-secondary);
 
   .sb-head {
@@ -915,24 +960,25 @@ button {
   }
 
   .sb-title {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
-    color: var(--text);
+    letter-spacing: .02em;
+    color: var(--text-secondary);
   }
 
   .sb-count { @include label; color: var(--text-tertiary); }
 
-  .sb-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; padding: 4px 8px; }
+  .sb-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; padding: 8px; }
 }
 
 .sb-item {
-  padding: 8px 12px;
+  padding: 9px 12px;
   border-radius: var(--radius);
   border: none;
   background: transparent;
   cursor: pointer;
   position: relative;
-  transition: background-color .2s, color .2s;
+  transition: background-color .18s, color .18s;
 
   & + & { margin-top: 2px; }
 
@@ -945,7 +991,7 @@ button {
   }
 
   .nm {
-    font-size: 14px;
+    font-size: 13.5px;
     font-weight: 400;
     color: var(--text);
     overflow: hidden;
@@ -958,7 +1004,7 @@ button {
     display: flex;
     align-items: center;
     gap: 6px;
-    margin-top: 2px;
+    margin-top: 3px;
     color: var(--text-tertiary);
   }
 
@@ -975,47 +1021,64 @@ button {
 }
 
 .sheet-add {
-  margin: 4px 8px 8px;
+  margin: 4px 8px 10px;
   height: var(--control-h);
-  color: var(--text-secondary);
+  color: var(--text-tertiary);
   border: 1px dashed var(--border);
   border-radius: var(--radius);
   padding: 0 12px;
-  font-size: 14px;
+  font-size: 13px;
   background: transparent;
   box-shadow: none;
   text-align: left;
 
-  &:hover { color: var(--primary); border-color: var(--primary); background: transparent; }
+  &:hover { color: var(--primary); border-color: var(--primary-border); background: var(--primary-bg); }
 }
 
-/* 工具条：白底 + 发丝线，控件一律 8px 间距；搜索框吃掉剩余宽度 */
+/* 工具条：两行——上行「视图 / 搜索 / 动作」，下行「筛选」。分隔线只画在整块下面 */
 .toolbar {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 12px 16px;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 20px 12px;
   background: var(--bg-container);
   border-bottom: 1px solid var(--border-secondary);
   position: relative;
   z-index: 2;
   transition: background-color .2s ease, border-color .2s ease;
-
-  /* 搜索独占一行里的弹性位，窄了再退到固定宽度（见响应式段） */
-  .search { flex: 1 1 220px; max-width: 340px; }
 }
+
+.tb-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* 搜索吃掉上行剩下的宽度（下限放宽到 120，宁可窄一点也不让动作组掉到下一行） */
+.toolbar .search { flex: 1 1 160px; min-width: 120px; max-width: 420px; }
+
+/* 下行的小标题，给四个下拉一个「这是筛选」的由头 */
+.tb-label {
+  @include label;
+  color: var(--text-quaternary);
+  letter-spacing: .06em;
+  margin-right: 2px;
+}
+
+.tb-filters .select { max-width: 158px; }
 
 /* 工具条右侧的动作组：整组跟着换行，不会被拆成两行 */
 .toolbar-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   margin-left: auto;
 }
 
 /* 题目流：淡紫纸面上排白卡，底部留出悬浮动作 / 分页的空间 */
-.qlist { flex: 1; overflow-y: auto; padding: 18px 20px 96px; min-height: 0; }
+.qlist { flex: 1; overflow-y: auto; padding: 20px 22px 100px; min-height: 0; }
 
 /* =============================================================================
    6. 材料模式：一片材料 → 多道小题
@@ -1226,25 +1289,23 @@ button {
 }
 
 /* =============================================================================
-   7. 题目卡（antd Card：白底、8 圆角、1px 次级边框，hover 抬一层投影）
+   7. 题目卡（白瓷片 + 淡紫描边；hover 描边转紫、展开时顶部透一层淡紫）
    ========================================================================== */
 
 .qcard {
   background: var(--bg-container);
   border: 1px solid var(--border-secondary);
   border-radius: var(--radius-lg);
-  margin-bottom: 10px;
-  box-shadow: var(--shadow);
-  transition: border-color .2s, box-shadow .2s, background-color .2s;
+  margin-bottom: 12px;
+  box-shadow: none;
+  transition: border-color .18s, box-shadow .18s, background-color .18s;
 
-  &:hover { border-color: var(--primary-border); box-shadow: var(--shadow-tertiary); }
+  &:hover { border-color: var(--primary-border); box-shadow: var(--shadow); }
 
   &.open {
     border-color: var(--primary-border);
-    background: linear-gradient(180deg, #fdfbff, var(--bg-container) 120px);
+    background: linear-gradient(180deg, var(--primary-bg), var(--bg-container) 96px);
     box-shadow: var(--shadow-tertiary);
-
-    :root[data-theme="dark"] & { background: linear-gradient(180deg, #1c1529, var(--bg-container) 140px); }
   }
 
   /* 有错 / 有提醒：边框染成语义色，不再画左侧墨条 */
@@ -1297,45 +1358,45 @@ button {
   &:active { cursor: grabbing; }
 }
 
-.qhead { display: flex; align-items: flex-start; gap: 12px; padding: 12px 16px; cursor: pointer; }
+.qhead { display: flex; align-items: flex-start; gap: 12px; padding: 14px 18px; cursor: pointer; }
 
-/* 题号：12px 次级色 + tabular，右边留一道发丝线跟类型签分开 */
+/* 题号：tabular 数字 + 一道发丝线与类型签分开 */
 .qno {
-  min-width: 32px;
+  min-width: 34px;
   height: 22px;
   display: block;
   text-align: right;
   padding-right: 10px;
   border-right: 1px solid var(--border-secondary);
   background: none;
-  color: var(--text-secondary);
-  font-size: 14px;
+  color: var(--text-tertiary);
+  font-size: 13px;
   font-weight: 400;
   line-height: 22px;
   @include tabular;
 }
 
-/* 题型签：antd Tag 的彩色变体，一色一型 */
+/* 题型签：一色一型，底色都走淡底 */
 .qtype {
   @include label;
   height: 22px;
   display: inline-flex;
   align-items: center;
-  padding: 0 7px;
+  padding: 0 8px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  background: var(--bg-layout);
+  background: var(--bg-sunken);
   white-space: nowrap;
-  color: var(--text);
+  color: var(--text-secondary);
   margin-top: 0;
 
   &.lv1,
   &.single { border-color: var(--primary-border); background: var(--primary-bg); color: var(--primary); }
   &.multi { border-color: var(--success-border); background: var(--success-bg); color: var(--success-text); }
-  &.truefalse { border-color: var(--border); background: var(--bg-layout); color: var(--text-secondary); }
+  &.truefalse { border-color: var(--border); background: var(--bg-sunken); color: var(--text-secondary); }
   &.uncertain { border-color: var(--warning-border); background: var(--warning-bg); color: var(--warning-text); }
   &.fill,
-  &.subjective { border-color: var(--border); background: var(--bg-layout); color: var(--text-secondary); }
+  &.subjective { border-color: var(--border); background: var(--bg-sunken); color: var(--text-secondary); }
 
   /* 行测题型：一级带框（主色），二级只留灰字 + 前置小点 */
   &.lv2 {
@@ -1657,8 +1718,8 @@ button {
   display: grid;
   place-items: center;
   background:
-    radial-gradient(520px 320px at 50% 0%, rgba(176, 152, 255, .16), transparent 70%),
-    var(--bg-layout);
+    radial-gradient(560px 340px at 50% 0%, rgba(166, 138, 255, .18), transparent 70%),
+    var(--bg-sunken);
 }
 
 .empty-card {
@@ -1666,9 +1727,9 @@ button {
   text-align: left;
   max-width: 480px;
   background: var(--bg-container);
-  border: 1px solid var(--border-secondary);
-  border-radius: 16px;
-  padding: 32px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 34px 36px;
   box-shadow: var(--shadow-secondary);
   overflow: hidden;
 
@@ -1681,7 +1742,7 @@ button {
     width: 140px;
     height: 140px;
     border-radius: 50%;
-    background: radial-gradient(circle, rgba(124, 92, 252, .16), transparent 68%);
+    background: radial-gradient(circle, rgba(111, 79, 242, .14), transparent 68%);
     pointer-events: none;
   }
 
@@ -1704,30 +1765,28 @@ button {
 .empty-actions { display: flex; gap: 8px; justify-content: flex-start; }
 
 /* =============================================================================
-   9. 卷面预览（灰底上排白卡，和 antd 的内容区一致）
+   9. 卷面预览（白瓷板上排样张，页签条走 ink bar）
    ========================================================================== */
 
 .preview {
-  background: linear-gradient(180deg, var(--bg-container), #fcfaff);
+  background: var(--bg-container);
   border: 1px solid var(--border-secondary);
-  border-radius: 14px;
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow);
   display: flex;
   flex-direction: column;
   min-height: 0;
   position: relative;
   transition: background-color .2s ease, border-color .2s ease;
-
-  :root[data-theme="dark"] & { background: linear-gradient(180deg, var(--bg-container), #15101f); }
 }
 
-/* 压在主栏和预览之间的拖拽条：只占 8px，不额外占一列网格 */
+/* 压在主栏和预览之间的拖拽条：只占 10px，不额外占一列网格 */
 .pane-split {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: -5px;
-  width: 10px;
+  left: -7px;
+  width: 14px;
   z-index: 20;
   cursor: col-resize;
   touch-action: none;
@@ -1736,9 +1795,9 @@ button {
     content: '';
     position: absolute;
     top: 50%;
-    left: 4px;
+    left: 6px;
     width: 2px;
-    height: 48px;
+    height: 52px;
     border-radius: 2px;
     transform: translateY(-50%);
     background: transparent;
@@ -1755,17 +1814,40 @@ body.pane-dragging {
   * { cursor: col-resize !important; }
 }
 
-/* 页签条：antd Tabs（14px 标签 + 选中项下方 2px 主色 ink bar） */
+/* 页签条：14px 标签 + 选中项下方 2px 主色 ink bar。
+   「收起」按钮单独拎出来钉在右侧，页签再多也不会被挤到滚动区外 */
+.ptabs-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 48px;
+  flex: none;
+  padding: 0 10px 0 16px;
+  border-bottom: 1px solid var(--border-secondary);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+
+  > .icon-btn {
+    flex: none;
+    width: 26px;
+    height: 26px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+
+    &:hover { background: var(--bg-fill); color: var(--primary); }
+  }
+}
+
 .ptabs {
   display: flex;
   align-items: center;
   gap: 0;
-  padding: 0 14px;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
   background: transparent;
-  border-bottom: 1px solid var(--border-secondary);
-  border-radius: 14px 14px 0 0;
-  height: 46px;
-  flex: none;
+  border-bottom: none;
+  height: 48px;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
@@ -1777,13 +1859,13 @@ body.pane-dragging {
   border: none;
   background: transparent;
   box-shadow: none;
-  height: 46px;
+  height: 48px;
   flex: 0 0 auto;
   padding: 0;
-  margin-right: 16px;
+  margin-right: 18px;
   border-radius: 0;
-  font-size: 14px;
-  color: var(--text);
+  font-size: 13.5px;
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1810,11 +1892,11 @@ body.pane-dragging {
     color: var(--primary);
     font-weight: 500;
 
-    &::after { background: var(--primary); box-shadow: 0 -2px 8px -1px rgba(124, 92, 252, .5); }
+    &::after { background: var(--primary); }
   }
 }
 
-.ppane { flex: 1; overflow-y: auto; padding: 16px; min-height: 0; }
+.ppane { flex: 1; overflow-y: auto; padding: 18px; min-height: 0; }
 
 /* 样张页眉：标题前一枚主色圆点，和右侧计数拉开层次 */
 .pv-head {
@@ -2146,8 +2228,8 @@ body.pane-dragging {
 
 .modal {
   background: var(--bg-elevated);
-  border: 1px solid var(--border-secondary);
-  border-radius: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow-secondary);
   width: min(760px, 100%);
   max-height: 86vh;
@@ -2158,9 +2240,10 @@ body.pane-dragging {
 
   h3 {
     margin: 0;
-    padding: 20px 24px 8px;
-    font-size: 16px;
+    padding: 20px 24px 6px;
+    font-size: 15px;
     font-weight: 600;
+    letter-spacing: -.005em;
     color: var(--text);
     border-bottom: none;
   }
@@ -2716,14 +2799,15 @@ body.pane-dragging {
 @media (max-width: 1320px) {
   .search { width: 180px; }
   .topbar .brand { min-width: 176px; }
-  .topbar .paper-name { flex-basis: 330px; }
+  .topbar .paper-name { flex-basis: 340px; }
+  .tb-filters .select { max-width: 148px; }
 }
 
 /* 低于 1180：默认收起预览（App 里同步），侧栏再窄一点；手动展开时预览改为浮层 */
 @media (max-width: 1180px) {
   .layout,
   .layout.no-preview {
-    grid-template-columns: clamp(176px, 18vw, 208px) minmax(0, 1fr);
+    grid-template-columns: clamp(180px, 18vw, 212px) minmax(0, 1fr);
     gap: 10px;
     padding: 10px 12px 12px;
   }
@@ -2736,12 +2820,12 @@ body.pane-dragging {
     z-index: 45;
     width: min(var(--preview-w, 420px), 94vw);
     border: 1px solid var(--border-secondary);
-    border-radius: 14px;
+    border-radius: var(--radius-xl);
     box-shadow: var(--shadow-secondary);
   }
 
   .board-cols { grid-template-columns: minmax(200px, 250px) minmax(0, 1fr); }
-  .toolbar { gap: 6px; }
+  .toolbar { padding: 12px 14px 10px; gap: 8px; }
   .search { flex: 1 1 160px; width: auto; }
   .select { max-width: 150px; }
 }
@@ -2775,6 +2859,8 @@ body.pane-dragging {
     border-bottom: none;
   }
   .sidebar .side-head button { white-space: nowrap; }
+  .sidebar .side-head .primary,
+  .sidebar .side-head .ghost { flex: none; }
   .sidebar .side-list {
     flex: 1;
     display: flex;
@@ -2810,7 +2896,7 @@ body.pane-dragging {
   .topbar .paper-name { flex: 1; max-width: none; padding-left: 0; }
   .topbar .top-actions { margin-left: auto; }
 
-  .preview-fab { top: auto; bottom: 24px; right: 16px; }
+  .preview-fab { right: 8px; }
 
   .layout { height: auto; }
 }
@@ -2872,6 +2958,14 @@ body.pane-dragging {
     border-radius: 0;
   }
   .qlist { padding: 12px 12px 80px; }
+
+  /* 手机上题干优先：题型签让位，卡片头允许折行，别把题干挤成竖排单字 */
+  .qhead { flex-wrap: wrap; row-gap: 8px; padding: 12px 12px 10px; }
+  .qhead .qtype { display: none; }
+  .qsum { flex: 1 1 auto; }
+  .badges { order: 5; }
+  .qacts { order: 6; margin-left: auto; }
+  .qhead .qno { min-width: 26px; padding-right: 8px; }
 }
 
 /* 减少动态：一律停掉入场与过渡，只留状态 */
@@ -2891,7 +2985,7 @@ body.pane-dragging {
 
 .mode-seg { flex: none; margin-left: 4px; }
 
-.recite-layout .editor { border-left: 1px solid var(--border-secondary); }
+/* 背诵模式的编辑区就是一块普通瓷板（不再额外补竖线，四边已有描边） */
 
 /* ---- 工具条下的列表区与卡片 ---- */
 
