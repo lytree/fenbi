@@ -1,4 +1,4 @@
-import { defineComponent, ref, watch } from 'vue'
+import { defineComponent, nextTick, ref, watch } from 'vue'
 import type { MindMapNode, MindMapTopic } from '../types'
 import { renderRecite, renderRich } from '../markdown'
 import {
@@ -6,7 +6,9 @@ import {
   mindMapPreviewTopic, mindMapSectionOf, recite, recitePreviewCard, wordPreviewItem,
   WORD_CATEGORY_LABEL,
 } from '../store'
+import { theme } from '../theme'
 import { esc } from '../util'
+import MindMapGraph, { type GraphHandle } from './MindMapGraph'
 
 /**
  * 背诵模式的右栏预览：按 App 里的样子把**当前这一条**排出来。
@@ -15,7 +17,8 @@ import { esc } from '../util'
  * - 词库：词条 + 拼音 + 分类标签 + 释义（释义里的表格也排成真表格）
  * - 政治大纲：一条内容的正面（挖空）与背面（填答案）可翻，标签 / 节名 / 空数在上方
  * - 常识：卡片正面（挖空）与背面（填答案）可翻，答案清单 / 备注 / 来源在下面
- * - 思维导图：一个主题的树（可折叠）+ 连线配对
+ * - 思维导图：一页书的**图**（markmap 画布，跟 App 一个样子）与逐条大纲可切，
+ *   图下照旧列连线配对；图上点节点会切到大纲并闪那一行
  *
  * 「当前这一条」由 store 的 *_preview_* 取值函数决定：点开哪张，右栏就是哪张。
  */
@@ -26,12 +29,34 @@ export default defineComponent({
     const reveal = ref(false)
     /** 导图节点的展开覆盖（只活在预览里，不动编辑区的展开状态） */
     const openNodes = ref<Record<string, boolean>>({})
+    /** 导图看「图」还是「大纲」——图是 App 的画布，大纲是一条条文字 */
+    const mmView = ref<'graph' | 'outline'>('graph')
+    /** 走画布上的「适应 / 展开全部」 */
+    const graphRef = ref<GraphHandle | null>(null)
 
     const currentCardId = () => recitePreviewCard()?.id ?? ''
     watch(currentCardId, () => { reveal.value = false })
 
     const currentTopicId = () => mindMapPreviewTopic()?.id ?? ''
     watch(currentTopicId, () => { openNodes.value = {} })
+
+    /**
+     * 图上点了节点：切到「大纲」，把这一支展开，滚到那一行并闪一下。
+     * 祖先逐个标展开——深层节点点进来时，中间任何一层收着都定位不到。
+     */
+    const jumpTo = (path: number[]) => {
+      for (let i = 1; i < path.length; i++) openNodes.value[path.slice(0, i).join('.')] = true
+      openNodes.value[path.join('.')] = true
+      mmView.value = 'outline'
+      const sel = `.rcp-tree [data-path="${path.join('.')}"]`
+      void nextTick(() => {
+        const row = document.querySelector<HTMLElement>(sel)
+        if (!row) return
+        row.scrollIntoView?.({ block: 'center' })
+        row.classList.add('flash')
+        window.setTimeout(() => row.classList.remove('flash'), 1400)
+      })
+    }
 
     // ---------------- 词库 ----------------
 
@@ -166,7 +191,7 @@ export default defineComponent({
       const open = openNodes.value[key] ?? depth < 2
       return (
         <>
-          <div class={['rcp-node', `d${Math.min(depth, 4)}`]}>
+          <div class={['rcp-node', `d${Math.min(depth, 4)}`]} data-path={key}>
             <button
               class={['rcp-twist', !kids.length && 'leaf']}
               onClick={() => { if (kids.length) openNodes.value[key] = !open }}
@@ -189,6 +214,7 @@ export default defineComponent({
       if (!topic) return <div class="rcp-empty">当前板块下没有主题</div>
       const section = mindMapSectionOf(topic.id)
       const nodes = topic.nodes ?? []
+      const isGraph = mmView.value === 'graph'
       return (
         <div class="rcp-card">
           <div class="rcp-section">
@@ -198,12 +224,47 @@ export default defineComponent({
           <div class="rcp-mm-title">
             <span class="tag">{topic.label}</span>
             <b>{topic.name}</b>
+            <div class="seg rcp-mm-seg" title="图 = App 里的画布；大纲 = 一条条文字，折起来看">
+              <button
+                class={['seg-btn', isGraph && 'on']}
+                data-view="graph"
+                onClick={() => { mmView.value = 'graph' }}
+              >图</button>
+              <button
+                class={['seg-btn', !isGraph && 'on']}
+                data-view="outline"
+                onClick={() => { mmView.value = 'outline' }}
+              >大纲</button>
+            </div>
           </div>
-          <div class="rcp-tree">
-            {nodes.length
-              ? nodes.map((n, i) => <NodeRow topic={topic} node={n} path={[i]} depth={0} />)
+          {!isGraph
+            ? (
+              <div class="rcp-tree">
+                {nodes.length
+                  ? nodes.map((n, i) => <NodeRow topic={topic} node={n} path={[i]} depth={0} />)
+                  : <div class="rcp-hint">这个主题还没有节点</div>}
+              </div>
+            )
+            : nodes.length
+              ? (
+                <>
+                  <div class="rcp-graph">
+                    <MindMapGraph
+                      key={topic.id}
+                      ref={graphRef}
+                      topic={topic}
+                      mode={theme.mode}
+                      onPick={(path: number[]) => jumpTo(path)}
+                    />
+                  </div>
+                  <div class="rcp-graph-bar">
+                    <span class="rcp-graph-hint">拖动平移 · 滚轮缩放 · 点圆点折叠 · 点节点看大纲</span>
+                    <button class="ghost sm" onClick={() => graphRef.value?.fit()}>适应</button>
+                    <button class="ghost sm" onClick={() => graphRef.value?.expandAll()}>展开全部</button>
+                  </div>
+                </>
+              )
               : <div class="rcp-hint">这个主题还没有节点</div>}
-          </div>
           {topic.pairs?.length
             ? (
               <div class="rcp-pairs">

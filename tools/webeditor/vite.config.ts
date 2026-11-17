@@ -28,6 +28,8 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     include: ['src/**/*.spec.ts', 'src/**/*.spec.tsx'],
+    // jsdom 缺 Canvas 2D：markmap 量文字要用，补丁写在 setup.ts
+    setupFiles: ['src/__tests__/setup.ts'],
     // 测试不需要真的处理样式：关掉 CSS/资源转换
     css: false,
     deps: {

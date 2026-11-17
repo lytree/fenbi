@@ -112,24 +112,51 @@ describe('RecitePreview', () => {
     expect(w.find('table.pv-tbl').text()).toContain('颁布年')
   })
 
-  it('切到导图：按板块 / 主题排树，连线配对单列', () => {
+  it('切到导图：默认按 App 的样子先给图，连线配对单列', () => {
     recite.subject = 'mindmap'
     mindmap.catalog = mindMapCatalog()
     const w = mount(RecitePreview)
     expect(w.text()).toContain('党的建设与全面从严治党')
     expect(w.text()).toContain('党性与从严治吏')
+    // 图是 App 里那块画布，默认就在
+    expect(w.find('.rcp-graph svg.mm-graph-svg').exists()).toBe(true)
+    expect(w.text()).toContain('坚持党的领导')
+    expect(w.text()).toContain('是中国特色社会主义最本质的特征')
+  })
+
+  it('切到「大纲」：按层级排树，默认摊到第二层', async () => {
+    recite.subject = 'mindmap'
+    mindmap.catalog = mindMapCatalog()
+    const w = mount(RecitePreview)
+    await w.find('[data-view="outline"]').trigger('click')
+    expect(w.find('.rcp-graph').exists()).toBe(false)
     expect(w.text()).toContain('增强党性是根本性任务')
     // 默认摊到第二层，子节点直接可见
     expect(w.text()).toContain('把党性修养作为终身课题')
-    expect(w.text()).toContain('坚持党的领导')
-    expect(w.text()).toContain('是中国特色社会主义最本质的特征')
   })
 
   it('导图主题可以逐级收起', async () => {
     recite.subject = 'mindmap'
     mindmap.catalog = mindMapCatalog()
     const w = mount(RecitePreview)
+    await w.find('[data-view="outline"]').trigger('click')
     await w.findAll('.rcp-twist')[0].trigger('click')
     expect(w.text()).not.toContain('把党性修养作为终身课题')
+  })
+
+  it('图上点节点：切回大纲并把那一支展开', async () => {
+    recite.subject = 'mindmap'
+    mindmap.catalog = mindMapCatalog()
+    const w = mount(RecitePreview)
+    // 收起子节点后点图上的它，大纲应该自己展开
+    await w.find('[data-view="outline"]').trigger('click')
+    await w.findAll('.rcp-twist')[0].trigger('click')
+    await w.find('[data-view="graph"]').trigger('click')
+    const graph = w.findComponent({ name: 'MindMapGraph' })
+    graph.vm.$emit('pick', [0, 0])
+    await w.vm.$nextTick()
+    await w.vm.$nextTick()
+    expect(w.find('.rcp-graph').exists()).toBe(false)
+    expect(w.text()).toContain('把党性修养作为终身课题')
   })
 })

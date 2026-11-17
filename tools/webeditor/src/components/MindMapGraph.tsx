@@ -7,9 +7,15 @@ import { pathOfGraphNode, topicSignature, topicToGraph } from '../mindmap/tree'
 /**
  * 只读导图：把一页书画成折叠 / 缩放 / 拖动的图。
  *
- * 编辑仍然只在大纲里做——这里不做双向同步，避免出现「图改了字、大纲没跟着变」的两套真相。
- * 点节点只做一件事：把 path 抛给父级，切回大纲并定位到那一行。
+ * 写入口只有大纲（`MindMapPane`），这里不做双向同步，避免出现「图改了字、大纲没跟着变」的两套真相。
+ * 点节点只做一件事：把 path 抛给父级，由父级决定跳到大纲那一行。
  */
+export type GraphHandle = {
+  fit: () => void
+  foldToLevel: (level: number) => void
+  expandAll: () => void
+}
+
 export default defineComponent({
   name: 'MindMapGraph',
   props: {
