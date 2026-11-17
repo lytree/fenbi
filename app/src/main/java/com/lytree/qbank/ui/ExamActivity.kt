@@ -1127,14 +1127,15 @@ class ExamActivity : AppCompatActivity() {
     private fun setupInk() {
         inkToolbar = InkToolbarController(
             inkOverlay = binding.inkOverlay,
-            inkBar = binding.inkBar,
-            btnPen = binding.btnInkPen,
-            btnEraser = binding.btnInkEraser,
-            btnUndo = binding.btnInkUndo,
-            btnRedo = binding.btnInkRedo,
-            btnShade = binding.btnInkShade,
-            btnClear = binding.btnInkClear,
-            btnClose = binding.btnInkClose,
+            // 工具条是共用布局（view_fb_ink_bar.xml），子控件从 include 的绑定里取
+            inkBar = binding.inkBar.root,
+            btnPen = binding.inkBar.btnInkPen,
+            btnEraser = binding.inkBar.btnInkEraser,
+            btnUndo = binding.inkBar.btnInkUndo,
+            btnRedo = binding.inkBar.btnInkRedo,
+            btnShade = binding.inkBar.btnInkShade,
+            btnClear = binding.inkBar.btnInkClear,
+            btnClose = binding.inkBar.btnInkClose,
             styleInkButton = { }
         )
         inkToolbar.onModeChanged = { on ->
@@ -1884,7 +1885,7 @@ class ExamActivity : AppCompatActivity() {
         binding.switchAutoNext.setNightMode(night)
 
         // 写画工具条：底色跟着日夜走，图标（含笔/橡皮选中态）由控制器算
-        binding.inkBar.setBackgroundColor(color(if (night) R.color.fb_night_bar else R.color.fb_bar_bg))
+        binding.inkBar.root.setBackgroundColor(color(if (night) R.color.fb_night_bar else R.color.fb_bar_bg))
         inkToolbar.applyNightMode(night)
         binding.inkOverlay.night = night
 

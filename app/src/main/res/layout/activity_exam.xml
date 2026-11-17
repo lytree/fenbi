@@ -143,67 +143,16 @@
         </LinearLayout>
     </androidx.constraintlayout.widget.ConstraintLayout>
 
-    <!-- ===== 写画工具条 =====
-         进写画模式才出现，**悬浮**在卷面上方（不再把内容往下推，直接盖住顶部一条），
-         高度压缩到 40dp 少挡内容。左起：退出 / 笔 / 橡皮 / 撤销 / 重做 / 遮盖档位 / 清空，图标等分。
-         对齐参考应用：纯图标、选中项用主色，不放文字。 -->
-    <LinearLayout
+    <!-- ===== 写画工具条（与解析页 / 分屏页共用一份，见 view_fb_ink_bar.xml） =====
+         进写画模式才出现，**悬浮**在卷面上方（不把内容往下推，直接盖住顶部一条）。 -->
+    <include
         android:id="@+id/inkBar"
+        layout="@layout/view_fb_ink_bar"
         android:layout_width="0dp"
         android:layout_height="@dimen/fb_ink_bar_h"
-        android:background="@color/fb_bar_bg"
-        android:elevation="10dp"
-        android:orientation="horizontal"
-        android:paddingStart="@dimen/fb_space_4"
-        android:paddingEnd="@dimen/fb_space_4"
-        android:visibility="gone"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/topBar">
-
-        <ImageView
-            android:id="@+id/btnInkClose"
-            style="@style/FbInkIcon"
-            android:contentDescription="@string/action_done"
-            android:src="@drawable/ic_ink_done" />
-
-        <ImageView
-            android:id="@+id/btnInkPen"
-            style="@style/FbInkIcon"
-            android:contentDescription="@string/action_ink_pen"
-            android:src="@drawable/ic_fb_edit" />
-
-        <ImageView
-            android:id="@+id/btnInkEraser"
-            style="@style/FbInkIcon"
-            android:contentDescription="@string/action_ink_eraser"
-            android:src="@drawable/ic_ink_eraser" />
-
-        <ImageView
-            android:id="@+id/btnInkUndo"
-            style="@style/FbInkIcon"
-            android:contentDescription="@string/action_undo"
-            android:src="@drawable/ic_ink_undo" />
-
-        <ImageView
-            android:id="@+id/btnInkRedo"
-            style="@style/FbInkIcon"
-            android:contentDescription="@string/action_redo"
-            android:src="@drawable/ic_ink_redo" />
-
-        <ImageView
-            android:id="@+id/btnInkShade"
-            style="@style/FbInkIcon"
-            android:contentDescription="@string/action_ink_shade"
-            android:src="@drawable/ic_ink_shade" />
-
-
-        <ImageView
-            android:id="@+id/btnInkClear"
-            style="@style/FbInkIcon"
-            android:contentDescription="@string/action_clear_ink"
-            android:src="@drawable/ic_ink_trash" />
-    </LinearLayout>
+        app:layout_constraintTop_toBottomOf="@id/topBar" />
 
     <!-- ===== 题目列表（白底通铺的连续卷面） =====
          宽度不设上限：0dp + 左右都约束到父容器 = 撑满可用宽度（手机竖屏、平板、横屏都一样）。

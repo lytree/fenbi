@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  写画工具条（答题页 / 分屏页 / 解析页共用一份）。
+
+  进写画模式才出现，**悬浮**在卷面上方（不把内容往下推，直接盖住顶部一条），
+  高度 40dp 少挡内容。左起：退出 / 笔 / 橡皮 / 撤销 / 重做 / 遮盖档位 / 清空，图标等分。
+  对齐参考应用：纯图标、选中项用主色，不放文字。
+
+  用法：父容器里
+    <include android:id="@+id/inkBar" layout="@layout/view_fb_ink_bar" ... />
+  宽高与位置（约束 / gravity）写在 include 标签上——这层只管长什么样。
+  注意 root 不带 id：id 由各页面的 include 给，ViewBinding 里就是 `binding.inkBar.<子 id>`。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="@dimen/fb_ink_bar_h"
+    android:background="@color/fb_bar_bg"
+    android:elevation="10dp"
+    android:orientation="horizontal"
+    android:paddingStart="@dimen/fb_space_4"
+    android:paddingEnd="@dimen/fb_space_4"
+    android:visibility="gone">
+
+    <ImageView
+        android:id="@+id/btnInkClose"
+        style="@style/FbInkIcon"
+        android:contentDescription="@string/action_done"
+        android:src="@drawable/ic_ink_done" />
+
+    <ImageView
+        android:id="@+id/btnInkPen"
+        style="@style/FbInkIcon"
+        android:contentDescription="@string/action_ink_pen"
+        android:src="@drawable/ic_fb_edit" />
+
+    <ImageView
+        android:id="@+id/btnInkEraser"
+        style="@style/FbInkIcon"
+        android:contentDescription="@string/action_ink_eraser"
+        android:src="@drawable/ic_ink_eraser" />
+
+    <ImageView
+        android:id="@+id/btnInkUndo"
+        style="@style/FbInkIcon"
+        android:contentDescription="@string/action_undo"
+        android:src="@drawable/ic_ink_undo" />
+
+    <ImageView
+        android:id="@+id/btnInkRedo"
+        style="@style/FbInkIcon"
+        android:contentDescription="@string/action_redo"
+        android:src="@drawable/ic_ink_redo" />
+
+    <ImageView
+        android:id="@+id/btnInkShade"
+        style="@style/FbInkIcon"
+        android:contentDescription="@string/action_ink_shade"
+        android:src="@drawable/ic_ink_shade" />
+
+    <ImageView
+        android:id="@+id/btnInkClear"
+        style="@style/FbInkIcon"
+        android:contentDescription="@string/action_clear_ink"
+        android:src="@drawable/ic_ink_trash" />
+</LinearLayout>

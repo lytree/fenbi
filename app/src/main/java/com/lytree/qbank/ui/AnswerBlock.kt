@@ -74,9 +74,10 @@ object AnswerSummary {
         night: Boolean = false
     ) {
         val ctx = b.root.context
-        val metaColor = ContextCompat.getColor(
-            ctx, if (night) R.color.fb_night_text_meta else R.color.fb_text_meta
-        )
+        // 标签色与「未作答 / 待补答案」的答案色共用一个色号：下面分色时只能传**资源 id**，
+        // 传已解析的颜色值会走进 Resources.getColor(int) 抛 NotFoundException
+        val metaRes = if (night) R.color.fb_night_text_meta else R.color.fb_text_meta
+        val metaColor = ContextCompat.getColor(ctx, metaRes)
         b.root.setBackgroundResource(
             if (night) R.drawable.bg_fb_note_night else R.drawable.bg_fb_note
         )
@@ -94,8 +95,8 @@ object AnswerSummary {
             ContextCompat.getColor(
                 ctx,
                 when {
-                    userAnswer.isBlank() -> metaColor
-                    r.pending -> metaColor
+                    userAnswer.isBlank() -> metaRes
+                    r.pending -> metaRes
                     r.correct -> R.color.fb_success
                     r.partial -> R.color.fb_warning
                     else -> R.color.fb_danger

@@ -50,6 +50,9 @@ class ReportActivity : AppCompatActivity() {
     private lateinit var db: QBankDb
     private var recordId = 0L
 
+    /** 全库收藏的题：题号格子下方那颗小点用它点亮（收藏表是全局的，与答题卡同一口径） */
+    private var favoriteIds: Set<Long> = emptySet()
+
     /** 补答案 / 补解析：选文件 → 匹配 → 写库 → 重判本记录 */
     private val answerPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) importAnswers(uri)
@@ -57,6 +60,17 @@ class ReportActivity : AppCompatActivity() {
 
     /** 补录答案：逐题手填（不用答案文件），回来后重建页面显示新成绩 */
     private val fillAnswerLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == RESULT_OK) recreate()
+    }
+
+    /**
+     * 进解析页。解析页里能收藏题（写进全局表），回来要按库重画题号格子下方的收藏点——
+     * 所以走带结果码的启动，收过才重建，没动过就直接回来不闪一下。
+     * （解析页里的「标记」只是临时记号，不写库，本页格子上那些橙点还是交卷时留的。）
+     */
+    private val reviewLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == RESULT_OK) recreate()
@@ -74,12 +88,17 @@ class ReportActivity : AppCompatActivity() {
         recordId = intent.getLongExtra(EXTRA_RECORD_ID, 0L)
         // 题干 / 答案 / 判定一次读完再装配报告；每题用时留给解析页自己读
         lifecycleScope.launch {
-            val record = withContext(Dispatchers.IO) { db.getRecord(recordId) }
+            val loaded = withContext(Dispatchers.IO) {
+                val record = db.getRecord(recordId) ?: return@withContext null
+                // 收藏一次读全，格子上的点只看本卷的题，不在每格单独查一次
+                record to db.listFavoriteIds()
+            }
             if (isFinishing || isDestroyed) return@launch
-            if (record == null) {
+            if (loaded == null) {
                 finish(); return@launch
             }
-            renderReport(record)
+            favoriteIds = loaded.second
+            renderReport(loaded.first)
         }
     }
 
@@ -161,7 +180,7 @@ class ReportActivity : AppCompatActivity() {
 
         binding.grid.layoutManager = GridLayoutManager(this, columns)
         binding.grid.itemAnimator = null
-        binding.grid.adapter = ReportGridAdapter(record.results, record.marked) { position ->
+        binding.grid.adapter = ReportGridAdapter(record.results, record.marked, favoriteIds) { position ->
             // 点题号 = 进解析页，从这道题开始按原卷顺序往后翻
             openReview(record, record.results.indices.toList(), position)
         }
@@ -170,9 +189,10 @@ class ReportActivity : AppCompatActivity() {
     /**
      * 进解析页。版式与答题页完全相同（[QuestionReviewActivity]），
      * [numbers] 是要翻的题（原卷下标）：点题号给整卷，错题解析只给错题。
+     * 解析页里收了题会带回结果码，那时本页重画（收藏是全局表，格子的收藏点跟着亮）。
      */
     private fun openReview(record: ExamRecord, numbers: List<Int>, start: Int) {
-        startActivity(
+        reviewLauncher.launch(
             Intent(this, QuestionReviewActivity::class.java).apply {
                 putExtra(QuestionReviewActivity.EXTRA_RECORD_ID, record.id)
                 putExtra(QuestionReviewActivity.EXTRA_NUMBERS, numbers.toIntArray())
@@ -393,10 +413,13 @@ class ReportActivity : AppCompatActivity() {
  *
  * 颜色口径就一条：**答对绿、答错红**；未作答灰、部分得分橙、待补答案浅橙。
  * 圆点用底色填充（不走实心 drawable），新状态加进来只要在 [fillRes] / [textRes] 里补一行。
+ *
+ * 角标与答题卡一致：右上一点 = 本次标记过，下方一点 = 已收藏。
  */
 class ReportGridAdapter(
     private val items: List<AnswerResult>,
     private val marked: Set<Long> = emptySet(),
+    private val favorites: Set<Long> = emptySet(),
     private val onClick: ((Int) -> Unit)? = null
 ) : RecyclerView.Adapter<ReportGridAdapter.VH>() {
 
@@ -420,7 +443,7 @@ class ReportGridAdapter(
         )
         b.tvNum.setTextColor(ContextCompat.getColor(ctx, textRes(status)))
         b.vMark.visibility = if (r.question.id in marked) View.VISIBLE else View.GONE
-        b.vFav.visibility = View.GONE
+        b.vFav.visibility = if (r.question.id in favorites) View.VISIBLE else View.GONE
 
         // 无障碍：读屏念出来是「第 3 题 错误」，而不是光一个数字
         b.root.contentDescription = "第 ${position + 1} 题 ${statusStyle(ctx, r).first}"

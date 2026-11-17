@@ -4,6 +4,11 @@
   只多出「正确答案 / 你的答案 / 结果 / 解析」那一块，并且不能作答。
   · 一屏一题，左右滑动切题（与答题页翻题手势一致），底部再给一对「上一题 / 下一题」
   · 顶栏标题显示「第 N/M 题」，右侧「看原题」回试卷定位（材料里的表格 / 配图在那边最全）
+  · 题目卡右上角的「笔」照样能写画：卷面上盖一层可写薄纸（inkOverlay），
+    进写画才铺纸拦触摸、并浮出工具条（view_fb_ink_bar.xml）——与答题页同一套交互
+
+  卷面这块用 FrameLayout 叠三层（题页 / 遮盖层 / 工具条）：遮盖层平时 isEnabled=false、
+  writeMode 关着，触摸照旧落到下面的题页上，翻题与滚动都不受影响。
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     style="@style/FbPage">
@@ -13,12 +18,31 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content" />
 
-    <androidx.viewpager2.widget.ViewPager2
-        android:id="@+id/pager"
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
-        android:background="@color/fb_sheet_bg" />
+        android:layout_weight="1">
+
+        <androidx.viewpager2.widget.ViewPager2
+            android:id="@+id/pager"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@color/fb_sheet_bg" />
+
+        <!-- 遮盖层（可写）：笔迹按「本条记录 + 题目」存取，答题时画的圈回来看解析还在 -->
+        <com.lytree.qbank.ui.InkOverlay
+            android:id="@+id/inkOverlay"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <!-- 写画工具条：与答题页 / 分屏页同一份，进写画模式才出现 -->
+        <include
+            android:id="@+id/inkBar"
+            layout="@layout/view_fb_ink_bar"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/fb_ink_bar_h"
+            android:layout_gravity="top" />
+    </FrameLayout>
 
     <View style="@style/FbDivider" />
 

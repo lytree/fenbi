@@ -24,64 +24,15 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/titleBar" />
 
-    <!-- ===== 写画工具条：与答题页同款图标条，**悬浮**在分屏内容上方（不再下推内容） ===== -->
-    <LinearLayout
+    <!-- ===== 写画工具条：与答题页 / 解析页共用一份（view_fb_ink_bar.xml），**悬浮**在分屏内容上方 ===== -->
+    <include
         android:id="@+id/inkBar"
+        layout="@layout/view_fb_ink_bar"
         android:layout_width="0dp"
         android:layout_height="@dimen/fb_ink_bar_h"
-        android:background="@color/fb_bar_bg"
-        android:elevation="10dp"
-        android:orientation="horizontal"
-        android:paddingStart="@dimen/fb_space_4"
-        android:paddingEnd="@dimen/fb_space_4"
-        android:visibility="gone"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/topDivider">
-
-        <ImageView
-            android:id="@+id/btnInkClose"
-            style="@style/FbInkIcon"
-            android:contentDescription="@string/action_done"
-            android:src="@drawable/ic_ink_done" />
-
-        <ImageView
-            android:id="@+id/btnInkPen"
-            style="@style/FbInkIcon"
-            android:contentDescription="@string/action_ink_pen"
-            android:src="@drawable/ic_fb_edit" />
-
-        <ImageView
-            android:id="@+id/btnInkEraser"
-            style="@style/FbInkIcon"
-            android:contentDescription="@string/action_ink_eraser"
-            android:src="@drawable/ic_ink_eraser" />
-
-        <ImageView
-            android:id="@+id/btnInkUndo"
-            style="@style/FbInkIcon"
-            android:contentDescription="@string/action_undo"
-            android:src="@drawable/ic_ink_undo" />
-
-        <ImageView
-            android:id="@+id/btnInkRedo"
-            style="@style/FbInkIcon"
-            android:contentDescription="@string/action_redo"
-            android:src="@drawable/ic_ink_redo" />
-
-        <ImageView
-            android:id="@+id/btnInkShade"
-            style="@style/FbInkIcon"
-            android:contentDescription="@string/action_ink_shade"
-            android:src="@drawable/ic_ink_shade" />
-
-
-        <ImageView
-            android:id="@+id/btnInkClear"
-            style="@style/FbInkIcon"
-            android:contentDescription="@string/action_clear_ink"
-            android:src="@drawable/ic_ink_trash" />
-    </LinearLayout>
+        app:layout_constraintTop_toBottomOf="@id/topDivider" />
 
     <!-- ===== 左栏：材料 ===== -->
     <LinearLayout

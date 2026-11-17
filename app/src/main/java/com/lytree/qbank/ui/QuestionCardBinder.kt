@@ -131,11 +131,24 @@ object QuestionCardBinder {
          */
         showDivider: Boolean = true,
         /**
-         * 只读复习（错题解析 / 单题解析）：答案已经定了，选项不能再点选、也不能长按打叉，
-         * 右上角「标记 / 笔 / 收藏」也没有承接动作，直接不显示。
+         * 只读复习（错题解析 / 单题解析）：答案已经定了，选项不能再点选、也不能长按打叉。
          * 其余版式、字号、判分着色一律与答题页相同——复习页就是要跟答题页长得一模一样。
+         *
+         * 只读**只管作答**：标记 / 收藏是回看时照样想做的事，默认跟着只读一起收起，
+         * 需要的话由调用方单独打开（见 [showMarkFavorite]）。
          */
         readOnly: Boolean = false,
+        /**
+         * 右上角「标记 / 收藏」两颗星是否显示。默认与只读同步——答题页显示、复习页不显示；
+         * 成绩报告打开的解析页把这里显式传 true：看解析时照样能标一下、收一题。
+         */
+        showMarkFavorite: Boolean = !readOnly,
+        /**
+         * 右上角「笔」（手写标注 / 长按写笔记）是否显示。
+         * 解析页也传 true——那边接了同一套遮盖层（[InkOverlay]），笔迹还能接着画；
+         * 长按写笔记在那边没有承接方，只是不弹输入框。
+         */
+        showInk: Boolean = !readOnly,
         /**
          * 树脊：本卡在「材料 → 小题」这条树枝上的位置。
          * null 表示不参与树形卷面（普通单题 / 分屏右栏 / 复习页），左侧那条线不画。
@@ -225,11 +238,10 @@ object QuestionCardBinder {
             cb.onNoteClicked(q)
             true
         }
-        // 复习页只读：三个动作图标没有承接方，留着点了没反应，干脆不显示
-        val actionVisibility = if (readOnly) View.GONE else View.VISIBLE
-        b.btnMark.visibility = actionVisibility
-        b.btnScratch.visibility = actionVisibility
-        b.btnFavorite.visibility = actionVisibility
+        // 复习页只读：选项不能改答案；笔 / 标记 / 收藏各自还有承接方，由调用方开关
+        b.btnMark.visibility = if (showMarkFavorite) View.VISIBLE else View.GONE
+        b.btnFavorite.visibility = if (showMarkFavorite) View.VISIBLE else View.GONE
+        b.btnScratch.visibility = if (showInk) View.VISIBLE else View.GONE
 
         // ---- 题干（字号随「更多」面板缩放；基准 16sp / 额外行距 7dp）----
         // 三种情况：

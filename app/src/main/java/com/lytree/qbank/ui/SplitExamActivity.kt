@@ -247,14 +247,15 @@ class SplitExamActivity : AppCompatActivity() {
 
             inkToolbar = InkToolbarController(
                 inkOverlay = binding.inkOverlay,
-                inkBar = binding.inkBar,
-                btnPen = binding.btnInkPen,
-                btnEraser = binding.btnInkEraser,
-                btnUndo = binding.btnInkUndo,
-                btnRedo = binding.btnInkRedo,
-                btnShade = binding.btnInkShade,
-                btnClear = binding.btnInkClear,
-                btnClose = binding.btnInkClose,
+                // 工具条是共用布局（view_fb_ink_bar.xml），子控件从 include 的绑定里取
+                inkBar = binding.inkBar.root,
+                btnPen = binding.inkBar.btnInkPen,
+                btnEraser = binding.inkBar.btnInkEraser,
+                btnUndo = binding.inkBar.btnInkUndo,
+                btnRedo = binding.inkBar.btnInkRedo,
+                btnShade = binding.inkBar.btnInkShade,
+                btnClear = binding.inkBar.btnInkClear,
+                btnClose = binding.inkBar.btnInkClose,
                 styleInkButton = { on ->
                     binding.btnInk.setBackgroundResource(
                         if (on) R.drawable.bg_fb_mark_on else R.drawable.bg_fb_action
