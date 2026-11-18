@@ -26,6 +26,7 @@ import {
 import type { QuestionType } from './types'
 import { handleFileInput } from './images'
 import { initTheme } from './theme'
+import { initScale, resetScale, scalePercent, zoomIn, zoomOut } from './scale'
 
 export default defineComponent({
   name: 'App',
@@ -90,6 +91,7 @@ export default defineComponent({
 
     onMounted(async () => {
       initTheme()
+      initScale()
       window.addEventListener('keydown', onKeydown)
       window.addEventListener('beforeunload', onBeforeUnload)
       window.addEventListener('resize', syncViewport)
@@ -167,6 +169,24 @@ export default defineComponent({
         // 等手机确认时按 Esc 等于撤回请求，别只是把弹窗关掉留个悬案
         if (ui.modal.kind === 'waiting') { void cancelWaiting(); return }
         closeModal(ui.modal.kind === 'confirm' ? false : null)
+      }
+      // 界面缩放：Ctrl +/− 逐档、Ctrl 0 回 100%（截下来别让浏览器自己缩页面）
+      if (mod && (e.key === '=' || e.key === '+')) {
+        e.preventDefault()
+        zoomIn()
+        toast(`界面缩放 ${scalePercent()}`, 'ok')
+        return
+      }
+      if (mod && e.key === '-') {
+        e.preventDefault()
+        zoomOut()
+        toast(`界面缩放 ${scalePercent()}`, 'ok')
+        return
+      }
+      if (mod && e.key === '0') {
+        e.preventDefault()
+        resetScale()
+        toast('界面缩放 100%', 'ok')
       }
     }
 

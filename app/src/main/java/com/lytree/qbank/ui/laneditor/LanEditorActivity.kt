@@ -22,8 +22,10 @@ import com.lytree.qbank.ui.ScreenAdapt
  * 服务本身在 [LanEditorService]（前台服务），这个页面只是遥控器——
  * 退出页面服务照跑，网页还能继续加题；点「停止服务」或通知栏的「停止」才真的关掉。
  *
- * 另一个职责是**写库的最后一道闸**：电脑上点发布 / 回滚 / 删除只会发一条请求过来，
- * 这里弹确认框，人点了「确认」才真正动库（见 [LanEditorConfirm]）。
+ * 另一个职责是**写库确认的出生地**：电脑上点发布 / 回滚 / 删除只会发一条请求过来，
+ * 手机上弹确认框，人点了「确认」才真正动库（见 [LanEditorConfirm]）。
+ * 确认框现在不挑界面——[LanEditorConfirmActivity] 会把它盖到手机当前的任何画面上，
+ * 这个页面只是顺带也能弹（人正好停在这儿时不用绕）。
  */
 class LanEditorActivity : AppCompatActivity() {
 
@@ -96,31 +98,9 @@ class LanEditorActivity : AppCompatActivity() {
             it.status == LanEditorConfirm.STATUS_PENDING && it.id !in shownConfirms
         } ?: return
         shownConfirms += req.id
-        val action = when (req.kind) {
-            LanEditorConfirm.KIND_PUBLISH -> "发布"
-            LanEditorConfirm.KIND_RESTORE -> "回滚"
-            LanEditorConfirm.KIND_SAVE_RECITE -> "保存背诵词库"
-            LanEditorConfirm.KIND_RESET_RECITE -> "重置背诵词库"
-            LanEditorConfirm.KIND_SAVE_MINDMAP -> "保存思维导图"
-            LanEditorConfirm.KIND_RESET_MINDMAP -> "重置思维导图"
-            LanEditorConfirm.KIND_SAVE_LIBRARY -> "保存政治大纲"
-            LanEditorConfirm.KIND_RESET_LIBRARY -> "重置政治大纲"
-            LanEditorConfirm.KIND_MCP_KEY -> "获取 MCP 写入口令"
-            else -> "删除"
-        }
+        val action = LanEditorConfirm.actionName(req.kind)
         val okText = if (req.kind == LanEditorConfirm.KIND_MCP_KEY) "确认提供" else "确认$action"
-        val cancelText = when (req.kind) {
-            LanEditorConfirm.KIND_PUBLISH -> "不发布"
-            LanEditorConfirm.KIND_RESTORE -> "不回滚"
-            LanEditorConfirm.KIND_SAVE_RECITE -> "不保存"
-            LanEditorConfirm.KIND_RESET_RECITE -> "不重置"
-            LanEditorConfirm.KIND_SAVE_MINDMAP -> "不保存"
-            LanEditorConfirm.KIND_RESET_MINDMAP -> "不重置"
-            LanEditorConfirm.KIND_SAVE_LIBRARY -> "不保存"
-            LanEditorConfirm.KIND_RESET_LIBRARY -> "不重置"
-            LanEditorConfirm.KIND_MCP_KEY -> "不给"
-            else -> "不删"
-        }
+        val cancelText = LanEditorConfirm.cancelName(req.kind)
         val message = if (req.kind == LanEditorConfirm.KIND_MCP_KEY) {
             "电脑上的题库编辑器请求获取 MCP 写入口令。\n\n${req.detail}"
         } else {
@@ -275,7 +255,7 @@ class LanEditorActivity : AppCompatActivity() {
             } else {
                 "最近一次请求：$last"
             }
-            binding.tvHint.text = "手机锁屏不影响服务；离开这个页面服务仍在跑。网页上要先登录（如果设了密码），发布、回滚、删除还会再在这里弹一次确认框。"
+            binding.tvHint.text = "手机锁屏不影响服务；离开这个页面服务仍在跑。网页上要先登录（如果设了密码），发布、回滚、删除会直接在手机当前界面弹确认框——不管你正在用哪个页面。"
         } else {
             binding.tvBadge.setText("已停止")
             binding.tvBadge.setTextColor(ContextCompat.getColor(this, R.color.fb_text_tertiary))

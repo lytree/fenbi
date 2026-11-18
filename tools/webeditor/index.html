@@ -16,6 +16,11 @@
       } catch (e) {
         // 隐私模式下读不到：按白天的冷纸面走
       }
+      // 界面缩放也一样：读到合法档位就先作用到 <html>，别先按 100% 画一帧再跳档
+      try {
+        var s = parseFloat(localStorage.getItem('fenbi.lan-editor.ui-scale') || '')
+        if (s >= 0.5 && s <= 2 && s !== 1) document.documentElement.style.setProperty('zoom', String(s))
+      } catch (e) {}
     })()
   </script>
 </head>

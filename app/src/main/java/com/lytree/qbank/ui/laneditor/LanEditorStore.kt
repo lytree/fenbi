@@ -21,8 +21,9 @@ import java.io.File
  * - 图片按组编号分目录放 `filesDir/lan_editor/images/<组编号>/`，题目里写 `images/<组编号>/xxx.png`，
  *   **入库时才换成绝对路径**（App 的 MaterialRenderer 认绝对路径，换机备份也跟着走）。
  *
- * 覆盖同一标题会走 `importSets(replace = true)`——那一组的旧卷连同作答记录一起被替换，
- * 这是「重新导入同一份卷」的既定口径。但**旧内容不会被白白冲掉**：覆盖前先由
+ * 覆盖同一标题会走 `importSets(replace = true)`——那一组的旧卷被拆掉重建，但**交过卷的
+ * 作答记录会尽量带到新组头上**（题目行原地复用 + 卷名对应 + 内容指纹兜底，见
+ * `RecordMigration`）；没交卷的草稿跟旧卷一起走。且**旧内容不会被白白冲掉**：覆盖前先由
  * [LanEditorArchive] 存一份快照，网页上能翻回任意一版再「恢复」。
  */
 class LanEditorStore(private val context: Context) {

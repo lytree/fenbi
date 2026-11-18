@@ -423,6 +423,44 @@ button {
 
 .danger-text { color: var(--error) !important; }
 
+/* 界面缩放：A− / 百分比 / A+ 一组，跟主题钮并排坐；百分比点一下回 100%，
+   非 100% 时给数字一点主色，让人一眼看出这页不是原始大小 */
+.scale-seg {
+  display: flex;
+  align-items: center;
+  height: var(--control-h-sm);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-container);
+  overflow: hidden;
+
+  .scale-btn {
+    height: 100%;
+    min-width: 30px;
+    padding: 0 7px;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    border-radius: 0;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+    letter-spacing: 0;
+
+    &:hover { background: var(--bg-fill); color: var(--text); border: none; }
+
+    &.scale-cur {
+      min-width: 44px;
+      text-align: center;
+      color: var(--text-tertiary);
+      font-weight: 600;
+
+      &.non-default { color: var(--primary); }
+    }
+  }
+}
+
 /* 「未发布」：antd Tag 的红样式 */
 .dirty {
   @include label;

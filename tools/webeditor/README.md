@@ -32,6 +32,7 @@ tools/webeditor/
     images.ts             # 插图、粘贴截图
     types.ts              # 与 LanEditorStore.kt / LanEditorRecite.kt / LanEditorWords.kt 的 JSON 约定
     theme.ts              # 明暗主题：data-theme + localStorage + 跟系统
+    scale.ts              # 界面缩放：CSS zoom 顶栏五档（A−/A+），档位记 localStorage
     styles.scss           # 「淡紫瓷面」皮肤：一套令牌 + 明 / 暗两套值（[data-theme="dark"]）
     components/           # TopBar（模式切换 + 复制 MCP）/ Sidebar / SheetBar / QuestionList /
                           # MaterialList / QuestionCard / PreviewPane / IssuePane / VersionPane /

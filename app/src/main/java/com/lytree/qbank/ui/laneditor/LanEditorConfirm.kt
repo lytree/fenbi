@@ -4,7 +4,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.MutableLiveData
@@ -80,9 +79,17 @@ object LanEditorConfirm {
     /** 待确认队列：Activity 观察它，有几个弹几个 */
     val pending = MutableLiveData<List<Request>>(emptyList())
 
-    /** Activity 是否在前台：不在就发通知，免得请求躺在那儿没人看见 */
+    /** LanEditorActivity（开关页）是否在前台：在它就自己弹框，不用弹层页代劳 */
     @Volatile
     var activityVisible = false
+
+    /** App 里任意界面是否在前台（[com.lytree.qbank.QBankApp] 维护）：在前台就把确认弹层盖到当前画面上 */
+    @Volatile
+    var appVisible = false
+
+    /** 确认弹层页自己是否在最上面：在就不用重复拉起 */
+    @Volatile
+    var gateVisible = false
 
     private var appContext: Context? = null
     private val items = LinkedHashMap<String, Request>()
@@ -143,7 +150,7 @@ object LanEditorConfirm {
         reuse?.let { old ->
             // 通知和 LiveData 都放到锁外发：notify() 会碰系统服务，不该占着队列锁
             publish()
-            if (!activityVisible) notifyPending(ctx, old)
+            surface(ctx, old)
             return old
         }
         return enqueue(ctx, KIND_PUBLISH, 0L, title, detail, payload)
@@ -167,7 +174,7 @@ object LanEditorConfirm {
         }
         reuse?.let { old ->
             publish()
-            if (!activityVisible) notifyPending(ctx, old)
+            surface(ctx, old)
             return old
         }
         return enqueue(ctx, KIND_RESTORE, setId, title, detail, payload)
@@ -248,7 +255,7 @@ object LanEditorConfirm {
         }
         reuse?.let { old ->
             publish()
-            if (!activityVisible) notifyPending(ctx, old)
+            surface(ctx, old)
             return old
         }
         return enqueue(ctx, kind, 0L, title, detail, payload)
@@ -282,8 +289,25 @@ object LanEditorConfirm {
         )
         synchronized(items) { items[id] = req }
         publish()
-        if (!activityVisible) notifyPending(ctx, req)
+        surface(ctx, req)
         return req
+    }
+
+    /**
+     * 请求落定后怎么让手机知道：
+     * - 开关页在前台 → 它自己的 LiveData 弹框（老路子）；
+     * - App 其他任意界面在前台 → 直接把确认弹层盖到当前画面上（点完继续干手头的事）；
+     * - App 整个在后台 → 系统通知，点开就是确认弹层。
+     */
+    private fun surface(ctx: Context, req: Request) {
+        if (activityVisible) return
+        if (gateVisible) return
+        if (appVisible) {
+            runCatching { ctx.startActivity(LanEditorConfirmActivity.intent(ctx)) }
+                .onFailure { notifyPending(ctx, req) }
+            return
+        }
+        notifyPending(ctx, req)
     }
 
     // ---------------------------------------------------------------- 查询
@@ -430,27 +454,44 @@ object LanEditorConfirm {
 
     // ---------------------------------------------------------------- 通知
 
+    /** 弹窗按钮文案：「发布 / 回滚 / 保存背诵词库…」，两个 Activity 共用，口径一致 */
+    fun actionName(kind: String): String = when (kind) {
+        KIND_PUBLISH -> "发布"
+        KIND_RESTORE -> "回滚"
+        KIND_SAVE_RECITE -> "保存背诵词库"
+        KIND_RESET_RECITE -> "重置背诵词库"
+        KIND_SAVE_MINDMAP -> "保存思维导图"
+        KIND_RESET_MINDMAP -> "重置思维导图"
+        KIND_SAVE_LIBRARY -> "保存政治大纲"
+        KIND_RESET_LIBRARY -> "重置政治大纲"
+        KIND_MCP_KEY -> "获取 MCP 写入口令"
+        else -> "删除"
+    }
+
+    /** 拒绝按钮文案：「不发布 / 不回滚 / 不保存…」 */
+    fun cancelName(kind: String): String = when (kind) {
+        KIND_PUBLISH -> "不发布"
+        KIND_RESTORE -> "不回滚"
+        KIND_SAVE_RECITE -> "不保存"
+        KIND_RESET_RECITE -> "不重置"
+        KIND_SAVE_MINDMAP -> "不保存"
+        KIND_RESET_MINDMAP -> "不重置"
+        KIND_SAVE_LIBRARY -> "不保存"
+        KIND_RESET_LIBRARY -> "不重置"
+        KIND_MCP_KEY -> "不给"
+        else -> "不删"
+    }
+
     private fun notifyPending(context: Context, req: Request) {
         val nm = context.getSystemService(NotificationManager::class.java) ?: return
         createChannel(nm)
+        // 点通知直接进确认弹层：它是一层透明弹片，盖在哪儿都行，不必先跳回开关页
         val open = PendingIntent.getActivity(
             context, 2,
-            Intent(context, LanEditorActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NEW_TASK),
+            LanEditorConfirmActivity.intent(context),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val action = when (req.kind) {
-            KIND_PUBLISH -> "发布"
-            KIND_RESTORE -> "回滚"
-            KIND_SAVE_RECITE -> "保存背诵词库"
-            KIND_RESET_RECITE -> "重置背诵词库"
-            KIND_SAVE_MINDMAP -> "保存思维导图"
-            KIND_RESET_MINDMAP -> "重置思维导图"
-            KIND_SAVE_LIBRARY -> "保存政治大纲"
-            KIND_RESET_LIBRARY -> "重置政治大纲"
-            KIND_MCP_KEY -> "获取 MCP 写入口令"
-            else -> "删除"
-        }
+        val action = actionName(req.kind)
         val notif = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher)
             .setContentTitle("电脑请求${action}「${req.title}」")

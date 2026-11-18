@@ -534,7 +534,7 @@ class LanEditorServer(
         val detail = buildString {
             append("共 ${sheets.length()} 份卷、$questionCount 道题。")
             if (existing != null) {
-                append("会覆盖同名组，原有作答记录一并清掉；旧内容会自动存一版，还能滚回来。")
+                append("会覆盖同名组；交过卷的练习记录会尽量带到新组头上（被删题目的明细除外），旧内容自动存一版，还能滚回来。")
             } else {
                 append("确认后写进手机题库，App 首页就能看到。")
             }

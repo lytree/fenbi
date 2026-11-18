@@ -4,6 +4,7 @@ import {
   showErrors, state, switchMode, toast, ui,
 } from '../store'
 import { theme, toggleTheme } from '../theme'
+import { resetScale, scalePercent, uiScale, zoomIn, zoomOut } from '../scale'
 import { copyText, formatTime } from '../util'
 
 /** 明暗切换：白天显示月亮（切到夜间），夜里显示太阳 */
@@ -142,6 +143,32 @@ export default defineComponent({
             )}
 
           <div class="top-actions">
+            {/* 界面缩放：字号连着间距一起放大缩小，百分比点一下回 100% */}
+            <div class="scale-seg" role="group" aria-label="界面缩放" title="界面缩放：字号等一起放大缩小">
+              <button
+                class="scale-btn"
+                title="缩小（Ctrl -）"
+                aria-label="缩小界面"
+                onClick={() => { zoomOut(); toast(`界面缩放 ${scalePercent()}`, 'ok') }}
+              >
+                A−
+              </button>
+              <button
+                class={['scale-btn', 'scale-cur', uiScale.level !== 1 && 'non-default']}
+                title="恢复 100%（Ctrl 0）"
+                onClick={() => { resetScale(); toast('界面缩放 100%', 'ok') }}
+              >
+                {scalePercent()}
+              </button>
+              <button
+                class="scale-btn"
+                title="放大（Ctrl =）"
+                aria-label="放大界面"
+                onClick={() => { zoomIn(); toast(`界面缩放 ${scalePercent()}`, 'ok') }}
+              >
+                A+
+              </button>
+            </div>
             <button
               class="ghost sm"
               title="复制 AI（MCP）配置 JSON：写入口令要手机上点「确认提供」才会给"

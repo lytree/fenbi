@@ -10,6 +10,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
+        android:name=".QBankApp"
         android:allowBackup="true"
         android:icon="@drawable/ic_launcher"
         android:label="@string/app_name"
@@ -104,5 +105,17 @@
             android:name=".ui.laneditor.LanEditorActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
+
+        <!--
+          确认弹层：电脑请求发布 / 回滚 / 删除时，只要 App 在前台就盖到当前画面上。
+          透明弹片不是页面——不进多任务、独立 task（taskAffinity="" 让它 finish 后
+          原地消失，把画面还给底下的界面或别的 App）。
+        -->
+        <activity
+            android:name=".ui.laneditor.LanEditorConfirmActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.QBank.Popup" />
     </application>
 </manifest>

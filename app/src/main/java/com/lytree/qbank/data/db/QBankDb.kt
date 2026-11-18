@@ -852,13 +852,17 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         try {
             // 旧组里可以复用的题目 id：先记下来，重建完再把这次没用上的收尾
             val reusable = HashMap<String, Set<Long>>()
+            // 覆盖前把旧组的作答记录舀一份快照：重建完按卷名 / 题目 id 把记录带回来（见 RecordMigration）
+            val snapshots = HashMap<String, RecordMigration.Snapshot>()
             if (replace) {
                 val titles = usable.map { it.title }.toSet()
                 listPaperSets(withPapers = false, includeArchived = true)
                     .filter { it.id > 0 && it.title in titles }
                     .forEach { old ->
                         if (reuseQuestionIds) {
-                            reusable[old.title] = questionIdsOfSet(old.id)
+                            val ids = questionIdsOfSet(old.id)
+                            reusable[old.title] = ids
+                            snapshots[old.title] = snapshotSetRecords(db, old.id, ids)
                             dropSetStructure(old.id)
                         } else {
                             deletePaperSet(old.id)
@@ -875,12 +879,199 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
                 }
                 // 网页上删掉的题：确认它不再属于任何卷之后才真正删掉（顺带清收藏 / 笔记）
                 pruneOrphanQuestions(db, oldIds - usedIds)
+                // 新结构定型了才回填记录：旧卷按卷名挂新卷、悬空的题目明细按内容指纹找替身
+                snapshots[s.title]?.let { restoreSetRecords(db, it, setId) }
                 out.add(SetImportResult(setId, s.title, papers))
             }
             db.setTransactionSuccessful()
             return out
         } finally {
             db.endTransaction()
+        }
+    }
+
+    /**
+     * 覆盖发布前舀一份旧组的作答数据：records + 逐题明细 + 笔迹 + 逐题用时 + 题目内容键。
+     *
+     * 只搬**交过卷的**历史（`submitted_at > 0`）——没交的草稿跟着旧卷一起走，
+     * 半途的作答接不到新卷头上硬接反而是错的数据。映射规则见 [RecordMigration]。
+     */
+    private fun snapshotSetRecords(db: SQLiteDatabase, setId: Long, questionIds: Set<Long>): RecordMigration.Snapshot {
+        val papers = LinkedHashMap<Long, String>()
+        db.rawQuery("SELECT id, name FROM papers WHERE set_id = ?", arrayOf(setId.toString())).use { c ->
+            while (c.moveToNext()) papers[c.getLong(0)] = c.getString(1) ?: ""
+        }
+
+        val records = ArrayList<RecordMigration.RecordRow>()
+        val answers = ArrayList<RecordMigration.AnswerRow>()
+        val inks = ArrayList<RecordMigration.InkRow>()
+        val times = ArrayList<RecordMigration.TimeRow>()
+
+        if (papers.isNotEmpty()) {
+            // 卷的记录 + 「整组作答」那条虚拟卷（paper_id = -组 id）的记录都在这一口里
+            val pidIn = (papers.keys + PaperRef.groupPaperId(setId)).joinToString(",")
+            db.rawQuery(
+                """SELECT id, paper_id, name, mode, IFNULL(scope, ''), started_at, submitted_at,
+                          duration_sec, total_count, answered_count, correct_count, partial_count,
+                          score, full_score, IFNULL(marked, ''), IFNULL(status, '')
+                   FROM records WHERE paper_id IN ($pidIn)""",
+                null
+            ).use { c ->
+                while (c.moveToNext()) {
+                    records.add(
+                        RecordMigration.RecordRow(
+                            id = c.getLong(0), paperId = c.getLong(1), name = c.getString(2) ?: "",
+                            mode = c.getString(3) ?: "", scope = c.getString(4) ?: "",
+                            startedAt = c.getLong(5), submittedAt = c.getLong(6), durationSec = c.getInt(7),
+                            totalCount = c.getInt(8), answeredCount = c.getInt(9), correctCount = c.getInt(10),
+                            partialCount = c.getInt(11), score = c.getDouble(12), fullScore = c.getDouble(13),
+                            marked = c.getString(14) ?: "", status = c.getString(15) ?: "",
+                        )
+                    )
+                }
+            }
+        }
+
+        if (records.isNotEmpty()) {
+            records.map { it.id }.chunked(400).forEach { chunk ->
+                val inCl = chunk.joinToString(",")
+                db.rawQuery(
+                    "SELECT record_id, question_id, user_answer, earned, correct FROM record_answers WHERE record_id IN ($inCl)",
+                    null
+                ).use { c ->
+                    while (c.moveToNext()) {
+                        answers.add(
+                            RecordMigration.AnswerRow(
+                                recordId = c.getLong(0), questionId = c.getLong(1),
+                                userAnswer = c.getString(2) ?: "", earned = c.getDouble(3), correct = c.getInt(4),
+                            )
+                        )
+                    }
+                }
+                db.rawQuery(
+                    "SELECT record_id, kind, target_id, strokes, updated_at FROM record_inks WHERE record_id IN ($inCl)",
+                    null
+                ).use { c ->
+                    while (c.moveToNext()) {
+                        inks.add(
+                            RecordMigration.InkRow(
+                                recordId = c.getLong(0), kind = c.getString(1) ?: "", targetId = c.getLong(2),
+                                strokes = c.getString(3) ?: "", updatedAt = c.getLong(4),
+                            )
+                        )
+                    }
+                }
+                db.rawQuery(
+                    "SELECT record_id, question_id, seconds, updated_at FROM record_question_times WHERE record_id IN ($inCl)",
+                    null
+                ).use { c ->
+                    while (c.moveToNext()) {
+                        times.add(
+                            RecordMigration.TimeRow(
+                                recordId = c.getLong(0), questionId = c.getLong(1),
+                                seconds = c.getInt(2), updatedAt = c.getLong(3),
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
+        // 旧组出现过的题目内容：指纹建表用（删了又加回来的题靠它找回替身）
+        val questions = HashMap<Long, RecordMigration.QuestionKey>()
+        questionIds.chunked(400).forEach { chunk ->
+            val inCl = chunk.joinToString(",")
+            db.rawQuery("SELECT id, type, stem, answer FROM questions WHERE id IN ($inCl)", null).use { c ->
+                while (c.moveToNext()) {
+                    questions[c.getLong(0)] = RecordMigration.QuestionKey(
+                        type = c.getString(1) ?: "", stem = c.getString(2) ?: "", answer = c.getString(3) ?: "",
+                    )
+                }
+            }
+        }
+
+        return RecordMigration.Snapshot(setId, papers, records, answers, inks, times, questions)
+    }
+
+    /** 新组建好了，按 [RecordMigration.plan] 的口径把快照里的记录挂回去 */
+    private fun restoreSetRecords(db: SQLiteDatabase, snapshot: RecordMigration.Snapshot, newSetId: Long) {
+        val newPapers = LinkedHashMap<Long, String>()
+        db.rawQuery("SELECT id, name FROM papers WHERE set_id = ?", arrayOf(newSetId.toString())).use { c ->
+            while (c.moveToNext()) newPapers[c.getLong(0)] = c.getString(1) ?: ""
+        }
+        val newQuestions = LinkedHashMap<Long, RecordMigration.QuestionKey>()
+        db.rawQuery(
+            """SELECT DISTINCT q.id, q.type, q.stem, q.answer FROM questions q
+               JOIN paper_questions pq ON pq.question_id = q.id
+               JOIN papers p ON p.id = pq.paper_id
+               WHERE p.set_id = ? ORDER BY q.id""",
+            arrayOf(newSetId.toString())
+        ).use { c ->
+            while (c.moveToNext()) {
+                newQuestions[c.getLong(0)] = RecordMigration.QuestionKey(
+                    type = c.getString(1) ?: "", stem = c.getString(2) ?: "", answer = c.getString(3) ?: "",
+                )
+            }
+        }
+
+        val plan = RecordMigration.plan(snapshot, newSetId, newPapers, newQuestions)
+        if (plan.records.isEmpty()) return
+
+        val recordMap = HashMap<Long, Long>()
+        plan.records.forEach { pr ->
+            val cv = ContentValues().apply {
+                put("paper_id", pr.newPaperId)
+                put("name", pr.old.name)
+                put("mode", pr.old.mode)
+                put("scope", pr.scope)
+                put("started_at", pr.old.startedAt)
+                put("submitted_at", pr.old.submittedAt)
+                put("duration_sec", pr.old.durationSec)
+                put("total_count", pr.old.totalCount)
+                put("answered_count", pr.old.answeredCount)
+                put("correct_count", pr.old.correctCount)
+                put("partial_count", pr.old.partialCount)
+                put("score", pr.old.score)
+                put("full_score", pr.old.fullScore)
+                put("marked", pr.markedIds.joinToString(","))
+                put("status", pr.old.status.ifBlank { "done" })
+            }
+            val rid = db.insertOrThrow("records", null, cv)
+            recordMap[pr.old.id] = rid
+        }
+
+        plan.answers.forEach { (oldRid, qid, a) ->
+            val rid = recordMap[oldRid] ?: return@forEach
+            db.insertWithOnConflict(
+                "record_answers", null,
+                ContentValues().apply {
+                    put("record_id", rid); put("question_id", qid)
+                    put("user_answer", a.userAnswer); put("earned", a.earned); put("correct", a.correct)
+                },
+                SQLiteDatabase.CONFLICT_IGNORE
+            )
+        }
+        plan.inks.forEach { (oldRid, tid, i) ->
+            val rid = recordMap[oldRid] ?: return@forEach
+            db.insertWithOnConflict(
+                "record_inks", null,
+                ContentValues().apply {
+                    put("record_id", rid); put("kind", i.kind); put("target_id", tid)
+                    put("strokes", i.strokes); put("updated_at", i.updatedAt)
+                },
+                SQLiteDatabase.CONFLICT_IGNORE
+            )
+        }
+        plan.times.forEach { (oldRid, qid, t) ->
+            val rid = recordMap[oldRid] ?: return@forEach
+            db.insertWithOnConflict(
+                "record_question_times", null,
+                ContentValues().apply {
+                    put("record_id", rid); put("question_id", qid)
+                    put("seconds", t.seconds); put("updated_at", t.updatedAt)
+                },
+                SQLiteDatabase.CONFLICT_IGNORE
+            )
         }
     }
 
