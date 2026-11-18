@@ -180,29 +180,31 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/topBar" />
 
-    <!-- ===== 弹出材料：就地分屏（上材料 / 下题目，中间手柄可上下拖动） ===== -->
+    <!-- ===== 弹出材料：就地左右分屏（左材料 / 右整组题，中间手柄可左右拖动） =====
+         对齐粉笔资料分析：弹出材料不是另开一页，而是把当前这组题的版式就地切成左右两栏，
+         顶栏（交卷 / 答题卡 / 更多）与单题模式完全一致，手写标注直接落在右栏题目卡上。 -->
     <LinearLayout
         android:id="@+id/splitBody"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:orientation="vertical"
+        android:orientation="horizontal"
         android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/topBar">
 
-        <!-- 上栏：材料，可收起（weight 1000 = 与下栏按比例分） -->
+        <!-- 左栏：材料，可收起（weight 1000 = 与右栏按比例分） -->
         <LinearLayout
             android:id="@+id/splitLeftPane"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="450"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="400"
             android:background="@color/fb_bar_bg"
             android:orientation="vertical"
-            android:paddingStart="@dimen/fb_content_padding_h"
+            android:paddingStart="@dimen/fb_space_12"
             android:paddingTop="@dimen/fb_space_12"
-            android:paddingEnd="@dimen/fb_content_padding_h">
+            android:paddingEnd="@dimen/fb_space_12">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -226,9 +228,33 @@
                     android:layout_height="1dp"
                     android:layout_weight="1" />
 
+                <!-- 左栏窄，表格 / 图表看不全时弹到整页看 -->
+                <LinearLayout
+                    android:id="@+id/btnSplitExpand"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:padding="@dimen/fb_space_4">
+
+                    <ImageView
+                        android:layout_width="@dimen/fb_icon_sm_size"
+                        android:layout_height="@dimen/fb_icon_sm_size"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_fb_material_expand"
+                        android:tint="@color/fb_text_meta" />
+
+                    <TextView
+                        style="@style/FbCaption"
+                        android:layout_marginStart="@dimen/fb_space_4"
+                        android:text="@string/material_pop_out" />
+                </LinearLayout>
+
                 <TextView
                     android:id="@+id/btnSplitCollapse"
                     style="@style/FbCaption"
+                    android:layout_marginStart="@dimen/fb_space_4"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:padding="@dimen/fb_space_4"
                     android:text="@string/material_collapse" />
@@ -251,26 +277,26 @@
             </androidx.core.widget.NestedScrollView>
         </LinearLayout>
 
-        <!-- 中缝：整条都是热区，拖动改上下占比；grip 只是个视觉小横条 -->
+        <!-- 中缝：整条都是热区，左右拖动改两栏占比；grip 只是个视觉小竖条 -->
         <FrameLayout
             android:id="@+id/splitHandle"
-            android:layout_width="match_parent"
-            android:layout_height="28dp">
+            android:layout_width="14dp"
+            android:layout_height="match_parent">
 
             <View
                 android:id="@+id/splitHandleBar"
-                android:layout_width="44dp"
-                android:layout_height="4dp"
+                android:layout_width="4dp"
+                android:layout_height="44dp"
                 android:layout_gravity="center"
                 android:background="@drawable/bg_fb_drag_bar" />
         </FrameLayout>
 
-        <!-- 下栏：这组材料对应的题目，运行时放入「一页一题」分页器 -->
+        <!-- 右栏：这一组材料对应的整组小题，铺成一条连续卷面（运行时放入按组分页的分页器） -->
         <FrameLayout
             android:id="@+id/splitQuestionPane"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="550" />
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="600" />
     </LinearLayout>
 
     <!-- ===== 遮盖层（可写） =====
@@ -433,37 +459,6 @@
             <com.lytree.qbank.ui.FbSwitchView
                 android:id="@+id/switchPracticeMode"
                 style="@style/FbSwitch" />
-        </LinearLayout>
-
-        <!-- 左右分屏入口：仅当本卷含材料题时出现 -->
-        <View
-            android:id="@+id/splitDivider"
-            style="@style/FbDivider"
-            android:layout_marginTop="@dimen/fb_space_8"
-            android:visibility="gone" />
-
-        <LinearLayout
-            android:id="@+id/rowSplit"
-            android:layout_width="match_parent"
-            android:layout_height="34dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:visibility="gone">
-
-            <TextView
-                android:id="@+id/tvSplitLabel"
-                style="@style/FbCaption"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:text="@string/more_split_on"
-                android:textColor="@color/fb_text_primary" />
-
-            <ImageView
-                android:id="@+id/icSplitArrow"
-                android:layout_width="@dimen/fb_icon_sm_size"
-                android:layout_height="@dimen/fb_icon_sm_size"
-                android:contentDescription="@null"
-                android:src="@drawable/ic_fb_chevron" />
         </LinearLayout>
 
         <!-- 导入答案：试卷常常没带答案，做完再补一份答案表来对比 -->

@@ -24,7 +24,7 @@ import com.lytree.qbank.engine.Policy
  * 之所以拆成两张卡：答案和解析本来就不同命——答案永远有（含「未作答」），解析常常没有；
  * 挤在一张卡里，没解析的题会剩一截空卡底，「解析」这个标题也没了着落。
  *
- * 答题页、解析页（[QuestionReviewActivity]）、分屏右栏（[SplitExamActivity]）都调这里，
+ * 答题页、解析页（[QuestionReviewActivity]）、弹出材料的左右分屏右栏都调这里，
  * 三处共用同一套口径（以前是三处各拼一段 buildString）。
  */
 object AnswerBlock {

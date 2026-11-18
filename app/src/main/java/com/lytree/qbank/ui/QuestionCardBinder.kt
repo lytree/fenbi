@@ -713,7 +713,7 @@ object QuestionCardBinder {
      * （只缩不放、保持原比例），最高 240dp；**点图看大图**，点其余部分是选这一项。
      * 配图上的长按交给 [onImageLongPress]，否则图片可点会把整行的「长按打叉」吃掉。
      *
-     * 分屏页（[SplitExamActivity]）也走这里，两处口径一致，别各写一份。
+     * 弹出材料的左右分屏（答题页 `ExamActivity` 右栏）也走这里，两处口径一致，别各写一份。
      */
     fun bindOptionBody(
         item: ItemOptionBinding,

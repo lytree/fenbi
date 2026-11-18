@@ -60,7 +60,6 @@
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:resizeableActivity="true" />
-        <activity android:name=".ui.SplitExamActivity" android:exported="false" />
         <activity android:name=".ui.MaterialPopupActivity" android:exported="false" />
         <!-- 答题卡是「弹层」而不是一屏：透明窗口，弹出来时答题页仍在下面可见 -->
         <activity

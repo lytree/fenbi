@@ -11,7 +11,6 @@ import com.lytree.qbank.data.db.QBankDb
 import com.lytree.qbank.ui.ExamActivity
 import com.lytree.qbank.ui.InkOverlay
 import com.lytree.qbank.ui.QuestionTimer
-import com.lytree.qbank.ui.SplitExamActivity
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -27,7 +26,8 @@ import org.junit.runner.RunWith
  * 覆盖：
  * 1. 限时卷交卷失败 → 倒计时按**剩余时间**重挂（不回到满时长、失败窗口不算作答）→ 再次交卷成功；
  * 2. 连续两次失败 → 不叠加计时器、剩余时间不越走越少；
- * 3. 分屏页交卷失败 → 正计时续上、每题计时续上，再次交卷成功。
+ * 3. 不限时卷交卷失败 → 正计时续上（startedAt 摘掉失败窗口）、每题计时续上，再次交卷成功。
+ *    （原「分屏页」口径——分屏已并入答题页就地左右分屏，交卷走同一套 submit。）
  */
 @RunWith(AndroidJUnit4::class)
 class SubmitTimingRecoveryTest {
@@ -136,24 +136,24 @@ class SubmitTimingRecoveryTest {
         }
     }
 
-    // ---------------- 分屏页 ----------------
+    // ---------------- 不限时卷（原分屏页口径，交卷已并入答题页） ----------------
 
     @Test
-    fun split_failed_submit_resumes_timers_and_retry_succeeds() {
-        insertPaper(splitPaperId, splitQuestionId, durationMin = 30)
-        val draft = db.ensureDraftRecord(splitPaperId, "split", 1_000L)
+    fun untimed_failed_submit_resumes_timers_and_retry_succeeds() {
+        insertPaper(splitPaperId, splitQuestionId, durationMin = 0)
+        val draft = db.ensureDraftRecord(splitPaperId, "exam", 1_000L)
         installFailTrigger(draft)
 
-        val scenario = ActivityScenario.launch<SplitExamActivity>(
-            Intent(ctx, SplitExamActivity::class.java)
-                .putExtra(SplitExamActivity.EXTRA_PAPER_ID, splitPaperId)
+        val scenario = ActivityScenario.launch<ExamActivity>(
+            Intent(ctx, ExamActivity::class.java)
+                .putExtra(ExamActivity.EXTRA_PAPER_ID, splitPaperId)
         )
         try {
-            assertEquals("分屏页沿用已有草稿", draft, waitForSplitRecordId(scenario))
+            assertEquals("答题页沿用已有草稿", draft, waitForRecordId(scenario))
             var startedAtBefore = 0L
             scenario.onActivity { act ->
                 startedAtBefore = field(act, "startedAt") as Long
-                invokeSplitSubmit(act)
+                invokeSubmit(act)
             }
 
             var submitted = true
@@ -162,7 +162,7 @@ class SubmitTimingRecoveryTest {
                 submitted = field(act, "submitted") as Boolean
                 startedAtAfter = field(act, "startedAt") as Long
             }
-            assertFalse("分屏页失败后必须回到可重试状态", submitted)
+            assertFalse("失败后必须回到可重试状态", submitted)
             // 正计时按 startedAt 起算：失败窗口被往后挪掉，计时不会把失败这段算作答
             assertTrue("失败时 startedAt 应往后挪（摘掉失败窗口）", startedAtAfter >= startedAtBefore)
 
@@ -171,10 +171,10 @@ class SubmitTimingRecoveryTest {
             scenario.onActivity { act ->
                 questionSec = (field(act, "questionTimer") as QuestionTimer).currentSeconds()
             }
-            assertTrue("分屏页失败后每题计时继续累加", questionSec >= 1)
+            assertTrue("失败后每题计时继续累加", questionSec >= 1)
 
             db.writableDatabase.execSQL("DROP TRIGGER IF EXISTS $failTrigger")
-            scenario.onActivity { act -> invokeSplitSubmit(act) }
+            scenario.onActivity { act -> invokeSubmit(act) }
             assertEquals(QBankDb.STATUS_DONE, db.getRecord(draft)!!.status)
             assertNull(db.getProgress(splitPaperId))
         } finally {
@@ -191,19 +191,6 @@ class SubmitTimingRecoveryTest {
         )
 
     private fun waitForRecordId(scenario: ActivityScenario<ExamActivity>): Long {
-        val deadline = SystemClock.uptimeMillis() + 5_000L
-        while (SystemClock.uptimeMillis() < deadline) {
-            var rid = 0L
-            scenario.onActivity { act ->
-                rid = act.findViewById<InkOverlay>(R.id.inkOverlay).recordId
-            }
-            if (rid > 0L) return rid
-            Thread.sleep(50L)
-        }
-        return 0L
-    }
-
-    private fun waitForSplitRecordId(scenario: ActivityScenario<SplitExamActivity>): Long {
         val deadline = SystemClock.uptimeMillis() + 5_000L
         while (SystemClock.uptimeMillis() < deadline) {
             var rid = 0L
@@ -245,12 +232,6 @@ class SubmitTimingRecoveryTest {
         val m = ExamActivity::class.java.getDeclaredMethod("submit", Boolean::class.javaPrimitiveType)
         m.isAccessible = true
         m.invoke(activity, false)
-    }
-
-    private fun invokeSplitSubmit(activity: SplitExamActivity) {
-        val m = SplitExamActivity::class.java.getDeclaredMethod("submit")
-        m.isAccessible = true
-        m.invoke(activity)
     }
 
     private fun field(target: Any, name: String): Any? =

@@ -372,12 +372,14 @@ class QuestionPagerAdapter(
         )
         b.tvGroupMaterialExpand.setTextColor(metaColor)
         b.icGroupMaterialExpand.setColorFilter(metaColor)
-        // 平板一题一页：材料就在这页上区，「弹出材料」再弹一遍没意义；给的是组内第几题
-        val splitPage = isSplitPage(page)
+        // 弹出材料 = 就地左右分屏：单题 / 多题、手机 / 平板都留着这个入口——
+        // 上下分栏里材料只有半屏高，表格 / 图表想看清还是得切成左右分屏
         b.btnGroupMaterialExpand.visibility =
-            if (!hideMaterial && expandMaterial != null && !splitPage) View.VISIBLE else View.GONE
+            if (!hideMaterial && expandMaterial != null) View.VISIBLE else View.GONE
         b.btnGroupMaterialExpand.setOnClickListener { expandMaterial?.invoke(questions[page.start]) }
         val groupAtPage = structure.groupAt(page.start)
+        // 平板一题一页的材料页：告诉用户这是这则材料的第几题
+        val splitPage = isSplitPage(page)
         if (splitPage && groupAtPage != null && groupAtPage.count > 1) {
             b.tvGroupProgress.visibility = View.VISIBLE
             b.tvGroupProgress.setTextColor(metaColor)
