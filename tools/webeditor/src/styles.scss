@@ -720,9 +720,75 @@ button {
   gap: 14px;
   padding: 14px 18px 18px;
   background: transparent;
+  /* 收起侧栏的拉手 absolute 定位在缝上，锚在这里 */
+  position: relative;
 
   &.no-preview {
     grid-template-columns: clamp(204px, 14vw, 244px) minmax(0, 1fr);
+  }
+
+  /* 左侧列表整体折叠：编辑区顶到最左，预览列照常保留 */
+  &.no-sidebar {
+    grid-template-columns: minmax(0, 1fr) var(--preview-w, clamp(330px, 25vw, 430px));
+
+    > .sidebar { display: none; }
+  }
+
+  &.no-sidebar.no-preview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* 侧栏右缘的收起拉手：骑在侧栏和编辑区之间的缝上，半嵌进编辑区边缘 */
+.sidebar-tab {
+  position: absolute;
+  /* 缝宽 14px：侧栏右边缘 + 半条缝，正好落在两块瓷板交界上 */
+  left: calc(clamp(204px, 14vw, 244px) + 7px);
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 30;
+  width: 22px;
+  height: 52px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  background: var(--bg-container);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: -8px 0 22px -14px rgba(44, 24, 96, .28);
+  color: var(--text-tertiary);
+
+  &:hover {
+    color: var(--primary);
+    border-color: var(--primary-border);
+    background: var(--primary-bg);
+  }
+}
+
+/* 收起侧栏后，左边缘留一个「拉手」：贴边竖条，和右边的 .preview-fab 对称 */
+.sidebar-fab {
+  position: fixed;
+  left: 0;
+  top: 58%;
+  transform: translateY(-50%);
+  z-index: 30;
+  width: 26px;
+  height: 56px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  background: var(--bg-container);
+  border: 1px solid var(--border);
+  border-left: none;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  box-shadow: 8px 0 22px -14px rgba(44, 24, 96, .28);
+  color: var(--text-tertiary);
+
+  &:hover {
+    color: var(--primary);
+    border-color: var(--primary-border);
+    background: var(--primary-bg);
+    width: 30px;
   }
 }
 
@@ -2812,6 +2878,13 @@ body.pane-dragging {
     padding: 10px 12px 12px;
   }
 
+  /* 折叠态在窄窗同样成立：编辑区顶到最左，收起拉手跟着缝的位置挪 */
+  .layout.no-sidebar,
+  .layout.no-sidebar.no-preview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .sidebar-tab { left: calc(clamp(180px, 18vw, 212px) + 5px); }
+
   .layout:not(.no-preview) .preview {
     position: fixed;
     top: calc(var(--header-h) + 10px);
@@ -2848,6 +2921,16 @@ body.pane-dragging {
     overflow: hidden;
     border: 1px solid var(--border-secondary);
   }
+
+  /* 侧栏在这里已经压成顶部横条，再折叠就没了：折叠态强制还原，拉手也藏起来 */
+  .layout.no-sidebar > .sidebar { display: flex; }
+  .layout.no-sidebar,
+  .layout.no-sidebar.no-preview {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .sidebar-tab,
+  .sidebar-fab { display: none; }
   .sidebar .side-head {
     flex: 0 0 auto;
     display: flex;

@@ -37,6 +37,17 @@ export default defineComponent({
     const previewHidden = ref(typeof window !== 'undefined' && window.innerWidth <= NARROW_PREVIEW)
     let previewManual: boolean | null = null
 
+    /** 左侧套卷列表整体折叠：和右栏预览的收起/展开对称，记到 localStorage，下次打开还保持 */
+    const SIDEBAR_KEY = 'webeditor.sidebarHidden'
+    const sidebarHidden = ref(false)
+    try {
+      sidebarHidden.value = localStorage.getItem(SIDEBAR_KEY) === '1'
+    } catch { /* 隐私模式读不到 localStorage：当作展开 */ }
+    const setSidebarHidden = (hidden: boolean) => {
+      sidebarHidden.value = hidden
+      try { localStorage.setItem(SIDEBAR_KEY, hidden ? '1' : '0') } catch { /* 忽略 */ }
+    }
+
     const syncViewport = () => {
       const narrow = window.innerWidth <= NARROW_PREVIEW
       previewHidden.value = previewManual ?? narrow
@@ -176,9 +187,36 @@ export default defineComponent({
         <TopBar />
 
         <main
-          class={['layout', state.mode === 'recite' && 'recite-layout', previewHidden.value && 'no-preview']}
+          class={[
+            'layout',
+            state.mode === 'recite' && 'recite-layout',
+            previewHidden.value && 'no-preview',
+            sidebarHidden.value && 'no-sidebar',
+          ]}
           style={previewW.value === null ? undefined : { '--preview-w': `${previewW.value}px` }}
         >
+          {/* 侧栏右缘的收起拉手：贴在侧栏和编辑区的缝上，不占格子 */}
+          {!sidebarHidden.value
+            ? (
+              <button
+                class="sidebar-tab"
+                title="收起左侧列表（编辑区变大）"
+                onClick={() => setSidebarHidden(true)}
+              >
+                ⟨
+              </button>
+            )
+            : (
+              // 收起后左边缘留一个小拉手，点一下把列表拉回来
+              <button
+                class="sidebar-fab"
+                title="展开左侧列表"
+                onClick={() => setSidebarHidden(false)}
+              >
+                ⟩
+              </button>
+            )}
+
           <Sidebar />
 
           {state.mode === 'recite'
