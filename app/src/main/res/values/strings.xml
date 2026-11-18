@@ -204,9 +204,8 @@
     <string name="report_action_all_analysis">全部解析</string>
     <!-- 解析页（与答题页同款卷面）：顶栏「第 8/30 题」，右侧「看原题」回试卷定位 -->
     <string name="report_analysis_page_title">第 %1$d/%2$d 题</string>
-    <!-- 解析页统计三项（对齐参考应用；数据来自本机记录聚合：用时表 + 历史作答表） -->
+    <!-- 解析页统计两项（对齐参考应用；数据来自本机记录聚合：用时表 + 历史作答表） -->
     <string name="solution_stat_time">答题时间</string>
-    <string name="solution_stat_rate">历史正确率</string>
     <string name="solution_stat_trap">易错项</string>
     <!-- 解析页考点 / 来源行：解析态才出现，有数据才显示 -->
     <string name="solution_meta_knowledge">考点</string>

@@ -18,7 +18,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content" />
 
-    <!-- ===== 统计三项：答题时间 / 历史正确率 / 易错项 =====
+    <!-- ===== 统计两项：答题时间 / 易错项 =====
          对齐参考应用解析页的统计条（那边是全站口径，这边用本机记录聚合）。
          有数据才出现；样式沿用站内统计格（值粗体着色 + 标签灰小字 + 细竖线） -->
     <LinearLayout
@@ -40,19 +40,6 @@
             <TextView
                 style="@style/FbSolutionStatLabel"
                 android:text="@string/solution_stat_time" />
-        </LinearLayout>
-
-        <View style="@style/FbSolutionStatDivider" />
-
-        <LinearLayout style="@style/FbSolutionStatCell">
-            <TextView
-                android:id="@+id/tvStatRate"
-                style="@style/FbSolutionStatValue"
-                android:textColor="@color/fb_success"
-                tools:text="86%" />
-            <TextView
-                style="@style/FbSolutionStatLabel"
-                android:text="@string/solution_stat_rate" />
         </LinearLayout>
 
         <View style="@style/FbSolutionStatDivider" />

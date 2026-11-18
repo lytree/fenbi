@@ -16,18 +16,15 @@ import com.lytree.qbank.engine.Policy
 import com.lytree.qbank.ui.record.RecordAdapter
 
 /**
- * 解析页统计三项的数据（对齐参考应用「答题时间 / 正确率 / 易错项」——
+ * 解析页统计两项的数据（对齐参考应用「答题时间 / 易错项」——
  * 那边是全站口径，这边用本机数据聚合：用时来自 `record_question_times`，
- * 正确率 / 易错项来自全库 `record_answers` 按题聚合）。
+ * 易错项来自全库 `record_answers` 按题聚合）。
  *
  * 没有数据的项显示「--」；整项没数据时统计行整行不出现。
  */
 data class QuestionStats(
     /** 本次记录里这道题的累计秒数（没计过时为 null） */
     val seconds: Int? = null,
-    /** 历史作答数 / 答对数（全库记录聚合；没作答过为 0） */
-    val answered: Int = 0,
-    val right: Int = 0,
     /** 历史上答错最多的选项（如 "C"；没答错过为 null） */
     val commonWrong: String? = null
 )
@@ -37,7 +34,7 @@ data class QuestionStats(
  *
  * 三块内容各有一份布局和一份绑定：
  * - [AnswerSummary] → `view_fb_answer_summary.xml`（浅灰卡：正确答案 / 你的答案）
- * - 统计三项 → `statsRow`（答题时间 / 历史正确率 / 易错项，有数据才出现）
+ * - 统计两项 → `statsRow`（答题时间 / 易错项，有数据才出现）
  * - [AnalysisCard]  → `view_fb_analysis_card.xml`（白底描边卡：可收起的解析）
  *
  * 之所以拆成几张卡：答案和解析本来就不同命——答案永远有（含「未作答」），解析常常没有；
@@ -55,7 +52,7 @@ object AnswerBlock {
         policy: Policy = Policy.DEFAULT,
         /** 夜间：只换底色与字色，版式一律不动 */
         night: Boolean = false,
-        /** 统计三项（解析页传，答题页不传）；传了但全空时统计行也自动收起 */
+        /** 统计两项（解析页传，答题页不传）；传了但全空时统计行也自动收起 */
         stats: QuestionStats? = null
     ) {
         val r = Judge.judge(q, userAnswer, policy)
@@ -65,10 +62,10 @@ object AnswerBlock {
         b.root.visibility = View.VISIBLE
     }
 
-    /** 统计三项：三格各管各的数据源，缺哪项补「--」；三项全缺就整行收起 */
+    /** 统计两项：两格各管各的数据源，缺哪项补「--」；两项全缺就整行收起 */
     private fun bindStats(b: ViewFbAnswerBlockBinding, stats: QuestionStats?) {
         val row = b.statsRow
-        if (stats == null || (stats.seconds == null && stats.answered <= 0 && stats.commonWrong == null)) {
+        if (stats == null || (stats.seconds == null && stats.commonWrong == null)) {
             row.visibility = View.GONE
             return
         }
@@ -76,16 +73,9 @@ object AnswerBlock {
 
         // 答题时间（蓝）：本次记录里的累计秒数；没计过时给「--」
         b.tvStatTime.text = stats.seconds?.let { RecordAdapter.fmtDuration(it) } ?: "--"
-        // 历史正确率（绿）：全库这道题的作答聚合；没作答过给「--」
-        b.tvStatRate.text = if (stats.answered > 0) {
-            "${stats.right * 100 / stats.answered}%"
-        } else {
-            "--"
-        }
         // 易错项（红）：历史上答错最多的选项；没答错过给「--」
         b.tvStatTrap.text = stats.commonWrong ?: "--"
         b.tvStatTime.setTextColor(ContextCompat.getColor(ctx, R.color.fb_primary))
-        b.tvStatRate.setTextColor(ContextCompat.getColor(ctx, R.color.fb_success))
         b.tvStatTrap.setTextColor(ContextCompat.getColor(ctx, R.color.fb_danger))
         row.visibility = View.VISIBLE
     }

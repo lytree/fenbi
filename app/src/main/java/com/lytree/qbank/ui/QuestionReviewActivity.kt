@@ -104,17 +104,15 @@ class QuestionReviewActivity : AppCompatActivity() {
                 val r = db.getRecord(recordId) ?: return@withContext null
                 // 收藏是全局表，这里一次读全再按本卷过滤，免得每题一次查询
                 val favoriteIds = db.listFavoriteIds()
-                // 统计三项 + 笔记一次读全：统计每题查一次历史（本机数据量级小），
+                // 统计两项 + 笔记一次读全：统计每题查一次历史（本机数据量级小），
                 // 笔记按题 id 集合批读——绑卡片时不再碰库
                 val times = db.getQuestionTimes(recordId)
                 val stats = HashMap<Long, QuestionStats>()
                 val noteMap = db.getNotes(r.results.map { it.question.id }).toMutableMap()
                 r.results.forEach { res ->
-                    val (answered, right, commonWrong) = db.questionHistoryStats(res.question.id)
+                    val (_, _, commonWrong) = db.questionHistoryStats(res.question.id)
                     stats[res.question.id] = QuestionStats(
                         seconds = times[res.question.id],
-                        answered = answered,
-                        right = right,
                         commonWrong = commonWrong
                     )
                 }
