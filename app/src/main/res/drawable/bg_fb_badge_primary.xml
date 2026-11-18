@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 报告页「考试情况」知识点徽标：主紫圆角方 + 白勾 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/fb_primary" />
+    <corners android:radius="@dimen/fb_report_badge_radius" />
+</shape>

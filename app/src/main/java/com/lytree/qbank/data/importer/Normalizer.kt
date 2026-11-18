@@ -371,6 +371,10 @@ object Normalizer {
                     val up = token.uppercase()
                     when {
                         known.contains(up) -> out.add(up)
+                        // 多选题连写「ABC」：每个字母都是已知选项键 → 拆成单键
+                        // （最常见的多选答案写法没有分隔符，不拆就整段落空、变成「待补答案」）
+                        up.length in 2..8 && up.all { it.toString() in known } ->
+                            up.forEach { out.add(it.toString()) }
                         else -> {
                             val m = Regex("^([A-Ha-h])\\s*[.、．:：)）]\\s*.*$").find(token)
                             if (m != null && known.contains(m.groupValues[1].uppercase())) {

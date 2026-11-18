@@ -6,6 +6,7 @@
   两张卡各自管自己的显隐，容器只在两张都空时整块收起（由 AnswerBlock 控）。
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
@@ -16,6 +17,57 @@
         layout="@layout/view_fb_answer_summary"
         android:layout_width="match_parent"
         android:layout_height="wrap_content" />
+
+    <!-- ===== 统计三项：答题时间 / 历史正确率 / 易错项 =====
+         对齐参考应用解析页的统计条（那边是全站口径，这边用本机记录聚合）。
+         有数据才出现；样式沿用站内统计格（值粗体着色 + 标签灰小字 + 细竖线） -->
+    <LinearLayout
+        android:id="@+id/statsRow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/fb_space_12"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:visibility="gone"
+        tools:visibility="visible">
+
+        <LinearLayout style="@style/FbSolutionStatCell">
+            <TextView
+                android:id="@+id/tvStatTime"
+                style="@style/FbSolutionStatValue"
+                android:textColor="@color/fb_primary"
+                tools:text="42秒" />
+            <TextView
+                style="@style/FbSolutionStatLabel"
+                android:text="@string/solution_stat_time" />
+        </LinearLayout>
+
+        <View style="@style/FbSolutionStatDivider" />
+
+        <LinearLayout style="@style/FbSolutionStatCell">
+            <TextView
+                android:id="@+id/tvStatRate"
+                style="@style/FbSolutionStatValue"
+                android:textColor="@color/fb_success"
+                tools:text="86%" />
+            <TextView
+                style="@style/FbSolutionStatLabel"
+                android:text="@string/solution_stat_rate" />
+        </LinearLayout>
+
+        <View style="@style/FbSolutionStatDivider" />
+
+        <LinearLayout style="@style/FbSolutionStatCell">
+            <TextView
+                android:id="@+id/tvStatTrap"
+                style="@style/FbSolutionStatValue"
+                android:textColor="@color/fb_danger"
+                tools:text="C" />
+            <TextView
+                style="@style/FbSolutionStatLabel"
+                android:text="@string/solution_stat_trap" />
+        </LinearLayout>
+    </LinearLayout>
 
     <include
         android:id="@+id/analysis"

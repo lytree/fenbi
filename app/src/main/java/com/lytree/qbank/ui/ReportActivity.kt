@@ -23,7 +23,7 @@ import com.lytree.qbank.data.db.QBankDb
 import com.lytree.qbank.data.model.AnswerResult
 import com.lytree.qbank.data.model.ExamRecord
 import com.lytree.qbank.databinding.ActivityReportBinding
-import com.lytree.qbank.databinding.ItemCardNumBinding
+import com.lytree.qbank.databinding.ItemReportNumBinding
 import com.lytree.qbank.ui.record.RecordAdapter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -31,7 +31,9 @@ import kotlinx.coroutines.withContext
 import java.util.Locale
 
 /**
- * 成绩报告：得分 / 正确率 / 用时 + 全部题目对错一览 + 解析入口。
+ * 成绩报告（版式复刻粉笔练习报告，docs/fenbi-ui/README.md §2）：
+ * 卡1「考试情况」= 四宫格（一共/答对/答错/总用时）+ 知识点行；卡2「答题卡」= 全卷对错一览；
+ * 底部固定双按钮进解析。品牌色沿用本站主紫，其余尺寸间距按复刻资料来。
  *
  * 这里不再直接铺「逐题解析」那一长串卡片——一屏先给整卷的答题对错（答对绿、答错红），
  * 想深看再选：点某个题号 = 单题解析（可上下翻），「错题解析」只翻没答对的题，
@@ -119,20 +121,15 @@ class ReportActivity : AppCompatActivity() {
             binding.tvPendingHint.setOnClickListener(null)
         }
 
-        binding.tvScore.text = String.format(Locale.CHINA, "%.1f", record.score)
-        binding.tvFull.text = when {
-            // 整卷都没有答案时「满分 0 分」读起来像算错了，换成如实描述
-            pending > 0 && record.fullScore <= 0.0 -> "暂无可判分的题目 · $pending 题待补答案"
-            pending > 0 -> getString(R.string.pending_answer_full, trim(record.fullScore), pending)
-            else -> "满分 ${trim(record.fullScore)} 分"
-        }
-        val rate = if (record.answeredCount > 0) record.correctCount * 100 / record.answeredCount else 0
-        binding.tvCorrectRate.text = metric("正确率", "$rate%")
-        binding.tvRight.text = metric("答对", "${record.correctCount}")
+        // 四宫格（复刻粉笔「考试情况」）：值上色——答对绿 / 答错红 / 用时主紫
+        binding.tvStatTotal.text = metric("一共", "${record.results.size}", R.color.fb_text_title)
+        binding.tvStatRight.text = metric("答对", "${record.correctCount}", R.color.fb_success)
         // 答错只统计「答了但没对」，未作答不算答错；待补答案的题本来就不判分
         val wrong = (record.answeredCount - record.correctCount - record.partialCount).coerceAtLeast(0)
-        binding.tvWrong.text = metric("答错", "$wrong")
-        binding.tvTime.text = metric("用时", RecordAdapter.fmtDuration(record.durationSec))
+        binding.tvStatWrong.text = metric("答错", "$wrong", R.color.fb_danger)
+        binding.tvStatTime.text =
+            metric("总用时", RecordAdapter.fmtDuration(record.durationSec), R.color.fb_primary)
+        setupKnowledge(record, pending)
 
         setupSubjectStats(record)
         setupRetryWrong(record)
@@ -158,21 +155,35 @@ class ReportActivity : AppCompatActivity() {
     }
 
     /**
+     * 卡1 知识点行（复刻粉笔「资料分析 + 灰描述」）：主科目取整卷出现最多的科目，
+     * 退回知识点，再退回「全卷」；灰描述给满分 / 题数 / 正确率摘要，待补答案时补一句。
+     */
+    private fun setupKnowledge(record: ExamRecord, pending: Int) {
+        val name = record.results
+            .map { it.question.subject.ifBlank { it.question.knowledge } }
+            .filter { it.isNotBlank() }
+            .groupingBy { it }
+            .eachCount()
+            .maxByOrNull { it.value }
+            ?.key
+        binding.tvKnowledgeName.text = name ?: "全卷"
+        val rate = if (record.answeredCount > 0) record.correctCount * 100 / record.answeredCount else 0
+        binding.tvKnowledgeDesc.text = buildString {
+            append("满分 ${trim(record.fullScore)} 分 · 共 ${record.results.size} 题 · 正确率 $rate%")
+            if (pending > 0) append(" · $pending 题待补答案")
+        }
+    }
+
+    /**
      * 全部题目：答题卡式网格，一格一题。
      * 答对绿、答错红、未作答灰、部分得分橙、待补答案浅橙，整卷错在哪一眼就能扫出来。
      */
     private fun setupOverview(record: ExamRecord) {
-        // 本次标记过的题在格子上带一个橙点，标题里先给总数，免得逐个找
-        binding.tvOverviewTitle.text = if (record.marked.isEmpty()) {
-            getString(R.string.report_overview_title)
-        } else {
-            getString(R.string.report_overview_title_marked, record.marked.size)
-        }
         setupLegend(record)
 
-        // 格子 48dp（40dp 圆 + 两侧 4dp），按屏宽扣掉页面左右 16dp 与卡片 16dp 内边距后算列数
-        val cellDp = (resources.getDimension(R.dimen.fb_card_num_size)
-                + resources.getDimension(R.dimen.fb_card_num_pad) * 2) / resources.displayMetrics.density
+        // 格子 42dp（32dp 圆 + 两侧 5dp，复刻粉笔报告页小格），按屏宽扣掉页面与卡片内边距后算列数
+        val cellDp = (resources.getDimension(R.dimen.fb_report_num_size)
+                + resources.getDimension(R.dimen.fb_report_num_pad) * 2) / resources.displayMetrics.density
         val padDp = (resources.getDimension(R.dimen.fb_page_pad) * 2
                 + resources.getDimension(R.dimen.fb_card_pad) * 2) / resources.displayMetrics.density
         val usableDp = resources.configuration.screenWidthDp - padDp
@@ -183,6 +194,13 @@ class ReportActivity : AppCompatActivity() {
         binding.grid.adapter = ReportGridAdapter(record.results, record.marked, favoriteIds) { position ->
             // 点题号 = 进解析页，从这道题开始按原卷顺序往后翻
             openReview(record, record.results.indices.toList(), position)
+        }
+
+        // 标记过的题在格子上带橙点，提示里给个总数，免得逐个找
+        binding.tvOverviewHint.text = if (record.marked.isEmpty()) {
+            getString(R.string.report_overview_hint)
+        } else {
+            getString(R.string.report_overview_hint_marked, record.marked.size)
         }
     }
 
@@ -391,16 +409,16 @@ class ReportActivity : AppCompatActivity() {
         }
     }
 
-    /** 指标：小号灰标签 + 大号加粗数值（同一 TextView 内两级字号） */
-    private fun metric(label: String, value: String): android.text.SpannableString {
+    /** 指标：小号灰标签 + 大号加粗数值（同一 TextView 内两级字号；数值颜色由调用方给——答对绿 / 答错红 / 用时主紫） */
+    private fun metric(label: String, value: String, valueColor: Int): android.text.SpannableString {
         val raw = "$label\n$value"
         return android.text.SpannableString(raw).apply {
             val meta = ContextCompat.getColor(this@ReportActivity, R.color.fb_text_meta)
-            val title = ContextCompat.getColor(this@ReportActivity, R.color.fb_text_title)
+            val color = ContextCompat.getColor(this@ReportActivity, valueColor)
             setSpan(android.text.style.ForegroundColorSpan(meta), 0, label.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             setSpan(android.text.style.RelativeSizeSpan(1.55f), label.length + 1, raw.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             setSpan(android.text.style.StyleSpan(android.graphics.Typeface.BOLD), label.length + 1, raw.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-            setSpan(android.text.style.ForegroundColorSpan(title), label.length + 1, raw.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            setSpan(android.text.style.ForegroundColorSpan(color), label.length + 1, raw.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
     }
 
@@ -423,10 +441,10 @@ class ReportGridAdapter(
     private val onClick: ((Int) -> Unit)? = null
 ) : RecyclerView.Adapter<ReportGridAdapter.VH>() {
 
-    class VH(val binding: ItemCardNumBinding) : RecyclerView.ViewHolder(binding.root)
+    class VH(val binding: ItemReportNumBinding) : RecyclerView.ViewHolder(binding.root)
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
-        VH(ItemCardNumBinding.inflate(LayoutInflater.from(parent.context), parent, false))
+        VH(ItemReportNumBinding.inflate(LayoutInflater.from(parent.context), parent, false))
 
     override fun getItemCount() = items.size
 

@@ -157,7 +157,18 @@ object QuestionCardBinder {
         /** 材料节点标题里的序号（「材料 2」）；null 时退回光秃秃的「材料」 */
         materialLabel: String? = null,
         /** 材料正文是否已收起：标题栏照留，正文不占地方（折叠状态由适配器持有） */
-        materialCollapsed: Boolean = false
+        materialCollapsed: Boolean = false,
+        /**
+         * 统计三项（解析页传：题目 id → [QuestionStats]）。
+         * 传了才可能在解析块下出现统计行；答题页等不传（null）就没有统计。
+         */
+        stats: Map<Long, QuestionStats>? = null,
+        /**
+         * 笔记（解析页传：题目 id → 笔记正文）。
+         * **传了（哪怕全空）才画笔记卡**——答题页不传（null），卡上不留笔记块；
+         * 正文编辑走 [Callbacks.onNoteClicked]，保存后调用方更新这份映射并重绑。
+         */
+        notes: Map<Long, String>? = null
     ) {
         val ctx = b.root.context
         val res = ctx.resources
@@ -328,11 +339,128 @@ object QuestionCardBinder {
         // 版式与配色集中在 AnswerBlock，分屏右栏、解析页用的是同一份
         if (revealNow) {
             AnswerBlock.bind(
-                b.answerBlock, q, answers[q.id] ?: "", policy, night
+                b.answerBlock, q, answers[q.id] ?: "", policy, night,
+                stats?.get(q.id)
             )
+            bindSolutionMeta(b, q, night)
+            // 笔记卡只在解析页出现（调用方传 notes 才有；答题页等传 null = 整卡不画）
+            if (notes != null) {
+                bindNoteCard(b, q, notes[q.id].orEmpty(), cb, night)
+            } else {
+                b.noteCard.visibility = View.GONE
+            }
         } else {
             AnswerBlock.hide(b.answerBlock)
+            b.metaBox.visibility = View.GONE
+            b.noteCard.visibility = View.GONE
         }
+    }
+
+    // ---------------- 解析态附加块：考点 / 来源 / 笔记 ----------------
+
+    /**
+     * 考点 / 来源行（对齐参考应用解析页：解析正文下的考点胶囊与题目来源块）。
+     * 只在解析态出现，两行各自有数据才显示——没标考点的卷子不留一排空标签。
+     */
+    private fun bindSolutionMeta(b: ItemQuestionPageBinding, q: Question, night: Boolean) {
+        val ctx = b.root.context
+        val metaColor = ContextCompat.getColor(
+            ctx, if (night) R.color.fb_night_text_meta else R.color.fb_text_meta
+        )
+        val tertiaryColor = ContextCompat.getColor(
+            ctx, if (night) R.color.fb_night_text_body else R.color.fb_text_tertiary
+        )
+
+        // 考点胶囊：按常见分隔符拆开（一格一个考点），套题型标签同款浅底胶囊
+        val points = q.knowledge.split(',', '，', '、', ';', '；', '/', '|')
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+            .take(4)
+        b.knowledgeRow.visibility = if (points.isEmpty()) View.GONE else View.VISIBLE
+        if (points.isNotEmpty()) {
+            b.chipsBox.removeAllViews()
+            val density = ctx.resources.displayMetrics.density
+            points.forEachIndexed { i, point ->
+                val chip = TextView(ctx).apply {
+                    text = point
+                    setBackgroundResource(
+                        if (night) R.drawable.bg_fb_tag_night else R.drawable.bg_fb_tag
+                    )
+                    setTextColor(metaColor)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+                    includeFontPadding = false
+                    setPadding(
+                        (8 * density).toInt(), (4 * density).toInt(),
+                        (8 * density).toInt(), (4 * density).toInt()
+                    )
+                }
+                b.chipsBox.addView(chip)
+                if (i < points.lastIndex) {
+                    b.chipsBox.addView(
+                        View(ctx),
+                        LinearLayout.LayoutParams((6 * density).toInt(), 1)
+                    )
+                }
+            }
+        }
+
+        // 来源块：来源 · 年份 · 地区 拼一行，全空就不出现
+        val sourceParts = listOf(q.source, q.year, q.region).filter { it.isNotBlank() }
+        if (sourceParts.isEmpty()) {
+            b.tvSource.visibility = View.GONE
+        } else {
+            b.tvSource.text = ctx.getString(
+                R.string.solution_meta_source, sourceParts.joinToString(" · ")
+            )
+            b.tvSource.setTextColor(tertiaryColor)
+            b.tvSource.setBackgroundResource(
+                if (night) R.drawable.bg_fb_note_night else R.drawable.bg_fb_note
+            )
+            b.tvSource.visibility = View.VISIBLE
+        }
+        b.metaBox.visibility =
+            if (points.isEmpty() && sourceParts.isEmpty()) View.GONE else View.VISIBLE
+    }
+
+    /**
+     * 笔记卡：竖条 + 「笔记」 + 正文（没写过时给引导文案），整卡可点 = 编辑笔记。
+     * 正文编辑走 [Callbacks.onNoteClicked]——答题页长按笔是同一个回调，保存后重绑即可回显。
+     */
+    private fun bindNoteCard(
+        b: ItemQuestionPageBinding,
+        q: Question,
+        note: String,
+        cb: Callbacks,
+        night: Boolean
+    ) {
+        val ctx = b.root.context
+        val hasNote = note.isNotBlank()
+        b.tvNoteText.text = if (hasNote) {
+            note
+        } else {
+            ctx.getString(R.string.note_hint)
+        }
+        b.tvNoteText.setTextColor(
+            ContextCompat.getColor(
+                ctx,
+                if (hasNote) {
+                    if (night) R.color.fb_night_text_body else R.color.fb_text_secondary
+                } else {
+                    if (night) R.color.fb_night_text_meta else R.color.fb_text_hint
+                }
+            )
+        )
+        b.noteCard.setBackgroundResource(
+            if (night) R.drawable.bg_fb_note_night else R.drawable.bg_fb_note
+        )
+        b.icNoteEdit.setColorFilter(
+            ContextCompat.getColor(
+                ctx, if (night) R.color.fb_night_text_meta else R.color.fb_text_hint
+            )
+        )
+        b.noteCard.setOnClickListener { cb.onNoteClicked(q) }
+        b.noteCard.visibility = View.VISIBLE
     }
 
     // ---------------- 材料节点 / 树脊 ----------------

@@ -262,22 +262,7 @@
                 android:layout_marginTop="@dimen/fb_space_12"
                 android:orientation="vertical" />
 
-            <!-- ===== 笔记 ===== -->
-            <TextView
-                android:id="@+id/tvNote"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="@dimen/fb_tree_content_pad_start"
-                android:layout_marginTop="@dimen/fb_space_8"
-                android:layout_marginEnd="@dimen/fb_content_padding_h"
-                android:background="@drawable/bg_fb_note"
-                android:lineSpacingExtra="3dp"
-                android:padding="@dimen/fb_space_12"
-                android:textColor="@color/fb_text_tertiary"
-                android:textSize="@dimen/fb_text_body_sm"
-                android:visibility="gone"
-                tools:text="笔记：注意区分前瞻性与创新性"
-                tools:visibility="visible" />
+            <!-- ===== 笔记（旧节点已并入解析态的笔记卡 noteCard，见 answerBlock 之后） ===== -->
 
             <!-- ===== 作答小结 + 解析（交卷后 / 练习模式即时判分后才有）=====
                  版式见 view_fb_answer_block.xml：正确答案 / 你的答案 左右两栏 + 结果 / 解析正文 -->
@@ -289,6 +274,120 @@
                 android:layout_marginStart="@dimen/fb_tree_content_pad_start"
                 android:layout_marginTop="@dimen/fb_space_12"
                 android:layout_marginEnd="@dimen/fb_content_padding_h" />
+
+            <!-- ===== 考点 / 来源（解析态才显示，对齐参考应用解析页的考点胶囊与来源块） ===== -->
+            <LinearLayout
+                android:id="@+id/metaBox"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/fb_tree_content_pad_start"
+                android:layout_marginTop="@dimen/fb_space_12"
+                android:layout_marginEnd="@dimen/fb_content_padding_h"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <!-- 考点：标签 + 胶囊行（题型标签同款浅底胶囊） -->
+                <LinearLayout
+                    android:id="@+id/knowledgeRow"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:includeFontPadding="false"
+                        android:text="@string/solution_meta_knowledge"
+                        android:textColor="@color/fb_text_meta"
+                        android:textSize="@dimen/fb_text_item_sub"
+                        android:textStyle="bold" />
+
+                    <LinearLayout
+                        android:id="@+id/chipsBox"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="@dimen/fb_space_12"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal" />
+                </LinearLayout>
+
+                <!-- 来源：浅灰块一行（来源 · 年份 · 地区），有数据才出现 -->
+                <TextView
+                    android:id="@+id/tvSource"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/fb_space_8"
+                    android:background="@drawable/bg_fb_note"
+                    android:lineSpacingExtra="3dp"
+                    android:padding="@dimen/fb_space_12"
+                    android:textColor="@color/fb_text_tertiary"
+                    android:textSize="@dimen/fb_text_body_sm"
+                    android:visibility="gone"
+                    tools:text="来源：2024 国考行测 · 资料分析"
+                    tools:visibility="visible" />
+            </LinearLayout>
+
+            <!-- ===== 笔记卡（解析态才显示；点开弹编辑框，对齐参考应用解析页笔记区） ===== -->
+            <LinearLayout
+                android:id="@+id/noteCard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/fb_tree_content_pad_start"
+                android:layout_marginTop="@dimen/fb_space_12"
+                android:layout_marginEnd="@dimen/fb_content_padding_h"
+                android:background="@drawable/bg_fb_note"
+                android:gravity="center_vertical"
+                android:minHeight="52dp"
+                android:orientation="horizontal"
+                android:paddingStart="@dimen/fb_space_12"
+                android:paddingTop="@dimen/fb_space_12"
+                android:paddingEnd="@dimen/fb_space_12"
+                android:paddingBottom="@dimen/fb_space_12"
+                android:visibility="gone"
+                tools:visibility="visible">
+
+                <View
+                    android:layout_width="3dp"
+                    android:layout_height="match_parent"
+                    android:background="@color/fb_primary" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:includeFontPadding="false"
+                        android:text="@string/solution_note_label"
+                        android:textColor="@color/fb_text_secondary"
+                        android:textSize="@dimen/fb_text_body_sm"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvNoteText"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="3dp"
+                        android:lineSpacingExtra="3dp"
+                        android:textColor="@color/fb_text_tertiary"
+                        android:textSize="@dimen/fb_text_body_sm"
+                        tools:text="注意区分前瞻性与创新性" />
+                </LinearLayout>
+
+                <ImageView
+                    android:id="@+id/icNoteEdit"
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:layout_marginStart="@dimen/fb_space_8"
+                    android:contentDescription="@string/note_title"
+                    android:src="@drawable/ic_fb_edit" />
+            </LinearLayout>
 
             <!-- ===== 题间分隔线 =====
                  放在内容列里而不是卡片底部：树脊要一路连到下一条目的顶边，

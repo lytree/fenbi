@@ -64,6 +64,12 @@ class QuestionReviewActivity : AppCompatActivity() {
     private var numbers: List<Int> = emptyList()
     private var adapter: ReviewPagerAdapter? = null
 
+    /** 解析三项（题目 id → 统计）：进页时一次读全，笔记卡 / 统计行都从这里取 */
+    private var stats: Map<Long, QuestionStats> = emptyMap()
+
+    /** 本卷笔记（题目 id → 正文）：进页时批读；编辑后就地更新这份映射再重绑 */
+    private var notes: MutableMap<Long, String> = mutableMapOf()
+
     /**
      * 临时标记：最多一道题，翻页就清。
      *
@@ -97,15 +103,37 @@ class QuestionReviewActivity : AppCompatActivity() {
             val loaded = withContext(Dispatchers.IO) {
                 val r = db.getRecord(recordId) ?: return@withContext null
                 // 收藏是全局表，这里一次读全再按本卷过滤，免得每题一次查询
-                Triple(r, db.getPolicy(), db.listFavoriteIds())
+                val favoriteIds = db.listFavoriteIds()
+                // 统计三项 + 笔记一次读全：统计每题查一次历史（本机数据量级小），
+                // 笔记按题 id 集合批读——绑卡片时不再碰库
+                val times = db.getQuestionTimes(recordId)
+                val stats = HashMap<Long, QuestionStats>()
+                val noteMap = db.getNotes(r.results.map { it.question.id }).toMutableMap()
+                r.results.forEach { res ->
+                    val (answered, right, commonWrong) = db.questionHistoryStats(res.question.id)
+                    stats[res.question.id] = QuestionStats(
+                        seconds = times[res.question.id],
+                        answered = answered,
+                        right = right,
+                        commonWrong = commonWrong
+                    )
+                }
+                LoadedData(r, db.getPolicy(), favoriteIds, stats, noteMap)
             }
             if (isFinishing || isDestroyed) return@launch
-            if (loaded == null) {
-                finish(); return@launch
-            }
-            render(loaded.first, loaded.second, loaded.third)
+            val data = loaded ?: run { finish(); return@launch }
+            render(data)
         }
     }
+
+    /** 一次后台装载的全部数据（onCreate 的 IO 块与 render 之间的载体） */
+    private data class LoadedData(
+        val record: ExamRecord,
+        val policy: Policy,
+        val favoriteIds: Set<Long>,
+        val stats: Map<Long, QuestionStats>,
+        val notes: MutableMap<Long, String>
+    )
 
     /**
      * 退回时把还没落库的笔迹写出去——写画本来就是「抬笔即存」，再刷一次更稳。
@@ -116,8 +144,13 @@ class QuestionReviewActivity : AppCompatActivity() {
         if (::inkToolbar.isInitialized) binding.inkOverlay.flush()
     }
 
-    private fun render(record: ExamRecord, policy: Policy, favoriteIds: Set<Long>) {
+    private fun render(data: LoadedData) {
+        val record = data.record
+        val policy = data.policy
+        val favoriteIds = data.favoriteIds
         this.record = record
+        this.stats = data.stats
+        this.notes = data.notes
         if (record.results.isEmpty()) {
             finish(); return
         }
@@ -161,10 +194,13 @@ class QuestionReviewActivity : AppCompatActivity() {
             policy = policy,
             materialCounts = materialCounts,
             fontScale = fontScale(),
+            stats = stats,
+            notes = notes,
             onMaterialExpand = { q -> openMaterial(q) },
             onMarkToggle = { q -> toggleMark(q) },
             onFavoriteToggle = { q -> toggleFavorite(q) },
-            onInkClicked = { q -> startInkFor(q) }
+            onInkClicked = { q -> startInkFor(q) },
+            onNoteClicked = { q -> showNoteDialog(q) }
         )
         adapter = pagerAdapter
         binding.pager.offscreenPageLimit = 1
@@ -262,6 +298,27 @@ class QuestionReviewActivity : AppCompatActivity() {
         // 结果码当场给：报告页回来要按库重画格子下方的收藏点
         setResult(RESULT_OK)
         refreshCard(q)
+    }
+
+    /**
+     * 笔记编辑：与答题页长按「笔」同一个弹窗（[FbDialog.input]），保存后
+     * 就地更新 [notes] 并重绑当前页——笔记卡立即回显，退回报告页再进来也还在。
+     */
+    private fun showNoteDialog(q: Question) {
+        FbDialog.input(
+            context = this,
+            title = getString(R.string.note_title),
+            initial = db.getNote(q.id).orEmpty(),
+            hint = getString(R.string.note_hint),
+            multiline = true,
+            onOk = { text ->
+                val note = text.trim()
+                db.setNote(q.id, note)
+                if (note.isBlank()) notes.remove(q.id) else notes[q.id] = note
+                android.widget.Toast.makeText(this, R.string.note_saved, android.widget.Toast.LENGTH_SHORT).show()
+                refreshCard(q)
+            }
+        )
     }
 
     /** 翻页时抹掉临时标记：只重绑被标过的那一页，不动当前页的滚动位置 */
@@ -459,10 +516,14 @@ private class ReviewPagerAdapter(
     private val policy: Policy,
     private val materialCounts: Map<String, Int>,
     private val fontScale: Float,
+    /** 统计三项 / 笔记：Activity 一次读全后传进来，绑卡时不碰库 */
+    private val stats: Map<Long, QuestionStats>,
+    private val notes: MutableMap<Long, String>,
     private val onMaterialExpand: (Question) -> Unit,
     onMarkToggle: (Question) -> Unit,
     onFavoriteToggle: (Question) -> Unit,
-    onInkClicked: (Question) -> Unit
+    onInkClicked: (Question) -> Unit,
+    onNoteClicked: (Question) -> Unit
 ) : RecyclerView.Adapter<ReviewPagerAdapter.VH>() {
 
     class VH(val page: ItemQuestionPagerPageBinding, val card: ItemQuestionPageBinding) :
@@ -487,8 +548,8 @@ private class ReviewPagerAdapter(
         onMarkToggle = onMarkToggle,
         onFavoriteToggle = onFavoriteToggle,
         onInkClicked = onInkClicked,
-        // 文字笔记要在答题页里写，解析页只做展示，长按这支笔不弹输入框
-        onNoteClicked = {},
+        // 笔记卡整卡可点：解析页直接编辑（保存后 Activity 更新 notes 并重绑）
+        onNoteClicked = { q -> onNoteClicked(q) },
         onAnswerChanged = {},
         onMaterialExpand = { q -> onMaterialExpand(q) }
     )
@@ -526,7 +587,9 @@ private class ReviewPagerAdapter(
             readOnly = true,
             // 选项照旧只读，但笔 / 标记 / 收藏这三件事看解析时照样要做
             showMarkFavorite = true,
-            showInk = true
+            showInk = true,
+            stats = stats,
+            notes = notes
         )
         // 复用的页可能停在上一题滚到一半的位置
         holder.page.pageScroll.scrollTo(0, 0)

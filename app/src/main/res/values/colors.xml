@@ -144,6 +144,13 @@
     <color name="fb_card_num_marked">#FF8A3D</color>
     <color name="fb_card_num_favorite">#F2557A</color>
 
+    <!-- ==================== 7.1 成绩报告 ==================== -->
+    <!-- 「考试情况」卡双层渐变：自上而下褪白的底色 / 右上角主紫光斑（复刻粉笔成绩报告卡1） -->
+    <color name="fb_report_hero_top">#F2EEFF</color>
+    <color name="fb_report_hero_glow">#D9CCFE</color>
+    <color name="fb_report_hero_glow_soft">#EFE9FF</color>
+    <color name="fb_report_hero_fade">#00FFFFFF</color>
+
     <!-- ==================== 8. 分段控件 / 开关 ==================== -->
     <color name="fb_segment_bg">#F3F2F6</color>
     <color name="fb_segment_sel_bg">#FFFFFF</color>

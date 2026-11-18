@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 成绩报告：统一标题栏 + 成绩卡 + 分模块正确率 + 全部题目对错一览 + 解析入口 -->
+<!--
+  成绩报告（复刻粉笔练习报告版式，docs/fenbi-ui/README.md §2）：
+  卡1「考试情况」浅紫渐变 + 四宫格 + 知识点行；卡2「答题卡」橙徽标 + 图例 + 题号网格；
+  下方保留分模块正确率卡；底部固定操作条「全部解析(淡底) + 错题解析(实底)」。
+  品牌色沿用本站主紫，粉笔的原蓝(#3C7CFC)不引入。
+-->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     style="@style/FbPage">
@@ -18,7 +23,7 @@
         <LinearLayout
             style="@style/FbPageColumn"
             android:paddingTop="@dimen/fb_space_16"
-            android:paddingBottom="@dimen/fb_space_32">
+            android:paddingBottom="@dimen/fb_space_20">
 
             <!-- 缺少标准答案时的提示条：补完答案会按已有作答重判 -->
             <TextView
@@ -34,58 +39,178 @@
                 android:visibility="gone"
                 tools:visibility="visible" />
 
+            <!-- ===== 卡1「考试情况」：浅紫渐变 + 四宫格 + 知识点行 ===== -->
             <LinearLayout
-                style="@style/FbCard"
-                android:gravity="center_horizontal"
-                android:paddingTop="@dimen/fb_space_24"
-                android:paddingBottom="@dimen/fb_space_4">
-
-                <TextView
-                    android:id="@+id/tvScore"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:includeFontPadding="false"
-                    android:textColor="@color/fb_primary"
-                    android:textSize="@dimen/fb_text_display"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/tvFull"
-                    style="@style/FbItemSub"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/fb_space_4" />
-
-                <View
-                    style="@style/FbDivider"
-                    android:layout_marginTop="@dimen/fb_space_20" />
+                android:id="@+id/cardExam"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_fb_report_hero"
+                android:orientation="vertical"
+                android:padding="@dimen/fb_card_pad">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <ImageView
+                        android:id="@+id/ivExamIcon"
+                        android:layout_width="16dp"
+                        android:layout_height="16dp"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_fb_pentagon" />
+
+                    <TextView
+                        android:id="@+id/tvExamTitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="@dimen/fb_space_8"
+                        android:includeFontPadding="false"
+                        android:text="@string/report_card_exam"
+                        android:textColor="@color/fb_text_title"
+                        android:textSize="@dimen/fb_text_item_title"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <!-- 四宫格：一共 / 答对 / 答错 / 总用时（值在代码里上色：绿=对 红=错 紫=用时） -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/fb_space_12"
+                    android:background="@drawable/bg_fb_note"
                     android:orientation="horizontal"
                     android:paddingTop="@dimen/fb_space_12"
                     android:paddingBottom="@dimen/fb_space_12">
 
                     <TextView
-                        android:id="@+id/tvCorrectRate"
+                        android:id="@+id/tvStatTotal"
                         style="@style/FbStatCell" />
 
-                    <TextView
-                        android:id="@+id/tvRight"
-                        style="@style/FbStatCell" />
+                    <View style="@style/FbStatDivider" />
 
                     <TextView
-                        android:id="@+id/tvWrong"
+                        android:id="@+id/tvStatRight"
                         style="@style/FbStatCell" />
 
+                    <View style="@style/FbStatDivider" />
+
                     <TextView
-                        android:id="@+id/tvTime"
+                        android:id="@+id/tvStatWrong"
                         style="@style/FbStatCell" />
+
+                    <View style="@style/FbStatDivider" />
+
+                    <TextView
+                        android:id="@+id/tvStatTime"
+                        style="@style/FbStatCell" />
+                </LinearLayout>
+
+                <!-- 知识点行：主紫徽标(白勾) + 主科目 + 灰描述（复刻粉笔「资料分析」那行） -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/fb_space_12"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <ImageView
+                        android:id="@+id/ivKnowledgeBadge"
+                        android:layout_width="25dp"
+                        android:layout_height="25dp"
+                        android:background="@drawable/bg_fb_badge_primary"
+                        android:contentDescription="@null"
+                        android:padding="5dp"
+                        android:src="@drawable/ic_fb_check" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="@dimen/fb_space_8"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/tvKnowledgeName"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:includeFontPadding="false"
+                            android:textColor="@color/fb_text_title"
+                            android:textSize="@dimen/fb_text_item_title"
+                            android:textStyle="bold"
+                            tools:text="资料分析" />
+
+                        <TextView
+                            android:id="@+id/tvKnowledgeDesc"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="3dp"
+                            android:includeFontPadding="false"
+                            android:textColor="@color/fb_text_meta"
+                            android:textSize="@dimen/fb_text_tag"
+                            tools:text="满分 100 分 · 共 15 题 · 正确率 46%" />
+                    </LinearLayout>
                 </LinearLayout>
             </LinearLayout>
 
-            <!-- 分模块正确率：按题目「科目/知识点」聚合，定位薄弱模块（对齐粉笔练习报告） -->
+            <!-- ===== 卡2「答题卡」：橙徽标 + 图例 + 题号网格 ===== -->
+            <LinearLayout
+                style="@style/FbCard"
+                android:layout_marginTop="@dimen/fb_card_gap_v">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <ImageView
+                        android:id="@+id/ivSheetBadge"
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:background="@drawable/bg_fb_badge_warn"
+                        android:contentDescription="@null"
+                        android:padding="4dp"
+                        android:src="@drawable/ic_fb_check" />
+
+                    <TextView
+                        android:id="@+id/tvSheetTitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="@dimen/fb_space_8"
+                        android:includeFontPadding="false"
+                        android:text="@string/report_card_sheet"
+                        android:textColor="@color/fb_text_title"
+                        android:textSize="@dimen/fb_text_item_title"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <!-- 图例按实际出现的状态动态生成（最多一行 3 个） -->
+                <LinearLayout
+                    android:id="@+id/legendBox"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/fb_space_8"
+                    android:orientation="vertical" />
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/grid"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/fb_space_8"
+                    android:nestedScrollingEnabled="false"
+                    android:overScrollMode="never" />
+
+                <TextView
+                    android:id="@+id/tvOverviewHint"
+                    style="@style/FbCaption"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/fb_space_8"
+                    android:text="@string/report_overview_hint" />
+            </LinearLayout>
+
+            <!-- 分模块正确率：按题目「科目/知识点」聚合，定位薄弱模块 -->
             <LinearLayout
                 android:id="@+id/subjectStatsCard"
                 style="@style/FbCard"
@@ -107,64 +232,37 @@
                     android:layout_marginTop="@dimen/fb_space_8"
                     android:orientation="vertical" />
             </LinearLayout>
-
-            <!-- 全部题目：只给对错一览（对=绿 / 错=红 / 未答=灰），解析收进下面的两个入口 -->
-            <TextView
-                android:id="@+id/tvOverviewTitle"
-                style="@style/FbSectionTitle"
-                android:layout_marginTop="@dimen/fb_section_gap"
-                android:text="@string/report_overview_title" />
-
-            <LinearLayout
-                style="@style/FbCard"
-                android:layout_marginTop="@dimen/fb_card_gap_v">
-
-                <!-- 图例按实际出现的状态动态生成（最多一行 3 个） -->
-                <LinearLayout
-                    android:id="@+id/legendBox"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical" />
-
-                <androidx.recyclerview.widget.RecyclerView
-                    android:id="@+id/grid"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/fb_space_8"
-                    android:nestedScrollingEnabled="false"
-                    android:overScrollMode="never" />
-
-                <TextView
-                    android:id="@+id/tvOverviewHint"
-                    style="@style/FbCaption"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/fb_space_8"
-                    android:text="@string/report_overview_hint" />
-            </LinearLayout>
-
-            <!-- 解析入口：同一套解析页，左=只翻错题 / 右=翻整卷 -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/fb_card_gap_v"
-                android:orientation="horizontal">
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnStepAnalysis"
-                    style="@style/FbGhostButton"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:text="@string/report_action_wrong_analysis" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnAllAnalysis"
-                    style="@style/FbPrimaryButton"
-                    android:layout_width="0dp"
-                    android:layout_marginStart="@dimen/fb_space_12"
-                    android:layout_weight="1"
-                    android:text="@string/report_action_all_analysis" />
-            </LinearLayout>
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
+
+    <!-- ===== 底部固定操作条：全部解析(淡底) + 错题解析(实底)，不随滚动 ===== -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/fb_divider" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="64dp"
+        android:background="@color/fb_card_bg"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="@dimen/fb_page_pad"
+        android:paddingEnd="@dimen/fb_page_pad">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnAllAnalysis"
+            style="@style/FbGhostButton"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:text="@string/report_action_all_analysis" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnStepAnalysis"
+            style="@style/FbPrimaryButton"
+            android:layout_width="0dp"
+            android:layout_marginStart="@dimen/fb_space_12"
+            android:layout_weight="1"
+            android:text="@string/report_action_wrong_analysis" />
+    </LinearLayout>
 </LinearLayout>

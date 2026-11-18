@@ -161,5 +161,12 @@
     <dimen name="fb_card_num_size">40dp</dimen>
     <dimen name="fb_card_num_pad">4dp</dimen>
     <dimen name="fb_card_num_text_size">14sp</dimen>
+    <!-- 报告页答题卡小格：32dp 圆（复刻粉笔报告页题号，答题卡弹层仍是 40dp） -->
+    <dimen name="fb_report_num_size">32dp</dimen>
+    <dimen name="fb_report_num_pad">5dp</dimen>
+    <dimen name="fb_report_num_text_size">13sp</dimen>
+    <!-- 报告页「考试情况」渐变卡圆角 / 卡内徽标圆角（复刻粉笔 30px=10dp） -->
+    <dimen name="fb_report_radius">10dp</dimen>
+    <dimen name="fb_report_badge_radius">6dp</dimen>
     <dimen name="fb_sheet_height_percent">0.55</dimen>
 </resources>

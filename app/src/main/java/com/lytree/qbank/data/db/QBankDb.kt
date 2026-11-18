@@ -1692,6 +1692,63 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
     }
 
     /**
+     * 一道题的**历史作答统计**（解析页「统计三项」用，对齐参考应用的
+     * 答题时间 / 正确率 / 易错项——那边是全站口径，这边只有本机数据）：
+     * 全库所有记录里这道题的「作答数 / 答对数 / 最常答错的选项」。
+     *
+     * record_answers 的主键是 (record_id, question_id)，按题查会扫全表；
+     * 本地记录量级小，且只在进解析页时每题查一次，不为它单开索引。
+     */
+    fun questionHistoryStats(questionId: Long): Triple<Int, Int, String?> {
+        if (questionId <= 0L) return Triple(0, 0, null)
+        var answered = 0
+        var right = 0
+        readableDatabase.rawQuery(
+            "SELECT COUNT(*), IFNULL(SUM(correct), 0) FROM record_answers " +
+                "WHERE question_id = ? AND user_answer != ''",
+            arrayOf(questionId.toString())
+        ).use { c ->
+            if (c.moveToFirst()) {
+                answered = c.getInt(0)
+                right = c.getInt(1)
+            }
+        }
+        var commonWrong: String? = null
+        readableDatabase.rawQuery(
+            "SELECT user_answer FROM record_answers " +
+                "WHERE question_id = ? AND correct = 0 AND user_answer != '' " +
+                "GROUP BY user_answer ORDER BY COUNT(*) DESC LIMIT 1",
+            arrayOf(questionId.toString())
+        ).use { c ->
+            if (c.moveToFirst()) commonWrong = c.getString(0)
+        }
+        return Triple(answered, right, commonWrong)
+    }
+
+    /**
+     * 批量读笔记（解析页笔记卡用）：题目 id → 笔记正文。空笔记（''）不进结果。
+     * notes 表以 question_id 为主键，按 id 集合一次读全，免得每张卡绑定时各查一遍。
+     */
+    fun getNotes(ids: Collection<Long>): Map<Long, String> {
+        if (ids.isEmpty()) return emptyMap()
+        val out = HashMap<Long, String>()
+        ids.chunked(500).forEach { chunk ->
+            val placeholders = chunk.joinToString(",") { "?" }
+            val args = chunk.map { it.toString() }.toTypedArray()
+            readableDatabase.rawQuery(
+                "SELECT question_id, note FROM notes WHERE question_id IN ($placeholders)",
+                args
+            ).use { c ->
+                while (c.moveToNext()) {
+                    val note = c.getString(1) ?: ""
+                    if (note.isNotBlank()) out[c.getLong(0)] = note
+                }
+            }
+        }
+        return out
+    }
+
+    /**
      * 交卷：**一个事务**里完成「记录转成 done（成绩 / 用时 / 标记）+ 逐题作答 + 清未交卷进度」。
      *
      * 任何一步抛异常都整体回滚：记录仍是进行中、进度还在，用户可以直接重试交卷，

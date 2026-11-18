@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  报告页「考试情况」卡底（复刻粉笔成绩报告卡1的双层渐变）：
+  底层自上而下由淡紫褪成白，上层在右上角压一团主紫光斑、往左下迅速褪没。
+  粉笔原样是径向近似，这里用 layer-list 两层 gradient 等价实现。
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="270"
+                android:startColor="@color/fb_report_hero_top"
+                android:endColor="@color/fb_white" />
+            <corners android:radius="@dimen/fb_report_radius" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:type="radial"
+                android:centerX="1.0"
+                android:centerY="0.0"
+                android:gradientRadius="90%p"
+                android:startColor="@color/fb_report_hero_glow"
+                android:centerColor="@color/fb_report_hero_glow_soft"
+                android:endColor="@color/fb_report_hero_fade" />
+            <corners android:radius="@dimen/fb_report_radius" />
+        </shape>
+    </item>
+</layer-list>

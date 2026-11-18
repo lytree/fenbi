@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  报告页答题卡小格：32dp 圆（复刻粉笔报告页题号；答题卡弹层仍是 40dp 的 item_card_num）
+  角标口径与答题卡一致：右上一点 = 本次标记过，下方一点 = 已收藏
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:padding="@dimen/fb_report_num_pad">
+
+    <TextView
+        android:id="@+id/tvNum"
+        android:layout_width="@dimen/fb_report_num_size"
+        android:layout_height="@dimen/fb_report_num_size"
+        android:layout_gravity="center"
+        android:background="@drawable/bg_num_blank"
+        android:gravity="center"
+        android:includeFontPadding="false"
+        android:textColor="@color/fb_card_num_blank_text"
+        android:textSize="@dimen/fb_report_num_text_size"
+        tools:text="1" />
+
+    <View
+        android:id="@+id/vMark"
+        android:layout_width="8dp"
+        android:layout_height="8dp"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="1dp"
+        android:layout_marginEnd="1dp"
+        android:background="@drawable/bg_fb_dot_marked"
+        android:visibility="gone" />
+
+    <View
+        android:id="@+id/vFav"
+        android:layout_width="8dp"
+        android:layout_height="8dp"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="1dp"
+        android:background="@drawable/bg_fb_dot_favorite"
+        android:visibility="gone" />
+</FrameLayout>

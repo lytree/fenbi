@@ -183,6 +183,9 @@
 
     <!-- 成绩报告 -->
     <string name="report_subject_title">模块正确率</string>
+    <string name="report_card_exam">考试情况</string>
+    <string name="report_card_sheet">答题卡</string>
+    <string name="report_overview_hint_marked">已标记 %1$d 题 · 点题号看这道题的解析，也可以左右翻页</string>
     <string name="report_subject_row">%1$s　答对 %2$d/%3$d · %4$d%%</string>
     <string name="report_retry_wrong">错题重练</string>
     <string name="report_retry_empty">这次没有错题，保持！</string>
@@ -201,6 +204,15 @@
     <string name="report_action_all_analysis">全部解析</string>
     <!-- 解析页（与答题页同款卷面）：顶栏「第 8/30 题」，右侧「看原题」回试卷定位 -->
     <string name="report_analysis_page_title">第 %1$d/%2$d 题</string>
+    <!-- 解析页统计三项（对齐参考应用；数据来自本机记录聚合：用时表 + 历史作答表） -->
+    <string name="solution_stat_time">答题时间</string>
+    <string name="solution_stat_rate">历史正确率</string>
+    <string name="solution_stat_trap">易错项</string>
+    <!-- 解析页考点 / 来源行：解析态才出现，有数据才显示 -->
+    <string name="solution_meta_knowledge">考点</string>
+    <string name="solution_meta_source">来源：%1$s</string>
+    <!-- 解析页笔记卡：展示本题笔记，点开可编辑（标题沿用 note_title「本题笔记」弹窗） -->
+    <string name="solution_note_label">笔记</string>
     <string name="report_action_open_paper">看原题</string>
     <!-- 报告页点题：跳到试卷里对应的题，看完整资料（材料 / 选项 / 答案解析） -->
     <string name="report_open_question">在试卷中查看这道题</string>

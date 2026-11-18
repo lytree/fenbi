@@ -157,6 +157,15 @@
         <item name="android:textSize">@dimen/fb_text_item_sub</item>
     </style>
 
+    <!-- 四宫格之间的竖线（报告页「考试情况」统计块，复刻粉笔） -->
+    <style name="FbStatDivider">
+        <item name="android:layout_width">1dp</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:layout_marginTop">4dp</item>
+        <item name="android:layout_marginBottom">4dp</item>
+        <item name="android:background">@color/fb_divider</item>
+    </style>
+
     <!-- 列表项主标题 15sp 加粗 -->
     <style name="FbItemTitle">
         <item name="android:textSize">@dimen/fb_text_item_title</item>
@@ -194,6 +203,38 @@
         <item name="android:textSize">@dimen/fb_text_group</item>
         <item name="android:textColor">@color/fb_text_meta</item>
         <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <!-- 解析页统计三项：一格 = 竖排「值 + 标签」，三格等宽、细竖线分隔（与报告页统计格同款） -->
+    <style name="FbSolutionStatCell">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:gravity">center</item>
+    </style>
+
+    <style name="FbSolutionStatValue">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="FbSolutionStatLabel">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">4dp</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:textColor">@color/fb_text_meta</item>
+    </style>
+
+    <style name="FbSolutionStatDivider">
+        <item name="android:layout_width">1dp</item>
+        <item name="android:layout_height">28dp</item>
+        <item name="android:background">@color/fb_divider</item>
     </style>
 
     <!-- 正文 14sp 主色 -->
