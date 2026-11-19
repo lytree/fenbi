@@ -3,8 +3,9 @@ import type { PropType } from 'vue'
 import type { Group, Question } from '../types'
 import {
   CHOICE, TYPE_LABEL, TYPE_SHORT, addOption, addQuestion, adoptPreviousMaterial,
-  ansSet, ansValues, currentQuestions, duplicateQuestion, isExpanded, localIssues, markDirty,
-  moveQuestion, removeOption, removeQuestion, setQuestionType, toggleAnswer,
+  ansSet, ansValues, currentQuestions, disableQuestion, duplicateQuestion, enableQuestion,
+  isExpanded, localIssues, markDirty,
+  moveQuestion, removeOption, setQuestionType, toggleAnswer,
   toggleExpand, ungroupMaterial, updateQuestion,
 } from '../store'
 import { askText } from '../store'
@@ -99,7 +100,7 @@ export default defineComponent({
       return (
         <article
           ref={root}
-          class={['qcard', open && 'open', hasError && 'bad', hasWarn && 'warn']}
+          class={['qcard', open && 'open', hasError && 'bad', hasWarn && 'warn', q.disabled && 'disabled']}
           data-uid={q._uid}
         >
           <div class="qhead" onClick={onHeadClick}>
@@ -133,6 +134,7 @@ export default defineComponent({
                 {hasTypeTree ? <span class="chip">{TYPE_SHORT[q.type]}</span> : null}
                 {group ? <span class="chip">材料组</span> : null}
                 {hasImage ? <span class="chip">有图</span> : null}
+                {q.disabled ? <span class="chip off">已禁用</span> : null}
               </div>
             </div>
             <div class="badges">
@@ -145,7 +147,17 @@ export default defineComponent({
               <button title="上移" onClick={() => moveQuestion(q._uid, -1)}>↑</button>
               <button title="下移" onClick={() => moveQuestion(q._uid, 1)}>↓</button>
               <button title="复制本题" onClick={() => duplicateQuestion(q._uid)}>复制</button>
-              <button class="danger" title="删除本题" onClick={() => removeQuestion(q._uid)}>删除</button>
+              {q.disabled
+                ? <button title="重新启用（发布后回到卷面）" onClick={() => enableQuestion(q._uid)}>启用</button>
+                : (
+                  <button
+                    class="danger"
+                    title="禁用本题：题和作答记录都留在手机里，随时能启用回来"
+                    onClick={() => disableQuestion(q._uid)}
+                  >
+                    禁用
+                  </button>
+                )}
             </div>
           </div>
 
@@ -331,7 +343,17 @@ export default defineComponent({
                 <div class="qfoot">
                   <button class="ghost sm" onClick={() => addQuestion(props.index)}>在下方插入一题</button>
                   <button class="ghost sm" onClick={() => duplicateQuestion(q._uid)}>复制本题</button>
-                  <button class="ghost sm danger-text" onClick={() => removeQuestion(q._uid)}>删除本题</button>
+                  {q.disabled
+                    ? <button class="ghost sm" onClick={() => enableQuestion(q._uid)}>启用本题</button>
+                    : (
+                      <button
+                        class="ghost sm danger-text"
+                        title="禁用本题：题与作答记录都留在手机里，随时能启用回来"
+                        onClick={() => disableQuestion(q._uid)}
+                      >
+                        禁用本题
+                      </button>
+                    )}
                 </div>
               </div>
             )

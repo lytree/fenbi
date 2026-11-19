@@ -531,10 +531,16 @@ class LanEditorServer(
         val questionCount = (0 until sheets.length()).sumOf { i ->
             sheets.optJSONObject(i)?.optJSONArray("questions")?.length() ?: 0
         }
+        val disabledCount = (0 until sheets.length()).sumOf { i ->
+            val arr = sheets.optJSONObject(i)?.optJSONArray("questions") ?: return@sumOf 0
+            (0 until arr.length()).count { arr.optJSONObject(it)?.optBoolean("disabled", false) == true }
+        }
         val detail = buildString {
-            append("共 ${sheets.length()} 份卷、$questionCount 道题。")
+            append("共 ${sheets.length()} 份卷、$questionCount 道题")
+            if (disabledCount > 0) append("（其中 $disabledCount 道已禁用，不参与练习与统计）")
+            append("。")
             if (existing != null) {
-                append("会覆盖同名组；交过卷的练习记录会尽量带到新组头上（被删题目的明细除外），旧内容自动存一版，还能滚回来。")
+                append("会覆盖同名组：题目按 id 原地更新，练习记录与未交卷草稿全部保留；从卷面上去掉的题只停用、不删除，随时能启用回来。旧内容自动存一版，还能滚回来。")
             } else {
                 append("确认后写进手机题库，App 首页就能看到。")
             }

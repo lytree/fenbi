@@ -35,6 +35,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         createV13Tables(db)
         createV14Columns(db)
         createV15Columns(db)
+        createV16Columns(db)
     }
 
     /**
@@ -150,6 +151,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         if (oldVersion < 14) createV14Columns(db)
         // v15：选项排布按题存（空串 = 单列 1×4，'2x2' = 两列），只由网页编辑器写
         if (oldVersion < 15) createV15Columns(db)
+        if (oldVersion < 16) createV16Columns(db)
     }
 
     /** v3：收藏表 + 答题进度表（对齐参考应用「收藏跨会话保留 / 中途退出可续做」） */
@@ -343,6 +345,24 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
     private fun createV15Columns(db: SQLiteDatabase) {
         if (!hasColumn(db, "questions", "option_layout")) {
             db.execSQL("ALTER TABLE questions ADD COLUMN option_layout TEXT NOT NULL DEFAULT ''")
+        }
+    }
+
+    /**
+     * v16：**禁用位**。
+     *
+     * - `questions.disabled`：题不删，只停用。卷面、答题、统计、网页侧栏全都不再算它，
+     *   但题目行和作答记录留在库里，随时能启用回来；
+     * - `papers.disabled`：整卷隐藏（编辑侧删卷 = 停用），卷里的题与作答记录同样保留。
+     *
+     * 两列都是纯增列、默认 0，老库升级后行为与以前完全一致。
+     */
+    private fun createV16Columns(db: SQLiteDatabase) {
+        if (!hasColumn(db, "questions", "disabled")) {
+            db.execSQL("ALTER TABLE questions ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0")
+        }
+        if (!hasColumn(db, "papers", "disabled")) {
+            db.execSQL("ALTER TABLE papers ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0")
         }
     }
 
@@ -729,23 +749,33 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         put("score", q.score)
         put("keywords", q.keywords)
         put("option_layout", q.optionLayout)
+        put("disabled", if (q.disabled) 1 else 0)
     }
 
-    /** 某份试卷的题目，按卷面顺序 */
-    fun listQuestions(paperId: Long, limit: Int = 5000): List<Question> {
+    /** 某份试卷的题目，按卷面顺序。默认不含已禁用的题（答题 / 预览口径） */
+    fun listQuestions(paperId: Long, limit: Int = 5000, includeDisabled: Boolean = false): List<Question> {
         val out = ArrayList<Question>()
         readableDatabase.rawQuery(
             """SELECT q.* FROM paper_questions pq
                JOIN questions q ON q.id = pq.question_id
-               WHERE pq.paper_id = ? ORDER BY pq.position LIMIT ?""",
+               WHERE pq.paper_id = ?${if (includeDisabled) "" else " AND IFNULL(q.disabled, 0) = 0"}
+               ORDER BY pq.position LIMIT ?""",
             arrayOf(paperId.toString(), limit.toString())
         ).use { c -> while (c.moveToNext()) out.add(readQuestion(c)) }
         return out
     }
 
-    fun countQuestions(paperId: Long): Int {
+    /** 某份试卷的题数。默认只数启用的题 */
+    fun countQuestions(paperId: Long, includeDisabled: Boolean = false): Int {
         readableDatabase.rawQuery(
-            "SELECT COUNT(*) FROM paper_questions WHERE paper_id = ?", arrayOf(paperId.toString())
+            if (includeDisabled) {
+                "SELECT COUNT(*) FROM paper_questions WHERE paper_id = ?"
+            } else {
+                """SELECT COUNT(*) FROM paper_questions pq
+                   JOIN questions q ON q.id = pq.question_id
+                   WHERE pq.paper_id = ? AND IFNULL(q.disabled, 0) = 0"""
+            },
+            arrayOf(paperId.toString())
         ).use { c -> return if (c.moveToFirst()) c.getInt(0) else 0 }
     }
 
@@ -798,7 +828,8 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         year = c.getString(c.getColumnIndexOrThrow("year")) ?: "",
         score = c.getDouble(c.getColumnIndexOrThrow("score")),
         keywords = c.getString(c.getColumnIndexOrThrow("keywords")) ?: "",
-        optionLayout = c.getString(c.getColumnIndexOrThrow("option_layout")) ?: ""
+        optionLayout = c.getString(c.getColumnIndexOrThrow("option_layout")) ?: "",
+        disabled = c.getInt(c.getColumnIndexOrThrow("disabled")) != 0
     )
 
     // ---------------- Paper ----------------
@@ -1168,6 +1199,239 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         return ImportResult(paperId, ids.size, name)
     }
 
+    // ---------------- 原地合并发布 ----------------
+
+    /**
+     * 覆盖发布：**原地合并**，不拆组、不删题、不动作答记录。
+     *
+     * 老做法是「拆掉整个组再重建」——旧卷连同 `records` / `exam_progress` 一起被清，
+     * 再把交过卷的记录按题目 id、卷名、内容指纹搬回来（[RecordMigration]）。但搬迁总有搬不回来的：
+     * 题干改过之后指纹对不上、没交卷的草稿直接丢、记录 id 也全变了。
+     *
+     * 这里换个方向：组、卷、题目行都不重建，只按 id 做 upsert——
+     *
+     * - 卷按 `id` 认（编辑器没带 id 才退回卷名）；卷名改了也只是更新名字，记录不用搬家；
+     * - 题按 `id` 认，没带 id 的按「题型 + 题干 + 答案」找旧题（改过题干就找不到，但那就当成新题）；
+     * - **这次没出现的旧题不删，只标 `disabled = 1`**，挂载关系也留在卷上，随时能启用回来；
+     * - 这次没出现的旧卷同样只标 `papers.disabled = 1`；
+     * - `records` / `record_answers` / `record_inks` / `record_question_times` / `exam_progress`
+     *   一行都不碰——paper id 和 question id 都没变，历史作答原样指着它们。
+     *
+     * 回滚（`restoreVersion`）也走这条路：把快照里的题重新启用、把当前多出来的题停用，
+     * 记录仍然留着。
+     */
+    fun mergeSet(s: SetImport): SetImportResult {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val existing = listPaperSets(withPapers = false, includeArchived = true)
+                .firstOrNull { it.title == s.title }
+            val setId = existing?.id ?: db.insert("paper_sets", null, setValues(s.title, s.source))
+
+            // 旧卷（含已停用的）：id → 卷名
+            val oldPapers = LinkedHashMap<Long, String>()
+            db.rawQuery("SELECT id, name FROM papers WHERE set_id = ? ORDER BY id", arrayOf(setId.toString()))
+                .use { c -> while (c.moveToNext()) oldPapers[c.getLong(0)] = c.getString(1) ?: "" }
+            // 卷名 → id：重名不猜（只认唯一的那个）
+            val oldPaperByName = oldPapers.entries.groupBy({ it.value }, { it.key })
+                .filterValues { it.size == 1 }
+                .mapValues { it.value.single() }
+
+            // 旧题（含已禁用的）：id → 内容键，用于「删了又加回来」时找回原行
+            val oldQuestions = LinkedHashMap<Long, RecordMigration.QuestionKey>()
+            db.rawQuery(
+                """SELECT DISTINCT q.id, q.type, q.stem, q.answer FROM questions q
+                   JOIN paper_questions pq ON pq.question_id = q.id
+                   JOIN papers p ON p.id = pq.paper_id
+                   WHERE p.set_id = ? ORDER BY q.id""",
+                arrayOf(setId.toString())
+            ).use { c ->
+                while (c.moveToNext()) {
+                    oldQuestions[c.getLong(0)] = RecordMigration.QuestionKey(
+                        type = c.getString(1) ?: "", stem = c.getString(2) ?: "", answer = c.getString(3) ?: "",
+                    )
+                }
+            }
+            val fpToOld = HashMap<String, Long>()
+            oldQuestions.forEach { (id, key) -> fpToOld.putIfAbsent(key.fingerprint, id) }
+
+            // 旧的挂载顺序：卷 → 题目 id（按 position）。本次没回传的题要按原位置留在卷上
+            val oldLinks = HashMap<Long, MutableList<Long>>()
+            db.rawQuery(
+                """SELECT pq.paper_id, pq.question_id FROM paper_questions pq
+                   JOIN papers p ON p.id = pq.paper_id
+                   WHERE p.set_id = ? ORDER BY pq.paper_id, pq.position""",
+                arrayOf(setId.toString())
+            ).use { c ->
+                while (c.moveToNext()) {
+                    oldLinks.getOrPut(c.getLong(0)) { ArrayList() }.add(c.getLong(1))
+                }
+            }
+
+            val used = HashSet<Long>()
+            val keptPapers = HashSet<Long>()
+
+            val results = s.papers.map { p ->
+                val oldPaperId = (p.id.takeIf { it > 0 && it in oldPapers }) ?: oldPaperByName[p.name]
+                val paperId = if (oldPaperId != null) {
+                    // 原地更新：created_at 不动，否则列表排序会跟着每次发布乱跳
+                    db.update(
+                        "papers",
+                        ContentValues().apply {
+                            put("name", p.name)
+                            put("description", p.description)
+                            put("duration_min", p.durationMin)
+                            put("set_id", setId)
+                            put("disabled", 0)
+                        },
+                        "id = ?", arrayOf(oldPaperId.toString())
+                    )
+                    oldPaperId
+                } else {
+                    db.insert("papers", null, paperValues(p.name, p.description, p.durationMin, MODE_IMPORT, setId))
+                }
+                keptPapers.add(paperId)
+
+                val before = oldLinks[paperId].orEmpty()
+                db.delete("paper_questions", "paper_id = ?", arrayOf(paperId.toString()))
+
+                val ids = ArrayList<Long>(p.questions.size)
+                val inThisPaper = HashSet<Long>()
+                p.questions.forEach { q ->
+                    val qid = resolveQuestionId(db, q, oldQuestions, fpToOld, used)
+                    if (!inThisPaper.add(qid)) return@forEach
+                    db.update("questions", questionValues(q), "id = ?", arrayOf(qid.toString()))
+                    db.insert("paper_questions", null, ContentValues().apply {
+                        put("paper_id", paperId)
+                        put("question_id", qid)
+                        put("position", ids.size)
+                    })
+                    ids.add(qid)
+                }
+
+                // 本次没回传的旧题：留在卷上（原位置 + 1000，排在启用题后面），统一标禁用
+                before.forEachIndexed { i, qid ->
+                    if (qid in used || qid in ids) return@forEachIndexed
+                    db.insertWithOnConflict(
+                        "paper_questions", null,
+                        ContentValues().apply {
+                            put("paper_id", paperId)
+                            put("question_id", qid)
+                            put("position", i + 1000)
+                        },
+                        SQLiteDatabase.CONFLICT_IGNORE
+                    )
+                }
+
+                ImportResult(paperId, p.questions.count { !it.disabled }, p.name)
+            }
+
+            // 没出现在这次发布里的旧卷：停用，不删（卷上的记录还指着它）。
+            // 这些卷里的题同样保持原状——整卷只是被收起来了，不是逐题禁用；
+            // 而**保留卷**上没回传的题才是真的从卷面拿掉了，按禁用处理。
+            val hiddenPaperQuestions = oldLinks.filterKeys { it !in keptPapers }.values.flatten().toSet()
+            oldPapers.keys.forEach { pid ->
+                if (pid !in keptPapers) {
+                    db.update("papers", ContentValues().apply { put("disabled", 1) }, "id = ?", arrayOf(pid.toString()))
+                }
+            }
+            // 没出现在这次发布里的旧题：停用，不删
+            oldQuestions.keys.forEach { qid ->
+                if (qid !in used && qid !in hiddenPaperQuestions) {
+                    db.update("questions", ContentValues().apply { put("disabled", 1) }, "id = ?", arrayOf(qid.toString()))
+                }
+            }
+
+            db.setTransactionSuccessful()
+            return SetImportResult(setId, s.title, results)
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    /**
+     * 本次发布里的一道题落到哪个题目 id 上：
+     * 1. 带了 id 且确实属于这一组 → 原地复用（内容改了也还是它；同一题出现在多卷时共用这一行）；
+     * 2. 没带 id（或 id 不属于本组）→ 按内容指纹找旧题（删了又加回来的那道会被找回原行）；
+     * 3. 都没有 → 新建一行。
+     *
+     * [used] 记录「本次发布认领了哪些旧题」，用来判断剩下的旧题是不是被拿掉了。
+     */
+    private fun resolveQuestionId(
+        db: SQLiteDatabase,
+        q: Question,
+        oldQuestions: Map<Long, RecordMigration.QuestionKey>,
+        fpToOld: Map<String, Long>,
+        used: MutableSet<Long>,
+    ): Long {
+        if (q.id > 0 && q.id in oldQuestions) {
+            used.add(q.id)
+            return q.id
+        }
+        val key = RecordMigration.QuestionKey(q.type.code, q.stem, q.answer)
+        val hit = fpToOld[key.fingerprint]
+        if (hit != null && hit !in used) {
+            used.add(hit)
+            return hit
+        }
+        val newId = db.insert("questions", null, questionValues(q))
+        used.add(newId)
+        return newId
+    }
+
+    /**
+     * 批量启用 / 禁用题目。禁用不删行：收藏、笔记、历史作答都还挂着。
+     * 返回实际改动的题数。
+     */
+    fun setQuestionsDisabled(ids: Collection<Long>, disabled: Boolean): Int {
+        if (ids.isEmpty()) return 0
+        val db = writableDatabase
+        var n = 0
+        db.beginTransaction()
+        try {
+            val cv = ContentValues().apply { put("disabled", if (disabled) 1 else 0) }
+            ids.chunked(400).forEach { chunk ->
+                n += db.update("questions", cv, "id IN (${chunk.joinToString(",")})", null)
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        return n
+    }
+
+    /** 批量启用 / 禁用整卷。停用的卷不出现在列表与整组作答里，记录保留 */
+    fun setPapersDisabled(ids: Collection<Long>, disabled: Boolean): Int {
+        if (ids.isEmpty()) return 0
+        val db = writableDatabase
+        var n = 0
+        db.beginTransaction()
+        try {
+            val cv = ContentValues().apply { put("disabled", if (disabled) 1 else 0) }
+            ids.chunked(400).forEach { chunk ->
+                n += db.update("papers", cv, "id IN (${chunk.joinToString(",")})", null)
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        return n
+    }
+
+    /** 组里已禁用的题：网页编辑器「已禁用」区用，含所在卷名 */
+    fun disabledQuestionsOfSet(setId: Long): List<Pair<Long, String>> {
+        val out = ArrayList<Pair<Long, String>>()
+        readableDatabase.rawQuery(
+            """SELECT DISTINCT q.id, p.name FROM questions q
+               JOIN paper_questions pq ON pq.question_id = q.id
+               JOIN papers p ON p.id = pq.paper_id
+               WHERE p.set_id = ? AND IFNULL(q.disabled, 0) = 1
+               ORDER BY p.id, pq.position""",
+            arrayOf(setId.toString())
+        ).use { c -> while (c.moveToNext()) out.add(c.getLong(0) to (c.getString(1) ?: "")) }
+        return out
+    }
+
     /**
      * 用给定的题目（按传入顺序）生成一份新试卷——「错题重练」用：从练习记录里挑出答错的题再练一遍。
      *
@@ -1253,13 +1517,22 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         val sets = ArrayList<PaperSet>()
         readableDatabase.rawQuery(
             """SELECT s.id, s.title, s.source, s.created_at,
-                      (SELECT COUNT(*) FROM papers p WHERE p.set_id = s.id),
-                      (SELECT COUNT(*) FROM paper_questions pq JOIN papers p ON p.id = pq.paper_id
-                         WHERE p.set_id = s.id),
+                      (SELECT COUNT(*) FROM papers p
+                         WHERE p.set_id = s.id AND IFNULL(p.disabled, 0) = 0),
                       (SELECT COUNT(*) FROM paper_questions pq JOIN papers p ON p.id = pq.paper_id
                          JOIN questions q ON q.id = pq.question_id
-                         WHERE p.set_id = s.id AND TRIM(IFNULL(q.answer, '')) = ''),
-                      IFNULL(s.archived, 0)
+                         WHERE p.set_id = s.id AND IFNULL(p.disabled, 0) = 0
+                           AND IFNULL(q.disabled, 0) = 0),
+                      (SELECT COUNT(*) FROM paper_questions pq JOIN papers p ON p.id = pq.paper_id
+                         JOIN questions q ON q.id = pq.question_id
+                         WHERE p.set_id = s.id AND IFNULL(p.disabled, 0) = 0
+                           AND IFNULL(q.disabled, 0) = 0
+                           AND TRIM(IFNULL(q.answer, '')) = ''),
+                      IFNULL(s.archived, 0),
+                      (SELECT COUNT(*) FROM paper_questions pq JOIN papers p ON p.id = pq.paper_id
+                         JOIN questions q ON q.id = pq.question_id
+                         WHERE p.set_id = s.id AND IFNULL(p.disabled, 0) = 0
+                           AND IFNULL(q.disabled, 0) = 1)
                FROM paper_sets s${if (includeArchived) "" else " WHERE IFNULL(s.archived, 0) = 0"}
                ORDER BY s.created_at DESC, s.id DESC""",
             null
@@ -1274,7 +1547,8 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
                         paperCount = c.getInt(4),
                         questionCount = c.getInt(5),
                         missingAnswers = c.getInt(6),
-                        archived = c.getInt(7) != 0
+                        archived = c.getInt(7) != 0,
+                        disabledQuestions = c.getInt(8)
                     )
                 )
             }
@@ -1362,23 +1636,28 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         db.execSQL("DELETE FROM exam_progress WHERE paper_id = ?", pid)
     }
 
-    fun listPapers(): List<Paper> {
+    fun listPapers(includeDisabled: Boolean = false): List<Paper> {
         val out = ArrayList<Paper>()
         readableDatabase.rawQuery(
             """SELECT p.id, p.name, p.description, p.created_at, p.duration_min, p.mode,
-                      (SELECT COUNT(*) FROM paper_questions pq WHERE pq.paper_id = p.id),
+                      (SELECT COUNT(*) FROM paper_questions pq
+                         JOIN questions q ON q.id = pq.question_id
+                         WHERE pq.paper_id = p.id AND IFNULL(q.disabled, 0) = 0),
                       (SELECT COUNT(*) FROM paper_questions pq2
                          JOIN questions q2 ON q2.id = pq2.question_id
-                         WHERE pq2.paper_id = p.id AND TRIM(IFNULL(q2.answer, '')) = ''),
-                      IFNULL(p.set_id, 0)
-               FROM papers p ORDER BY p.created_at DESC""", null
+                         WHERE pq2.paper_id = p.id AND IFNULL(q2.disabled, 0) = 0
+                           AND TRIM(IFNULL(q2.answer, '')) = ''),
+                      IFNULL(p.set_id, 0), IFNULL(p.disabled, 0)
+               FROM papers p${if (includeDisabled) "" else " WHERE IFNULL(p.disabled, 0) = 0"}
+               ORDER BY p.created_at DESC""", null
         ).use { c ->
             while (c.moveToNext()) {
                 out.add(
                     readPaperBase(c).copy(
                         questionCount = c.getInt(6),
                         missingAnswers = c.getInt(7),
-                        setId = c.getLong(8)
+                        setId = c.getLong(8),
+                        disabled = c.getInt(9) != 0
                     )
                 )
             }
@@ -1387,9 +1666,10 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
     }
 
     /** 按 id 直查单卷：不再为一份卷读全表 + 跑关联子查询，计数只按这份卷统计 */
-    fun getPaper(id: Long): Paper? {
+    fun getPaper(id: Long, includeDisabled: Boolean = false): Paper? {
         val base = readableDatabase.rawQuery(
-            """SELECT id, name, description, created_at, duration_min, mode, IFNULL(set_id, 0)
+            """SELECT id, name, description, created_at, duration_min, mode, IFNULL(set_id, 0),
+                      IFNULL(disabled, 0)
                FROM papers WHERE id = ? LIMIT 1""",
             arrayOf(id.toString())
         ).use { c ->
@@ -1397,14 +1677,16 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
             readPaperBase(c).copy(
                 questionCount = countPaperQuestions(id),
                 missingAnswers = countPaperMissingAnswers(id),
-                setId = c.getLong(6)
+                setId = c.getLong(6),
+                disabled = c.getInt(7) != 0
             )
         }
         val qs = ArrayList<Question>()
         readableDatabase.rawQuery(
             """SELECT q.* FROM paper_questions pq
                JOIN questions q ON q.id = pq.question_id
-               WHERE pq.paper_id = ? ORDER BY pq.position""",
+               WHERE pq.paper_id = ?${if (includeDisabled) "" else " AND IFNULL(q.disabled, 0) = 0"}
+               ORDER BY pq.position""",
             arrayOf(id.toString())
         ).use { c -> while (c.moveToNext()) qs.add(readQuestion(c)) }
         return base.copy(questions = qs)
@@ -1415,8 +1697,8 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
      *
      * 答题页 / 分屏页 / 报告 / 补答案 / 记录续做都走这一个入口，就不用在每处各自判断。
      */
-    fun getPaperOrGroup(id: Long): Paper? =
-        if (PaperRef.isGroup(id)) getGroupPaper(PaperRef.setIdOf(id)) else getPaper(id)
+    fun getPaperOrGroup(id: Long, includeDisabled: Boolean = false): Paper? =
+        if (PaperRef.isGroup(id)) getGroupPaper(PaperRef.setIdOf(id), includeDisabled) else getPaper(id, includeDisabled)
 
     /**
      * 一个导入组合成一张卷：题目按组内各卷的建卷顺序首尾相接，用时按各卷时长累加。
@@ -1427,7 +1709,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
      * 同一道题可能同时挂在组内多份卷上（错题重练复用原卷题目行），**按题目 id 去重**：
      * 作答、题号、每题用时都按题目 id 存，重复出现会把题号搅乱。
      */
-    fun getGroupPaper(setId: Long): Paper? {
+    fun getGroupPaper(setId: Long, includeDisabled: Boolean = false): Paper? {
         if (setId <= 0L) return null
         val head = readableDatabase.rawQuery(
             "SELECT title, created_at FROM paper_sets WHERE id = ? LIMIT 1",
@@ -1440,7 +1722,7 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         var paperCount = 0
         var duration = 0
         readableDatabase.rawQuery(
-            "SELECT duration_min FROM papers WHERE set_id = ? ORDER BY id",
+            "SELECT duration_min FROM papers WHERE set_id = ? AND IFNULL(disabled, 0) = 0 ORDER BY id",
             arrayOf(setId.toString())
         ).use { c ->
             while (c.moveToNext()) {
@@ -1457,7 +1739,9 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
             """SELECT q.* FROM paper_questions pq
                JOIN papers p ON p.id = pq.paper_id
                JOIN questions q ON q.id = pq.question_id
-               WHERE p.set_id = ? ORDER BY p.id, pq.position""",
+               WHERE p.set_id = ? AND IFNULL(p.disabled, 0) = 0
+                 ${if (includeDisabled) "" else "AND IFNULL(q.disabled, 0) = 0"}
+               ORDER BY p.id, pq.position""",
             arrayOf(setId.toString())
         ).use { c ->
             while (c.moveToNext()) {
@@ -1489,7 +1773,9 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
 
     private fun countPaperQuestions(paperId: Long): Int =
         readableDatabase.rawQuery(
-            "SELECT COUNT(*) FROM paper_questions WHERE paper_id = ?",
+            """SELECT COUNT(*) FROM paper_questions pq
+               JOIN questions q ON q.id = pq.question_id
+               WHERE pq.paper_id = ? AND IFNULL(q.disabled, 0) = 0""",
             arrayOf(paperId.toString())
         ).use { if (it.moveToFirst()) it.getInt(0) else 0 }
 
@@ -1497,7 +1783,8 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
         readableDatabase.rawQuery(
             """SELECT COUNT(*) FROM paper_questions pq
                JOIN questions q ON q.id = pq.question_id
-               WHERE pq.paper_id = ? AND TRIM(IFNULL(q.answer, '')) = ''""",
+               WHERE pq.paper_id = ? AND IFNULL(q.disabled, 0) = 0
+                 AND TRIM(IFNULL(q.answer, '')) = ''""",
             arrayOf(paperId.toString())
         ).use { if (it.moveToFirst()) it.getInt(0) else 0 }
 
@@ -2424,8 +2711,11 @@ class QBankDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VE
          *
          * v15：`questions` 加 `option_layout` 列（选项排布按题存）。纯增列、默认空串 = 单列，
          * 老 App 同样只是拒绝恢复这一版备份，不会读坏数据。
+         *
+         * v16：`questions` / `papers` 各加 `disabled` 列（题目、卷都不再物理删除，只停用）。
+         * 纯增列、默认 0；老 App 拒绝恢复 v16 备份，但当前库里已有的题与记录一条不少。
          */
-        const val DB_VERSION = 15
+        const val DB_VERSION = 16
 
         /** 重练卷统一挂的组名 */
         private const val RETRY_SET_TITLE = "错题重练"
@@ -2615,6 +2905,8 @@ data class PaperSet(
     val missingAnswers: Int = 0,
     /** 已归档：默认列表不显示，数据（题目 / 记录）都在 */
     val archived: Boolean = false,
+    /** 组里被禁用的题数（题还在，只是不参与卷面与统计） */
+    val disabledQuestions: Int = 0,
     val papers: List<Paper> = emptyList()
 )
 
@@ -2634,12 +2926,18 @@ data class SetImportResult(
     val questionCount: Int get() = papers.sumOf { it.questionCount }
 }
 
-/** 待建的一份试卷（批量导入用） */
+/**
+ * 待建的一份试卷（批量导入用）。
+ *
+ * [id] 只由覆盖发布带回来：卷名可以改，id 才是「还是那卷」的凭据——
+ * 靠卷名对应时改个名字就成了「删一卷 + 加一卷」，卷上的作答记录会对不上。
+ */
 data class PaperImport(
     val name: String,
     val description: String,
     val durationMin: Int,
-    val questions: List<Question>
+    val questions: List<Question>,
+    val id: Long = 0L
 )
 
 /** 待写入的标准答案（[analysis] 为空时保留题目原有解析） */

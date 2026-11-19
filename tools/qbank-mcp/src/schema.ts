@@ -42,16 +42,23 @@ export const sheetSchema = z.object({
 /**
  * 回传给手机端的题目结构。
  *
- * 比输入 schema 多一个可选 `id`：手机用它判断「这道题原来就在库里」，
- * 命中就原地 UPDATE，收藏 / 笔记才不会被一次改题清空。
- * 输入侧（新建题目）不接受 id，所以挂在类型上而不是 zod schema 上。
+ * 比输入 schema 多两个可选字段：
+ * - `id`：手机用它判断「这道题原来就在库里」，命中就原地 UPDATE，
+ *   收藏 / 笔记 / 历史作答才不会因为一次改题被清空；
+ * - `disabled`：这一题是否已禁用（题还在库里，只是不参与卷面与统计）。
+ * 输入侧（新建题目）不接受这两个字段，所以挂在类型上而不是 zod schema 上。
  */
-export type WireQuestion = z.infer<typeof questionSchema> & { id?: number }
-export type WireSheet = z.infer<typeof sheetSchema>
+export type WireQuestion = z.infer<typeof questionSchema> & { id?: number; disabled?: boolean }
+/** 回传给手机端的整组内容：卷 id 可选，题目用带 id / disabled 的版本 */
+export type WireSheet = Omit<z.infer<typeof sheetSchema>, 'questions'> & {
+  id?: number
+  questions: WireQuestion[]
+}
 
-/** 手机端返回的题目：比输入多了 id，可能带旧字段 */
+/** 手机端返回的题目：比输入多了 id / disabled，可能带旧字段 */
 export interface StoredQuestion extends Partial<WireQuestion> {
   id?: number
+  disabled?: boolean
   images?: string
   _uid?: number
   _issues?: unknown
@@ -64,6 +71,8 @@ export interface SetSummary {
   paperCount: number
   questionCount: number
   missingAnswers: number
+  /** 组里被禁用的题数（题还在，只是不参与卷面与统计） */
+  disabledQuestions?: number
   editable: boolean
   papers: { id: number; name: string; questionCount: number; missingAnswers: number }[]
 }
@@ -77,9 +86,10 @@ export interface SetsResponse {
 export interface SetDetail {
   id: number
   title: string
-  sheets: { name: string; questions: StoredQuestion[] }[]
+  sheets: { id?: number; name: string; questions: StoredQuestion[] }[]
   questionCount: number
   missingAnswers: number
+  disabledQuestions?: number
 }
 
 export interface VersionInfo {
@@ -97,6 +107,8 @@ export interface PublishResult {
   setId: number
   title: string
   questionCount: number
+  /** 组里被禁用的题数（题还在，只是不参与卷面与统计） */
+  disabledQuestions?: number
   replaced: boolean
   version: VersionInfo | null
   papers: { name: string; questionCount: number }[]

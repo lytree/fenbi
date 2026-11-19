@@ -21,10 +21,11 @@ import java.io.File
  * - 图片按组编号分目录放 `filesDir/lan_editor/images/<组编号>/`，题目里写 `images/<组编号>/xxx.png`，
  *   **入库时才换成绝对路径**（App 的 MaterialRenderer 认绝对路径，换机备份也跟着走）。
  *
- * 覆盖同一标题会走 `importSets(replace = true)`——那一组的旧卷被拆掉重建，但**交过卷的
- * 作答记录会尽量带到新组头上**（题目行原地复用 + 卷名对应 + 内容指纹兜底，见
- * `RecordMigration`）；没交卷的草稿跟旧卷一起走。且**旧内容不会被白白冲掉**：覆盖前先由
- * [LanEditorArchive] 存一份快照，网页上能翻回任意一版再「恢复」。
+ * 覆盖同一标题走 `QBankDb.mergeSet`——**原地合并**：组、卷、题目行都不重建，
+ * 按 id 更新 / 追加，这次没出现的题只标「已禁用」，卷只标「已停用」。
+ * 于是历史作答、逐题用时、批改笔迹、未交卷的草稿全都原样留着，一条都不搬、一条都不丢；
+ * 禁用题随时能在编辑器里启用回来。覆盖前仍由 [LanEditorArchive] 存一份快照，
+ * 网页上能翻回任意一版再「恢复」。
  */
 class LanEditorStore(private val context: Context) {
 
@@ -58,6 +59,7 @@ class LanEditorStore(private val context: Context) {
                     .put("paperCount", s.paperCount)
                     .put("questionCount", s.questionCount)
                     .put("missingAnswers", s.missingAnswers)
+                    .put("disabledQuestions", s.disabledQuestions)
                     .put("editable", s.id > 0)
                     .put("archived", s.archived)
                     .put(
@@ -97,7 +99,7 @@ class LanEditorStore(private val context: Context) {
 
         val sheets = JSONArray()
         set.papers.forEach { p ->
-            val total = db.countQuestions(p.id)
+            val total = db.countQuestions(p.id, includeDisabled = true)
             if (total > limit) {
                 throw IllegalStateException(
                     "「${p.name}」有 $total 题，超过网页编辑器单卷 $limit 题的上限。" +
@@ -105,9 +107,11 @@ class LanEditorStore(private val context: Context) {
                         "请先在 App 里把这份卷拆成几份，再回来编辑。"
                 )
             }
-            val questions = db.listQuestions(p.id, limit)
+            // 禁用题也要读出来：编辑器上要能看到「已禁用」并随时启用，发布时也靠它们保持原位置
+            val questions = db.listQuestions(p.id, limit, includeDisabled = true)
             sheets.put(
                 JSONObject()
+                    .put("id", p.id)
                     .put("name", p.name)
                     .put("questions", JSONArray().apply { questions.forEach { put(questionToJson(it, setId)) } })
             )
@@ -118,6 +122,7 @@ class LanEditorStore(private val context: Context) {
             .put("sheets", sheets)
             .put("questionCount", set.questionCount)
             .put("missingAnswers", set.missingAnswers)
+            .put("disabledQuestions", set.disabledQuestions)
     }
 
     /**
@@ -148,6 +153,7 @@ class LanEditorStore(private val context: Context) {
         put("keywords", q.keywords)
         // 选项排布按题存：'' = 单列 1×4，'2x2' = 两列；网页按这题自己的值渲染与切换
         put("optionLayout", q.optionLayout)
+        put("disabled", q.disabled)
         put("id", q.id)
     }
 
@@ -175,7 +181,8 @@ class LanEditorStore(private val context: Context) {
     fun listRecords(setId: Long?): JSONObject {
         val all = db.listRecords()
         val filtered = if (setId != null && setId > 0) {
-            val paperIds = db.listPapers().filter { it.setId == setId }.map { it.id }.toSet()
+            // 停用的卷也要算：它的历史记录还在，只是卷面不再显示
+            val paperIds = db.listPapers(includeDisabled = true).filter { it.setId == setId }.map { it.id }.toSet()
             all.filter { it.paperId in paperIds || it.paperId == -setId }
         } else {
             all
@@ -190,7 +197,7 @@ class LanEditorStore(private val context: Context) {
         val rec = db.getRecord(id) ?: throw IllegalArgumentException("找不到这条作答记录（可能已被删掉）")
         // 按卷面顺序排，AI 说「第 12 题」才和 App 里看到的是同一题
         val order = if (rec.paperId > 0) {
-            db.listQuestions(rec.paperId).mapIndexed { i, q -> q.id to i + 1 }.toMap()
+            db.listQuestions(rec.paperId, includeDisabled = true).mapIndexed { i, q -> q.id to i + 1 }.toMap()
         } else {
             emptyMap()
         }
@@ -250,12 +257,13 @@ class LanEditorStore(private val context: Context) {
             throw IllegalArgumentException("已经有同名的组「$title」，确认覆盖请点「覆盖发布」")
         }
         // 卷描述 / 限时 / 组来源都是 App 侧的东西，编辑器不显示也不该顺手改掉：
-        // 按卷名把旧值继承回来，只有真正新增的卷才用默认值
-        val oldPapers = if (existing != null) {
-            db.listPapers().filter { it.setId == existing.id }.associateBy { it.name }
+        // 按卷 id（其次卷名）把旧值继承回来，只有真正新增的卷才用默认值
+        val oldPapersById = if (existing != null) {
+            db.listPapers(includeDisabled = true).filter { it.setId == existing.id }.associateBy { it.id }
         } else {
             emptyMap()
         }
+        val oldPapersByName = oldPapersById.values.associateBy { it.name }
         val oldSource = existing?.source?.takeIf { it.isNotBlank() }
 
         val errors = ArrayList<String>()
@@ -268,14 +276,15 @@ class LanEditorStore(private val context: Context) {
             for (qi in 0 until rawQs.length()) {
                 toQuestion(rawQs.getJSONObject(qi), name, qi, errors)?.let { list.add(it) }
             }
-            if (list.isEmpty()) throw IllegalArgumentException("「$name」里一道题都没有，先加题再发布")
-            val old = oldPapers[name]
+            if (list.none { !it.disabled }) throw IllegalArgumentException("「$name」里一道可用的题都没有，先加题再发布")
+            val old = sheet.optLong("id", 0L).takeIf { it > 0 }?.let(oldPapersById::get) ?: oldPapersByName[name]
             papers.add(
                 PaperImport(
                     name = name,
                     description = old?.description?.takeIf { it.isNotBlank() } ?: "局域网编辑器",
                     durationMin = old?.durationMin ?: 0,
                     questions = list,
+                    id = old?.id ?: 0L,
                 )
             )
         }
@@ -296,18 +305,21 @@ class LanEditorStore(private val context: Context) {
             }
         }
 
-        val result = db.importSets(
-            listOf(SetImport(title = title, source = oldSource ?: "局域网编辑器", papers = papers)),
-            replace = replace || existing != null,
-            // 原地更新题目行：收藏 / 笔记挂在题目 id 上，重建就等于把它们清空了
-            reuseQuestionIds = true,
-        ).firstOrNull() ?: throw IllegalStateException("写入失败：没有生成任何试卷")
+        // 原地合并：组 / 卷 / 题目行都不重建，历史作答与未交卷草稿一行不碰。
+        // 这次没回传的题只标「已禁用」，卷只标「已停用」，都能再启用回来。
+        val result = db.mergeSet(
+            SetImport(title = title, source = oldSource ?: "局域网编辑器", papers = papers)
+        )
+
+        val disabled = db.listPaperSets(withPapers = false, includeArchived = true)
+            .firstOrNull { it.id == result.setId }?.disabledQuestions ?: 0
 
         return JSONObject()
             .put("ok", true)
             .put("setId", result.setId)
             .put("title", result.title)
             .put("questionCount", result.questionCount)
+            .put("disabledQuestions", disabled)
             .put("replaced", existing != null)
             .put("version", version ?: JSONObject.NULL)
             .put(
@@ -480,7 +492,9 @@ class LanEditorStore(private val context: Context) {
                 Question.VALUE_TWO_COLUMN
             } else {
                 ""
-            }
+            },
+            // 禁用题照样回传（编辑器上还留着位置）；没带这个字段就按启用处理
+            disabled = o.optBoolean("disabled", false)
         )
     }
 

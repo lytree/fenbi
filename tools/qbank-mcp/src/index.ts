@@ -19,7 +19,7 @@ import {
   addQuestions,
   auditSet,
   batchUpdateQuestions,
-  deleteQuestion,
+  disableQuestion,
   deleteSet,
   deleteWord,
   findSet,
@@ -32,6 +32,7 @@ import {
   readRecord,
   readSet,
   resetRecite,
+  restoreQuestion,
   restoreVersion,
   saveReciteCards,
   saveWord,
@@ -96,9 +97,11 @@ server.registerTool(
     description:
       '读某一组的题目（按卷、按卷面顺序），带题型、材料、选项、答案、解析。' +
       '默认每次 20 题，用 offset 翻页；题多的时候不要一次拉完，先看前 20 题。' +
+      '默认不列已禁用的题（它们不参与卷面与统计）；要看 / 恢复禁用题时加 includeDisabled=true，' +
+      '注意那时「第 N 题」按全部题算。' +
       '超长题干 / 解析会被截断并标出原文长度——要把内容原样写回题目时先加 full=true，' +
       '不要拿截断后的文本当原文去改题。' +
-      '返回里的「【卷名】第 N 题」就是改题 / 删题要用的 sheet + index。',
+      '返回里的「【卷名】第 N 题」就是改题 / 禁用要用的 sheet + index。',
     inputSchema: {
       setId: z.number().int().positive().optional().describe('组 id；和 title 二选一'),
       title: z.string().optional().describe('组名；和 setId 二选一（支持唯一的部分匹配）'),
@@ -113,6 +116,10 @@ server.registerTool(
         .boolean()
         .optional()
         .describe('返回完整原文、不截断（默认会截断并标注字数）；要按读到的内容回写时必须传 true'),
+      includeDisabled: z
+        .boolean()
+        .optional()
+        .describe('连已禁用的题一起读（默认不读）。恢复禁用题时先传它拿到序号'),
     },
     annotations: { readOnlyHint: true },
   },
@@ -300,7 +307,7 @@ server.registerTool(
     description:
       '往指定组（组不存在就新建）的某一卷末尾追加题目，然后整组发布到 App。' +
       '这是加题的首选工具：只需要传新题，不用把整组题目回传。' +
-      '注意手机端是「整组重导」：提交成功后旧卷的作答记录会被替换掉（题目内容会先自动存一个版本，可回滚）。',
+      '发布是原地合并：原有的题目、练习记录与未交卷草稿都保留（题目内容会先自动存一个版本，可回滚）。',
     inputSchema: {
       title: z.string().min(1).describe('组名（App 首页那一层标题）'),
       sheet: z.string().optional().describe('卷名；不传就加到第一张卷，组是新建的则默认叫「试卷」'),
@@ -342,22 +349,46 @@ server.registerTool(
 )
 
 server.registerTool(
-  'qbank_delete_question',
+  'qbank_disable_question',
   {
-    title: '删一道题',
+    title: '禁用一道题（不删除）',
     description:
-      '删掉某组的某道题，然后整组重新发布。index 从 1 开始。' +
-      '如果删完整张卷空了，这张卷会一起移除；整组只剩一张卷时会拒绝，改用 qbank_delete_set。',
+      '把某组的某道题标记为禁用，然后整组发布。index 从 1 开始，按 qbank_get_set 里「启用的题」编号。' +
+      '**题目不会被删除**：题干、选项、收藏、笔记、历史作答都留在手机里，只是不再出现在卷面、答题与统计中；' +
+      '要恢复用 qbank_restore_question。一张卷至少要留一道启用的题，会拦下。',
     inputSchema: {
       title: z.string().min(1).describe('组名'),
       sheet: z.string().optional().describe('卷名；不传就是第一张卷'),
-      index: z.number().int().min(1).describe('第几题（从 1 开始）'),
+      index: z.number().int().min(1).describe('第几题（从 1 开始，按启用题编号）'),
     },
     annotations: { destructiveHint: true },
   },
   async (args) => {
     try {
-      return text(await deleteQuestion(need(), args))
+      return text(await disableQuestion(need(), args))
+    } catch (e) {
+      return failure(e)
+    }
+  }
+)
+
+server.registerTool(
+  'qbank_restore_question',
+  {
+    title: '启用一道被禁用的题',
+    description:
+      '把之前禁用的题重新启用，然后整组发布。index 从 1 开始，但要按 ' +
+      'qbank_get_set({ includeDisabled: true }) 里的「第 N 题」算（含禁用题的全量顺序）。',
+    inputSchema: {
+      title: z.string().min(1).describe('组名'),
+      sheet: z.string().optional().describe('卷名；不传就是第一张卷'),
+      index: z.number().int().min(1).describe('第几题（从 1 开始，按含禁用题的全量顺序）'),
+    },
+    annotations: { destructiveHint: true },
+  },
+  async (args) => {
+    try {
+      return text(await restoreQuestion(need(), args))
     } catch (e) {
       return failure(e)
     }
@@ -370,8 +401,9 @@ server.registerTool(
     title: '整组发布（覆盖或新建）',
     description:
       '按标题把一整组卷发布到手机题库，等于网页上点「发布到 App」。' +
-      '同名组已存在时必须显式传 replace=true，否则会失败并提示；覆盖会替换旧卷与作答记录，' +
-      '但旧题目内容会先自动存一个版本（qbank_list_versions 可查、qbank_restore_version 可回滚）。' +
+      '同名组已存在时必须显式传 replace=true，否则会失败并提示。' +
+      '覆盖发布是**原地合并**：题目按 id 更新，练习记录与未交卷草稿全部保留；' +
+      '这次没出现在 sheets 里的旧题只标为禁用（不删除），旧题目内容另存一版可回滚。' +
       '一般加题用 qbank_add_questions 就够了，这个工具用于批量导入或整组重写。',
     inputSchema: {
       title: z.string().min(1).describe('组名'),

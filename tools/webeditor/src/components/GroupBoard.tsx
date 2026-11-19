@@ -5,7 +5,7 @@ import { firstImageSrc } from '../util'
 import { plain, renderMaterial } from '../markdown'
 import {
   TYPE_SHORT, addQuestionToGroup, assignSelectedToGroup, clearSelection, currentQuestions,
-  focusQuestion, isSelected, moveGroupTo, moveQuestionsTo, removeSelected, selectMany,
+  focusQuestion, isSelected, moveGroupTo, moveQuestionsTo, disableSelected, selectMany,
   selectedUids, state, toggleSelected, ungroupSelected, visibleIndexes,
 } from '../store'
 
@@ -288,7 +288,7 @@ export default defineComponent({
                   ))}
                 </select>
                 <button class="ghost sm" onClick={ungroupSelected}>移出分组</button>
-                <button class="ghost sm danger-text" onClick={removeSelected}>删除</button>
+                <button class="ghost sm danger-text" onClick={disableSelected}>禁用</button>
                 <span class="grow"></span>
                 <button class="ghost sm" onClick={clearSelection}>清空选择</button>
               </div>

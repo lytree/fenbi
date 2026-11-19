@@ -51,11 +51,12 @@ const PAPER = {
   missingAnswers: 0,
   sheets: [
     {
+      id: 11,
       name: '行测',
       questions: [
-        QUESTION('第一题：没有语病的一项'),
-        QUESTION('第二题：同比增加多少', { material: '2025年1—2月，总收入5280.0亿元。', subject: '资料分析' }),
-        QUESTION('第三题：占比约多少', { material: '2025年1—2月，总收入5280.0亿元。', subject: '资料分析' }),
+        QUESTION('第一题：没有语病的一项', { id: 101 }),
+        QUESTION('第二题：同比增加多少', { id: 102, material: '2025年1—2月，总收入5280.0亿元。', subject: '资料分析' }),
+        QUESTION('第三题：占比约多少', { id: 103, material: '2025年1—2月，总收入5280.0亿元。', subject: '资料分析' }),
       ],
     },
   ],
@@ -481,9 +482,37 @@ describe('局域网题库编辑器', () => {
     expect(published).toBeTruthy()
     expect(published.title).toBe('2024国考')
     expect(published.sheets[0].name).toBe('行测')
+    // 卷 id 要随发布带回去：服务端按它认出「还是那卷」，记录不用搬家
+    expect(published.sheets[0].id).toBe(11)
     expect(published.sheets[0].questions).toHaveLength(4)
     // 前端临时字段不能带到手机端
     expect(published.sheets[0].questions[0]._uid).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('「禁用」不是删除：题留在列表里置灰，发布时带着 disabled 回传', async () => {
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+
+    const first = wrapper.findAll('.qcard')[0]
+    const disableBtn = first.findAll('button').find((b) => b.text() === '禁用')
+    expect(disableBtn).toBeTruthy()
+    await disableBtn!.trigger('click')
+    await flushPromises()
+
+    // 卡片没消失，只是标成禁用
+    expect(wrapper.findAll('.qcard')).toHaveLength(3)
+    expect(wrapper.findAll('.qcard')[0].classes()).toContain('disabled')
+    expect(wrapper.findAll('.qcard')[0].text()).toContain('已禁用')
+
+    const publishBtn = wrapper.findAll('button').find((b) => b.text().includes('发布到 App'))
+    await publishBtn!.trigger('click')
+    await flushPromises()
+
+    // 三道题都还在，第一道带 disabled=true 和原 id
+    expect(published.sheets[0].questions).toHaveLength(3)
+    expect(published.sheets[0].questions[0].id).toBe(101)
+    expect(published.sheets[0].questions[0].disabled).toBe(true)
     wrapper.unmount()
   })
 

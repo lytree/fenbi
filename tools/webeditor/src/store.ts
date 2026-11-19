@@ -203,6 +203,7 @@ export function blankQuestion(type: QuestionType = 'single'): Question {
     keywords: '',
     /** 选项排布：'' = 单列 1×4（默认），'2x2' = 两列 */
     optionLayout: '',
+    disabled: false,
     _issues: null,
   }
 }
@@ -251,6 +252,8 @@ export function toggleAnswer(q: Question, val: string) {
 /** 单题的即时检查：纯函数，不缓存（渲染期写缓存会和响应式打架） */
 export function localIssues(q: Question): QIssue[] {
   const out: QIssue[] = []
+  // 禁用题不参与卷面，也就不该报「题干为空 / 缺答案」——它本来就没打算发布
+  if (q.disabled) return out
   if (!q.stem.trim()) out.push({ level: 'error', message: '题干为空，App 导入时会被跳过' })
   const opts = q.options.filter((o) => o.text.trim())
   if (CHOICE.includes(q.type) && opts.length < 2) {
@@ -426,11 +429,14 @@ export async function openSet(id: number, opts: { force?: boolean } = {}): Promi
     id: p.id,
     name: p.title,
     sheets: (p.sheets ?? []).map((s) => ({
+      // 卷 id 要一路带到发布：卷名改了也能认出是同一卷，卷上的记录不会变成孤儿
+      id: s.id,
       name: s.name,
       // 老数据里没有 optionLayout：补成 ''（单列），后面每题切换时才有初值可读
       questions: (s.questions ?? []).map((q) => ({
         ...q,
         optionLayout: q.optionLayout ?? '',
+        disabled: q.disabled ?? false,
         _uid: nextUid(),
         _issues: null,
       })),
@@ -471,6 +477,7 @@ export function newPaper(name: string) {
 
 export function serialize(): WireSheet[] {
   return (state.paper?.sheets ?? []).map((s) => ({
+    id: s.id,
     name: s.name,
     questions: s.questions.map((q) => {
       const { _uid, _issues, ...rest } = q
@@ -491,8 +498,8 @@ export async function publish(opts: { replace?: boolean } = {}): Promise<boolean
   const title = (paper.name || '').trim()
   if (!title) { toast('先给这一组起个名字', 'err'); return false }
   const sheets = serialize()
-  if (!sheets.length || sheets.every((s) => s.questions.length === 0)) {
-    toast('还一道题都没有，先加题', 'err')
+  if (!sheets.length || sheets.every((s) => s.questions.filter(isEnabled).length === 0)) {
+    toast('还一道可用的题都没有，先加题（或启用已禁用的题）', 'err')
     return false
   }
   if (ui.waitingId) {
@@ -509,7 +516,9 @@ export async function publish(opts: { replace?: boolean } = {}): Promise<boolean
         'publish',
         r,
         `发布「${r.title}」`,
-        r.replaced ? '这次是覆盖发布，旧内容会先存一版。' : '确认后写进手机题库，App 首页就能看到。',
+        r.replaced
+          ? '这次是覆盖发布：题目原地更新，练习记录与未交卷草稿全部保留，去掉的题只停用不删除；旧内容会先存一版。'
+          : '确认后写进手机题库，App 首页就能看到。',
       )
       : r
     if (!result) return false
@@ -518,7 +527,11 @@ export async function publish(opts: { replace?: boolean } = {}): Promise<boolean
   } catch (e) {
     const msg = e instanceof Error ? e.message : '发布失败'
     if (msg.includes('确认覆盖')) {
-      const ok = await askConfirm('已经有同名的一组', `${msg}\n\n覆盖会把那一组旧卷连同作答记录一起清掉，确定吗？`, '覆盖发布')
+      const ok = await askConfirm(
+        '已经有同名的一组',
+        `${msg}\n\n覆盖发布是原地合并：题目按 id 更新，练习记录与未交卷草稿全部保留；从卷面上去掉的题只停用、不删除。确定覆盖吗？`,
+        '覆盖发布',
+      )
       if (ok) {
         ui.busy = false
         return publish({ replace: true })
@@ -542,8 +555,9 @@ async function afterPublished(paper: EditorPaper, title: string, r: PublishRespo
   await loadSets()
   await loadVersions()
   const archived = r.version ? ' · 旧内容已存为版本' : ''
+  const off = r.disabledQuestions ? ` · ${r.disabledQuestions} 题已禁用` : ''
   toast(
-    `已发布「${title}」· ${r.questionCount} 题${r.replaced ? ' · 覆盖了同名组' : ''}${archived}，回手机就能看到`,
+    `已发布「${title}」· ${r.questionCount} 题${off}${r.replaced ? ' · 覆盖了同名组' : ''}${archived}，回手机就能看到`,
     'ok',
   )
 }
@@ -667,16 +681,52 @@ export function addQuestionToGroup(startIndex: number) {
   return q
 }
 
-export function removeQuestion(uid: number) {
+/**
+ * 「删除」一道题 = **禁用**，不是真删。
+ *
+ * 手机上题行和作答记录都留着：删掉的话，历史记录里那一次的作答就成了找不到题的孤儿，
+ * 收藏 / 笔记也跟着没。禁用的题在编辑器里置灰、留在原位，随时点「启用」回来。
+ * 例外：这次新加、还没发布过的题（没有 id）库里根本没有它，直接从列表拿走。
+ */
+export function disableQuestion(uid: number) {
   const qs = currentQuestions()
   const i = qs.findIndex((q) => q._uid === uid)
   if (i < 0) return
-  qs.splice(i, 1)
-  state.expanded = state.expanded.filter((x) => x !== uid)
-  state.selected = state.selected.filter((x) => x !== uid)
-  if (state.focused === uid) state.focused = null
+  const q = qs[i]
+  if (!q.id) {
+    qs.splice(i, 1)
+    state.expanded = state.expanded.filter((x) => x !== uid)
+    state.selected = state.selected.filter((x) => x !== uid)
+    if (state.focused === uid) state.focused = null
+  } else {
+    q.disabled = true
+    q._issues = null
+    state.expanded = state.expanded.filter((x) => x !== uid)
+    if (state.focused === uid) state.focused = null
+  }
   markDirty()
   refreshGroups()
+}
+
+/** 把一道禁用题重新启用（发布后才会回到 App 的卷面里） */
+export function enableQuestion(uid: number) {
+  const qs = currentQuestions()
+  const q = qs.find((x) => x._uid === uid)
+  if (!q || !q.disabled) return
+  q.disabled = false
+  q._issues = null
+  markDirty()
+  refreshGroups()
+}
+
+/** 一道题是不是启用的（老草稿里没有这个字段 = 启用） */
+export function isEnabled(q: { disabled?: boolean }): boolean {
+  return !q.disabled
+}
+
+/** 当前卷里启用的题数（侧栏、发布前的计数都用它） */
+export function enabledCount(sheet: Sheet | null | undefined): number {
+  return (sheet?.questions ?? []).filter(isEnabled).length
 }
 
 export function duplicateQuestion(uid: number) {
@@ -818,13 +868,19 @@ export function ungroupSelected() {
   clearSelection()
 }
 
-/** 批量删除选中的题 */
-export function removeSelected() {
+/** 批量「删除」选中的题 = 批量禁用；还没发布过的新题直接移除 */
+export function disableSelected() {
   const uids = new Set(state.selected)
   if (!uids.size) return
   const qs = currentQuestions()
   for (let i = qs.length - 1; i >= 0; i--) {
-    if (uids.has(qs[i]._uid)) qs.splice(i, 1)
+    if (!uids.has(qs[i]._uid)) continue
+    if (qs[i].id) {
+      qs[i].disabled = true
+      qs[i]._issues = null
+    } else {
+      qs.splice(i, 1)
+    }
   }
   state.expanded = state.expanded.filter((x) => !uids.has(x))
   if (state.focused !== null && uids.has(state.focused)) state.focused = null
@@ -1026,6 +1082,7 @@ export function renameSheet(index: number, name: string) {
   markDirty()
 }
 
+/** 停用一张工作表（不是删）：发布后后端只把卷标成停用，题与记录都留着 */
 export function removeSheet(index: number) {
   if (!state.paper || state.paper.sheets.length <= 1) return
   state.paper.sheets.splice(index, 1)
@@ -1141,6 +1198,8 @@ const visibleCache = computed(() => {
       if (topic === TYPE_NONE_VALUE ? t !== '' : t !== topic) return
     }
     if (state.filter !== 'all') {
+      // 看「有问题的题 / 缺答案」时跳过禁用题：它不参与发布，列出来只是噪音
+      if (q.disabled) return
       const hasIssue = localIssues(q).length > 0
       if (state.filter === 'issue' && !hasIssue) return
       if (state.filter === 'noanswer' && q.answer.trim()) return

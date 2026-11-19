@@ -21,6 +21,7 @@ export interface MockQuestion {
 }
 
 export interface MockSheet {
+  id?: number
   name: string
   questions: MockQuestion[]
 }
@@ -102,9 +103,16 @@ const readBody = (req: IncomingMessage): Promise<string> =>
     req.on('error', reject)
   })
 
-const countQuestions = (set: MockSet) => set.sheets.reduce((n, s) => n + s.questions.length, 0)
+const activeQuestions = (q: MockQuestion[]) => q.filter((x) => x.disabled !== true)
+const countQuestions = (set: MockSet) =>
+  set.sheets.reduce((n, s) => n + activeQuestions(s.questions).length, 0)
 const countMissing = (set: MockSet) =>
-  set.sheets.reduce((n, s) => n + s.questions.filter((q) => !q.answer.trim()).length, 0)
+  set.sheets.reduce(
+    (n, s) => n + activeQuestions(s.questions).filter((q) => !String(q.answer ?? '').trim()).length,
+    0,
+  )
+const countDisabled = (set: MockSet) =>
+  set.sheets.reduce((n, s) => n + s.questions.length - activeQuestions(s.questions).length, 0)
 
 export function createState(): MockState {
   const state: MockState = {
@@ -252,12 +260,13 @@ export async function startMockServer(state = createState()): Promise<MockServer
           paperCount: s.sheets.length,
           questionCount: countQuestions(s),
           missingAnswers: countMissing(s),
+          disabledQuestions: countDisabled(s),
           editable: true,
           papers: s.sheets.map((sh, i) => ({
-            id: s.id * 100 + i,
+            id: sh.id ?? s.id * 100 + i,
             name: sh.name,
-            questionCount: sh.questions.length,
-            missingAnswers: sh.questions.filter((q) => !q.answer.trim()).length,
+            questionCount: activeQuestions(sh.questions).length,
+            missingAnswers: activeQuestions(sh.questions).filter((q) => !String(q.answer ?? '').trim()).length,
           })),
         })),
         questionTotal: state.sets.reduce((n, s) => n + countQuestions(s), 0),
@@ -275,6 +284,7 @@ export async function startMockServer(state = createState()): Promise<MockServer
         sheets: set.sheets,
         questionCount: countQuestions(set),
         missingAnswers: countMissing(set),
+        disabledQuestions: countDisabled(set),
       })
     }
 
@@ -324,8 +334,43 @@ export async function startMockServer(state = createState()): Promise<MockServer
 
       state.publishes.push({ title, replace: !!body.replace, sheets })
 
+      // 与手机端 mergeSet 同口径：原地合并，题按 id / 题干找回原行；
+      // 这次没回传的旧题只标 disabled，不删；卷按 id / 卷名对应
       const set: MockSet = existing ?? { id: state.nextId++, title, sheets: [] }
-      set.sheets = sheets.map((sh) => ({ name: sh.name, questions: sh.questions }))
+      const oldSheets = set.sheets
+      const merged: MockSheet[] = sheets.map((sh) => {
+        const old = (sh.id ? oldSheets.find((o) => o.id === sh.id) : undefined)
+          ?? oldSheets.find((o) => o.name === sh.name)
+        const oldQs = old?.questions ?? []
+        const used = new Set<number>()
+        const questions: MockQuestion[] = []
+        for (const q of sh.questions) {
+          let at = -1
+          if (typeof q.id === 'number') {
+            at = oldQs.findIndex((o, idx) => o.id === q.id && !used.has(idx))
+          }
+          if (at < 0) {
+            at = oldQs.findIndex((o, idx) => !used.has(idx) && String(o.stem ?? '') === String(q.stem ?? ''))
+          }
+          if (at >= 0) {
+            used.add(at)
+            questions.push({ ...oldQs[at], ...q, disabled: q.disabled === true })
+          } else {
+            questions.push({ ...q, id: state.nextId++, disabled: q.disabled === true })
+          }
+        }
+        // 没回传的旧题：留在卷上，标成禁用（和手机端一样，随时能恢复）
+        oldQs.forEach((o, idx) => {
+          if (!used.has(idx)) questions.push({ ...o, disabled: true })
+        })
+        return { id: sh.id ?? old?.id ?? state.nextId++, name: sh.name, questions }
+      })
+      // 整卷没出现在这次发布里：卷停用，题目与记录都留着
+      oldSheets.forEach((o) => {
+        if (sheets.some((sh) => (sh.id && sh.id === o.id) || sh.name === o.name)) return
+        merged.push({ ...o, questions: o.questions.map((q) => ({ ...q, disabled: true })) })
+      })
+      set.sheets = merged
       if (!existing) state.sets.push(set)
 
       return json(res, 200, {
@@ -333,6 +378,7 @@ export async function startMockServer(state = createState()): Promise<MockServer
         setId: set.id,
         title,
         questionCount: countQuestions(set),
+        disabledQuestions: countDisabled(set),
         replaced: !!existing,
         version: existing
           ? {
@@ -344,7 +390,10 @@ export async function startMockServer(state = createState()): Promise<MockServer
               questionCount: countQuestions(set),
             }
           : null,
-        papers: set.sheets.map((sh) => ({ name: sh.name, questionCount: sh.questions.length })),
+        papers: set.sheets.map((sh) => ({
+          name: sh.name,
+          questionCount: activeQuestions(sh.questions).length,
+        })),
       })
     }
 

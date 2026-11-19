@@ -34,11 +34,18 @@ export interface Question {
    * 空串 = 单列 1×4（默认）；'2x2' = 两列两行。只影响文字选项。
    */
   optionLayout: string
+  /**
+   * 已禁用：题还在手机库里（行、作答记录都留着），只是不参与卷面、答题与统计。
+   * 编辑器的「删除」实际写的就是这个标记，随时能启用回来。
+   */
+  disabled?: boolean
   id?: number
 }
 
 /** Web 端的一张工作表 = App 里的一份卷 */
 export interface Sheet {
+  /** 手机端的卷 id：发布时带回去，卷名改过也能认出是同一卷（记录才挂得稳） */
+  id?: number
   name: string
   questions: Question[]
 }
@@ -63,6 +70,8 @@ export interface PaperSetInfo {
   paperCount: number
   questionCount: number
   missingAnswers: number
+  /** 组里被禁用的题数（题还在，只是不参与卷面与统计） */
+  disabledQuestions?: number
   editable: boolean
   /** 已归档：侧栏收进「归档」区，不再出现在编辑列表里；数据都还在 */
   archived: boolean
@@ -100,6 +109,8 @@ export interface Group {
 export type WireQuestion = Omit<Question, '_uid' | '_issues'>
 
 export interface WireSheet {
+  /** 手机端的卷 id（新建卷没有）：服务端按它认出「还是那卷」，记录不用搬家 */
+  id?: number
   name: string
   questions: WireQuestion[]
 }

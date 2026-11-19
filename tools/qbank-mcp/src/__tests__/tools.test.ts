@@ -6,9 +6,10 @@ import {
   addQuestions,
   auditSet,
   batchUpdateQuestions,
-  deleteQuestion,
+  disableQuestion,
   readRecord,
   readSet,
+  restoreQuestion,
   setAnalysis,
   updateQuestion,
 } from '../tools.js'
@@ -111,16 +112,46 @@ test('改题：只传要改的字段，其余保持原样', async (t) => {
   assert.equal(q.options.length, 2)
 })
 
-test('删题：删掉中间一题，剩下的顺序不乱', async (t) => {
+test('禁用：题目不删除，只标 disabled，读题默认不再列它', async (t) => {
   const mock = await startMockServer()
   t.after(mock.close)
   const client = clientFor(mock.url)
 
-  await deleteQuestion(client, { title: '2024国考', sheet: '行测', index: 1 })
+  const out = await disableQuestion(client, { title: '2024国考', sheet: '行测', index: 1 })
+  assert.match(out, /已禁用/)
+
+  // 题还在库里（两条都在），只是第一条被标成禁用
+  const questions = mock.state.sets[0].sheets[0].questions
+  assert.equal(questions.length, 2)
+  assert.equal(questions[0].disabled, true)
+  assert.equal(questions[0].stem, '第一题：没有语病的一项')
+
+  // 默认读题跳过禁用题，序号按启用题重排
+  const read = await readSet(client, { title: '2024国考' })
+  assert.match(read, /共 1 题/)
+  assert.doesNotMatch(read, /第一题：没有语病的一项/)
+  assert.match(read, /第二题：同比增加多少/)
+
+  // includeDisabled 时两条都出来，并标「已禁用」
+  const all = await readSet(client, { title: '2024国考', includeDisabled: true })
+  assert.match(all, /共 2 题/)
+  assert.match(all, /已禁用/)
+})
+
+test('恢复：把禁用题重新启用，序号按含禁用题的全量算', async (t) => {
+  const mock = await startMockServer()
+  t.after(mock.close)
+  const client = clientFor(mock.url)
+
+  await disableQuestion(client, { title: '2024国考', sheet: '行测', index: 1 })
+  const out = await restoreQuestion(client, { title: '2024国考', sheet: '行测', index: 1 })
+  assert.match(out, /已启用/)
 
   const questions = mock.state.sets[0].sheets[0].questions
-  assert.equal(questions.length, 1)
-  assert.equal(questions[0].stem, '第二题：同比增加多少')
+  assert.equal(questions.length, 2)
+  assert.equal(questions[0].disabled, false)
+  const read = await readSet(client, { title: '2024国考' })
+  assert.match(read, /共 2 题/)
 })
 
 test('读题：默认 20 题封顶，并给出翻页提示', async (t) => {

@@ -55,7 +55,7 @@ tools/qbank-mcp/dist/index.js
 | 工具 | 说明 |
 |---|---|
 | `qbank_list_sets` | 列组（卷数 / 题数 / 缺答案数 / 卷名） |
-| `qbank_get_set` | 读题，分页（默认 20 题），可只看某卷 / 只看缺解析 |
+| `qbank_get_set` | 读题，分页（默认 20 题），可只看某卷 / 只看缺解析；`includeDisabled` 连禁用题一起读 |
 | `qbank_list_versions` | 历史版本列表 |
 | `qbank_list_records` | 作答记录：分数、正确率、用时 |
 | `qbank_get_record` | 一次作答的逐题对错（`wrongOnly` 只看错题） |
@@ -63,8 +63,9 @@ tools/qbank-mcp/dist/index.js
 | `qbank_add_questions` | 往某卷末尾加题（组不存在则新建） |
 | `qbank_update_question` | 按 `sheet + index` 改一道题，只传要改的字段 |
 | `qbank_batch_update_questions` | 一次改多题（体检后批量修） |
-| `qbank_set_analysis` | 批量写解析（一次只重导一次） |
-| `qbank_delete_question` | 删一道题；整卷删空则移除该卷 |
+| `qbank_set_analysis` | 批量写解析（一次只发布一次） |
+| `qbank_disable_question` | **禁用**一道题（不删除，题与记录都留着，可恢复） |
+| `qbank_restore_question` | 把禁用题重新启用（序号按 `includeDisabled` 的全量算） |
 | `qbank_publish_set` | 整组发布（覆盖需 `replace: true`） |
 | `qbank_restore_version` | 回滚到某一版 |
 | `qbank_delete_set` | 删整组——**手机确认后才执行** |
@@ -91,11 +92,15 @@ tools/qbank-mcp/dist/index.js
 
 ## 三条硬口径
 
-1. **写操作 = 整组重导**。加一道题也会把整组重新发布一次，旧卷的作答记录随之被替换；
-   但手机端会先把旧内容存进「版本」，`qbank_list_versions` 可查、`qbank_restore_version` 可回滚。
-   AI 在描述结果时应当把这一点说出来。
-2. **删除必须人工确认**。`qbank_delete_set` 调用后只是登记请求，手机弹框、人点「确认删除」才动库，
-   10 分钟无人处理自动作废。默认等 45 秒（多数客户端工具超时是 60 秒），超时如实返回「去手机上点」。
+1. **写操作 = 原地合并发布**。加一道题也会把整组发布一次，但组、卷、题目行都不重建：
+   题目按 id 原地更新，练习记录、逐题用时、批改笔迹、未交卷草稿全都保留；
+   这次没出现在发布内容里的题只标「已禁用」（可恢复），不删除。
+   覆盖前还会把旧内容存进「版本」，`qbank_list_versions` 可查、`qbank_restore_version` 可回滚。
+2. **删题 = 禁用**。没有物理删题的入口：`qbank_disable_question` 只是把题停用，
+   题行、收藏、笔记、历史作答都留着；要恢复用 `qbank_restore_question`。
+   只有**整组删除**（`qbank_delete_set`）才真删数据，且必须人工确认——
+   调用后只是登记请求，手机弹框、人点「确认删除」才动库，10 分钟无人处理自动作废。
+   默认等 45 秒（多数客户端工具超时是 60 秒），超时如实返回「去手机上点」。
    这条对带 key 的 AI 也一样——写权限可以给，删库不行。
 3. **批改只读**。`qbank_list_records` / `qbank_get_record` 不改分数、不改作答记录：
    让模型悄悄改掉已经确认过的判分，比不批改更糟。AI 给的是错因与讲解，修题走

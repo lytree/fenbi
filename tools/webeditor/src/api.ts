@@ -65,6 +65,8 @@ export interface PublishResponse {
   setId: number
   title: string
   questionCount: number
+  /** 组里被禁用的题数（题还在，只是不参与卷面与统计） */
+  disabledQuestions?: number
   replaced: boolean
   /** 覆盖发布时存下的旧版（第一次发布为 null） */
   version: VersionInfo | null

@@ -1,6 +1,6 @@
 import { defineComponent } from 'vue'
 import {
-  addSheet, askConfirm, askText, removeSheet, renameSheet, state, switchSheet,
+  addSheet, askConfirm, askText, enabledCount, removeSheet, renameSheet, state, switchSheet,
 } from '../store'
 
 /**
@@ -38,9 +38,10 @@ export default defineComponent({
       const sheet = state.paper?.sheets[index]
       if (!sheet || (state.paper?.sheets.length ?? 0) <= 1) return
       const ok = await askConfirm(
-        '删除这张工作表？',
-        `「${sheet.name}」里的 ${sheet.questions.length} 道题会一起没掉（发布后生效）`,
-        '删除',
+        '停用这张工作表？',
+        `「${sheet.name}」里的 ${enabledCount(sheet)} 道题会从卷面隐藏（发布后生效）。` +
+          '题目和作答记录都留在手机里：再建一个同名工作表发布一次，或从右栏「版本」回滚，就能拿回来。',
+        '停用',
       )
       if (ok) removeSheet(index)
     }
@@ -66,7 +67,10 @@ export default defineComponent({
               >
                 <div class="nm">{s.name}</div>
                 <div class="mt">
-                  {s.questions.length} 题
+                  {enabledCount(s)} 题
+                  {s.questions.filter((q) => q.disabled).length > 0
+                    ? <span class="off"> · 禁用 {s.questions.filter((q) => q.disabled).length}</span>
+                    : null}
                   {sheets.length > 1
                     ? (
                       <span

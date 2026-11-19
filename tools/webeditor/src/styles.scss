@@ -1594,6 +1594,17 @@ button {
 .qbody { display: none; padding: 4px 16px 16px; border-top: 1px solid var(--border-secondary); margin-top: 4px; }
 .qcard.open .qbody { display: block; }
 
+/* 禁用题：还在列表里（能启用回来），但整体压低、不抢注意力 */
+.qcard.disabled {
+  opacity: .58;
+  background: var(--bg-secondary);
+  border-style: dashed;
+
+  &:hover { opacity: .85; }
+  .qsum .stem-preview { text-decoration: line-through; text-decoration-color: var(--text-quaternary); }
+  .chip.off { color: var(--error-text); border-color: var(--error-border, var(--border-secondary)); }
+}
+
 .row {
   display: flex;
   gap: 8px;

@@ -83,7 +83,14 @@ data class Question(
      * 空串 = 单列 1×4（默认）；[VALUE_TWO_COLUMN] = 两列 2×2。
      * 只影响文字选项，全图选项仍走 `buildImageOptionsRow` 的横排。
      */
-    val optionLayout: String = ""
+    val optionLayout: String = "",
+    /**
+     * 已禁用：题目和作答记录都留着，只是不再出现在卷面 / 答题 / 统计里。
+     *
+     * 编辑侧没有「删除题目」——删掉一道题，历史记录里那次作答就成了找不到题的孤儿。
+     * 所以「删除」统一落成这个标记，随时能启用回来（见 QBankDb.mergeSet）。
+     */
+    val disabled: Boolean = false
 ) {
     /** 这题的选项是不是两列（2×2）排 */
     val twoColumnOptions: Boolean get() = optionLayout == VALUE_TWO_COLUMN
@@ -149,6 +156,8 @@ data class Paper(
     val questionCount: Int = 0,
     /** 还缺标准答案的题数（试卷先导入、答案后补） */
     val missingAnswers: Int = 0,
+    /** 卷已停用：整卷隐藏，题目与作答记录都还在（编辑侧删卷 = 停用） */
+    val disabled: Boolean = false,
     val questions: List<Question> = emptyList()
 )
 

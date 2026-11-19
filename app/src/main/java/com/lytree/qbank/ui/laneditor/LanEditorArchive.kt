@@ -118,10 +118,14 @@ class LanEditorArchive(root: File) {
         JSONObject(file.readText(Charsets.UTF_8))
     }.getOrNull()
 
+    /** 版本摘要里的题数：只数启用的题，禁用题不占卷面的账 */
     private fun countQuestions(sheets: JSONArray): Int {
         var n = 0
         for (i in 0 until sheets.length()) {
-            n += sheets.optJSONObject(i)?.optJSONArray("questions")?.length() ?: 0
+            val arr = sheets.optJSONObject(i)?.optJSONArray("questions") ?: continue
+            for (j in 0 until arr.length()) {
+                if (arr.optJSONObject(j)?.optBoolean("disabled", false) != true) n++
+            }
         }
         return n
     }

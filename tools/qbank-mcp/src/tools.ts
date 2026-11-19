@@ -49,10 +49,12 @@ const TYPE_LABEL: Record<string, string> = {
  *
  * `id` 必须带回去：服务端按 id 判断「这题原来就在库里」，命中就原地 UPDATE。
  * 丢了 id 等于整组题目全部重建，收藏 / 笔记 / 错题本会跟着一起没。
+ * `disabled` 也原样带回：回传禁用题时保持它的禁用状态，不会被一次发布悄悄启用。
  */
 export function toWire(q: StoredQuestion): WireQuestion {
   return {
     id: typeof q.id === 'number' && q.id > 0 ? q.id : undefined,
+    disabled: q.disabled === true ? true : undefined,
     type: (q.type ?? 'single') as WireQuestion['type'],
     stem: q.stem ?? '',
     options: (q.options ?? []).map((o) => ({ key: String(o.key ?? ''), text: String(o.text ?? '') })),
@@ -70,8 +72,27 @@ export function toWire(q: StoredQuestion): WireQuestion {
   }
 }
 
+/** 整组回传：卷 id 一起带走，服务端靠它认出「还是那卷」，卷上的记录不用搬家 */
 const toSheets = (detail: SetDetail): WireSheet[] =>
-  detail.sheets.map((s) => ({ name: s.name, questions: (s.questions ?? []).map(toWire) }))
+  detail.sheets.map((s) => ({
+    id: s.id,
+    name: s.name,
+    questions: (s.questions ?? []).map(toWire),
+  }))
+
+/**
+ * 写操作用的回传结构：**只带启用的题**。
+ *
+ * 「第 N 题」在 `qbank_get_set` 里是按启用题编号的（禁用题默认不列），
+ * 写回时也必须按同一批题算序号，否则 index 会整体错位。
+ * 没回传的禁用题由手机端原地保留（仍是禁用、仍挂在卷上），不会被这次发布删掉。
+ */
+const toActiveSheets = (detail: SetDetail): WireSheet[] =>
+  detail.sheets.map((s) => ({
+    id: s.id,
+    name: s.name,
+    questions: (s.questions ?? []).filter((q) => !q.disabled).map(toWire),
+  }))
 
 /**
  * 按 setId 或标题找组；找到就返回，找不到抛一句能直接给用户看的话。
@@ -143,7 +164,7 @@ export function formatQuestion(
   full = false
 ): string {
   const type = TYPE_LABEL[String(q.type ?? 'single')] ?? String(q.type ?? '')
-  const head = `【${sheet}】第 ${index + 1} 题 · ${type}${q.subject ? ` · ${q.subject}` : ''}`
+  const head = `【${sheet}】第 ${index + 1} 题 · ${type}${q.subject ? ` · ${q.subject}` : ''}${q.disabled ? ' · 已禁用' : ''}`
   const lines = [head]
   // full = 原文照给；否则截断并在断点标出原文长度
   const text = (v: unknown, max: number, label: string) =>
@@ -170,6 +191,8 @@ export interface GetSetArgs {
   onlyMissingAnalysis?: boolean
   /** 返回完整原文，不截断。要把读到的内容写回去时必须用它 */
   full?: boolean
+  /** 连已禁用的题一起读（默认不读）。要恢复某道禁用题时用它拿序号 */
+  includeDisabled?: boolean
 }
 
 /** 读一组（可分页 / 只看某卷）。返回给模型看的紧凑文本。 */
@@ -188,7 +211,9 @@ export async function readSet(client: QbankClient, args: GetSetArgs): Promise<st
 
   const flat: { sheet: string; index: number; q: StoredQuestion }[] = []
   for (const s of sheets) {
-    ;(s.questions ?? []).forEach((q, index) => flat.push({ sheet: s.name, index, q }))
+    // 禁用题默认不列：它们不参与卷面与统计，列进来只会让「第 N 题」和 App 里对不上
+    const list = (s.questions ?? []).filter((q) => args.includeDisabled || !q.disabled)
+    list.forEach((q, index) => flat.push({ sheet: s.name, index, q }))
   }
 
   if (args.onlyMissingAnalysis) {
@@ -203,6 +228,7 @@ export async function readSet(client: QbankClient, args: GetSetArgs): Promise<st
 
   const scope =
     (args.sheet ? `卷「${args.sheet}」` : '全部卷') + (args.onlyMissingAnalysis ? '里的缺解析题' : '')
+  const off = detail.disabledQuestions ?? 0
   const range = page.length
     ? `下面是第 ${offset + 1}–${offset + page.length} 题`
     : offset >= flat.length
@@ -210,7 +236,8 @@ export async function readSet(client: QbankClient, args: GetSetArgs): Promise<st
       : '这一页没有题'
   const header =
     `「${detail.title}」${scope}共 ${flat.length} 题，${range}` +
-    `（共 ${detail.sheets.length} 卷、${detail.questionCount} 题；缺答案 ${detail.missingAnswers} 题）`
+    `（共 ${detail.sheets.length} 卷、${detail.questionCount} 题；缺答案 ${detail.missingAnswers} 题` +
+    `${off > 0 ? `；已禁用 ${off} 题，默认不列` : ''}）`
 
   const body = page.map((it) => formatQuestion(it.q, it.sheet, it.index, args.full)).join('\n\n')
   const more: string[] = []
@@ -224,6 +251,9 @@ export async function readSet(client: QbankClient, args: GetSetArgs): Promise<st
   }
   if (!args.sheet && detail.sheets.length > 1) {
     more.push(`只看某一卷：sheet="${detail.sheets[0].name}"`)
+  }
+  if (off > 0 && !args.includeDisabled) {
+    more.push('要看 / 恢复已禁用的题：加 includeDisabled=true（此时「第 N 题」按全部题算）')
   }
   more.push('改某一题用 qbank_update_question（sheet + index），加题用 qbank_add_questions')
 
@@ -263,7 +293,7 @@ export async function addQuestions(client: QbankClient, args: AddQuestionsArgs):
   }
 
   const detail = await client.getSet(existing.id)
-  const sheets = toSheets(detail)
+  const sheets = toActiveSheets(detail)
   const name = sheetName || sheets[0]?.name || '试卷'
   let target = sheets.find((s) => s.name === name)
   if (!target) {
@@ -301,7 +331,7 @@ export async function addQuestions(client: QbankClient, args: AddQuestionsArgs):
     : ''
   return [
     `已给「${r.title} / ${name}」加 ${fresh.length} 题，现在整组 ${r.questionCount} 题。${dup}`,
-    `（手机端是整组重导：这次提交的是 ${r.papers.map((p) => `${p.name} ${p.questionCount} 题`).join('、')}）${version}`,
+    `（这次提交的是 ${r.papers.map((p) => `${p.name} ${p.questionCount} 题`).join('、')}；练习记录保留）${version}`,
   ].join('\n')
 }
 
@@ -315,7 +345,7 @@ export interface UpdateQuestionArgs {
 export async function updateQuestion(client: QbankClient, args: UpdateQuestionArgs): Promise<string> {
   const set = await findSet(client, { title: args.title }, 'write')
   const detail = await client.getSet(set.id)
-  const sheets = toSheets(detail)
+  const sheets = toActiveSheets(detail)
 
   const name = (args.sheet ?? '').trim() || sheets[0]?.name
   const target = sheets.find((s) => s.name === name)
@@ -341,37 +371,84 @@ export async function updateQuestion(client: QbankClient, args: UpdateQuestionAr
   return `已改「${r.title} / ${name}」第 ${args.index} 题（${changed}），整组重新发布，共 ${r.questionCount} 题。`
 }
 
-export interface DeleteQuestionArgs {
+export interface DisableQuestionArgs {
   title: string
   sheet?: string
   index: number
 }
 
-export async function deleteQuestion(client: QbankClient, args: DeleteQuestionArgs): Promise<string> {
+/**
+ * 「删题」= **禁用**。手机里的题行、收藏、笔记、历史作答都留着，只是不再出现在卷面与统计里。
+ *
+ * 这是刻意的：真删一道题，做过它的那些记录里这条作答就成了找不到题的孤儿，
+ * 分数、正确率、复盘都跟着缺口。禁用随时能恢复（[restoreQuestion]）。
+ */
+export async function disableQuestion(client: QbankClient, args: DisableQuestionArgs): Promise<string> {
+  const set = await findSet(client, { title: args.title }, 'write')
+  const detail = await client.getSet(set.id)
+  const sheets = toActiveSheets(detail)
+
+  const name = (args.sheet ?? '').trim() || sheets[0]?.name
+  if (!name) throw new Error(`「${detail.title}」里没有可编辑的卷`)
+  const target = sheets.find((s) => s.name === name)
+  if (!target) throw new Error(`「${detail.title}」里没有叫「${name}」的卷`)
+
+  const at = Math.trunc(args.index) - 1
+  if (at < 0 || at >= target.questions.length) {
+    throw new Error(`index 超范围：${name} 有 ${target.questions.length} 道启用的题，收到 ${args.index}（从 1 开始数）`)
+  }
+
+  const q = target.questions[at]
+  if (target.questions.length === 1) {
+    throw new Error(
+      `「${name}」只剩这一道启用的题。手机端不允许一卷一道可用题都没有——` +
+        '要整组停用就在 App 里归档 / 删除这一组（qbank_delete_set 需要手机确认）。'
+    )
+  }
+
+  target.questions[at] = { ...q, disabled: true }
+  const r = await client.publish(detail.title, true, sheets)
+  return (
+    `已禁用「${name}」第 ${args.index} 题（${clip(q.stem, 40)}…），整组现在 ${r.questionCount} 题可用` +
+    `${r.disabledQuestions ? `、${r.disabledQuestions} 题已禁用` : ''}。` +
+    '\n题目、收藏、笔记和历史作答都还在；要恢复用 qbank_restore_question（先 qbank_get_set 加 includeDisabled=true 看序号）。'
+  )
+}
+
+export interface RestoreQuestionArgs {
+  title: string
+  sheet?: string
+  /** 按「包含禁用题」的序号，即 qbank_get_set({ includeDisabled: true }) 里的「第 N 题」 */
+  index: number
+}
+
+/** 把一道禁用题重新启用（发布后回到手机卷面）。index 按含禁用题的全量顺序算 */
+export async function restoreQuestion(client: QbankClient, args: RestoreQuestionArgs): Promise<string> {
   const set = await findSet(client, { title: args.title }, 'write')
   const detail = await client.getSet(set.id)
   const sheets = toSheets(detail)
 
   const name = (args.sheet ?? '').trim() || sheets[0]?.name
-  const idx = sheets.findIndex((s) => s.name === name)
-  if (idx < 0) throw new Error(`「${detail.title}」里没有叫「${name}」的卷`)
-  const target = sheets[idx]
+  if (!name) throw new Error(`「${detail.title}」里没有可编辑的卷`)
+  const target = sheets.find((s) => s.name === name)
+  if (!target) throw new Error(`「${detail.title}」里没有叫「${name}」的卷`)
 
   const at = Math.trunc(args.index) - 1
   if (at < 0 || at >= target.questions.length) {
-    throw new Error(`index 超范围：${name} 只有 ${target.questions.length} 题，收到 ${args.index}（从 1 开始数）`)
+    throw new Error(
+      `index 超范围：${name} 共 ${target.questions.length} 题（含已禁用），收到 ${args.index}（从 1 开始数）。` +
+        '恢复时序号要按 qbank_get_set({ includeDisabled: true }) 的输出算。'
+    )
   }
 
-  const [removed] = target.questions.splice(at, 1)
-  if (!target.questions.length) {
-    if (sheets.length === 1) {
-      throw new Error('这是最后一张卷，删完整组就空了。要整组删就用 qbank_delete_set（还得在手机上确认）。')
-    }
-    sheets.splice(idx, 1)
+  const q = target.questions[at]
+  if (!q.disabled) {
+    throw new Error(`「${name}」第 ${args.index} 题本来就是启用状态，不用恢复。`)
   }
 
+  target.questions[at] = { ...q, disabled: false }
   const r = await client.publish(detail.title, true, sheets)
-  return `已删「${name}」第 ${args.index} 题（${clip(removed?.stem, 40)}…），整组现在 ${r.questionCount} 题。`
+  return `已启用「${name}」第 ${args.index} 题（${clip(q.stem, 40)}…），整组现在 ${r.questionCount} 题可用。`
 }
 
 export interface PublishSetArgs {
@@ -389,7 +466,8 @@ export async function publishSet(client: QbankClient, args: PublishSetArgs): Pro
   if (r.version) {
     lines.push(`覆盖前的旧版已存档（版本 ${r.version.id}，${r.version.questionCount} 题），可在 qbank_list_versions 里回滚。`)
   }
-  lines.push('旧卷的作答记录不会保留——这是「重新导入同一组」的口径。')
+  if (r.disabledQuestions) lines.push(`另有 ${r.disabledQuestions} 题处于禁用状态（不参与卷面与统计）。`)
+  lines.push('覆盖发布是原地合并：练习记录与未交卷草稿都保留，没出现在这次内容里的题只停用、不删除。')
   return lines.join('\n')
 }
 
@@ -507,7 +585,7 @@ export async function setAnalysis(client: QbankClient, args: SetAnalysisArgs): P
   if (!args.updates.length) throw new Error('updates 是空的，没东西可写')
   const set = await findSet(client, { title: args.title }, 'write')
   const detail = await client.getSet(set.id)
-  const sheets = toSheets(detail)
+  const sheets = toActiveSheets(detail)
 
   const errors: string[] = []
   let filled = 0
@@ -673,7 +751,7 @@ export async function batchUpdateQuestions(
   if (!args.updates.length) throw new Error('updates 是空的，没东西可改')
   const set = await findSet(client, { title: args.title }, 'write')
   const detail = await client.getSet(set.id)
-  const sheets = toSheets(detail)
+  const sheets = toActiveSheets(detail)
 
   const errors: string[] = []
   const touchedFields = new Map<string, number>()

@@ -174,6 +174,7 @@ export default defineComponent({
                       <div class="mt">
                         {s.paperCount} 卷 · {s.questionCount} 题
                         {s.missingAnswers ? ` · 缺 ${s.missingAnswers} 答案` : ''}
+                        {s.disabledQuestions ? ` · 禁用 ${s.disabledQuestions}` : ''}
                         {s.editable ? null : <span class="tag">未归组</span>}
                       </div>
                     </div>
@@ -216,7 +217,10 @@ export default defineComponent({
                     <div key={s.id} class="side-item archived" title={s.title}>
                       <div>
                         <div class="nm">{s.title}</div>
-                        <div class="mt">{s.paperCount} 卷 · {s.questionCount} 题</div>
+                        <div class="mt">
+                          {s.paperCount} 卷 · {s.questionCount} 题
+                          {s.disabledQuestions ? ` · 禁用 ${s.disabledQuestions}` : ''}
+                        </div>
                       </div>
                       <div class="ops always">
                         <button
