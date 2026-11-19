@@ -1,14 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   解析页：与答题页同一套卷面（题号 + 题型标签 / 题干 16sp / 选项圆标 / 卷面白底通铺），
-  只多出「正确答案 / 你的答案 / 结果 / 解析」那一块，并且不能作答。
-  · 一屏一题，左右滑动切题（与答题页翻题手势一致），底部再给一对「上一题 / 下一题」
-  · 顶栏标题显示「第 N/M 题」，右侧「看原题」回试卷定位（材料里的表格 / 配图在那边最全）
+  只是选项只读，卡尾多出「正确答案 / 你的答案 / 结果 / 解析」那一块。
+  · 两种浏览方式，顶栏右侧「多题 / 单题」随时切，档位与答题页共用一份偏好：
+    默认多题连续卷面（与答题页默认的多题浏览同一份列表适配器）：一则材料带多道小题时
+    材料只在组首题渲染一次，左侧树脊与「材料 N」标签、题间细线都跟答题页一样；
+    切到单题就是答题页那套 ViewPager2 一屏一题（材料组页上材料 / 下题目上下分栏）
+  · 顶栏标题显示「第 N/M 题」（跟随当前看到的题），右侧「看原题」回试卷定位
+  · **没有底部翻页条**：多题上下滚、单题左右滑，手势就是翻题方式（卷面通铺到屏幕底边）
   · 题目卡右上角的「笔」照样能写画：卷面上盖一层可写薄纸（inkOverlay），
     进写画才铺纸拦触摸、并浮出工具条（view_fb_ink_bar.xml）——与答题页同一套交互
 
-  卷面这块用 FrameLayout 叠三层（题页 / 遮盖层 / 工具条）：遮盖层平时 isEnabled=false、
-  writeMode 关着，触摸照旧落到下面的题页上，翻题与滚动都不受影响。
+  卷面这块用 FrameLayout 叠三层（题面 / 遮盖层 / 工具条）：遮盖层平时 isEnabled=false、
+  writeMode 关着，触摸照旧落到下面的卷面上，滚动与点题都不受影响。
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     style="@style/FbPage">
@@ -18,16 +22,31 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content" />
 
+    <!-- 卷面容器：白底通铺到屏幕底边，底部让出系统导航条（代码里 applyNavBarBottomPadding） -->
     <FrameLayout
+        android:id="@+id/content"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1">
+        android:layout_weight="1"
+        android:background="@color/fb_sheet_bg">
 
+        <!-- 多题连续卷面：与答题页的 questionList 同一份写法（通铺、无外边距） -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/questionList"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@color/fb_sheet_bg"
+            android:clipToPadding="false"
+            android:paddingBottom="@dimen/fb_space_24"
+            android:scrollbars="none" />
+
+        <!-- 单题浏览：左右滑动切题（与答题页同一个 ViewPager2 容器，默认隐藏） -->
         <androidx.viewpager2.widget.ViewPager2
             android:id="@+id/pager"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:background="@color/fb_sheet_bg" />
+            android:background="@color/fb_sheet_bg"
+            android:visibility="gone" />
 
         <!-- 遮盖层（可写）：笔迹按「本条记录 + 题目」存取，答题时画的圈回来看解析还在 -->
         <com.lytree.qbank.ui.InkOverlay
@@ -43,26 +62,4 @@
             android:layout_height="@dimen/fb_ink_bar_h"
             android:layout_gravity="top" />
     </FrameLayout>
-
-    <View style="@style/FbDivider" />
-
-    <LinearLayout
-        style="@style/FbBottomBar"
-        android:orientation="horizontal">
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnPrev"
-            style="@style/FbGhostButton"
-            android:layout_width="0dp"
-            android:layout_weight="1"
-            android:text="@string/action_prev" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnNext"
-            style="@style/FbPrimaryButton"
-            android:layout_width="0dp"
-            android:layout_marginStart="@dimen/fb_space_12"
-            android:layout_weight="1"
-            android:text="@string/action_next" />
-    </LinearLayout>
 </LinearLayout>

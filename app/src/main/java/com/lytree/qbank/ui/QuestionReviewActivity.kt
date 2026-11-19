@@ -2,23 +2,22 @@ package com.lytree.qbank.ui
 
 import android.content.Intent
 import android.os.Bundle
-import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import com.lytree.qbank.R
 import com.lytree.qbank.data.db.QBankDb
-import com.lytree.qbank.data.model.AnswerResult
 import com.lytree.qbank.data.model.ExamRecord
 import com.lytree.qbank.data.model.PaperRef
+import com.lytree.qbank.data.model.PaperStructure
 import com.lytree.qbank.data.model.Question
 import com.lytree.qbank.databinding.ActivityQuestionReviewBinding
-import com.lytree.qbank.databinding.ItemQuestionPageBinding
-import com.lytree.qbank.databinding.ItemQuestionPagerPageBinding
 import com.lytree.qbank.engine.Policy
 import com.lytree.qbank.ui.paper.PaperDetailActivity
 import kotlinx.coroutines.Dispatchers
@@ -29,13 +28,22 @@ import kotlinx.coroutines.withContext
  * 解析页（成绩报告 → 点题号 / 「错题解析」）。
  *
  * 版式就是答题页本身：同一张题目卡 [QuestionCardBinder]、同一套题号 / 题型标签 / 题干字号 /
- * 选项圆标，连滑动翻题的手势都一样。区别只在**选项**只读——点不动、也不挂打叉；
- * 而解析块（正确答案 / 你的答案 / 结果 / 解析）正是答题页交卷后的那一块。
+ * 选项圆标，连两种浏览方式都是答题页那两套——
+ * - **多题**（默认）：连续卷面 [QuestionListAdapter]，一则材料带多道小题时材料只在组首题渲染一次，
+ *   左侧树脊、「材料 N」标签、题间细线、大类说明卡全都在；
+ * - **单题**：一屏一题 [QuestionPagerAdapter] + ViewPager2，材料组页上材料 / 下题目上下分栏。
  *
- * 只读只管作答，右上角三件事照旧：
+ * 顶栏右侧的「多题 / 单题」写的是**当前**方式，点一下换另一种，档位与答题页共用一份偏好
+ * （`exam_prefs.multi_browse`）——做题时怎么翻，看解析时还是怎么翻。
+ *
+ * 与答题页的差别只有两处：
+ * - **选项只读**：点不动、也不挂打叉；
+ * - 卡尾多出解析块（正确答案 / 你的答案 / 结果 / 解析）与统计条、考点来源、笔记卡。
+ *
+ * 右上角三件事照旧：
  * - **笔**：盖一层可写薄纸直接在题上圈画，笔迹按「本条记录 + 题目」存取，
  *   答题时画过的圈回来看解析还在（与答题页同一个 [InkOverlay]，见 [setupInk]）；
- * - **标记**：只是**临时记号**——标的是「正在看的这一题」，翻到别的题就自动消掉，
+ * - **标记**：只是**临时记号**——标的是「正在看的这一题」，换题就自动消掉，
  *   不写库、也不改动记录里的标记（成绩报告格子上的橙点还是交卷时留的那几道）；
  * - **收藏**：与答题页共用 `favorites` 表，收了就是收了，退出还在。
  *
@@ -52,6 +60,8 @@ class QuestionReviewActivity : AppCompatActivity() {
 
         private const val PREFS = "exam_prefs"
         private const val KEY_FONT_SCALE = "font_scale"
+        /** 与答题页共用：多题连续卷面 / 单题一屏一题 */
+        private const val KEY_MULTI_BROWSE = "multi_browse"
         /** 与答题页同一组字号档位，复习时字号不该和做题时不一样（整体比最初放大一号） */
         private val FONT_SCALES = floatArrayOf(1.0f, 1.15f, 1.3f)
     }
@@ -59,10 +69,26 @@ class QuestionReviewActivity : AppCompatActivity() {
     private lateinit var binding: ActivityQuestionReviewBinding
     private lateinit var db: QBankDb
     private lateinit var inkToolbar: InkToolbarController
+
+    /** 顶栏那颗「多题 / 单题」：文字写当前方式，点一下换另一种 */
+    private lateinit var modeAction: TextView
+
     private var recordId = 0L
     private var record: ExamRecord? = null
     private var numbers: List<Int> = emptyList()
-    private var adapter: ReviewPagerAdapter? = null
+
+    /** 这次翻的题（卷面顺序）；[numbers] 是它们在原卷里的题号下标 */
+    private var questions: List<Question> = emptyList()
+    private var policy: Policy? = null
+
+    /** 多题连续卷面 / 单题一屏一题：与答题页共用同一份偏好 */
+    private var multiBrowse = true
+
+    private var listAdapter: QuestionListAdapter? = null
+    private var pagerAdapter: QuestionPagerAdapter? = null
+
+    /** 当前正看着的题在 [questions] 里的下标（多题取首个可见项，单题取当前页首题） */
+    private var currentPos = 0
 
     /** 解析三项（题目 id → 统计）：进页时一次读全，笔记卡 / 统计行都从这里取 */
     private var stats: Map<Long, QuestionStats> = emptyMap()
@@ -71,7 +97,7 @@ class QuestionReviewActivity : AppCompatActivity() {
     private var notes: MutableMap<Long, String> = mutableMapOf()
 
     /**
-     * 临时标记：最多一道题，翻页就清。
+     * 临时标记：最多一道题，换题就清。
      *
      * 与答题页的 `marked` 不是一回事——那边进进度、进记录，这边只是「看这一题时做个记号」，
      * 所以不落库、也不回写记录（见 [toggleMark]）。
@@ -87,15 +113,14 @@ class QuestionReviewActivity : AppCompatActivity() {
     /** 写画提示只说一次（同一页面里反复进出写画不必重复教学） */
     private var inkHintShown = false
 
-    /** 正在写画：底部翻页按钮先让位（遮盖层没盖到那条栏，误触会把这一笔按到别的题上） */
-    private var inkMode = false
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // 手机锁竖屏 / 平板跟随旋转（方向锁是 Activity 级的，答题页锁了这里也要跟着锁）
         ScreenAdapt.applyOrientation(this)
         binding = ActivityQuestionReviewBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        // 没有底部操作条了，卷面白底直接顶到屏幕底边：最后一张卡要让开手势导航条
+        binding.content.applyNavBarBottomPadding()
         db = QBankDb.get(this)
 
         recordId = intent.getLongExtra(EXTRA_RECORD_ID, 0L)
@@ -147,6 +172,7 @@ class QuestionReviewActivity : AppCompatActivity() {
         val policy = data.policy
         val favoriteIds = data.favoriteIds
         this.record = record
+        this.policy = policy
         this.stats = data.stats
         this.notes = data.notes
         if (record.results.isEmpty()) {
@@ -157,15 +183,11 @@ class QuestionReviewActivity : AppCompatActivity() {
             .filter { it in record.results.indices }
         numbers = asked.ifEmpty { record.results.indices.toList() }
         val items = numbers.map { record.results[it] }
+        questions = items.map { it.question }
 
         // 作答按题 id 带进卡片：解析块里的「你的答案 / 结果」直接由 binder 判
         val answers = HashMap<Long, String>()
         record.results.forEach { answers[it.question.id] = it.userAnswer }
-        // 一则材料带多道小题时才给「弹出材料」入口（与答题页同一口径）
-        val materialCounts = record.results
-            .filter { it.question.material.isNotBlank() }
-            .groupingBy { it.question.material }
-            .eachCount()
         // 材料锚点用「组首题 id」：同一则材料带的几道题共用一份材料笔迹（与答题页一致）
         val firstOfMaterial = HashMap<String, Long>()
         val firstIdByQuestion = HashMap<Long, Long>()
@@ -183,65 +205,191 @@ class QuestionReviewActivity : AppCompatActivity() {
         favorites.clear()
         favorites.addAll(record.results.map { it.question.id }.filter { it in favoriteIds })
 
-        val pagerAdapter = ReviewPagerAdapter(
-            items = items,
-            numbers = numbers,
+        // 卷面结构：材料组 / 大类 / 组内题量都从这里取，与答题页同一份口径。
+        // 错题解析给的是子集，结构按子集重算——相邻同材料的题照样并成一组。
+        val paper = PaperStructure(questions)
+        // 题号按原卷编号：错题解析只翻错题，但卡上还得写「第 8 题」而不是「第 3 题」
+        val numberOf: (Int) -> Int = { index -> numbers[index] }
+
+        val start = intent.getIntExtra(EXTRA_START, 0).coerceIn(0, questions.lastIndex)
+        currentPos = start
+
+        setupList(answers, paper, numberOf)
+        setupPager(answers, paper, numberOf)
+
+        // 顶栏右侧两个动作：浏览方式（写当前方式，点一下换）+ 看原题
+        modeAction = binding.titleBar.addTextAction(getString(R.string.review_mode_multi)) {
+            toggleBrowse()
+        }
+        // 原题里的材料表格 / 配图 / 图片选项，只有试卷详情渲染得全
+        binding.titleBar.addTextAction(getString(R.string.report_action_open_paper)) {
+            openInPaper(currentPos)
+        }
+
+        multiBrowse = getSharedPreferences(PREFS, MODE_PRIVATE)
+            .getBoolean(KEY_MULTI_BROWSE, !isTablet)
+
+        setupInk()
+        applyMode(persist = false)
+    }
+
+    /** 多题连续卷面：与答题页同一个列表适配器，只读 + 答案解析 */
+    private fun setupList(
+        answers: MutableMap<Long, String>,
+        paper: PaperStructure,
+        numberOf: (Int) -> Int
+    ) {
+        val judge = policy ?: return
+        val listAdapter = QuestionListAdapter(
+            questions = questions,
+            structure = paper,
             answers = answers,
             marked = marked,
             favorites = favorites,
-            policy = policy,
-            materialCounts = materialCounts,
+            revealAnswers = true,
+            policyProvider = { judge },
             fontScale = fontScale(),
+            numberAt = numberOf,
+            // 只读只管作答；笔 / 标记 / 收藏看解析时照样要做
+            readOnly = true,
+            showMarkFavorite = true,
+            showInk = true,
             stats = stats,
             notes = notes,
-            onMaterialExpand = { q -> openMaterial(q) },
             onMarkToggle = { q -> toggleMark(q) },
             onFavoriteToggle = { q -> toggleFavorite(q) },
+            onNoteClicked = { q -> showNoteDialog(q) },
             onInkClicked = { q -> startInkFor(q) },
-            onNoteClicked = { q -> showNoteDialog(q) }
+            onAnswerChanged = {},
+            onMaterialExpand = { q -> openMaterial(q) }
         )
-        adapter = pagerAdapter
-        binding.pager.offscreenPageLimit = 1
-        binding.pager.adapter = pagerAdapter
+        this.listAdapter = listAdapter
 
-        val start = intent.getIntExtra(EXTRA_START, 0).coerceIn(0, items.lastIndex)
-        binding.pager.setCurrentItem(start, false)
-        binding.pager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
-            override fun onPageSelected(position: Int) {
-                syncChrome(position)
-                // 翻走就把临时标记抹掉：回到原题不会又冒出来（这就是「临时」的意思）
+        binding.questionList.layoutManager = LinearLayoutManager(this)
+        binding.questionList.adapter = listAdapter
+        binding.questionList.itemAnimator = null
+        binding.questionList.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
+                // 笔迹钉在题目卡上，卡片位置一变就得重画（RecyclerView 不触发视图树的滚动回调）
+                binding.inkOverlay.invalidate()
+                if (!multiBrowse) return
+                val first = (rv.layoutManager as? LinearLayoutManager)
+                    ?.findFirstVisibleItemPosition() ?: return
+                if (first < 0 || first == currentPos) return
+                // 换题：临时标记跟着清（「临时」就是这意思）
+                currentPos = first
+                syncChrome()
                 clearTempMark()
                 syncInkQuestion()
             }
         })
-        syncChrome(start)
-
-        binding.btnPrev.setOnClickListener { goTo(binding.pager.currentItem - 1) }
-        binding.btnNext.setOnClickListener { goTo(binding.pager.currentItem + 1) }
-        // 原题里的材料表格 / 配图 / 图片选项，只有试卷详情渲染得全
-        binding.titleBar.addTextAction(getString(R.string.report_action_open_paper)) {
-            openInPaper(binding.pager.currentItem)
-        }
-        setupInk()
     }
 
-    /** 顶栏标题与两个翻页按钮跟着当前页走（第一题没有上一题、最后一题没有下一题） */
-    private fun syncChrome(position: Int) {
-        val total = record?.results?.size ?: numbers.size
-        binding.titleBar.setTitle(
-            getString(R.string.report_analysis_page_title, numbers[position] + 1, total)
+    /** 单题一屏一题：与答题页同一个分页适配器（材料组页上材料 / 下题目） */
+    private fun setupPager(
+        answers: MutableMap<Long, String>,
+        paper: PaperStructure,
+        numberOf: (Int) -> Int
+    ) {
+        val judge = policy ?: return
+        val pagerAdapter = QuestionPagerAdapter(
+            questions = questions,
+            structure = paper,
+            answers = answers,
+            marked = marked,
+            favorites = favorites,
+            policyProvider = { judge },
+            fontScale = fontScale(),
+            revealAnswers = true,
+            numberAt = numberOf,
+            // 平板与答题页同一套版式：材料组按题拆页，材料固定在这页上区
+            tabletSplit = isTablet,
+            readOnly = true,
+            showMarkFavorite = true,
+            showInk = true,
+            stats = stats,
+            notes = notes,
+            onMarkToggle = { q -> toggleMark(q) },
+            onFavoriteToggle = { q -> toggleFavorite(q) },
+            onNoteClicked = { q -> showNoteDialog(q) },
+            onInkClicked = { q -> startInkFor(q) },
+            onAnswerChanged = {},
+            onMaterialExpand = { q -> openMaterial(q) }
         )
-        // 写画时不许翻页：遮盖层只铺在卷面上，底部那条栏还露着
-        val hasPrev = !inkMode && position > 0
-        binding.btnPrev.isEnabled = hasPrev
-        binding.btnPrev.alpha = if (hasPrev) 1f else 0.4f
-        val hasNext = !inkMode && position < numbers.lastIndex
-        binding.btnNext.isEnabled = hasNext
-        binding.btnNext.alpha = if (hasNext) 1f else 0.4f
+        this.pagerAdapter = pagerAdapter
+
+        binding.pager.offscreenPageLimit = 1
+        binding.pager.adapter = pagerAdapter
+        binding.pager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
+            override fun onPageSelected(position: Int) {
+                if (multiBrowse) return
+                // 页码表里夹着「大类说明页」，换回题号才是当前题
+                currentPos = pagerAdapter.questionOfPage(position)
+                syncChrome()
+                clearTempMark()
+                syncInkQuestion()
+                binding.inkOverlay.invalidate()
+            }
+        })
     }
 
-    private fun goTo(position: Int) {
-        if (position in numbers.indices) binding.pager.setCurrentItem(position, true)
+    /**
+     * 落地当前浏览方式：两个容器只显一个，位置接着刚才那道题。
+     *
+     * 多题 → 单题：翻到这道题所在的那一页；单题 → 多题：把这题滚到顶部。
+     * [persist] 为 true 才写偏好（进页面时只是读出偏好，不该回写）。
+     */
+    private fun applyMode(persist: Boolean = true) {
+        val multi = multiBrowse
+        binding.questionList.visibility = if (multi) View.VISIBLE else View.GONE
+        binding.pager.visibility = if (multi) View.GONE else View.VISIBLE
+        modeAction.text = getString(
+            if (multi) R.string.review_mode_multi else R.string.review_mode_single
+        )
+
+        if (multi) {
+            binding.questionList.post {
+                (binding.questionList.layoutManager as? LinearLayoutManager)
+                    ?.scrollToPositionWithOffset(currentPos, 0)
+            }
+        } else {
+            val page = pagerAdapter?.pageOfQuestion(currentPos) ?: 0
+            binding.pager.setCurrentItem(page, false)
+            // 页内还有多题（材料组页）时保住原来那道题：标题不该掉到组首
+            if (pagerAdapter?.questionsOfPage(page)?.contains(currentPos) != true) {
+                currentPos = pagerAdapter?.questionOfPage(page) ?: currentPos
+            }
+        }
+        syncChrome()
+        syncInkQuestion()
+        binding.inkOverlay.invalidate()
+        if (persist) {
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                .putBoolean(KEY_MULTI_BROWSE, multi).apply()
+        }
+    }
+
+    /** 顶栏「多题 / 单题」：换浏览方式并给一句反馈 */
+    private fun toggleBrowse() {
+        multiBrowse = !multiBrowse
+        applyMode()
+        Toast.makeText(
+            this,
+            getString(
+                R.string.review_mode_switched,
+                getString(
+                    if (multiBrowse) R.string.mode_multi_browse else R.string.mode_single_browse
+                )
+            ),
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
+    /** 顶栏标题跟着当前题走（题号按原卷算） */
+    private fun syncChrome() {
+        val total = record?.results?.size ?: numbers.size
+        val number = numbers.getOrNull(currentPos) ?: 0
+        binding.titleBar.setTitle(getString(R.string.report_analysis_page_title, number + 1, total))
     }
 
     private fun openMaterial(q: Question) {
@@ -274,13 +422,13 @@ class QuestionReviewActivity : AppCompatActivity() {
     // ---------------- 标记 / 收藏（只读页里唯一还能改的两件事） ----------------
 
     /**
-     * 标记只是**临时记号**：点一下给当前这题挂颗细线星，翻到别的题就自动消掉。
+     * 标记只是**临时记号**：点一下给当前这题挂颗细线星，换到别的题就自动消掉。
      *
      * 刻意不落库、也不改记录里的标记——成绩报告格子上的橙点记的是「交卷时标了哪几题」，
      * 看解析顺手标一下不该把历史记录改掉。
      */
     private fun toggleMark(q: Question) {
-        // 同时只留一道题：这一页标住它，下一页就换人
+        // 同时只留一道题：这一题标住它，换到下一题就换人
         val on = q.id !in marked
         marked.clear()
         if (on) marked.add(q.id)
@@ -300,7 +448,7 @@ class QuestionReviewActivity : AppCompatActivity() {
 
     /**
      * 笔记编辑：与答题页长按「笔」同一个弹窗（[FbDialog.input]），保存后
-     * 就地更新 [notes] 并重绑当前页——笔记卡立即回显，退回报告页再进来也还在。
+     * 就地更新 [notes] 并重绑那一张卡——笔记卡立即回显，退回报告页再进来也还在。
      */
     private fun showNoteDialog(q: Question) {
         FbDialog.input(
@@ -313,30 +461,45 @@ class QuestionReviewActivity : AppCompatActivity() {
                 val note = text.trim()
                 db.setNote(q.id, note)
                 if (note.isBlank()) notes.remove(q.id) else notes[q.id] = note
-                android.widget.Toast.makeText(this, R.string.note_saved, android.widget.Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, R.string.note_saved, Toast.LENGTH_SHORT).show()
                 refreshCard(q)
             }
         )
     }
 
-    /** 翻页时抹掉临时标记：只重绑被标过的那一页，不动当前页的滚动位置 */
+    /** 换题时抹掉临时标记：只重绑被标过的那几张卡，不动当前滚动位置 */
     private fun clearTempMark() {
         if (marked.isEmpty()) return
-        val pages = marked.mapNotNull { qid -> adapter?.indexOf(qid)?.takeIf { it >= 0 } }
+        val indexes = marked.mapNotNull { qid ->
+            questions.indexOfFirst { it.id == qid }.takeIf { it >= 0 }
+        }
         marked.clear()
-        if (pages.isEmpty()) return
-        // 翻页回调里 RecyclerView 可能正在滚，放到下一帧再重绑
-        binding.pager.post { pages.forEach { adapter?.notifyItemChanged(it) } }
+        if (indexes.isEmpty()) return
+        // 滚动回调里容器正在滚，放到下一帧再重绑
+        val host: View = if (multiBrowse) binding.questionList else binding.pager
+        host.post {
+            indexes.forEach { idx ->
+                if (multiBrowse) {
+                    listAdapter?.notifyItemChanged(idx)
+                } else {
+                    pagerAdapter?.pageOfQuestion(idx)?.let { pagerAdapter?.notifyItemChanged(it) }
+                }
+            }
+        }
     }
 
     /**
-     * 只重绑这一页：ViewPager2 上整表刷新会重新定位页码，
-     * 可能把「当前题」带偏——与答题页的刷新口径一致。
+     * 只重绑这一张卡：整表刷新会把滚动位置 / 页码带偏，
+     * 可能把「当前题」带跑——与答题页的刷新口径一致。
      */
     private fun refreshCard(q: Question) {
-        val idx = adapter?.indexOf(q.id) ?: return
+        val idx = questions.indexOfFirst { it.id == q.id }
         if (idx < 0) return
-        adapter?.notifyItemChanged(idx)
+        if (multiBrowse) {
+            listAdapter?.notifyItemChanged(idx)
+        } else {
+            pagerAdapter?.pageOfQuestion(idx)?.let { pagerAdapter?.notifyItemChanged(it) }
+        }
     }
 
     // ---------------- 写画（笔） ----------------
@@ -361,96 +524,168 @@ class QuestionReviewActivity : AppCompatActivity() {
             styleInkButton = { }
         )
         inkToolbar.onModeChanged = { on ->
-            inkMode = on
-            // 写画时把底部两个翻页按钮淡掉（见 syncChrome），退出再按当前页复位
-            syncChrome(binding.pager.currentItem)
+            // 进写画时把笔迹绑到当前题：撤销 / 清空 / 落库都落到它身上
             if (on) syncInkQuestion()
         }
 
-        // 写画时按右边缘的拖拽条滚动当前页（一屏一题，只有一页可滚）。
-        // 与答题页同一套手感：条顶让过写画工具条，条本身竖屏也画出来 —— 不画的话热区看不见，
-        // 长解析根本翻不下去，只能先退出写画再滚
-        binding.inkOverlay.scrollTargetResolver = { _, _ -> currentPageScroll() }
+        // 写画时按右边缘的拖拽条滚卷面：多题滚列表，单题滚当前页
+        //（材料组页上区是材料、下面是题目，按落点分流）。
+        // 与答题页同一套手感：条顶让过写画工具条，条本身竖屏也画出来
+        binding.inkOverlay.scrollTargetResolver = { _, y -> inkScrollTarget(y) }
         binding.inkOverlay.scrollBarTopInset =
             resources.getDimensionPixelSize(R.dimen.fb_ink_bar_h)
         binding.inkOverlay.scrollBarBottomInset = 0
         binding.inkOverlay.railVisible = true
         binding.inkOverlay.recordId = recordId
-        // 笔迹钉在题目卡上：页内滚到哪，圈画跟到哪
+        // 笔迹钉在题目卡上：卷面滚到哪，圈画跟到哪
         binding.inkOverlay.anchorSource = { inkAnchors() }
-        // 页内纵向滚动（NestedScrollView）不走 RecyclerView 的 onScrolled，靠视图树的滚动回调统一重绘
+        // 题卡里的滚动（长解析 / 材料内部）不走 RecyclerView 的 onScrolled，统一靠视图树回调重绘
         binding.root.viewTreeObserver.addOnScrollChangedListener { binding.inkOverlay.invalidate() }
         syncInkQuestion()
     }
 
+    /** 写画时拖拽条要滚哪个容器：多题 = 列表；单题 = 当前页（材料组页按落点分上区 / 下区） */
+    private fun inkScrollTarget(y: Float): View? {
+        if (multiBrowse) return binding.questionList
+        val root = currentPageRoot() ?: return binding.questionList
+        val materialScroll = root.findViewById<View>(R.id.materialScroll)
+        if (materialScroll != null) {
+            val base = IntArray(2)
+            binding.inkOverlay.getLocationOnScreen(base)
+            val loc = IntArray(2)
+            materialScroll.getLocationOnScreen(loc)
+            val absY = base[1] + y
+            if (absY >= loc[1] && absY <= loc[1] + materialScroll.height) return materialScroll
+        }
+        return root.findViewById<View>(R.id.pageScroll) ?: binding.questionList
+    }
+
     /**
-     * 遮盖层的内容锚点：当前页上每张卡各给一个题目锚点，卡上有材料就再补一个材料锚点。
+     * 遮盖层的内容锚点：卷面上每张（可见的）卡各给一个题目锚点，卡上有材料就再补一个材料锚点。
      *
      * 题目锚点的原点取题干顶边（带表格时在 `stemRich` 里）、命中区放宽到整张卡——
      * 与答题页同一套算法，同一道题在两处圈画才落在同一个位置。
      */
-    private fun inkAnchors(): List<InkOverlay.Anchor> {
-        val out = ArrayList<InkOverlay.Anchor>(2)
+    private fun inkAnchors(): List<InkOverlay.Anchor> =
+        if (multiBrowse) listAnchors() else pageAnchors()
+
+    /** 多题连续卷面：列表里每张可见卡 = 一道题 */
+    private fun listAnchors(): List<InkOverlay.Anchor> {
+        val out = ArrayList<InkOverlay.Anchor>(4)
+        val rv = binding.questionList
+        val base = IntArray(2)
+        binding.inkOverlay.getLocationOnScreen(base)
+
+        for (i in 0 until rv.childCount) {
+            val card = rv.getChildAt(i)
+            val pos = rv.getChildAdapterPosition(card)
+            if (pos < 0) continue
+            val qid = questions.getOrNull(pos)?.id ?: continue
+            addQuestionAnchor(out, card, qid, base)
+            addMaterialAnchor(out, card, qid, base)
+        }
+        return out
+    }
+
+    /** 单题一屏一题：一页可能装多道小题（材料组页），材料在上区独立滚动 */
+    private fun pageAnchors(): List<InkOverlay.Anchor> {
+        val out = ArrayList<InkOverlay.Anchor>(4)
         val root = currentPageRoot() ?: return out
         val box = root.findViewById<ViewGroup>(R.id.cardContainer) ?: return out
         val base = IntArray(2)
         binding.inkOverlay.getLocationOnScreen(base)
 
-        fun rectOf(view: View): FloatArray? {
-            if (view.width <= 0 || view.height <= 0 || view.visibility != View.VISIBLE) return null
-            val loc = IntArray(2)
-            view.getLocationOnScreen(loc)
-            return floatArrayOf(
-                (loc[0] - base[0]).toFloat(),
-                (loc[1] - base[1]).toFloat(),
-                view.width.toFloat(),
-                view.height.toFloat()
-            )
+        val materialScroll = root.findViewById<View>(R.id.materialScroll)
+        if (materialScroll != null) {
+            // 组页：材料在上区单独一块，锚点按组首题收（与答题页对得上）
+            val content = root.findViewById<View>(R.id.materialContent)
+            val firstIdx = (box.getChildAt(0)?.tag as? QuestionPagerAdapter.CardHolder)?.index ?: -1
+            val qid = questions.getOrNull(firstIdx)?.id ?: 0L
+            if (content != null && qid != 0L && content.width > 0 && content.height > 0) {
+                val loc = IntArray(2)
+                content.getLocationOnScreen(loc)
+                val left = (loc[0] - base[0]).toFloat()
+                val top = (loc[1] - base[1]).toFloat()
+                val w = content.width.toFloat()
+                val h = content.height.toFloat()
+                out.add(
+                    InkOverlay.Anchor(
+                        InkOverlay.TargetKind.MATERIAL,
+                        materialFirstId[qid] ?: qid,
+                        left, top, w, h
+                    ).hitRegion(left, top, left + w, top + h)
+                )
+            }
         }
 
         for (i in 0 until box.childCount) {
             val card = box.getChildAt(i)
-            val qid = card.tag as? Long ?: continue
-            if (qid == 0L || card.width <= 0 || card.height <= 0) continue
-
-            val cardLoc = IntArray(2)
-            card.getLocationOnScreen(cardLoc)
-            // 带表格的题干渲染在 stemRich 里（tvStem 此时不可见），锚点取可见的那个的顶边
-            val stem = card.findViewById<View>(R.id.stemRich)?.takeIf { it.height > 0 }
-                ?: card.findViewById<View>(R.id.tvStem)
-            val stemY = if (stem != null && stem.height > 0) {
-                val stemLoc = IntArray(2)
-                stem.getLocationOnScreen(stemLoc)
-                stemLoc[1]
-            } else {
-                cardLoc[1]
-            }
-            val left = (cardLoc[0] - base[0]).toFloat()
-            val top = (cardLoc[1] - base[1]).toFloat()
-            out.add(
-                InkOverlay.Anchor(
-                    qid,
-                    left,
-                    (stemY - base[1]).toFloat(),
-                    card.width.toFloat(),
-                    (cardLoc[1] + card.height - stemY).toFloat().coerceAtLeast(0f)
-                ).hitRegion(left, top, left + card.width, top + card.height)
-            )
-
-            // 材料：只在卡上真的渲染了材料时给（一材料多题时按组首题 id 收，与答题页对得上）
-            val materialBox = card.findViewById<View>(R.id.materialBox) ?: continue
-            if (materialBox.visibility != View.VISIBLE) continue
-            val content = card.findViewById<View>(R.id.materialContent) ?: continue
-            val r = rectOf(content) ?: continue
-            out.add(
-                InkOverlay.Anchor(
-                    InkOverlay.TargetKind.MATERIAL,
-                    materialFirstId[qid] ?: qid,
-                    r[0], r[1], r[2], r[3]
-                ).hitRegion(r[0], r[1], r[0] + r[2], r[1] + r[3])
-            )
+            val idx = (card.tag as? QuestionPagerAdapter.CardHolder)?.index ?: continue
+            val qid = questions.getOrNull(idx)?.id ?: continue
+            addQuestionAnchor(out, card, qid, base)
+            // 组页的材料已在上区，卡片里的材料块是隐藏的，不重复给锚点
+            if (materialScroll == null) addMaterialAnchor(out, card, qid, base)
         }
         return out
+    }
+
+    /** 题目锚点：原点取题干顶边，命中区放宽到整张卡 */
+    private fun addQuestionAnchor(
+        out: MutableList<InkOverlay.Anchor>,
+        card: View,
+        qid: Long,
+        base: IntArray
+    ) {
+        if (qid == 0L || card.width <= 0 || card.height <= 0) return
+        val cardLoc = IntArray(2)
+        card.getLocationOnScreen(cardLoc)
+        // 带表格的题干渲染在 stemRich 里（tvStem 此时不可见），锚点取可见的那个的顶边
+        val stem = card.findViewById<View>(R.id.stemRich)?.takeIf { it.height > 0 }
+            ?: card.findViewById<View>(R.id.tvStem)
+        val stemY = if (stem != null && stem.height > 0) {
+            val loc = IntArray(2)
+            stem.getLocationOnScreen(loc)
+            loc[1]
+        } else {
+            cardLoc[1]
+        }
+        val left = (cardLoc[0] - base[0]).toFloat()
+        val top = (cardLoc[1] - base[1]).toFloat()
+        out.add(
+            InkOverlay.Anchor(
+                qid,
+                left,
+                (stemY - base[1]).toFloat(),
+                card.width.toFloat(),
+                (cardLoc[1] + card.height - stemY).toFloat().coerceAtLeast(0f)
+            ).hitRegion(left, top, left + card.width, top + card.height)
+        )
+    }
+
+    /** 材料锚点：只在卡上真的渲染了材料时给（一材料多题时按组首题 id 收） */
+    private fun addMaterialAnchor(
+        out: MutableList<InkOverlay.Anchor>,
+        card: View,
+        qid: Long,
+        base: IntArray
+    ) {
+        val box = card.findViewById<View>(R.id.materialBox) ?: return
+        if (box.visibility != View.VISIBLE) return
+        val content = card.findViewById<View>(R.id.materialContent) ?: return
+        if (content.width <= 0 || content.height <= 0) return
+        val loc = IntArray(2)
+        content.getLocationOnScreen(loc)
+        val left = (loc[0] - base[0]).toFloat()
+        val top = (loc[1] - base[1]).toFloat()
+        val w = content.width.toFloat()
+        val h = content.height.toFloat()
+        out.add(
+            InkOverlay.Anchor(
+                InkOverlay.TargetKind.MATERIAL,
+                materialFirstId[qid] ?: qid,
+                left, top, w, h
+            ).hitRegion(left, top, left + w, top + h)
+        )
     }
 
     /** 单题浏览时当前页的根视图（ViewPager2 里真正承载那一页的 View） */
@@ -463,30 +698,43 @@ class QuestionReviewActivity : AppCompatActivity() {
         return null
     }
 
-    /** 当前页的滚动容器（一屏一题，就是那层 NestedScrollView） */
-    private fun currentPageScroll(): View? = currentPageRoot()?.findViewById(R.id.pageScroll)
-
     /**
      * 把遮盖层绑到「当前题」：撤销 / 清空 / 落库都落到这道题上，
-     * 不绑就会顺着上一页的题走。翻页、进写画、刚装配完都调一次。
+     * 不绑就会顺着上一题走。换题、切浏览方式、进写画、刚装配完都调一次。
      */
     private fun syncInkQuestion() {
         if (!::inkToolbar.isInitialized) return
-        val qid = adapter?.questionIdAt(binding.pager.currentItem) ?: 0L
+        // 单题浏览停在大类说明页时这一页没有题目——不绑任何笔迹
+        val onModuleIntro = !multiBrowse &&
+            pagerAdapter?.isModuleIntroPage(binding.pager.currentItem) == true
+        val qid = if (onModuleIntro) 0L else questions.getOrNull(currentPos)?.id ?: 0L
         binding.inkOverlay.bindQuestion(qid)
     }
 
     /**
      * 点题目卡上的「笔」直接进写画。
      *
-     * 卡上的笔属于当前页这道题（一屏一题），所以只要换绑当前题、铺上遮盖纸；
+     * 先把这题带到眼前（多题滚列表 / 单题翻到那一页），再铺遮盖纸；
      * 落位交给下一帧——那时卡片已经排好版，遮罩才是对着这张卡铺的。
+     * 材料组页一页多题，绑笔按**点的这一题**来（不跟着页首题走）。
      */
     private fun startInkFor(q: Question) {
-        val idx = adapter?.indexOf(q.id) ?: -1
-        if (idx >= 0 && idx != binding.pager.currentItem) binding.pager.setCurrentItem(idx, false)
+        val idx = questions.indexOfFirst { it.id == q.id }
+        if (idx >= 0 && idx != currentPos) {
+            currentPos = idx
+            if (multiBrowse) {
+                (binding.questionList.layoutManager as? LinearLayoutManager)
+                    ?.scrollToPositionWithOffset(idx, 0)
+            } else {
+                val page = pagerAdapter?.pageOfQuestion(idx) ?: 0
+                binding.pager.setCurrentItem(page, false)
+                // 组页一页多题：落点就是点的这一题，别被翻页回调改成组首
+                if (pagerAdapter?.questionsOfPage(page)?.contains(idx) == true) currentPos = idx
+            }
+            syncChrome()
+        }
         binding.inkOverlay.post {
-            syncInkQuestion()
+            binding.inkOverlay.bindQuestion(q.id)
             inkToolbar.setInkMode(true)
             if (!inkHintShown) {
                 inkHintShown = true
@@ -500,98 +748,7 @@ class QuestionReviewActivity : AppCompatActivity() {
         val idx = getSharedPreferences(PREFS, MODE_PRIVATE).getInt(KEY_FONT_SCALE, 1)
         return FONT_SCALES.getOrElse(idx) { 1f }
     }
-}
 
-/**
- * 解析页的一页 = 答题页同款单题容器（`item_question_pager_page.xml` + `item_question_page.xml`），
- * 绑定同样走 [QuestionCardBinder.bind]，只是「选项」那半是只读（`readOnly`），
- * 而右上角的笔 / 标记 / 收藏照旧可点（`showMarkFavorite`、`showInk`）。
- */
-private class ReviewPagerAdapter(
-    private val items: List<AnswerResult>,
-    private val numbers: List<Int>,
-    private val answers: MutableMap<Long, String>,
-    private val marked: MutableSet<Long>,
-    private val favorites: MutableSet<Long>,
-    private val policy: Policy,
-    private val materialCounts: Map<String, Int>,
-    private val fontScale: Float,
-    /** 统计三项 / 笔记：Activity 一次读全后传进来，绑卡时不碰库 */
-    private val stats: Map<Long, QuestionStats>,
-    private val notes: MutableMap<Long, String>,
-    private val onMaterialExpand: (Question) -> Unit,
-    onMarkToggle: (Question) -> Unit,
-    onFavoriteToggle: (Question) -> Unit,
-    onInkClicked: (Question) -> Unit,
-    onNoteClicked: (Question) -> Unit
-) : RecyclerView.Adapter<ReviewPagerAdapter.VH>() {
-
-    class VH(val page: ItemQuestionPagerPageBinding, val card: ItemQuestionPageBinding) :
-        RecyclerView.ViewHolder(page.root)
-
-    /** 题 id → 页码：标了 / 收了只重绑这一页 */
-    private val pageOfQuestion: Map<Long, Int> = HashMap<Long, Int>().also { map ->
-        items.forEachIndexed { index, r -> if (!map.containsKey(r.question.id)) map[r.question.id] = index }
-    }
-
-    /** 找不到（正常不会发生）返回 -1，调用方跳过刷新即可 */
-    fun indexOf(questionId: Long): Int = pageOfQuestion[questionId] ?: -1
-
-    /** 第 [index] 页是哪道题（写画遮盖层要绑当前题） */
-    fun questionIdAt(index: Int): Long = items.getOrNull(index)?.question?.id ?: 0L
-
-    /**
-     * 只读页面：作答没有承接方（回调留空、选项也不挂手势）；
-     * 笔 / 标记 / 收藏都有承接方，走 Activity 传进来的三个动作。
-     */
-    private val cb = QuestionCardBinder.Callbacks(
-        onMarkToggle = onMarkToggle,
-        onFavoriteToggle = onFavoriteToggle,
-        onInkClicked = onInkClicked,
-        // 笔记卡整卡可点：解析页直接编辑（保存后 Activity 更新 notes 并重绑）
-        onNoteClicked = { q -> onNoteClicked(q) },
-        onAnswerChanged = {},
-        onMaterialExpand = { q -> onMaterialExpand(q) }
-    )
-
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
-        val inflater = LayoutInflater.from(parent.context)
-        val page = ItemQuestionPagerPageBinding.inflate(inflater, parent, false)
-        val card = ItemQuestionPageBinding.inflate(inflater, page.cardContainer, false)
-        page.cardContainer.addView(card.root)
-        return VH(page, card)
-    }
-
-    override fun getItemCount() = items.size
-
-    override fun onBindViewHolder(holder: VH, position: Int) {
-        val r = items[position]
-        // 卡上挂本题 id：遮盖层按它算锚点（与答题页 CardHolder.index 的作用相当）
-        holder.card.root.tag = r.question.id
-        QuestionCardBinder.bind(
-            b = holder.card,
-            // 题号按原卷编号：错题解析只翻错题，但卡上还得写「第 8 题」而不是「第 3 题」
-            position = numbers[position],
-            q = r.question,
-            answers = answers,
-            marked = marked,
-            favorites = favorites,
-            revealAnswers = true,
-            policy = policy,
-            fontScale = fontScale,
-            cb = cb,
-            hideMaterial = false,
-            materialGroupSize = materialCounts[r.question.material] ?: 1,
-            moduleHeader = null,
-            showDivider = false,
-            readOnly = true,
-            // 选项照旧只读，但笔 / 标记 / 收藏这三件事看解析时照样要做
-            showMarkFavorite = true,
-            showInk = true,
-            stats = stats,
-            notes = notes
-        )
-        // 复用的页可能停在上一题滚到一半的位置
-        holder.page.pageScroll.scrollTo(0, 0)
-    }
+    private val isTablet: Boolean
+        get() = ScreenAdapt.isTablet(resources.configuration)
 }

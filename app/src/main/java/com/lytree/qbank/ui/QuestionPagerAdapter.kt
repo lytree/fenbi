@@ -61,6 +61,21 @@ class QuestionPagerAdapter(
      * 左右两半；页内中缝手柄上下拖动调占比（比例与手机材料组页共用一份偏好）。
      */
     private val tabletSplit: Boolean = false,
+    /**
+     * 逐题题号（题号下标 → 原卷题号，0 起）。解析页的错题解析只翻错题时题号不连号，
+     * 不传就按列表下标原样写。
+     */
+    private val numberAt: ((Int) -> Int)? = null,
+    /** 只读复习（解析页）：选项点不动、也不挂打叉，判色与版式照旧 */
+    private val readOnly: Boolean = false,
+    /** 右上角「标记 / 收藏」是否显示；解析页显式传 true */
+    private val showMarkFavorite: Boolean = !readOnly,
+    /** 右上角「笔」是否显示；解析页接了同一套遮盖层 */
+    private val showInk: Boolean = !readOnly,
+    /** 解析页统计两项（题目 id → 统计）；不传就没有统计行 */
+    private val stats: Map<Long, QuestionStats>? = null,
+    /** 解析页笔记（题目 id → 正文）；传了（哪怕全空）才画笔记卡 */
+    private val notes: Map<Long, String>? = null,
     onMarkToggle: (Question) -> Unit,
     onFavoriteToggle: (Question) -> Unit,
     onNoteClicked: (Question) -> Unit,
@@ -287,7 +302,8 @@ class QuestionPagerAdapter(
             val inTree = !hideMaterial && group?.isMaterialGroup == true
             QuestionCardBinder.bind(
                 b = card,
-                position = qi,
+                // 解析页的错题解析题号不连号：调用方给映射就按原卷题号写
+                position = numberAt?.invoke(qi) ?: qi,
                 q = questions[qi],
                 answers = answers,
                 marked = marked,
@@ -321,7 +337,13 @@ class QuestionPagerAdapter(
                     )
                 } else {
                     null
-                }
+                },
+                // 解析页：选项只读，但笔 / 标记 / 收藏照旧；统计与笔记卡只在传了才画
+                readOnly = readOnly,
+                showMarkFavorite = showMarkFavorite,
+                showInk = showInk,
+                stats = stats,
+                notes = notes
             )
         }
     }
@@ -425,7 +447,7 @@ class QuestionPagerAdapter(
             val card = (container.getChildAt(k).tag as CardHolder).binding
             QuestionCardBinder.bind(
                 b = card,
-                position = qi,
+                position = numberAt?.invoke(qi) ?: qi,
                 q = questions[qi],
                 answers = answers,
                 marked = marked,
@@ -440,7 +462,12 @@ class QuestionPagerAdapter(
                 hideMaterial = true,
                 moduleHeader = null,
                 // 面板内题与题的细线；最后一题下面没有下一题，不画
-                showDivider = k < page.questionCount - 1
+                showDivider = k < page.questionCount - 1,
+                readOnly = readOnly,
+                showMarkFavorite = showMarkFavorite,
+                showInk = showInk,
+                stats = stats,
+                notes = notes
             )
         }
     }
