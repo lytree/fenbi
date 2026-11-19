@@ -16,6 +16,11 @@
   留白算式：树栏宽 + 内容列里各处的 fb_tree_content_pad_start = 原来的 fb_content_padding_h，
   所以加了脊线之后正文的左右边界一点没动（手机 16+6=22 / sw600 20+12=32 / sw720 24+16=40）。
   选项行例外：它本来就贴着卡片左沿 16dp，树栏占了这段，行内起始留白相应减掉（fb_tree_option_pad_start）。
+
+  顶部那条 inkBarReserve 是给写画工具条让位的：工具条悬浮在内容区最上面，进写画时这道题会被
+  顶到内容区顶边（见 startInkFor），卡片自己不预留这一条的话，工具条正好压在题号 / 材料标签上。
+  高度由 QuestionCardBinder 按「工具条高 − 首块内容自带的上留白」算好塞进来，所以每题顶上
+  空出来的正好是一条工具条，不多也不少。
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
@@ -23,6 +28,14 @@
     android:layout_height="wrap_content"
     android:background="@color/fb_sheet_bg"
     android:orientation="vertical">
+
+    <!-- ===== 写画工具条的顶部预留 =====
+         高度由代码定（工具条高 − 首块内容自带的上留白），默认 0 表示不预留；
+         卡片里第一块是模块说明卡 / 材料 / 题号行，三者自带的上留白不一样，代码会各算各的。 -->
+    <Space
+        android:id="@+id/inkBarReserve"
+        android:layout_width="match_parent"
+        android:layout_height="0dp" />
 
     <!-- ===== 模块说明卡（同一模块只在首题出现一次；样式见 view_module_header.xml）=====
          单题浏览里它不在这里，而是单独占一页（item_module_page.xml），两者共用同一份卡片样式 -->

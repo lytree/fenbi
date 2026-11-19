@@ -1126,12 +1126,13 @@ class ExamActivity : AppCompatActivity() {
                 else -> currentPageScrollForInk(y)
             }
         }
-        // 工具条整条顶在卷面上方，右侧滚动轨道可以用到底，不再给它让位
+        // 工具条整条顶在卷面上方：拖拽条顶部让过它，底部可以用到底
+        val inkBarPx = resources.getDimensionPixelSize(R.dimen.fb_ink_bar_h)
+        binding.inkOverlay.scrollBarTopInset = inkBarPx
         binding.inkOverlay.scrollBarBottomInset = 0
-        // 竖屏答题页不画那条手柄：屏幕窄，轨道贴着题目文字太抢眼；
-        // 热区收窄到屏幕最外沿 16dp，正文里写字不会被当成滚动，贴着边拖仍可滚动
-        binding.inkOverlay.railVisible = false
-        binding.inkOverlay.barTouchWidth = 16f * resources.displayMetrics.density
+        // 写画模式下右边永远有一条拖拽条：这一层吞掉所有触摸，没有它长题干就翻不下去。
+        // 竖屏也画（以前只在横屏画，热区看不见等于没有）；热区宽度按屏幕自适应（见 InkOverlay）
+        binding.inkOverlay.railVisible = true
         // 笔迹按「本次作答记录 + 目标（题目/材料）」存取；换一轮练习就是另一套圈画
         binding.inkOverlay.recordId = recordId
         // 笔迹钉在题目卡上：卷面滚到哪，圈画跟到哪；不接锚点就退化成「钉在屏幕上」的临时标记
@@ -1370,8 +1371,13 @@ class ExamActivity : AppCompatActivity() {
      * 从题目卡上的「笔」直接进手写标注。
      *
      * 以前这支笔点开的是「文字笔记」输入框，跟遮盖层没有任何关系——用户点了笔却看不到画布。
-     * 现在点笔 = 给**这一题**盖上可写薄纸，并把这题顶到内容区最上面（笔迹是屏幕坐标，
-     * 卡片对齐了圈画才落在题面上）；文字笔记改成长按这支笔。
+     * 现在点笔 = 给**这一题**盖上可写薄纸；文字笔记改成长按这支笔。
+     *
+     * **多题通铺不再把这题顶到内容区最上面**：手指点的是眼前这一题，一进写画整卷往上跳一屏，
+     * 题目前后的上下文全丢了，写的时候还得先回想「我刚才在看哪段」。卡片顶部本来就预留了
+     * 一条工具条的高度（见 [QuestionCardBinder.bindInkBarReserve]），工具条盖的是那条空白；
+     * 只有卡片顶边已经被工具条压住几十 dp 时补一点（[nudgeCardOutOfInkBar]），不做整题落位。
+     * 单题 / 分屏仍要落位——那边只是把这一页 / 这一组切出来，不是把卷面挪走。
      */
     private fun startInkFor(q: Question) {
         val idx = questions.indexOfFirst { it.id == q.id }
@@ -1380,20 +1386,20 @@ class ExamActivity : AppCompatActivity() {
             when {
                 // 分屏右栏是一条卷面：滚到这道题，别的容器都是隐藏的
                 splitMode -> showInSplit(idx)
-                multiBrowse -> (binding.questionList.layoutManager as? LinearLayoutManager)
-                    ?.scrollToPositionWithOffset(idx, 0)
+                // 通铺：原地进写画，不动滚动位置
+                multiBrowse -> Unit
                 else -> showQuestion(idx)
             }
         }
         syncInkQuestion()
-        // 滚动的落位要等下一帧，等排版好了再进写画，遮罩才是对着这张卡铺的
+        // 落位要等下一帧，等排版好了再进写画，遮罩才是对着这张卡铺的
         binding.inkOverlay.post {
             if (idx >= 0) {
                 currentPos = idx
                 when {
                     splitMode -> scrollSplitToQuestion(idx)
-                    multiBrowse -> (binding.questionList.layoutManager as? LinearLayoutManager)
-                        ?.scrollToPositionWithOffset(idx, 0)
+                    // 通铺：不整题落位，只把被工具条压住的那几十 dp 补回来
+                    multiBrowse -> nudgeCardOutOfInkBar(idx)
                     else -> {
                         // 材料组页里这一题未必是组首题，排版完再在页内对齐一次
                         locateInPage(idx)
@@ -1409,6 +1415,25 @@ class ExamActivity : AppCompatActivity() {
                 ).show()
             }
         }
+    }
+
+    /**
+     * 通铺里的「最小让位」：这道题的卡片顶边已经滑到工具条底下一点点时，把那一点补回来。
+     *
+     * 卡片顶边到第一行字之间正好留了一条工具条的高度（见 [QuestionCardBinder.bindInkBarReserve]），
+     * 所以「题号不被压住」等价于「卡片顶边 ≥ 内容区顶边」。滑过头（卡片顶边早就在上面很远）就
+     * 一点不动——那说明用户正在看题目中间，为了露出题号把内容往下拉一屏反而更烦。
+     *
+     * 补的距离最多一条工具条（32dp / 平板 36dp），而且是直接跳、不做动画：马上要落笔，
+     * 让内容在手指底下滑半秒，笔迹会跟着卡片一起飘。
+     */
+    private fun nudgeCardOutOfInkBar(idx: Int) {
+        val rv = binding.questionList
+        val barH = resources.getDimensionPixelSize(R.dimen.fb_ink_bar_h)
+        val card = (rv.layoutManager as? LinearLayoutManager)
+            ?.findViewByPosition(idx) ?: return
+        val top = card.top
+        if (top < 0 && top >= -barH) rv.scrollBy(0, top)   // top < 0 → dy 取负，内容整块往下回来
     }
 
     // ---------------- 顶栏状态 ----------------

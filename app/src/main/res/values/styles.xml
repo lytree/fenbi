@@ -662,13 +662,13 @@
         <item name="android:textSize">@dimen/fb_text_item_sub</item>
     </style>
 
-    <!-- 遮盖层工具条里的动作文字 -->
-    <!-- 写画工具条图标按钮：44dp 高、等分占位，24dp 图标居中（选中 / 夜间由代码改 tint） -->
+    <!-- 写画工具条图标按钮：条高压到 32dp 后图标跟着放大一档（padding 5dp，图标≈22dp），
+         等分占位不变；选中 / 夜间由代码改 tint。 -->
     <style name="FbInkIcon">
         <item name="android:layout_width">0dp</item>
         <item name="android:layout_height">match_parent</item>
         <item name="android:layout_weight">1</item>
-        <item name="android:padding">8dp</item>
+        <item name="android:padding">5dp</item>
         <item name="android:scaleType">fitCenter</item>
         <item name="android:background">?attr/selectableItemBackgroundBorderless</item>
     </style>

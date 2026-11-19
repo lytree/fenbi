@@ -30,10 +30,10 @@ import kotlin.math.hypot
  *
  * 1. **遮盖**——[shade] 决定纸的厚度（关 / 浅 / 中 / 深四档，夜间自动换成深色纸）。
  *    盖上去题目文字仍在、但明显淡了一层，一眼能看出「现在是写画模式」。
- * 2. **全拦截 + 右侧滚动通道**——[writeMode] 打开时，这一层吞掉所有触摸（手指、笔都算），
+ * 2. **全拦截 + 右侧拖拽条**——[writeMode] 打开时，这一层吞掉所有触摸（手指、笔都算），
  *    事件不会再穿透到选项和 ViewPager2：写字不会误选、不会翻页。
- *    唯一的例外是屏幕右边缘那条细轨道：落在那里不画线，而是滚动下面的题目容器
- *    （见 [scrollTargetResolver]）——长题干折行多，写画时也得能翻下去。
+ *    唯一的例外是屏幕右边缘那条拖拽条（淡轨道 + 胶囊手柄）：落在那里不画线，而是滚动下面的
+ *    题目容器（见 [scrollTargetResolver]）——长题干折行多，写画时也得能翻下去。
  * 3. **手指直接写**——不再需要「允许手指绘制」开关，没笔也能写；多指（掌托）不会打断笔迹。
  * 4. **只在写画时可见**——笔迹只画在遮盖层上：[writeMode] 打开才铺纸、画笔迹；
  *    点「确认」（[writeMode] = false）退出后整层不再绘制，题目上不留标记。
@@ -316,6 +316,17 @@ class InkOverlay @JvmOverloads constructor(
         }
 
     /**
+     * 轨道顶部让位（px）：写画工具条压在本层最上面（还带 elevation，画上来也会被它盖住），
+     * 轨道从上往下让出这一条，拖拽条才是整根看得见的。
+     */
+    var scrollBarTopInset: Int = 0
+        set(value) {
+            if (field == value) return
+            field = value
+            invalidate()
+        }
+
+    /**
      * 左边缘是否也放一条滚动手柄。分屏页左右两栏各滚各的，需要两条；
      * 普通页面左边缘是宝贵的书写区，保持默认关闭。
      */
@@ -327,10 +338,11 @@ class InkOverlay @JvmOverloads constructor(
         }
 
     /**
-     * 是否把边缘手柄画出来。
+     * 是否把边缘拖拽条画出来。
      *
-     * 竖屏答题页把它关掉：屏幕窄，一条轨道贴着题目文字太抢眼，看着像系统滚动条漏出来了。
-     * 关掉只是「不画」，[barTouchWidth] 那条热区仍然有效，贴着屏幕最右边拖还是能滚。
+     * 写画模式下这一层吞掉所有触摸，长题干翻不下去，所以右边这条本身就是「唯一裂缝」；
+     * 竖屏也画出来——不然热区看不见，用户根本不知道贴着右边能拖，题干长一点就只能先退出写画。
+     * 关掉只是「不画」，[barTouchWidth] 那条热区仍然有效。
      */
     var railVisible: Boolean = true
         set(value) {
@@ -340,10 +352,15 @@ class InkOverlay @JvmOverloads constructor(
         }
 
     /**
-     * 右侧可滚边缘的宽度（px）。横屏用 34dp 够手指按；竖屏收窄到 16dp，
-     * 只占屏幕最外沿一条，正文里写字不会被当成滚动。
+     * 右侧可滚边缘的宽度（px），按屏幕自适应：宽屏 / 平板 34dp 够手指按；
+     * 竖屏手机 22dp —— 题面正文的右边留白本身就有 22dp，拖拽条占的是这条留白，
+     * 不会伸进题目文字里抢写字的手势。
      */
-    var barTouchWidth: Float = 34f * resources.displayMetrics.density
+    var barTouchWidth: Float = if (resources.configuration.screenWidthDp >= WIDE_SCREEN_DP) {
+        34f * resources.displayMetrics.density
+    } else {
+        22f * resources.displayMetrics.density
+    }
 
     private var barTarget: View? = null
     /** 滚动过程中的位移参照物（滚动容器的第一个子视图） */
@@ -354,6 +371,17 @@ class InkOverlay @JvmOverloads constructor(
     private var barDragging = false
     /** 正在拖的是左边那条手柄（分屏页材料栏） */
     private var barLeftEdge = false
+
+    /** 上一帧画出来的手柄（左右各一根，本层坐标）：判断手指是捏在手柄上，还是按在轨道空白处 */
+    private var handleTopRight = Float.NaN
+    private var handleHRight = 0f
+    private var handleTopLeft = Float.NaN
+    private var handleHLeft = 0f
+
+    /** 捏着手柄拖：按「手指在轨道上的比例」换算滚动位置，而不是 1:1 平移 */
+    private var barGrabProportional = false
+    /** 捏住时手指相对手柄顶端的位置，拖动过程中保持不变，手柄才不会跳 */
+    private var barGrabDy = 0f
 
     private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = PenColors.DEFAULT
@@ -373,6 +401,8 @@ class InkOverlay @JvmOverloads constructor(
 
     /** 右侧滚动轨道 / 滑块的画笔 */
     private val barPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    /** 拖拽条手柄上的三道短横纹 */
+    private val gripPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val barRect = RectF()
 
     init {
@@ -563,9 +593,11 @@ class InkOverlay @JvmOverloads constructor(
 
     /** 轨道上下边界（本层坐标）；空间不够时返回 null */
     private fun barRange(): Pair<Float, Float>? {
-        val top = 10f * resources.displayMetrics.density
+        val d = resources.displayMetrics.density
+        // 顶边：让过写画工具条（它有 elevation，画上来也会被盖住），再留一点空隙
+        val top = maxOf(10f * d, scrollBarTopInset.toFloat() + 6f * d)
         val bottom = height - scrollBarBottomInset.toFloat()
-        return if (bottom - top > 80f * resources.displayMetrics.density) top to bottom else null
+        return if (bottom - top > 80f * d) top to bottom else null
     }
 
     /** 某一侧（左/右边缘）该反映哪个容器的滚动进度 */
@@ -575,13 +607,22 @@ class InkOverlay @JvmOverloads constructor(
     private fun drawScrollBar(canvas: Canvas) {
         if (!railVisible) return
         val range = barRange() ?: return
-        drawRail(canvas, width - 12f * resources.displayMetrics.density, barTargetAt(width - 1f), false, range)
+        val d = resources.displayMetrics.density
+        drawRail(canvas, width - 11f * d, barTargetAt(width - 1f), false, range)
         // 分屏页左边缘也有一条，滚左边的材料；普通页面左边缘仍然是画布
         if (leftRailEnabled) {
-            drawRail(canvas, 12f * resources.displayMetrics.density, barTargetAt(0f), true, range)
+            drawRail(canvas, 11f * d, barTargetAt(0f), true, range)
         }
     }
 
+    /**
+     * 画一根拖拽条：一条淡轨道 + 一颗比轨道宽的胶囊手柄。
+     *
+     * 手柄比轨道宽、还带三道短横纹，是刻意做成「能捏住拖的条」的样子——
+     * 以前这里只有一根 3.5dp 的细线，竖屏干脆不画，用户完全不知道右边能拖。
+     * 手柄长度按滚动进度走（滚得动多长、现在在哪儿一眼看得出来），
+     * 夹在 [HANDLE_MIN_DP]～[HANDLE_MAX_DP] 之间，太长像系统滚动条、太短捏不住。
+     */
     private fun drawRail(
         canvas: Canvas,
         cx: Float,
@@ -589,43 +630,78 @@ class InkOverlay @JvmOverloads constructor(
         leftEdge: Boolean,
         range: Pair<Float, Float>
     ) {
-        if (t == null) return
-        if (!t.canScrollVertically(1) && !t.canScrollVertically(-1)) return
+        if (t == null || (!t.canScrollVertically(1) && !t.canScrollVertically(-1))) {
+            rememberHandle(leftEdge, Float.NaN, 0f)
+            return
+        }
 
         val d = resources.displayMetrics.density
         val (top, bottom) = range
         val railH = bottom - top
-        val w = 3.5f * d
+        val trackW = 3.5f * d
+        val handleW = 8f * d
 
         // 轨道底
         barPaint.color = if (night) 0x1FFFFFFF else 0x14000000
-        barRect.set(cx - w / 2f, top, cx + w / 2f, bottom)
-        canvas.drawRoundRect(barRect, w / 2f, w / 2f, barPaint)
+        barRect.set(cx - trackW / 2f, top, cx + trackW / 2f, bottom)
+        canvas.drawRoundRect(barRect, trackW / 2f, trackW / 2f, barPaint)
 
-        // 滑块：位置 / 长度按实际滚动进度算，滚不动时退化成一根短柄提示「这里能拖」
+        // 手柄：位置 / 长度按实际滚动进度算，滚不动时退化成一根短柄提示「这里能拖」
         val offset = scrollOffsetOf(t)
         val extent = scrollExtentOf(t)
         val total = scrollRangeOf(t)
-        var thumbH = railH * 0.18f
+        var handleH = HANDLE_MIN_DP * d
         var fraction = 0f
         if (offset != null && extent != null && total != null && total > 0 && extent > 0) {
-            thumbH = (railH * extent / total).coerceIn(railH * 0.10f, railH * 0.55f)
+            handleH = (railH * extent / total).coerceIn(HANDLE_MIN_DP * d, HANDLE_MAX_DP * d)
             val span = (total - extent).coerceAtLeast(1)
             fraction = (offset.toFloat() / span).coerceIn(0f, 1f)
         }
-        val thumbTop = top + (railH - thumbH) * fraction
+        handleH = handleH.coerceAtMost(railH)
+        val handleTop = top + (railH - handleH) * fraction
+        val dragging = barDragging && barLeftEdge == leftEdge
+        // 记下手柄位置：手指按下时要判断是捏在手柄上（按比例拖）还是按在轨道上（1:1 拖）
+        rememberHandle(leftEdge, handleTop, handleH)
 
         barPaint.color = when {
-            barDragging && barLeftEdge == leftEdge ->
-                if (night) 0xCCFFFFFF.toInt() else 0xCCF04C4C.toInt()
-            night -> 0x88FFFFFF.toInt()
-            else -> 0x66000000
+            dragging -> if (night) 0xCCFFFFFF.toInt() else 0xCCF04C4C.toInt()
+            night -> 0x99FFFFFF.toInt()
+            else -> 0x4D000000
         }
-        barRect.set(cx - w / 2f, thumbTop, cx + w / 2f, thumbTop + thumbH)
-        canvas.drawRoundRect(barRect, w / 2f, w / 2f, barPaint)
+        barRect.set(cx - handleW / 2f, handleTop, cx + handleW / 2f, handleTop + handleH)
+        canvas.drawRoundRect(barRect, handleW / 2f, handleW / 2f, barPaint)
+
+        // 三道短横纹：给手柄一个「可以捏住拖」的图形线索；手柄太短就不画，免得糊成一团
+        if (handleH >= GRIP_MIN_H_DP * d) {
+            gripPaint.color = when {
+                dragging -> if (night) 0x66000000 else 0x99FFFFFF.toInt()
+                night -> 0x66000000
+                else -> 0x99FFFFFF.toInt()
+            }
+            val lineW = 3f * d
+            val lineH = 0.9f * d
+            val gap = 2.6f * d
+            val cy = handleTop + handleH / 2f
+            for (i in -1..1) {
+                val y = cy + i * gap - lineH / 2f
+                barRect.set(cx - lineW / 2f, y, cx + lineW / 2f, y + lineH)
+                canvas.drawRoundRect(barRect, lineH / 2f, lineH / 2f, gripPaint)
+            }
+        }
     }
 
     // ---------------- 滚动手柄：滚动 ----------------
+
+    /** 记下某一侧手柄这一帧画在哪（手指按下时按这个判断「捏住手柄」） */
+    private fun rememberHandle(leftEdge: Boolean, top: Float, h: Float) {
+        if (leftEdge) {
+            handleTopLeft = top
+            handleHLeft = h
+        } else {
+            handleTopRight = top
+            handleHRight = h
+        }
+    }
 
     /** 落点是否在左/右边缘的滚动手柄上（工具条背后不算） */
     private fun isOnBar(x: Float, y: Float): Boolean {
@@ -648,7 +724,40 @@ class InkOverlay @JvmOverloads constructor(
         barAccum = 0f
         barDragging = target != null &&
             (target.canScrollVertically(1) || target.canScrollVertically(-1))
+        // 按在**手柄**上就按比例拖：拖动条本身要跟手，长材料一屏滚不完，
+        // 1:1 平移的话手柄永远追不上手指，看着像拖坏了。按在轨道空白处仍然是 1:1 平移。
+        val hTop = if (barLeftEdge) handleTopLeft else handleTopRight
+        val hH = if (barLeftEdge) handleHLeft else handleHRight
+        barGrabProportional = hH > 0f && !hTop.isNaN() &&
+            e.y >= hTop && e.y <= hTop + hH
+        barGrabDy = if (barGrabProportional) e.y - hTop else 0f
         current = null
+        invalidate()
+        return true
+    }
+
+    /**
+     * 捏着手柄拖：把手指在轨道上的位置换算成「该滚到哪」，再按差值 scrollBy。
+     *
+     * 手柄自己的长度要算进去（`railH - handleH` 才是它能走的行程），否则拖到底手柄悬在半空、
+     * 拖到顶滚不到头。返回 false = 这次不是捏手柄，交给 1:1 平移那条老路子。
+     */
+    private fun dragBarProportionally(t: View, y: Float): Boolean {
+        if (!barGrabProportional) return false
+        barLastY = y
+        barAccum = 0f
+        val hH = if (barLeftEdge) handleHLeft else handleHRight
+        val (top, bottom) = barRange() ?: return false
+        val usable = (bottom - top) - hH
+        val total = scrollRangeOf(t) ?: return false
+        val extent = scrollExtentOf(t) ?: return false
+        val span = total - extent
+        if (usable <= 1f || span <= 0) return false
+        val fraction = ((y - barGrabDy - top) / usable).coerceIn(0f, 1f)
+        val desired = (fraction * span).toInt()
+        val cur = scrollOffsetOf(t) ?: return false
+        val delta = desired - cur
+        if (delta != 0) t.scrollBy(0, delta)
         invalidate()
         return true
     }
@@ -664,6 +773,7 @@ class InkOverlay @JvmOverloads constructor(
         val idx = e.findPointerIndex(barPointerId)
         if (idx < 0) return
         val y = e.getY(idx)
+        if (dragBarProportionally(t, y)) return
         barAccum -= y - barLastY          // 手指下滑 = 内容上移 = scrollBy 负值
         barLastY = y
         val step = barAccum.toInt()
@@ -710,6 +820,8 @@ class InkOverlay @JvmOverloads constructor(
 
     private fun endBarDrag() {
         barDragging = false
+        barGrabProportional = false
+        barGrabDy = 0f
         barTarget = null
         barAnchor = null
         barPointerId = MotionEvent.INVALID_POINTER_ID
@@ -1270,6 +1382,16 @@ class InkOverlay @JvmOverloads constructor(
     private companion object {
         const val KEY_SHADE = "shade_level"
         const val TAG = "InkOverlay"
+
+        /** 拖拽条手柄的短 / 长边界：短到 40dp 还捏得住，长过 110dp 就像系统滚动条漏出来了 */
+        const val HANDLE_MIN_DP = 40f
+        const val HANDLE_MAX_DP = 110f
+
+        /** 手柄矮于这个高度就不画那三道横纹（画上去糊成一团，反而更不像能拖） */
+        const val GRIP_MIN_H_DP = 26f
+
+        /** 屏幕宽度到这个 dp 就当宽屏 / 平板，边缘拖拽条的热区放宽到 34dp */
+        const val WIDE_SCREEN_DP = 600
 
         /** 最后一笔之后安静这么久再写库：连着抬笔的几笔合并成一次 */
         const val WRITE_DEBOUNCE_MS = 500L

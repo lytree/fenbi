@@ -367,12 +367,14 @@ class QuestionReviewActivity : AppCompatActivity() {
             if (on) syncInkQuestion()
         }
 
-        // 写画时按右边缘的轨道滚动当前页（一屏一题，只有一页可滚）
+        // 写画时按右边缘的拖拽条滚动当前页（一屏一题，只有一页可滚）。
+        // 与答题页同一套手感：条顶让过写画工具条，条本身竖屏也画出来 —— 不画的话热区看不见，
+        // 长解析根本翻不下去，只能先退出写画再滚
         binding.inkOverlay.scrollTargetResolver = { _, _ -> currentPageScroll() }
+        binding.inkOverlay.scrollBarTopInset =
+            resources.getDimensionPixelSize(R.dimen.fb_ink_bar_h)
         binding.inkOverlay.scrollBarBottomInset = 0
-        // 与答题页同一套手感：不画手柄、热区收窄到屏幕最外沿 16dp，正文里写字不会被当成滚动
-        binding.inkOverlay.railVisible = false
-        binding.inkOverlay.barTouchWidth = 16f * resources.displayMetrics.density
+        binding.inkOverlay.railVisible = true
         binding.inkOverlay.recordId = recordId
         // 笔迹钉在题目卡上：页内滚到哪，圈画跟到哪
         binding.inkOverlay.anchorSource = { inkAnchors() }

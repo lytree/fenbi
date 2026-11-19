@@ -69,8 +69,9 @@
 
     <!-- 顶栏：内容高 44dp，状态栏高度由 FbTitleBar 并入 padding -->
     <dimen name="fb_bar_h">44dp</dimen>
-    <!-- 写画工具条：悬浮在卷面上方的一条窄条，压缩高度少挡内容 -->
-    <dimen name="fb_ink_bar_h">40dp</dimen>
+    <!-- 写画工具条：悬浮在卷面上方的一条窄条；题卡顶部按这个高度预留空白（见 item_question_page.xml），
+         所以这条越矮，卷面上凭空多出的留白越小 —— 32dp 是「图标还看得清、又不把题挤下去」的下限。 -->
+    <dimen name="fb_ink_bar_h">32dp</dimen>
     <dimen name="fb_title_bar_h">44dp</dimen>
     <dimen name="fb_bar_item_width">28dp</dimen>
     <dimen name="fb_bar_padding_left">13dp</dimen>

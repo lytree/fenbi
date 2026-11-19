@@ -354,6 +354,37 @@ object QuestionCardBinder {
             b.metaBox.visibility = View.GONE
             b.noteCard.visibility = View.GONE
         }
+
+        // ---- 顶部预留写画工具条（放在最后：块的可视性都定下来了才算得准首块是谁）----
+        bindInkBarReserve(b)
+    }
+
+    /**
+     * 题卡顶部预留一条写画工具条的高度。
+     *
+     * 工具条（[InkToolbarController] + `view_fb_ink_bar.xml`）是**悬浮**在内容区最上面的一条：
+     * 进写画时这道题会被顶到内容区顶边（[ExamActivity.startInkFor]），卡片自己不预留，
+     * 工具条正好压在题号 / 材料标签上，一进写画就看不见这题在问什么。
+     *
+     * 预留量 = 工具条高 − 首块内容自带的上留白。首块可能是模块说明卡（外边距）、
+     * 材料块（paddingTop）或题号行（paddingTop），三者不一样，所以各算各的；
+     * 直接整条加上去的话，每题顶上会白多出十几 dp，题与题之间空得离谱。
+     */
+    private fun bindInkBarReserve(b: ItemQuestionPageBinding) {
+        val barH = b.root.resources.getDimensionPixelSize(R.dimen.fb_ink_bar_h)
+        val firstInset = when {
+            b.moduleHeader.root.visibility == View.VISIBLE ->
+                (b.moduleHeader.root.layoutParams as? ViewGroup.MarginLayoutParams)?.topMargin ?: 0
+
+            b.materialBox.visibility == View.VISIBLE -> b.materialBox.paddingTop
+            else -> b.questionActionBar.paddingTop
+        }
+        val h = (barH - firstInset).coerceAtLeast(0)
+        val lp = b.inkBarReserve.layoutParams
+        if (lp.height != h) {
+            lp.height = h
+            b.inkBarReserve.layoutParams = lp
+        }
     }
 
     // ---------------- 解析态附加块：考点 / 来源 / 笔记 ----------------
