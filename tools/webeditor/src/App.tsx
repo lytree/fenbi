@@ -6,6 +6,7 @@ import QuestionList from './components/QuestionList'
 import MaterialList from './components/MaterialList'
 import GroupBoard from './components/GroupBoard'
 import PreviewPane from './components/PreviewPane'
+import AnswerPane from './components/AnswerPane'
 import IssuePane from './components/IssuePane'
 import VersionPane from './components/VersionPane'
 import ResourcePane from './components/ResourcePane'
@@ -428,6 +429,12 @@ export default defineComponent({
                       卷面预览
                     </button>
                     <button
+                      class={['ptab', state.pane === 'answer' && 'active']}
+                      onClick={() => { state.pane = 'answer' }}
+                    >
+                      答案解析
+                    </button>
+                    <button
                       class={['ptab', state.pane === 'issue' && 'active']}
                       onClick={() => { state.pane = 'issue' }}
                     >
@@ -455,11 +462,13 @@ export default defineComponent({
                 </div>
                 {state.pane === 'preview'
                   ? <PreviewPane />
-                  : state.pane === 'issue'
-                    ? <IssuePane />
-                    : state.pane === 'resource'
-                      ? <ResourcePane />
-                      : <VersionPane />}
+                  : state.pane === 'answer'
+                    ? <AnswerPane />
+                    : state.pane === 'issue'
+                      ? <IssuePane />
+                      : state.pane === 'resource'
+                        ? <ResourcePane />
+                        : <VersionPane />}
               </aside>
             )
             : null}

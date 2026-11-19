@@ -1,7 +1,7 @@
 import { defineComponent, nextTick, onMounted, ref, watch } from 'vue'
 import type { Question } from '../types'
 import {
-  ansSet, currentQuestions, focusQuestion, groupsOf, state, TYPE_LABEL,
+  currentQuestions, focusQuestion, groupsOf, state, TYPE_LABEL,
 } from '../store'
 import { esc } from '../util'
 import { renderInline, renderMaterial, renderStem } from '../markdown'
@@ -9,6 +9,7 @@ import { LEVEL_NONE, level1Of, level2Of } from '../xingce'
 
 /**
  * 右侧卷面预览：尽量贴近 App 答题页的样子——材料在首题通栏、题型小标、圆形选项徽标。
+ * 纯卷面，不带答案（答案/解析看旁边的「答案解析」页）。
  * 双向联动：点预览里的题会跳到左边对应卡片；左边选中哪题，预览也滚到同一题并高亮。
  */
 export default defineComponent({
@@ -33,7 +34,6 @@ export default defineComponent({
     const blockHtml = (q: Question, index: number, material: string): string => {
       const focus = state.focused === q._uid ? ' focus' : ''
       const opts = q.options.filter((o) => o.text.trim())
-      const chosen = ansSet(q)
 
       let h = `<div class="pv-q${focus}" data-uid="${q._uid}">`
       // 卷面题型小标：有行测两级题型就按「一级 · 二级」显示，否则退回作答形式（单选 / 多选…）
@@ -59,7 +59,7 @@ export default defineComponent({
         h += opts
           .map(
             (o) =>
-              `<div class="pv-opt${chosen.includes(o.key) ? ' on' : ''}">` +
+              `<div class="pv-opt">` +
               `<span class="pv-key">${esc(o.key)}</span>` +
               `<span class="pv-text">${renderInline(o.text)}</span></div>`,
           )
@@ -67,9 +67,6 @@ export default defineComponent({
         h += '</div>'
       }
 
-      h += `<div class="pv-ans">答案：${
-        q.answer ? `<b>${esc(q.answer)}</b>` : '<span class="pv-pending">待补</span>'
-      }</div>`
       h += '</div>'
       return h
     }

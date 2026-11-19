@@ -2162,6 +2162,30 @@ body.pane-dragging {
   b { color: var(--success-text); font-weight: 600; }
 }
 
+/* 「答案解析」页：解析块沿用材料框的视觉，知识点一行小字收尾 */
+.ap-analysis {
+  margin-top: 10px;
+  background: var(--bg-layout);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius);
+  padding: 12px;
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.5715;
+
+  .mh {
+    @include label;
+    color: var(--text-tertiary);
+    margin-bottom: 6px;
+  }
+}
+
+.ap-know {
+  margin-top: 8px;
+  @include label;
+  color: var(--text-tertiary);
+}
+
 .pv-empty {
   text-align: center;
   color: var(--text-tertiary);
