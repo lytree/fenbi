@@ -2,7 +2,8 @@ import { computed, reactive } from 'vue'
 import { api } from './api'
 import type { ConfirmRequired, McpKeyResult, PublishResponse } from './api'
 import type {
-  EditorPaper, EditorView, Filter, Group, Issue, LibraryCatalog, LibraryItem, LibrarySaveResult,
+  EditorPaper, EditorView, ExamRecordDetail, ExamRecordInfo, Filter, Group, Issue, LibraryCatalog,
+  LibraryItem, LibrarySaveResult,
   LibraryTag, MindMapCatalog, MindMapNode, MindMapSaveResult,
   MindMapSection, MindMapTopic, PaperSetInfo,
   QIssue, Question, QuestionType, ReciteCard, ReciteCatalog, ReciteCategory,
@@ -75,8 +76,8 @@ export interface ImportPreview {
 }
 
 export const state = reactive({
-  /** 顶层工作模式：题库编辑 / 背诵词库编辑（两边的状态互不覆盖） */
-  mode: 'paper' as 'paper' | 'recite',
+  /** 顶层工作模式：题库编辑 / 背诵词库编辑 / 练习记录（只读），三种状态互不覆盖 */
+  mode: 'paper' as 'paper' | 'recite' | 'records',
   sets: [] as PaperSetInfo[],
   questionTotal: 0,
   paper: null as EditorPaper | null,
@@ -1640,9 +1641,70 @@ function nextReciteCardId(): string {
   return `web-${Date.now().toString(36)}-${reciteSeq.toString(36)}`
 }
 
+/* ---------------- 练习记录（只读） ---------------- */
+
+/** 一条记录的逐题明细读取状态：先占位（列表里立刻显示「读取中」），回来再填 */
+export interface RecordDetailSlot {
+  loading: boolean
+  error: string
+  data: ExamRecordDetail | null
+}
+
+/**
+ * 练习记录（App 的「记录」页）。
+ *
+ * 这一块**只读**、也**不做筛选和分页**：进来就把全部记录列出来，每条的逐题明细
+ * 直接铺开显示「我的选择 / 正确答案 / 解析」——网页这边是回看，不是刷题，
+ * 不需要先点进详情页再逐级展开。明细按卡片进视野再取（记录可能几百条）。
+ */
+export const records = reactive({
+  list: [] as ExamRecordInfo[],
+  /** 库里一共多少条（手机端一次最多给 200 条，超了在页头说明） */
+  total: 0,
+  loading: false,
+  /** 首屏是否拉过：切回这一栏时先亮旧数据，再手动刷新 */
+  loaded: false,
+  details: {} as Record<number, RecordDetailSlot>,
+})
+
+/** 拉全部记录；[force] 为真时重读列表（「刷新」按钮），已读过的逐题明细直接复用 */
+export async function loadRecords(force = false): Promise<void> {
+  if (records.loading) return
+  if (records.loaded && !force) return
+  records.loading = true
+  try {
+    const r = await api.records()
+    records.list = r.records ?? []
+    records.total = r.total ?? records.list.length
+    records.loaded = true
+  } catch (e) {
+    toast(e instanceof Error ? e.message : '读取练习记录失败', 'err')
+  } finally {
+    records.loading = false
+  }
+  // 逐题明细不在这儿一次性拉完：记录可能有几百条，全量请求会把手机的局域网服务占满，
+  // 页面也要等上千道题才出来。改成每条卡片快进视野时自己取（见 RecordPane）。
+}
+
+/** 取一条记录的逐题明细；已在读 / 已读到就跳过 */
+export async function loadRecordDetail(id: number, force = false): Promise<void> {
+  const slot = records.details[id]
+  if (slot && !force && (slot.loading || slot.data)) return
+  records.details[id] = { loading: true, error: '', data: slot?.data ?? null }
+  try {
+    records.details[id] = { loading: false, error: '', data: await api.record(id) }
+  } catch (e) {
+    records.details[id] = {
+      loading: false,
+      error: e instanceof Error ? e.message : '读取这条记录的作答明细失败',
+      data: null,
+    }
+  }
+}
+
 /* ---------------- 模式切换 ---------------- */
 
-export async function switchMode(mode: 'paper' | 'recite'): Promise<void> {
+export async function switchMode(mode: 'paper' | 'recite' | 'records'): Promise<void> {
   if (state.mode === mode) return
   if (mode === 'recite' && (recite.dirty || library.dirty)) {
     const ok = await askConfirm(
@@ -1653,6 +1715,8 @@ export async function switchMode(mode: 'paper' | 'recite'): Promise<void> {
     if (!ok) return
   }
   state.mode = mode
+  // 记录是只读快照：每次进来都重读一遍，手机上刚交的卷马上能看到
+  if (mode === 'records') await loadRecords(true)
   if (mode === 'recite' && !recite.subjects.length) {
     await loadReciteSubjects()
     // 第一次进来默认打开政治大纲（App 政治页就是这份库），别让人对着空页面猜

@@ -360,3 +360,72 @@ export interface MindMapSaveResult {
   /** 仅重置：是否真的删过覆盖文件（false = 本来就没有） */
   reset?: boolean
 }
+
+/* ------------------------------------------------------------------ 练习记录（App 的「记录」页） */
+
+/**
+ * 一条练习记录 = App 记录列表里的一行（进答题页就落库，不等交卷）。
+ *
+ * 字段与手机端 `LanEditorStore.recordToJson` 一一对应，只少 scope / marked
+ * （记录页用不到，回看也不靠它们）。
+ */
+export interface ExamRecordInfo {
+  id: number
+  paperId: number
+  /** 记录名：分模块作答时是「卷名 · 资料分析」 */
+  name: string
+  /** 所属试卷名（卷被删了会是空串） */
+  paperName: string
+  mode: string
+  /** done 已完成 / ongoing 进行中 / abandoned 已中断；后两者都是「未完成」 */
+  status: string
+  startedAt: number
+  submittedAt: number
+  durationSec: number
+  total: number
+  answered: number
+  correct: number
+  partial: number
+  score: number
+  fullScore: number
+}
+
+/**
+ * 一次作答里的单题明细：题目本体（题干 / 选项 / 标准答案 / 解析）+ 我的选择 + 判题结果。
+ *
+ * `type` 不收敛到 [QuestionType]：库里历史数据可能带别的题型码，
+ * 这里按原样显示，别让一条老记录把整页打爆。
+ */
+export interface RecordAnswer {
+  no: number
+  type: string
+  subject: string
+  material: string
+  stem: string
+  options: OptionItem[]
+  /** 标准答案（判断题已转成「正确 / 错误」） */
+  answer: string
+  analysis: string
+  knowledge: string
+  difficulty: string
+  region: string
+  source: string
+  year: string
+  score: number
+  keywords: string
+  optionLayout: string
+  /** 我的选择；多选按点选顺序用逗号连，空串 = 未作答 */
+  userAnswer: string
+  correct: boolean
+  /** 部分得分（多选漏选 / 不定项少选） */
+  partial: boolean
+  /** 待补答案：这题还没有标准答案，不参与判分 */
+  pending: boolean
+  earned: number
+  full: number
+}
+
+/** 一条记录的详情 = 记录本身 + 按卷面顺序排好的逐题明细 */
+export interface ExamRecordDetail extends ExamRecordInfo {
+  answers: RecordAnswer[]
+}

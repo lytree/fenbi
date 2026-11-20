@@ -4172,3 +4172,318 @@ body.pane-dragging {
   .lib-sum { flex-wrap: wrap; }
   .lib-text { flex-basis: 100%; }
 }
+
+/* =============================================================================
+ * 练习记录（App 的「记录」页）· 只读回看
+ * 一条记录一张白瓷卡，卡里每题一块：题干 / 选项（标出正确答案与我的选择）/
+ * 答案对照 / 解析。整页不筛不翻页，滚到底就是全部。
+ * ========================================================================== */
+
+/* 记录是全局页：没有侧栏也没有预览，整块宽度都给记录流 */
+.layout.records-layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.records-editor { overflow: hidden; }
+
+.records-pane {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px clamp(16px, 3vw, 40px) 60px;
+  background: var(--bg-sunken);
+}
+
+.rec-tip {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 14px;
+  line-height: 1.5715;
+  color: var(--text-tertiary);
+  padding: 0 2px 12px;
+
+  span { flex: 1; }
+}
+
+.rec-item {
+  background: var(--bg-container);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-lg);
+  padding: 14px 18px 4px;
+  margin-bottom: 14px;
+  box-shadow: var(--shadow);
+}
+
+.rec-head {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-secondary);
+}
+
+.rec-head-main { flex: 1; min-width: 0; }
+
+.rec-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.rec-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  word-break: break-word;
+}
+
+.rec-item .tag.rec-done {
+  color: var(--success-text);
+  background: var(--success-bg);
+  border: 1px solid var(--success-border);
+}
+
+.rec-item .tag.rec-undone {
+  color: var(--text-tertiary);
+  background: var(--bg-fill);
+}
+
+.rec-meta {
+  @include label;
+  color: var(--text-tertiary);
+  margin-top: 4px;
+}
+
+.rec-score {
+  @include tabular;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--primary);
+  flex: none;
+}
+
+.rec-full {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+}
+
+.rec-loading,
+.rec-error {
+  @include label;
+  color: var(--text-tertiary);
+  padding: 14px 0;
+}
+
+.rec-error { color: var(--error-text); }
+
+/* 一题一块：题与题之间一道细线，第一题紧接记录头，不再多画一条 */
+.rec-q {
+  padding: 14px 0;
+  border-top: 1px solid var(--border-secondary);
+
+  &:first-of-type { border-top: none; }
+}
+
+.rec-qhead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.rec-qno {
+  @include tabular;
+  min-width: 26px;
+  height: 22px;
+  padding: 0 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: var(--bg-fill);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* 对错：绿 = 答对 / 红 = 答错 / 橙 = 部分得分 / 灰 = 未作答或待补答案 */
+.rec-verdict {
+  @include label;
+  height: 20px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-sm);
+
+  &.ok { color: var(--success-text); background: var(--success-bg); }
+  &.bad { color: var(--error-text); background: var(--error-bg); }
+  &.part { color: var(--warning-text); background: var(--warning-bg); }
+  &.meta { color: var(--text-tertiary); background: var(--bg-fill); }
+}
+
+.rec-know {
+  @include label;
+  color: var(--text-quaternary);
+  margin-left: auto;
+}
+
+.rec-material {
+  background: var(--bg-layout);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius);
+  padding: 12px;
+  margin-bottom: 10px;
+  font-size: 14px;
+  line-height: 1.5715;
+  color: var(--text);
+
+  .mh {
+    @include label;
+    color: var(--text-tertiary);
+    margin-bottom: 6px;
+  }
+}
+
+/* 同一段材料连着出好几题时，后面几题只留一句指路，别把整页撑成几倍长 */
+.rec-same {
+  @include label;
+  color: var(--text-quaternary);
+  padding-left: 10px;
+  margin-bottom: 8px;
+  border-left: 2px solid var(--border-secondary);
+}
+
+.rec-stem {
+  font-size: 14px;
+  line-height: 1.5715;
+  color: var(--text);
+
+  strong { font-weight: 600; }
+}
+
+.rec-opts {
+  margin-top: 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.rec-opt {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 7px 10px;
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius);
+  background: var(--bg-container);
+  font-size: 14px;
+  line-height: 1.5715;
+  color: var(--text);
+
+  /* 正确答案描绿；我选错的描红；选对的既是我的选择也是答案，绿底 + 主色描边 */
+  &.right { border-color: var(--success-border); background: var(--success-bg); }
+  &.wrong { border-color: var(--error-border); background: var(--error-bg); }
+  &.mine { border-color: var(--primary-border); }
+}
+
+.rec-opt-k {
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.rec-opt.right .rec-opt-k {
+  background: var(--success);
+  border-color: var(--success);
+  color: #fff;
+}
+
+.rec-opt.wrong .rec-opt-k {
+  background: var(--error);
+  border-color: var(--error);
+  color: #fff;
+}
+
+.rec-opt-t { flex: 1; min-width: 0; }
+
+.rec-opt-badge {
+  @include label;
+  flex: none;
+  color: var(--primary);
+}
+
+/* 答案对照：左「正确答案」右「我的选择」，颜色直接说明对错（和 App 的作答小结卡同一口径） */
+.rec-ans {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--bg-fill);
+
+  .k {
+    @include label;
+    color: var(--text-tertiary);
+  }
+
+  .v {
+    @include tabular;
+    font-size: 16px;
+    font-weight: 600;
+    word-break: break-word;
+
+    &.ok { color: var(--success-text); }
+    &.bad { color: var(--error-text); }
+    &.part { color: var(--warning-text); }
+    &.meta { color: var(--text-tertiary); }
+  }
+}
+
+.rec-ans-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rec-ana {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--primary-border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-layout);
+  font-size: 14px;
+  line-height: 1.5715;
+  color: var(--text);
+}
+
+.rec-ana-head {
+  @include label;
+  color: var(--text-tertiary);
+  margin-bottom: 4px;
+}
+
+.rec-ana-p { margin: 0 0 6px; }
+
+.rec-q table.pv-tbl {
+  margin: 8px 0;
+  font-size: 13px;
+}
+
+/* 窄窗口：答案对照两栏并排会窄到读不出答案，退回上下两行 */
+@media (max-width: 720px) {
+  .rec-ans { grid-template-columns: 1fr; }
+  .rec-item { padding: 12px 12px 4px; }
+}

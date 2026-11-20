@@ -1,5 +1,6 @@
 import type {
-  ConfirmStatus, EditorPaper, LibraryCatalog, LibrarySaveResult, MindMapCatalog, MindMapSaveResult,
+  ConfirmStatus, EditorPaper, ExamRecordDetail, ExamRecordInfo, LibraryCatalog, LibrarySaveResult,
+  MindMapCatalog, MindMapSaveResult,
   MigrationReport, PaperSetInfo,
   ReciteCatalog, ReciteSaveResult, ReciteSubjectInfo, ResourceFile, Sheet, VersionInfo,
   WireSheet, WordItem, WordsResponse,
@@ -287,6 +288,14 @@ export const api = {
    */
   mcpInfo: () =>
     request<McpKeyRequest>('/api/mcp', jsonPost({})),
+
+  /* ------------ 练习记录（只读） ------------ */
+
+  /** 全部练习记录（手机端最多回最近 200 条）；total 是库里的真实条数 */
+  records: () => request<{ records: ExamRecordInfo[]; total: number }>('/api/records'),
+
+  /** 一条记录的逐题明细：我的选择 / 标准答案 / 解析 / 对错 */
+  record: (id: number) => request<ExamRecordDetail>(`/api/record?id=${id}`),
 }
 
 export type { EditorPaper }

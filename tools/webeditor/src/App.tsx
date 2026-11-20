@@ -7,6 +7,7 @@ import MaterialList from './components/MaterialList'
 import GroupBoard from './components/GroupBoard'
 import PreviewPane from './components/PreviewPane'
 import AnswerPane from './components/AnswerPane'
+import RecordPane from './components/RecordPane'
 import IssuePane from './components/IssuePane'
 import VersionPane from './components/VersionPane'
 import ResourcePane from './components/ResourcePane'
@@ -211,13 +212,14 @@ export default defineComponent({
           class={[
             'layout',
             state.mode === 'recite' && 'recite-layout',
+            state.mode === 'records' && 'records-layout',
             previewHidden.value && 'no-preview',
             sidebarHidden.value && 'no-sidebar',
           ]}
           style={previewW.value === null ? undefined : { '--preview-w': `${previewW.value}px` }}
         >
           {/* 侧栏右缘的收起拉手：贴在侧栏和编辑区的缝上，不占格子 */}
-          {!sidebarHidden.value
+          {state.mode !== 'records' && !sidebarHidden.value
             ? (
               <button
                 class="sidebar-tab"
@@ -227,7 +229,9 @@ export default defineComponent({
                 ⟨
               </button>
             )
-            : (
+            : null}
+          {state.mode !== 'records' && sidebarHidden.value
+            ? (
               // 收起后左边缘留一个小拉手，点一下把列表拉回来
               <button
                 class="sidebar-fab"
@@ -236,11 +240,20 @@ export default defineComponent({
               >
                 ⟩
               </button>
-            )}
+            )
+            : null}
 
-          <Sidebar />
+          {/* 练习记录是全局的（不挂在某一组上），这一栏不需要题库列表 */}
+          {state.mode !== 'records' ? <Sidebar /> : null}
 
-          {state.mode === 'recite'
+          {state.mode === 'records'
+            ? (
+              // 练习记录：单栏全宽，只读回看——每题直接给出答案、解析和当时的选择
+              <section class="editor records-editor">
+                <RecordPane />
+              </section>
+            )
+            : state.mode === 'recite'
             ? (
               // 背诵模式：单栏工作区（词库 / 政治 / 常识），不需要右栏预览
               <section class="editor recite-editor">

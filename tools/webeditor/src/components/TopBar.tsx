@@ -64,6 +64,7 @@ export default defineComponent({
 
     return () => {
       const reciteMode = state.mode === 'recite'
+      const recordMode = state.mode === 'records'
       const isWords = recite.subject === 'words'
       const catalog = recite.catalog
 
@@ -77,9 +78,9 @@ export default defineComponent({
             </div>
           </div>
 
-          <div class={['mode-seg', 'seg']} title="切换：题库编辑 / 背诵词库编辑">
+          <div class={['mode-seg', 'seg']} title="切换：题库编辑 / 背诵词库编辑 / 练习记录">
             <button
-              class={['seg-btn', !reciteMode && 'on']}
+              class={['seg-btn', !reciteMode && !recordMode && 'on']}
               onClick={() => void switchMode('paper')}
             >
               题库
@@ -90,9 +91,23 @@ export default defineComponent({
             >
               背诵
             </button>
+            <button
+              class={['seg-btn', recordMode && 'on']}
+              title="手机里做完的每一场练习：我的选择、正确答案、解析"
+              onClick={() => void switchMode('records')}
+            >
+              记录
+            </button>
           </div>
 
-          {reciteMode
+          {recordMode
+            ? (
+              // 记录是只读的回看页：这里没有「哪一组」的概念，标题只说明这一栏看的是什么
+              <div class="title-wrap">
+                <input class="paper-name" value="练习记录（全部 · 只读）" readonly />
+              </div>
+            )
+            : reciteMode
             ? (
               <div class="title-wrap">
                 {isWords
@@ -184,7 +199,9 @@ export default defineComponent({
             >
               <ThemeIcon />
             </button>
-            {reciteMode
+            {recordMode
+              ? null
+              : reciteMode
               ? (
                 <>
                   {!isWords && catalog
