@@ -94,7 +94,7 @@ export const state = reactive({
   subjectFilter: 'all' as SubjectFilter,
   /** 二级题型筛（值取归一后的知识点名） */
   subTopicFilter: 'all' as SubjectFilter,
-  pane: 'preview' as 'preview' | 'answer' | 'issue' | 'version' | 'resource',
+  pane: 'preview' as 'preview' | 'answer' | 'issue' | 'version' | 'resource' | 'records',
   versions: [] as VersionInfo[],
   versionLoading: false,
   /** 当前这组的图片资源（右栏「资源」页签） */

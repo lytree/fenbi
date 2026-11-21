@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  备份历史的一行：左边时间 + 一句「在哪 / 怎么备的 / 多大 / 装了什么」，右边折角箭头。
+  点开是动作菜单（恢复 / 分享 / 删记录），不是直接覆盖。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    style="@style/FbSwitchRow"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/tvTitle"
+            style="@style/FbRowTitle"
+            tools:text="2026-11-19 22:03" />
+
+        <TextView
+            android:id="@+id/tvSub"
+            style="@style/FbRowSub"
+            tools:text="手动 · 12.4 MB · 试卷 12 / 题 300 · 记录 45" />
+    </LinearLayout>
+
+    <TextView
+        style="@style/FbRowArrow"
+        android:text="›" />
+</LinearLayout>

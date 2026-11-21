@@ -117,6 +117,51 @@ export interface ResourcesResponse {
   files: ResourceFile[]
 }
 
+/** 一条作答记录（列表项，对应 App 的 records 表） */
+export interface RecordInfo {
+  id: number
+  /** 负数 = 「整组作答」的虚拟卷（-setId） */
+  paperId: number
+  /** 这轮练习的名字（一般是卷名 / 组名） */
+  name: string
+  paperName: string
+  mode: string
+  /** done = 已交卷，ongoing = 进行中，abandoned = 已放弃 */
+  status: string
+  startedAt: number
+  submittedAt: number
+  durationSec: number
+  total: number
+  answered: number
+  correct: number
+  partial: number
+  score: number
+  fullScore: number
+}
+
+/** 逐题明细里的一道题：题面 + 这次作答的结果 */
+export interface RecordAnswer {
+  no: number
+  type: string
+  stem: string
+  material: string
+  options: { key: string; text: string }[]
+  answer: string
+  analysis: string
+  knowledge: string
+  userAnswer: string
+  /** 客观题判分结果；pending = 还没批（主观题） */
+  correct: boolean
+  partial: boolean
+  pending: boolean
+  earned: number
+  full: number
+}
+
+export interface RecordDetail extends RecordInfo {
+  answers: RecordAnswer[]
+}
+
 export const api = {
   sets: () => request<SetsResponse>('/api/papers'),
 
@@ -213,6 +258,17 @@ export const api = {
     ),
 
   cancelDelete: (id: string) => request<{ ok: boolean }>('/api/delete/cancel', jsonPost({ id })),
+
+  /* ------------ 作答记录（只读） ------------ */
+
+  /** 全库最近的作答记录（服务端最多给 200 条）；传 setId 只看这一组的 */
+  records: (setId?: number) =>
+    request<{ records: RecordInfo[]; total: number }>(
+      '/api/records' + (setId && setId > 0 ? `?setId=${setId}` : ''),
+    ),
+
+  /** 一次作答的逐题明细：用户答案、标准答案、对错、得分，按卷面顺序 */
+  record: (id: number) => request<RecordDetail>(`/api/record?id=${id}`),
 
   /* ------------ 背诵词库（政治 / 常识） ------------ */
 

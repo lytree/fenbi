@@ -118,6 +118,33 @@
                         style="@style/FbRowArrow"
                         android:text="›" />
                 </LinearLayout>
+
+                <View style="@style/FbDividerInset" />
+
+                <LinearLayout
+                    android:id="@+id/rowHistory"
+                    style="@style/FbSwitchRow">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            style="@style/FbRowTitle"
+                            android:text="备份历史" />
+
+                        <TextView
+                            android:id="@+id/tvHistorySub"
+                            style="@style/FbRowSub"
+                            tools:text="共 6 条 · 最近 2026-11-21 21:43" />
+                    </LinearLayout>
+
+                    <TextView
+                        style="@style/FbRowArrow"
+                        android:text="›" />
+                </LinearLayout>
             </LinearLayout>
 
             <TextView
@@ -128,10 +155,27 @@
                 android:layout_marginBottom="@dimen/fb_space_8"
                 android:text="恢复" />
 
+            <!-- 恢复：直接把能恢复的备份列出来（行由 BackupFragment.renderRestore 动态铺），
+                 末尾一行才是「从备份文件导入」。不再先点一行再弹层选，少一层点击 -->
             <LinearLayout style="@style/FbCard">
 
+                <TextView
+                    android:id="@+id/tvRestoreEmpty"
+                    style="@style/FbRowSub"
+                    android:text="还没有能恢复的备份：先备份一次，或用下面的「从备份文件导入」" />
+
                 <LinearLayout
-                    android:id="@+id/rowRestoreFile"
+                    android:id="@+id/restoreBox"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+
+                <View
+                    android:id="@+id/dividerImport"
+                    style="@style/FbDividerInset" />
+
+                <LinearLayout
+                    android:id="@+id/rowImport"
                     style="@style/FbSwitchRow">
 
                     <LinearLayout
@@ -142,189 +186,11 @@
 
                         <TextView
                             style="@style/FbRowTitle"
-                            android:text="从备份文件恢复" />
+                            android:text="从备份文件导入" />
 
                         <TextView
                             style="@style/FbRowSub"
                             android:text="选一份 qbank-backup-*.zip；从网盘下载下来的那份也行" />
-                    </LinearLayout>
-
-                    <TextView
-                        style="@style/FbRowArrow"
-                        android:text="›" />
-                </LinearLayout>
-
-                <View style="@style/FbDividerInset" />
-
-                <LinearLayout
-                    android:id="@+id/rowRestoreCloud"
-                    style="@style/FbSwitchRow">
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical">
-
-                        <TextView
-                            style="@style/FbRowTitle"
-                            android:text="从云端恢复" />
-
-                        <TextView
-                            android:id="@+id/tvRestoreCloudSub"
-                            style="@style/FbRowSub"
-                            android:text="先配好下面的 WebDAV 才能用" />
-                    </LinearLayout>
-
-                    <TextView
-                        style="@style/FbRowArrow"
-                        android:text="›" />
-                </LinearLayout>
-            </LinearLayout>
-
-            <TextView
-                style="@style/FbGroupTitle"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/fb_section_gap"
-                android:layout_marginBottom="@dimen/fb_space_8"
-                android:text="云端同步（可选）" />
-
-            <LinearLayout style="@style/FbCard">
-
-                <TextView
-                    style="@style/FbRowTitle"
-                    android:text="WebDAV 网盘" />
-
-                <TextView
-                    style="@style/FbRowSub"
-                    android:text="坚果云 / Nextcloud / 群晖 / InfiniCLOUD。百度网盘与天翼云盘的开放接口不对个人开放，用上面的「分享」把它存进去即可。" />
-
-                <com.google.android.material.textfield.TextInputLayout
-                    style="@style/FbInput"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/fb_space_12"
-                    android:hint="地址，如 https://dav.jianguoyun.com/dav/">
-
-                    <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/inputUrl"
-                        style="@style/FbEditText"
-                        android:inputType="textUri"
-                        android:maxLines="1" />
-                </com.google.android.material.textfield.TextInputLayout>
-
-                <com.google.android.material.textfield.TextInputLayout
-                    style="@style/FbInput"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/fb_space_8"
-                    android:hint="账号（邮箱）">
-
-                    <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/inputUser"
-                        style="@style/FbEditText"
-                        android:inputType="textEmailAddress"
-                        android:maxLines="1" />
-                </com.google.android.material.textfield.TextInputLayout>
-
-                <com.google.android.material.textfield.TextInputLayout
-                    style="@style/FbInput"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/fb_space_8"
-                    android:hint="应用密码（不是登录密码）">
-
-                    <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/inputPass"
-                        style="@style/FbEditText"
-                        android:inputType="textPassword"
-                        android:maxLines="1" />
-                </com.google.android.material.textfield.TextInputLayout>
-
-                <com.google.android.material.textfield.TextInputLayout
-                    style="@style/FbInput"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/fb_space_8"
-                    android:hint="存哪个目录（默认 qbank）">
-
-                    <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/inputDir"
-                        style="@style/FbEditText"
-                        android:inputType="text"
-                        android:maxLines="1" />
-                </com.google.android.material.textfield.TextInputLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/fb_space_12"
-                    android:orientation="horizontal">
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnTest"
-                        style="@style/FbGhostButton"
-                        android:layout_width="0dp"
-                        android:layout_weight="1"
-                        android:text="测试连接" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnUploadNow"
-                        style="@style/FbGhostButton"
-                        android:layout_width="0dp"
-                        android:layout_marginStart="@dimen/fb_space_8"
-                        android:layout_weight="1"
-                        android:text="备份到云端" />
-                </LinearLayout>
-
-                <View
-                    style="@style/FbDividerInset"
-                    android:layout_marginTop="@dimen/fb_space_12" />
-
-                <LinearLayout style="@style/FbSwitchRow">
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical">
-
-                        <TextView
-                            style="@style/FbRowTitle"
-                            android:text="每天自动备份到云端" />
-
-                        <TextView
-                            android:id="@+id/tvAutoSub"
-                            style="@style/FbRowSub"
-                            android:text="夜间闲时跑一次；没配 WebDAV 时不生效" />
-                    </LinearLayout>
-
-                    <com.lytree.qbank.ui.FbSwitchView
-                        android:id="@+id/swAuto"
-                        style="@style/FbSwitch" />
-                </LinearLayout>
-
-                <View style="@style/FbDividerInset" />
-
-                <LinearLayout
-                    android:id="@+id/rowKeep"
-                    style="@style/FbSwitchRow">
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical">
-
-                        <TextView
-                            style="@style/FbRowTitle"
-                            android:text="云端保留份数" />
-
-                        <TextView
-                            android:id="@+id/tvKeep"
-                            style="@style/FbRowSub"
-                            android:text="7 份，超出自动删最旧的" />
                     </LinearLayout>
 
                     <TextView

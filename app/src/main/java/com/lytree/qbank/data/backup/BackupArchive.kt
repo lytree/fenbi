@@ -424,6 +424,9 @@ object BackupArchive {
         val files = dir.listFiles { f -> f.isFile && f.name.endsWith(".xml") } ?: return out
         files.forEach { file ->
             val name = file.name.removeSuffix(".xml")
+            // 备份历史是本机的账本，不进包也不随恢复回滚：
+            // 恢复旧包时若把它一起写回，页面会显示成「刚备份过那几条」，比没有更误导
+            if (name == BackupHistory.PREFS) return@forEach
             val sp = context.getSharedPreferences(name, Context.MODE_PRIVATE)
             val bag = JSONObject()
             sp.all.forEach { (key, value) ->

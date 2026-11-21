@@ -41,8 +41,8 @@ android {
         applicationId = "com.lytree.qbank"
         minSdk = 24
         targetSdk = 35
-        versionCode = versionCodeOverride ?: 71
-        versionName = versionNameOverride ?: "0.0.71"
+        versionCode = versionCodeOverride ?: 73
+        versionName = versionNameOverride ?: "0.0.73"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // 云端凭证编进 BuildConfig；空串表示未配置，运行时回落到 App 内手填的值
@@ -116,11 +116,6 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.7")
     implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
-
-    // 云备份走 WebDAV，需要 PROPFIND / MKCOL 这类非标准方法。
-    // Android 的 HttpURLConnection 方法名是硬编码白名单（只有 GET/POST/HEAD/OPTIONS/PUT/DELETE/TRACE），
-    // 调 PROPFIND 会直接抛 ProtocolException，所以这里破例引一个 OkHttp。
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     // Excel 解析（XlsxReader）走 XmlPullParserFactory，JVM 侧需要 kxml2 提供实现；
     // 导入器核心逻辑不碰 Android API，用 JVM 单元测试跑最快

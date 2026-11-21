@@ -10,6 +10,7 @@ import AnswerPane from './components/AnswerPane'
 import IssuePane from './components/IssuePane'
 import VersionPane from './components/VersionPane'
 import ResourcePane from './components/ResourcePane'
+import RecordsPane from './components/RecordsPane'
 import RecitePane from './components/RecitePane'
 import LibraryPane from './components/LibraryPane'
 import WordsPane from './components/WordsPane'
@@ -457,6 +458,12 @@ export default defineComponent({
                     >
                       资源
                     </button>
+                    <button
+                      class={['ptab', state.pane === 'records' && 'active']}
+                      onClick={() => { state.pane = 'records' }}
+                    >
+                      记录
+                    </button>
                   </div>
                   <button class="icon-btn" title="收起预览" onClick={() => setPreviewHidden(true)}>⟩</button>
                 </div>
@@ -466,9 +473,11 @@ export default defineComponent({
                     ? <AnswerPane />
                     : state.pane === 'issue'
                       ? <IssuePane />
-                      : state.pane === 'resource'
-                        ? <ResourcePane />
-                        : <VersionPane />}
+                      : state.pane === 'records'
+                        ? <RecordsPane />
+                        : state.pane === 'resource'
+                          ? <ResourcePane />
+                          : <VersionPane />}
               </aside>
             )
             : null}

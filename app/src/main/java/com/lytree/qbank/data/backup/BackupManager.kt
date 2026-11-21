@@ -6,13 +6,14 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * 备份编排：打包 → 上传 → 清理旧包；以及反向的下载 → 校验 → 落地。
+ * 备份编排：打包 → 落地 → 清理旧包；以及反向的校验 → 落地。
  *
- * 打包与恢复的脏活都在 [BackupArchive]，这里只管顺序、进度和「留几份」。
+ * 打包与恢复的脏活都在 [BackupArchive]，这里只管顺序、进度和「本地留几份」。
+ * 备份包不出本机：想存网盘就走「分享备份包」，恢复从文件选择器选 zip。
  */
 object BackupManager {
 
-    /** 本地缓存里最多留几份，够手动分享就行，长期留存交给云端 */
+    /** 本地缓存里最多留几份，够手动分享就行 */
     private const val LOCAL_KEEP = 2
 
     /** 恢复时解包用的临时目录（cache 下），预览阶段也用它 */
@@ -23,11 +24,8 @@ object BackupManager {
 
     data class Outcome(
         val localFile: File,
-        val manifest: BackupArchive.Manifest,
-        val uploaded: CloudFile?
-    ) {
-        val isCloud: Boolean get() = uploaded != null
-    }
+        val manifest: BackupArchive.Manifest
+    )
 
     fun localDir(context: Context): File =
         File(context.cacheDir, "backups").apply { if (!exists()) mkdirs() }
@@ -36,34 +34,43 @@ object BackupManager {
         NAME_PREFIX + BackupArchive.fileStamp(now) + ".zip"
 
     /**
-     * 备份一次。[provider] 为空时只生成备份包（本地导出 / 分享），不上云。
+     * 备份一次：打包落在本机缓存，不上传任何地方。
+     * [auto] 留给以后可能的自动备份（现在只有手动入口），只影响历史里的来源标记。
      *
      * 同步执行，调用方自己放协程——但 API 做成 suspend 更省事，这里直接切 IO。
      */
     suspend fun runBackup(
         context: Context,
-        provider: CloudProvider?,
+        auto: Boolean = false,
         onProgress: (Float, String) -> Unit = { _, _ -> }
     ): Outcome = withContext(Dispatchers.IO) {
         val target = File(localDir(context), newFileName())
         val manifest = BackupArchive.create(context, target) { p, label ->
-            onProgress(p * 0.55f, label)
-        }
-
-        var uploaded: CloudFile? = null
-        if (provider != null) {
-            if (!provider.isConfigured()) throw CloudException("云盘还没配置好")
-            onProgress(0.58f, "上传到${provider.name}")
-            uploaded = provider.upload(target) { p ->
-                onProgress(0.58f + p * 0.38f, "上传中 ${(p * 100).toInt()}%")
-            }
-            CloudStore.markBackedUp(context, uploaded.name, uploaded.bytes)
-            runCatching { trimCloud(provider, CloudStore.keepCount(context)) }
+            onProgress(p, label)
         }
 
         trimLocal(context)
+        // 历史跟文件是两回事：本地包会被 trimLocal 删掉，记录留着，用户才知道哪天备过
+        runCatching {
+            BackupHistory.record(
+                context,
+                BackupHistory.Entry(
+                    name = target.name,
+                    at = manifest.createdAt,
+                    // 记 zip 的实际体积，跟 manifest.totalBytes（解包后的内容量）不是一个口径，
+                    // 混着显示会被当成两种东西
+                    bytes = target.length(),
+                    auto = auto,
+                    papers = manifest.counts["papers"] ?: 0,
+                    questions = manifest.counts["questions"] ?: 0,
+                    records = manifest.counts["records"] ?: 0,
+                    device = manifest.device,
+                    version = manifest.versionName
+                )
+            )
+        }
         onProgress(1f, "备份完成")
-        Outcome(target, manifest, uploaded)
+        Outcome(target, manifest)
     }
 
     /**
@@ -116,37 +123,7 @@ object BackupManager {
         return installOpened(context, opened, onProgress)
     }
 
-    /** 云端列表（只留本 App 生成的包），用于恢复页展示 */
-    suspend fun listCloud(provider: CloudProvider): List<CloudFile> =
-        withContext(Dispatchers.IO) {
-            provider.list().filter { it.name.startsWith(NAME_PREFIX) }
-        }
-
-    /** 下载云端某一份到缓存，返回本地文件 */
-    suspend fun downloadFromCloud(
-        context: Context,
-        provider: CloudProvider,
-        remote: CloudFile,
-        onProgress: (Float) -> Unit = {}
-    ): File = withContext(Dispatchers.IO) {
-        val dir = File(context.cacheDir, "restore-src").apply { mkdirs() }
-        val dest = File(dir, remote.name)
-        if (dest.exists()) dest.delete()
-        provider.download(remote, dest, onProgress)
-        dest
-    }
-
     // ---------------------------------------------------------------- 清理
-
-    /** 云端只留最近 N 份（按文件名里的时间戳倒序，不走服务端排序，口径统一） */
-    private suspend fun trimCloud(provider: CloudProvider, keep: Int) {
-        val mine = provider.list()
-            .filter { it.name.startsWith(NAME_PREFIX) }
-            .sortedByDescending { it.name }
-        mine.drop(keep.coerceAtLeast(1)).forEach { old ->
-            runCatching { provider.delete(old) }
-        }
-    }
 
     private fun trimLocal(context: Context) {
         localDir(context).listFiles { f -> f.isFile && f.name.startsWith(NAME_PREFIX) }

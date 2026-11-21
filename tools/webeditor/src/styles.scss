@@ -4172,3 +4172,395 @@ body.pane-dragging {
   .lib-sum { flex-wrap: wrap; }
   .lib-text { flex-basis: 100%; }
 }
+
+// =============================================================================
+// 记录页（粉笔 Web 复刻）：配色取自粉笔练习报告 / 解析页
+// =============================================================================
+
+$c-fb-blue: #3c7cfc;
+$c-fb-blue-soft: #ecf1ff;
+$c-fb-green: #2bc8a0;
+$c-fb-red: #ff5a5a;
+$c-fb-amber: #ffb43a;
+$c-fb-ink: #1b2126;
+$c-fb-sub: #868ea8;
+$c-fb-bg: #f4f6f9;
+$c-fb-line: #edeff3;
+
+.rec-list,
+.rec-detail {
+  padding: 12px 14px 40px;
+  background: $c-fb-bg;
+}
+
+// ---- 列表：每条记录一组卡片 -------------------------------------------------
+
+.rec-card {
+  margin-top: 12px;
+  padding: 14px 16px 10px;
+  background: #fff;
+  border: 1px solid $c-fb-line;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: box-shadow .15s, transform .15s;
+
+  &:hover {
+    box-shadow: 0 6px 18px rgba(60, 124, 252, .14);
+    transform: translateY(-1px);
+  }
+
+  &:active { transform: translateY(0); }
+}
+
+.rec-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.rec-card-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 700;
+  color: $c-fb-ink;
+}
+
+.rec-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 5px;
+  font-size: 12px;
+  color: $c-fb-sub;
+}
+
+.rec-card-go {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed $c-fb-line;
+  font-size: 12px;
+  color: $c-fb-blue;
+  text-align: center;
+}
+
+// ---- 状态 / 模式小标签 -------------------------------------------------------
+
+.rec-chip {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+
+  &.done { background: $c-fb-blue-soft; color: $c-fb-blue; }
+  &.ongoing { background: #fff7e8; color: #d98f00; }
+  &.abandoned { background: #f2f2f5; color: $c-fb-sub; }
+}
+
+.rec-mode {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 4px;
+  background: $c-fb-blue-soft;
+  color: $c-fb-blue;
+  font-size: 11px;
+}
+
+// ---- 粉笔式统计条：一共 / 答对 / 答错 / 正确率 / 用时 -----------------------
+
+.rec-stats {
+  display: flex;
+  align-items: center;
+  margin-top: 10px;
+  padding: 10px 0;
+  border-radius: 8px;
+  background: $c-fb-bg;
+
+  .stat {
+    flex: 1;
+    min-width: 0;
+    position: relative;
+    text-align: center;
+
+    & + .stat::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 8px;
+      bottom: 8px;
+      width: 1px;
+      background: #e2e5ec;
+    }
+  }
+
+  .k {
+    font-size: 11px;
+    color: $c-fb-sub;
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+
+  .v {
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: .3px;
+
+    i {
+      font-size: 11px;
+      font-weight: 500;
+      font-style: normal;
+      margin-left: 1px;
+    }
+  }
+
+  .c-blue { color: $c-fb-blue; }
+  .c-green { color: $c-fb-green; }
+  .c-red { color: $c-fb-red; }
+}
+
+// ---- 详情：顶栏 + 成绩卡 -----------------------------------------------------
+
+.rec-topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.rec-back {
+  flex: none;
+  border: 1px solid #d6e2fe;
+  border-radius: 15px;
+  padding: 4px 12px;
+  background: #fff;
+  color: $c-fb-blue;
+  font-size: 12px;
+  cursor: pointer;
+
+  &:hover { background: $c-fb-blue-soft; }
+}
+
+.rec-topbar-t {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  color: $c-fb-ink;
+}
+
+.rec-hero {
+  margin-top: 10px;
+  padding: 14px 16px 8px;
+  border-radius: 14px;
+  background:
+    radial-gradient(92% 96% at 100% 0%, rgba(150, 197, 255, .35) 0%, rgba(232, 244, 255, .25) 42%, rgba(255, 255, 255, 0) 74%),
+    linear-gradient(180deg, #eff8ff 0%, #fbfdff 40%, #fff 62%, #fff 100%);
+  border: 1px solid #d6e2fe;
+}
+
+.rec-hero-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  h3 {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 15px;
+    color: $c-fb-ink;
+  }
+}
+
+.rec-hero-sub {
+  margin-top: 5px;
+  font-size: 12px;
+  color: $c-fb-sub;
+}
+
+// ---- 答题卡色块 -------------------------------------------------------------
+
+.rec-sheet {
+  margin-top: 12px;
+  padding: 12px 16px 14px;
+  background: #fff;
+  border: 1px solid $c-fb-line;
+  border-radius: 14px;
+}
+
+.rec-sheet-head {
+  display: flex;
+  align-items: center;
+
+  h4 {
+    margin: 0;
+    font-size: 13px;
+    color: $c-fb-ink;
+  }
+
+  .legend {
+    margin-left: auto;
+    display: flex;
+    gap: 12px;
+    font-size: 11px;
+    color: $c-fb-sub;
+
+    span { display: flex; align-items: center; gap: 4px; }
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+}
+
+.rec-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+
+  .cell {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+    background: #edeff3;
+    color: $c-fb-sub;
+
+    &.ok { background: $c-fb-green; color: #fff; }
+    &.no { background: $c-fb-red; color: #fff; }
+    &.pend { background: $c-fb-amber; color: #fff; }
+  }
+}
+
+// ---- 逐题明细 ---------------------------------------------------------------
+
+.rec-qlist { margin-top: 14px; }
+
+.rec-q {
+  margin-top: 12px;
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid $c-fb-line;
+  border-radius: 14px;
+}
+
+.rec-result {
+  margin-left: auto;
+  padding: 1px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+
+  &.ok { background: rgba(43, 200, 160, .12); color: $c-fb-green; }
+  &.no { background: rgba(255, 90, 90, .1); color: $c-fb-red; }
+  &.part { background: #fff7e8; color: #d98f00; }
+  &.pend { background: #fff7e8; color: #d98f00; }
+  &.none { background: #f2f2f5; color: $c-fb-sub; }
+}
+
+.rec-score {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  color: $c-fb-sub;
+}
+
+.rec-opts {
+  margin-top: 10px;
+}
+
+.rec-opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  border-radius: 8px;
+  background: #f5f7fa;
+
+  .lt {
+    flex: none;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+    background: #e5e8ef;
+    color: $c-fb-sub;
+  }
+
+  .text {
+    flex: 1;
+    min-width: 0;
+    padding-top: 3px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: $c-fb-ink;
+  }
+
+  &.right .lt { background: $c-fb-green; color: #fff; }
+  &.right { background: rgba(43, 200, 160, .1); }
+
+  &.wrong .lt { background: $c-fb-red; color: #fff; }
+  &.wrong { background: rgba(255, 90, 90, .08); }
+}
+
+.rec-ansbar {
+  display: flex;
+  align-items: center;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #f5f7fa;
+  font-size: 13px;
+  color: #5f677c;
+
+  > div { flex: 1; }
+
+  b {
+    font-size: 13px;
+    font-weight: 700;
+    margin-left: 2px;
+  }
+
+  .ok b { color: $c-fb-green; }
+  .no b { color: $c-fb-red; }
+  .no.pend b { color: #d98f00; }
+}
+
+.rec-analysis {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: $c-fb-blue-soft;
+  font-size: 13px;
+  line-height: 1.7;
+  color: $c-fb-ink;
+
+  .mh {
+    font-size: 12px;
+    font-weight: 700;
+    color: $c-fb-blue;
+    margin-bottom: 4px;
+  }
+}

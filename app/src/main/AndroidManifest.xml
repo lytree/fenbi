@@ -87,11 +87,6 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
-        <!-- 每日自动备份：AlarmManager 到点拉起，只在配好 WebDAV 且开了开关时才跑 -->
-        <receiver
-            android:name=".data.backup.AutoBackupReceiver"
-            android:exported="false" />
-
         <!--
           局域网编辑器：前台服务托着 ServerSocket，电脑浏览器连上来加题。
           dataSync 类型是 Android 14 的硬要求（本地服务没有更贴切的类型可选）。
