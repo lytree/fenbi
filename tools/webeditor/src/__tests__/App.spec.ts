@@ -204,7 +204,7 @@ beforeEach(() => {
 })
 
 describe('局域网题库编辑器', () => {
-  it('打开第一组，渲染题目列表与卷面预览', async () => {
+  it('打开第一组，渲染题目列表与答案解析', async () => {
     const wrapper = mount(App, { attachTo: document.body })
     await flushPromises()
 
@@ -215,6 +215,8 @@ describe('局域网题库编辑器', () => {
     expect(wrapper.findAll('.pv-mat')).toHaveLength(1)
     expect(wrapper.findAll('.pv-group')).toHaveLength(1)
     expect(wrapper.findAll('.pv-group .pv-q')).toHaveLength(2)
+    // 编辑器右栏是窄栏：资料题上下排，不分屏（分屏只在整页查看里）
+    expect(wrapper.find('.pv-group').classes()).not.toContain('split')
     expect(wrapper.find('.pv-mat .mh').text()).toContain('第 2–3 题')
     expect(wrapper.find('.pv-mat .mh').text()).toContain('2 小题共用')
     expect(wrapper.text()).toContain('第一题：没有语病的一项')
@@ -385,7 +387,7 @@ describe('局域网题库编辑器', () => {
     wrapper.unmount()
   })
 
-  it('材料模式下改材料，右侧卷面预览同步更新', async () => {
+  it('材料模式下改材料，右侧答案解析同步更新', async () => {
     const wrapper = mount(App, { attachTo: document.body })
     await flushPromises()
 
@@ -423,7 +425,7 @@ describe('局域网题库编辑器', () => {
     wrapper.unmount()
   })
 
-  it('材料模式下点小题卡片，右侧卷面预览滚到并高亮同一题', async () => {
+  it('材料模式下点小题卡片，右侧答案解析滚到并高亮同一题', async () => {
     const scrolled: Element[] = []
     Element.prototype.scrollIntoView = function (this: Element) { scrolled.push(this) }
 
@@ -458,7 +460,7 @@ describe('局域网题库编辑器', () => {
     wrapper.unmount()
   })
 
-  it('左侧选中题目时，右侧卷面预览跟着滚到同一题', async () => {
+  it('左侧选中题目时，右侧答案解析跟着滚到同一题', async () => {
     const scrolled: Element[] = []
     Element.prototype.scrollIntoView = function (this: Element) { scrolled.push(this) }
 
@@ -762,9 +764,8 @@ describe('局域网题库编辑器', () => {
     await wrapper.find('[data-view="board"]').trigger('click')
     await flushPromises()
 
-    // 前面的用例可能把右栏切到「校验」，先切回卷面预览
-    const previewTab = wrapper.findAll('button').find((b) => b.text().includes('卷面预览'))
-    await previewTab!.trigger('click')
+    // 前面的用例可能把右栏切到「记录」，先切回答案解析
+    state.pane = 'answer'
     await flushPromises()
 
     await wrapper.find('.board-pool .btile').trigger('click')
@@ -892,24 +893,24 @@ describe('局域网题库编辑器', () => {
     const wrapper = mount(App, { attachTo: document.body })
     await flushPromises()
 
-    // 校验 / 版本 / 资源没有整页版，先回到卷面预览
-    await wrapper.findAll('button').find((b) => b.text().includes('卷面预览'))!.trigger('click')
+    // 右栏只剩答案解析 / 记录两页，两页都有整页版
+    state.pane = 'answer'
     await flushPromises()
 
-    const btn = wrapper.find('[data-pane-full="preview"]')
+    const btn = wrapper.find('[data-pane-full="answer"]')
     expect(btn.exists()).toBe(true)
     await btn.trigger('click')
 
     expect(opened).toHaveLength(1)
-    expect(opened[0]).toContain('view=preview')
+    expect(opened[0]).toContain('view=answer')
     expect(opened[0]).toContain('setId=1')
     expect(opened[0]).toContain('sheet=11')
 
-    // 切到「校验」：现在是弹框入口，不再换右栏页签——弹框开出来，整页按钮还跟着预览页走
+    // 切到「校验」：现在是弹框入口，不再换右栏页签——弹框开出来，整页按钮还跟着当前页走
     await wrapper.find('[data-tool-tab="issue"]').trigger('click')
     await flushPromises()
     expect(wrapper.find('.tool-dialog').exists()).toBe(true)
-    expect(wrapper.find('[data-pane-full="preview"]').exists()).toBe(true)
+    expect(wrapper.find('[data-pane-full="answer"]').exists()).toBe(true)
     await wrapper.find('.tool-close').trigger('click')
     await flushPromises()
     expect(wrapper.find('.tool-dialog').exists()).toBe(false)
@@ -918,7 +919,7 @@ describe('局域网题库编辑器', () => {
     wrapper.unmount()
   })
 
-  it('「记录」页与卷面预览 / 答案解析同一套版式：页头、卡片、选项、解析块都复用', async () => {
+  it('「记录」页与答案解析同一套版式：页头、卡片、选项、解析块都复用', async () => {
     const wrapper = mount(App, { attachTo: document.body })
     await flushPromises()
 

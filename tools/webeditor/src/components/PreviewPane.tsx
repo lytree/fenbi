@@ -9,7 +9,7 @@ import { LEVEL_NONE, level1Of, level2Of } from '../xingce'
 import { optionListHtml, writeZoneHtml, materialGroupHtml } from '../qview'
 
 /**
- * 右侧卷面预览：按粉笔答题页的版式排——材料卡与题目同列上下排（资料分析的形式），
+ * 整页版「卷面预览」：按粉笔答题页的版式排——材料卡与它的小题成组、同列上下排，
  * 题号在题型标签前，选项是圆徽标行。纯卷面，不带答案（答案/解析看旁边的「答案解析」页）。
  * 双向联动：点预览里的题会跳到左边对应卡片；左边选中哪题，预览也滚到同一题并高亮。
  */

@@ -43,11 +43,13 @@ tools/webeditor/
     __tests__/            # vitest + jsdom：App.spec（编辑器主链路）/ fullview.spec（整页查看）等
 ```
 
-**整页查看**：卷面预览 / 答案解析 / 记录在右栏挤得慌，所以另有一个整页版。同一个 bundle、
+**整页查看**：卷面预览 / 答案解析 / 记录在右栏挤得慌（卷面预览已从右栏撤掉，只剩答案解析 / 记录），所以另有一个整页版。同一个 bundle、
 同一个 store，`main.tsx` 读 `?view=preview|answer|records` 决定挂 `App` 还是 `FullView`；
 Query 只带 `view / setId / sheet / recordId`，切页与换卷会 `replaceState` 写回地址，
 刷新和分享都落在原地。三页共用 `.pv-head / .pv-q / .pv-opt / .sol-box` 这套骨架，
 记录页不再自带固定色（以前是粉笔蓝，夜里整页发白）。
+「答案解析」「练习记录」两页里，资料题是**左右分屏**：材料钉左、题目在右，
+右栏只留题目 / 答案 / 解析（考点、笔记、笔记笔在分屏里隐藏）；≤860px 自动退回上下排。
 
 「背诵」模式下 `RecitePane`（政治 / 常识：分类筛选 + 卡片列表 + 逐卡编辑，整份保存走手机确认）
 与 `WordsPane`（词条词库：搜索筛选 + 逐条编辑，直接写库）替换题库编辑区，右栏预览不渲染。
@@ -88,7 +90,7 @@ allowBuilds:
 - **材料逐行重复**是 App 的硬规则：材料只在「材料组头」或「材料模式」的材料编辑区里改，
   两条路径都走 `setGroupMaterial()` 写回组内每一题，不要在单题上散着改（除非点「移出材料组」）。
   材料模式的说明见 [docs/14](../../docs/14-材料多题编辑模式.md)。
-- **右栏三页共用一套骨架**：卷面预览 / 答案解析 / 记录都走 `.pv-head` / `.pv-q` / `.pv-opt` /
+- **三页共用一套骨架**：卷面预览（整页）/ 答案解析 / 记录都走 `.pv-head` / `.pv-q` / `.pv-opt` /
   `.sol-box`（可折叠解析盒），颜色只用令牌（`var(--*)`）。记录页**不要再引入自己的固定色**——以前那套粉笔蓝
   在夜间主题下就是一块白，改版后才对齐。
 - **题型也共用一份渲染**：选项、答案宫格、作答区一律走 `qview.ts`（`optionListHtml / gridHtml /
@@ -97,11 +99,14 @@ allowBuilds:
 - **一则资料带多题是一个组**：卷面 / 解析用 `materialGroupHtml()`（材料卡 + `.pv-subs` 一次拼好），
   记录页用 `materialCardHtml()` 拼材料、外面套 `.pv-group` 和 JSX 小题。别再退回「材料一张卡、
   小题一堆散卡」——组头要写「资料 / 第 N–M 题 / k 小题共用」，收起只收材料正文、小题不动。
+- **资料分屏只在整页**：`AnswerPane` 的 `full` / `RecordsPane` 的 `standalone` 才给组加 `split`，
+  CSS 也要挂在 `.fullsheet` 下（`.fullsheet .pv-group.split`）。编辑器窄栏永远上下排，别把分屏
+  条件写成只凭 `.split` 一个类。
 - **笔记可写、记录不可写**：题号行右端的 ✎（`editNote()`）走 `POST /api/note`，按题目 id 直写
   `notes` 表，和 App 共用、不参与发布。记录页其它内容仍然只读，别顺手加「改分数」之类的入口。
 - **校验 / 版本 / 资源是弹框**：`ui.tool` 记当前开的是哪个，`openTool() / closeTool()` 进出，
   `ToolDialog` 统一渲染；入口在页签条右端（`.tool-tab`，带计数徽标）。别再把它们塞回右栏页签——
-  右栏只留卷面三页。
+  右栏只留答案解析与记录两页，**卷面预览只在整页查看里**。
 - **删除不在网页上执行**：`requestDeleteSet()` 只调 `/api/delete/request`，然后每 1.2 秒轮询
   `/api/delete/status`，直到手机点确认 / 拒绝 / 超时。别在前端加「直接删」的调用——
   手机端根本没有那个接口，加了也是 404。

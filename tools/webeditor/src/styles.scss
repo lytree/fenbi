@@ -2365,6 +2365,55 @@ body.pane-dragging {
   .pv-group::before { display: none; }
 }
 
+/* 整页查看里的资料题：左右分屏——材料钉在左边自己滚，题目在右边往下走。
+   右栏只留「题目 + 答案 + 解析」这一路信息（考点 / 笔记 / 笔记笔在分屏里收起，
+   那几样属于编辑侧的活，读答案时反而挡眼）。
+   编辑器右栏没有 .fullsheet 祖先，所以同一份 DOM 在窄栏里仍然是上下排。 */
+.fullsheet .pv-group.split {
+  display: grid;
+  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+  gap: 18px;
+  align-items: start;
+  padding-left: 0;
+  margin-bottom: 22px;
+
+  &::before { display: none; }
+
+  > .pv-mat {
+    position: sticky;
+    /* 顶到整页顶栏下方一点：材料跟着滚，但不钻到顶栏底下 */
+    top: 6px;
+    margin-bottom: 0;
+    max-height: calc(100vh - 150px);
+    overflow: auto;
+  }
+
+  .kp-row,
+  .note-row,
+  .pv-acts { display: none; }
+
+  /* 右栏第一张卡和材料卡顶对齐，视觉上是一条基线 */
+  .pv-subs { padding-top: 0; }
+}
+
+/* 记录页的整页版更宽（1040）：右栏略宽一点，选项不至于挤成两行 */
+.fullsheet.is-records .pv-group.split {
+  grid-template-columns: minmax(0, 0.88fr) minmax(0, 1.12fr);
+}
+
+/* 窄屏（投到平板 / 手机）：分屏退回上下排，材料不再钉住 */
+@media (max-width: 860px) {
+  .fullsheet .pv-group.split {
+    grid-template-columns: 1fr;
+    gap: 10px;
+
+    > .pv-mat {
+      position: static;
+      max-height: none;
+    }
+  }
+}
+
 .pv-stem {
   font-size: 14px;
   line-height: 1.5715;

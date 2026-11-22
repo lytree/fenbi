@@ -8,16 +8,22 @@ import { answerText, gridHtml, isBlank, materialGroupHtml, noteActionHtml, normK
 import type { GridCell } from '../qview'
 
 /**
- * 右侧「答案解析」页：粉笔解析页的版式——每题一张卡，答案铺成灰底宫格条，
+ * 「答案解析」页：粉笔解析页的版式——每题一张卡，答案铺成灰底宫格条，
  * 解析装进可折叠的「解析」盒（蓝条 + 标题 + 箭头，点标题收起 / 展开），
  * 知识点画成蓝色胶囊，笔记点一下就能改（和 App 同一份 notes 表）。
  * 六种题型各有各的摆法：单选圆徽标、多选/不定项方徽标、判断勾叉、
- * 填空与主观题没有选项、参考答案整段铺开。卷面预览保持纯卷面；
- * 双向联动口径与它一致：点题跳左卡片，左边选中这里滚过来。
+ * 填空与主观题没有选项、参考答案整段铺开。
+ *
+ * 两处用：编辑器右栏（窄，资料题上下排）与整页查看（`full`，资料题左右分屏）。
+ * 编辑器里点题跳左卡片、左边选中这里滚过来；整页版没有编辑区，只有内容。
  */
 export default defineComponent({
   name: 'AnswerPane',
-  setup() {
+  props: {
+    /** 整页查看：资料题改左右分屏（材料左、题目右），窄栏里保持上下排 */
+    full: { type: Boolean, default: false },
+  },
+  setup(props) {
     const pane = ref<HTMLElement | null>(null)
 
     /** 把当前选中（state.focused）的那题滚到面板中间 */
@@ -118,6 +124,8 @@ export default defineComponent({
               .slice(g.start, g.end + 1)
               .map((q, k) => blockHtml(q, g.start + k))
               .join(''),
+            // 整页查看里这组左右分屏：材料在左、题目在右；窄栏里还是上下排
+            split: props.full,
           })
           i = g.end + 1
         } else {

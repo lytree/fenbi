@@ -174,6 +174,11 @@ export interface MaterialGroup {
   materialHtml: string
   /** 已经渲染好的小题 HTML（一组 `.pv-q`） */
   questionsHtml: string
+  /**
+   * 整页查看里的左右分屏：材料钉在左、小题在右。
+   * 窄栏（编辑器右栏）不套分屏——CSS 只在 `.fullsheet` 下生效。
+   */
+  split?: boolean
 }
 
 /** 材料卡头部：资料 / 题号范围 / 小题数 / 收起 */
@@ -202,10 +207,10 @@ export function materialCardHtml(start: number, count: number, materialHtml: str
   )
 }
 
-/** 整组：材料卡 + 小题，两组之间留出一段距离 */
+/** 整组：材料卡 + 小题，两组之间留出一段距离；`split` 交给整页查看做左右分屏 */
 export function materialGroupHtml(p: MaterialGroup): string {
   return (
-    '<div class="pv-group">' +
+    `<div class="pv-group${p.split ? ' split' : ''}">` +
     materialCardHtml(p.start, p.count, p.materialHtml) +
     `<div class="pv-subs">${p.questionsHtml}</div>` +
     '</div>'

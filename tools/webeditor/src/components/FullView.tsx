@@ -136,7 +136,7 @@ export default defineComponent({
           {pane.value === 'preview'
             ? <PreviewPane />
             : pane.value === 'answer'
-              ? <AnswerPane />
+              ? <AnswerPane full />
               : (
                 <RecordsPane
                   initialRecordId={recordId.value}

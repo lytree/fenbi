@@ -408,7 +408,11 @@ export default defineComponent({
             {detailBlocks(answers).map((b) =>
               b.kind === 'group'
                 ? (
-                  <div class="pv-group" key={`mat-${b.start}`} onClick={onGroupClick}>
+                  <div
+                    class={['pv-group', props.standalone && 'split']}
+                    key={`mat-${b.start}`}
+                    onClick={onGroupClick}
+                  >
                     <div innerHTML={materialCardHtml(b.start, b.count, renderMaterial(b.material))}></div>
                     <div class="pv-subs">
                       {b.answers.map((a) => (

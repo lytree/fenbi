@@ -5,7 +5,6 @@ import SheetBar from './components/SheetBar'
 import QuestionList from './components/QuestionList'
 import MaterialList from './components/MaterialList'
 import GroupBoard from './components/GroupBoard'
-import PreviewPane from './components/PreviewPane'
 import AnswerPane from './components/AnswerPane'
 import RecordsPane from './components/RecordsPane'
 import ToolDialog from './components/ToolDialog'
@@ -428,12 +427,6 @@ export default defineComponent({
                 <div class="ptabs-wrap">
                   <div class="ptabs">
                     <button
-                      class={['ptab', state.pane === 'preview' && 'active']}
-                      onClick={() => { state.pane = 'preview' }}
-                    >
-                      卷面预览
-                    </button>
-                    <button
                       class={['ptab', state.pane === 'answer' && 'active']}
                       onClick={() => { state.pane = 'answer' }}
                     >
@@ -499,11 +492,7 @@ export default defineComponent({
                     : null}
                   <button class="icon-btn" title="收起预览" onClick={() => setPreviewHidden(true)}>⟩</button>
                 </div>
-                {state.pane === 'preview'
-                  ? <PreviewPane />
-                  : state.pane === 'answer'
-                    ? <AnswerPane />
-                    : <RecordsPane />}
+                {state.pane === 'answer' ? <AnswerPane /> : <RecordsPane />}
               </aside>
             )
             : null}

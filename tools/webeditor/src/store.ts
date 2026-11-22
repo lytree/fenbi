@@ -94,8 +94,9 @@ export const state = reactive({
   subjectFilter: 'all' as SubjectFilter,
   /** 二级题型筛（值取归一后的知识点名） */
   subTopicFilter: 'all' as SubjectFilter,
-  // 右栏只剩卷面三页；校验 / 版本 / 资源改走弹框（ui.tool），不再占页签
-  pane: 'preview' as 'preview' | 'answer' | 'records',
+  // 右栏只留「答案解析 / 记录」：卷面预览整页看（⤢），窄栏里那点宽度放不下卷面
+  // 校验 / 版本 / 资源改走弹框（ui.tool），也不再占页签
+  pane: 'answer' as 'answer' | 'records',
   versions: [] as VersionInfo[],
   versionLoading: false,
   /** 当前这组的图片资源（右栏「资源」页签） */
