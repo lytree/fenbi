@@ -58,7 +58,7 @@ class MaterialPopupActivity : AppCompatActivity() {
 
     private fun renderMaterial() {
         // 页面空间比题目卡里大，图表按 1.4 倍高画，刻度与折线更好读
-        MaterialRenderer.render(this, binding.materialContent, material, night, fontScale, chartScale = 1.4f)
+        MaterialRenderer.render(this, binding.materialContent, material, night, fontScale)
         binding.materialContent.applyNavBarBottomPadding()
         binding.materialScroll.scrollTo(0, 0)
     }

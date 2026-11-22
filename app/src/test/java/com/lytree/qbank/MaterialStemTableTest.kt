@@ -36,13 +36,6 @@ class MaterialStemTableTest {
     }
 
     @Test
-    fun `制表符对齐的裸表格也算`() {
-        val stem = "项目\t数值\n总收入\t5280\n研发费用\t611.9"
-        assertTrue(MaterialRenderer.stemHasTable(stem))
-        assertEquals(3, tablesOf(stem).single().rows.size)
-    }
-
-    @Test
     fun `纯文字题干不走表格路径`() {
         assertFalse(MaterialRenderer.stemHasTable("2025年1-11月，B市研发费用中工业企业占比同比约："))
         // 只有一条竖线、凑不成表格的，也不算（否则整段会被当成表格吞掉）

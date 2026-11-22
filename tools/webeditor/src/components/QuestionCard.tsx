@@ -67,7 +67,7 @@ export default defineComponent({
     const addMaterial = async () => {
       const text = await askText({
         title: '给这题加材料',
-        label: '材料渲染在题干上方：支持 Markdown 表格、图片、:::chart；同一段材料的多道题要挨在一起',
+        label: '材料渲染在题干上方：支持 Markdown 表格、图片；同一段材料的多道题要挨在一起',
         value: '',
         rows: 8,
         okText: '用这段材料',

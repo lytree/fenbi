@@ -6,7 +6,6 @@ import {
   setGroupMaterial, state, visibleIndexes,
 } from '../store'
 import { grow, insertAtCursor } from '../util'
-import { FIGURE_LAYOUTS, wrapFigure } from '../figure'
 import { insertPastedImage, pickImage } from '../images'
 import { renderMaterial } from '../markdown'
 
@@ -33,14 +32,6 @@ export default defineComponent({
 
     /** 材料正文以题上的实际值为准：连续输入时分组还没重算，组快照里的 material 是旧的 */
     const materialText = (g: Group) => currentQuestions()[g.start]?.material ?? g.material
-
-    const applyFigure = (g: Group, layout: string) => {
-      const el = areas.get(g.start)
-      const text = materialText(g)
-      const from = el ? el.selectionStart : text.length
-      const to = el ? el.selectionEnd : text.length
-      setGroupMaterial(g.start, wrapFigure(text, from, to, layout))
-    }
 
     const addImage = (start: number) => {
       pickImage((path) => {
@@ -145,7 +136,7 @@ export default defineComponent({
                   else areas.delete(g.start)
                   grow(el as HTMLTextAreaElement)
                 }}
-                placeholder="材料正文：支持 Markdown 表格、图片、:::chart、:::figure 图文排版"
+                placeholder="材料正文：支持 Markdown 表格、图片"
                 onInput={(e) => {
                   const el = e.target as HTMLTextAreaElement
                   // 先只改题上的文本；分组等失焦再重算，避免删空时整块消失
@@ -157,19 +148,9 @@ export default defineComponent({
               />
 
               <div class="mb-tools">
-                <span class="t">图文排版</span>
-                {FIGURE_LAYOUTS.map(([key, label]) => (
-                  <button
-                    key={key}
-                    title={`把选中的图文包成 :::figure（layout: ${key}）`}
-                    onClick={() => applyFigure(g, key)}
-                  >
-                    {label}
-                  </button>
-                ))}
                 <button title="把图片插入光标处" onClick={() => addImage(g.start)}>插图</button>
                 <span class="grow"></span>
-                <span class="mini-hint">选中要对排的文字再点排版；截图可直接 Ctrl+V</span>
+                <span class="mini-hint">截图可直接 Ctrl+V</span>
               </div>
 
               {previewOpen.has(g.start)

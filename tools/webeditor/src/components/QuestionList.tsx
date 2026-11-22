@@ -5,7 +5,6 @@ import {
   currentQuestions, groupAt, moveQuestionsTo, setGroupMaterial, state, visibleIndexes,
 } from '../store'
 import { grow } from '../util'
-import { FIGURE_LAYOUTS, wrapFigure } from '../figure'
 
 /** 材料输入框：按组首下标记，排版按钮要用它的光标位置包块 */
 const areas = new Map<number, HTMLTextAreaElement>()
@@ -110,17 +109,6 @@ export default defineComponent({
       moveQuestionsTo([uid], { kind: 'group', start: g.start })
     }
 
-    /**
-     * 把选中的那段材料包成 `:::figure` 图文块。
-     */
-    const applyFigure = (g: Group, layout: string) => {
-      const el = areas.get(g.start)
-      const text = g.material || ''
-      const from = el ? el.selectionStart : text.length
-      const to = el ? el.selectionEnd : text.length
-      setGroupMaterial(g.start, wrapFigure(text, from, to, layout))
-    }
-
     return () => {
       if (!state.paper) return null
       const qs = currentQuestions()
@@ -180,7 +168,7 @@ export default defineComponent({
                   else areas.delete(g.start)
                   grow(el as HTMLTextAreaElement)
                 }}
-                placeholder="材料正文：支持 Markdown 表格、图片、:::chart、:::figure 图文排版"
+                placeholder="材料正文：支持 Markdown 表格、图片"
                 onInput={(e) => {
                   const el = e.target as HTMLTextAreaElement
                   setGroupMaterial(g.start, el.value)
@@ -188,14 +176,7 @@ export default defineComponent({
                 }}
               />
               <div class="gh-tools">
-                <span class="t">图文排版</span>
-                {FIGURE_LAYOUTS.map(([key, label]) => (
-                  <button key={key} title={`把选中的图文包成 :::figure（layout: ${key}）`}
-                    onClick={() => applyFigure(g, key)}>
-                    {label}
-                  </button>
-                ))}
-                <span class="mini-hint">选中要和图排在一起的那段字再点；没选就插一段示例</span>
+                <span class="mini-hint">材料支持 Markdown 表格与图片；截图可直接 Ctrl+V 贴进材料</span>
               </div>
             </div>,
           )
