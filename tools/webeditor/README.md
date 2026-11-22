@@ -22,10 +22,11 @@ tools/webeditor/
   index.html              # 入口（Vite 用）
   vite.config.ts          # base=/web/、outDir 指向 App assets
   src/
-    main.tsx              # createApp
+    main.tsx              # createApp（按 ?view= 决定挂编辑器还是整页视图）
     App.tsx               # 模式切换（题库 / 背诵）+ 三栏布局 + 快捷键 + 文件选择器
     store.ts              # 全部状态与动作（响应式单例，没有 Pinia）；背诵 / 词条状态也在里面
     api.ts                # /api/* 的封装
+    fullview.ts           # 整页查看的地址约定：?view=preview|answer|records + setId/sheet/recordId
     paste.ts              # 批量粘贴文本 → 题目
     markdown.ts           # 预览用的 Markdown 子集（表格/图片/:::chart）
     figure.ts             # 图文排版：把选中段落包成 :::figure（两种视图共用）
@@ -35,10 +36,17 @@ tools/webeditor/
     scale.ts              # 界面缩放：CSS zoom 顶栏五档（A−/A+），档位记 localStorage
     styles.scss           # 「淡紫瓷面」皮肤：一套令牌 + 明 / 暗两套值（[data-theme="dark"]）
     components/           # TopBar（模式切换 + 复制 MCP）/ Sidebar / SheetBar / QuestionList /
-                          # MaterialList / QuestionCard / PreviewPane / IssuePane / VersionPane /
+                          # MaterialList / QuestionCard / PreviewPane / AnswerPane / RecordsPane /
+                          # FullView（整页查看的壳）/ IssuePane / VersionPane /
                           # ModalHost / Toast / RecitePane（背诵卡编辑）/ WordsPane（词条编辑）
-    __tests__/App.spec.ts # vitest + jsdom 冒烟
+    __tests__/            # vitest + jsdom：App.spec（编辑器主链路）/ fullview.spec（整页查看）等
 ```
+
+**整页查看**：卷面预览 / 答案解析 / 记录在右栏挤得慌，所以另有一个整页版。同一个 bundle、
+同一个 store，`main.tsx` 读 `?view=preview|answer|records` 决定挂 `App` 还是 `FullView`；
+Query 只带 `view / setId / sheet / recordId`，切页与换卷会 `replaceState` 写回地址，
+刷新和分享都落在原地。三页共用 `.pv-head / .pv-q / .pv-opt / .ap-analysis` 这套骨架，
+记录页不再自带固定色（以前是粉笔蓝，夜里整页发白）。
 
 「背诵」模式下 `RecitePane`（政治 / 常识：分类筛选 + 卡片列表 + 逐卡编辑，整份保存走手机确认）
 与 `WordsPane`（词条词库：搜索筛选 + 逐条编辑，直接写库）替换题库编辑区，右栏预览不渲染。
@@ -49,7 +57,7 @@ tools/webeditor/
 ```bash
 pnpm install       # 首次；锁文件是 pnpm-lock.yaml
 pnpm dev           # 本地起 dev server（接口需要真机服务或自建 mock，没有本地试卷包退路）
-pnpm test          # 冒烟 + 材料模式 + 预览同步：打开一组 → 加题 → 发布 / 版本面板 / 删除只发请求（42 例）
+pnpm test          # 冒烟 + 材料模式 + 预览同步 + 整页查看：打开一组 → 加题 → 发布 / 版本面板 / 删除只发请求（124 例）
 pnpm build         # 产物写进 ../../app/src/main/assets/webeditor/
 ```
 
@@ -79,6 +87,9 @@ allowBuilds:
 - **材料逐行重复**是 App 的硬规则：材料只在「材料组头」或「材料模式」的材料编辑区里改，
   两条路径都走 `setGroupMaterial()` 写回组内每一题，不要在单题上散着改（除非点「移出材料组」）。
   材料模式的说明见 [docs/14](../../docs/14-材料多题编辑模式.md)。
+- **右栏三页共用一套骨架**：卷面预览 / 答案解析 / 记录都走 `.pv-head` / `.pv-q` / `.pv-opt` /
+  `.ap-analysis`，颜色只用令牌（`var(--*)`）。记录页**不要再引入自己的固定色**——以前那套粉笔蓝
+  在夜间主题下就是一块白，改版后才对齐。
 - **删除不在网页上执行**：`requestDeleteSet()` 只调 `/api/delete/request`，然后每 1.2 秒轮询
   `/api/delete/status`，直到手机点确认 / 拒绝 / 超时。别在前端加「直接删」的调用——
   手机端根本没有那个接口，加了也是 404。

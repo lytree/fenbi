@@ -6,8 +6,19 @@
 
     <!-- 局域网编辑器：手机里跑一个 HTTP 服务，前台服务常驻 + 通知栏（Android 13+ 要通知权限） -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!--
+      息屏 / 切后台还得接得住电脑的请求：
+      - WAKE_LOCK / CHANGE_WIFI_STATE / ACCESS_WIFI_STATE：撑住 Wi-Fi 锁（Wi-Fi 不在屏幕熄灭后进省电模式）
+        和 CPU 锁（进程不跟着深度睡眠，accept 的线程能立刻跑）
+      - REQUEST_IGNORE_BATTERY_OPTIMIZATIONS：引导用户把本 App 从电池优化白名单里放出来。
+        小米 / HyperOS 的「省电策略 → 无限制」入口就在这一页，光靠前台服务拦不住系统冻结进程。
+    -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
         android:name=".QBankApp"
@@ -89,12 +100,21 @@
 
         <!--
           局域网编辑器：前台服务托着 ServerSocket，电脑浏览器连上来加题。
-          dataSync 类型是 Android 14 的硬要求（本地服务没有更贴切的类型可选）。
+
+          类型用 specialUse 而不是 dataSync：Android 15 起对 dataSync 类型的前台服务
+          有「24 小时内累计 6 小时」的硬上限，超时会被系统直接掐掉（onTimeout），
+          手机放一晚第二天网页就再也连不上——和「后台运行一段时间后失联」的症状完全重合。
+          specialUse 没有这个计时器，语义也更准：本机起一个局域网网页服务。
         -->
         <service
             android:name=".ui.laneditor.LanEditorService"
             android:exported="false"
-            android:foregroundServiceType="dataSync" />
+            android:foregroundServiceType="specialUse"
+            android:stopWithTask="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="lan_web_editor" />
+        </service>
 
         <activity
             android:name=".ui.laneditor.LanEditorActivity"

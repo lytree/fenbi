@@ -1,17 +1,22 @@
 import { defineComponent, ref } from 'vue'
+import type { PropType } from 'vue'
 import { api } from '../api'
 import type { RecordAnswer, RecordDetail, RecordInfo } from '../api'
-import { TYPE_LABEL } from '../store'
+import { currentSheet, state, TYPE_LABEL } from '../store'
 import { formatTime } from '../util'
 import { renderInline, renderMaterial, renderStem } from '../markdown'
+import { openFullPage } from '../fullview'
 
 /**
- * 右栏「记录」页：全库的作答记录，按记录逐条成组展示（粉笔风格）。
+ * 右栏「记录」页：全库的作答记录，按记录逐条成组展示。
  *
  * 两层视图：
- * - 列表：每条记录一张卡片，头部是练习名 + 状态，下面是粉笔式的统计条
- *   （一共 / 答对 / 答错 / 正确率 / 用时），点卡片跳到详情；
- * - 详情：成绩统计 + 答题卡色块 + 逐题明细（用户答案 / 标准答案 / 对错 / 得分）。
+ * - 列表：每条记录一张卡（练习名 + 状态 + 统计条），点进详情；
+ * - 详情：成绩概要 + 答题卡色块 + 逐题明细（选项着色 / 答案对照 / 解析）。
+ *
+ * 版式跟「卷面预览 / 答案解析」同一套：页头用 `.pv-head`、题目卡用 `.pv-q`、
+ * 选项用 `.pv-opt`、解析块用 `.ap-analysis`——三页来回切不会觉得换了套皮，
+ * 明暗两套主题也跟着令牌一起翻，不再有自己的固定色。
  *
  * 记录是只读的：这里只回看，批改仍然在 App / 对话里做。
  */
@@ -43,9 +48,24 @@ const typeLabel = (t: string): string =>
 const answerKeys = (ans: string): string[] =>
   ans.trim().toUpperCase().replace(/[^A-H]/g, '').split('').filter(Boolean)
 
+/**
+ * 「你的答案」那一栏按结果上色：对了绿、错了红、待批 / 部分对用橙、没答灰。
+ * 以前这里固定红色，答对了也红着一行，看着像判错了。
+ */
+const userCls = (result: string): string =>
+  result === 'ok' ? 'ok' : result === 'no' ? 'no' : result === 'none' ? 'none' : 'pend'
+
 export default defineComponent({
   name: 'RecordsPane',
-  setup() {
+  props: {
+    /** 单独查看页带过来的记录 id：进来直接落到这条记录的详情 */
+    initialRecordId: { type: Number, default: 0 },
+    /** 已经在整页里了：就别再给一个「在新页面查看」 */
+    standalone: { type: Boolean, default: false },
+    /** 整页版用它把「当前看的是哪条记录」写回地址（0 = 在列表） */
+    onRecordChange: { type: Function as PropType<(id: number) => void>, default: null },
+  },
+  setup(props) {
     const records = ref<RecordInfo[]>([])
     const total = ref(0)
     const loading = ref(false)
@@ -68,12 +88,12 @@ export default defineComponent({
         loading.value = false
       }
     }
-    void load()
 
     const openDetail = async (id: number) => {
       detailLoading.value = true
       try {
         detail.value = await api.record(id)
+        props.onRecordChange?.(id)
       } catch (e) {
         loadError.value = e instanceof Error ? e.message : '读取明细失败'
       } finally {
@@ -81,7 +101,26 @@ export default defineComponent({
       }
     }
 
-    const back = () => { detail.value = null; loadError.value = '' }
+    const boot = async () => {
+      await load()
+      if (props.initialRecordId > 0) await openDetail(props.initialRecordId)
+    }
+    void boot()
+
+    const back = () => {
+      detail.value = null
+      loadError.value = ''
+      props.onRecordChange?.(0)
+    }
+
+    /** 整页看：列表页 / 当前这条记录，地址里带全，刷新也停在原地 */
+    const openInPage = (recordId = 0) => {
+      openFullPage('records', {
+        setId: state.paper?.id ?? 0,
+        sheetId: currentSheet()?.id ?? 0,
+        recordId,
+      })
+    }
 
     /** 答题卡色块：答对绿 / 答错红 / 没答灰 / 待批橙 */
     const cellClass = (a: RecordAnswer): string =>
@@ -90,13 +129,13 @@ export default defineComponent({
     /** 统计条：一共 / 答对 / 答错 / 正确率 / 总用时（+得分，卷面带分值才有意义） */
     const StatsBar = ({ r }: { r: RecordInfo }) => {
       const cells: { k: string; v: string; unit?: string; cls: string }[] = [
-        { k: '一共', v: String(r.total), unit: '题', cls: 'c-blue' },
-        { k: '答对', v: String(r.correct), unit: '题', cls: 'c-green' },
-        { k: '答错', v: String(Math.max(r.total - r.correct - (r.partial || 0), 0)), unit: '题', cls: 'c-red' },
-        { k: '正确率', v: String(accuracy(r)), unit: '%', cls: 'c-blue' },
-        { k: '总用时', v: fmtDuration(r.durationSec), cls: 'c-blue' },
+        { k: '一共', v: String(r.total), unit: '题', cls: 'c-primary' },
+        { k: '答对', v: String(r.correct), unit: '题', cls: 'c-ok' },
+        { k: '答错', v: String(Math.max(r.total - r.correct - (r.partial || 0), 0)), unit: '题', cls: 'c-no' },
+        { k: '正确率', v: String(accuracy(r)), unit: '%', cls: 'c-primary' },
+        { k: '总用时', v: fmtDuration(r.durationSec), cls: 'c-primary' },
       ]
-      if (r.fullScore > 0) cells.push({ k: '得分', v: String(r.score), unit: `/${r.fullScore}`, cls: 'c-green' })
+      if (r.fullScore > 0) cells.push({ k: '得分', v: String(r.score), unit: `/${r.fullScore}`, cls: 'c-ok' })
       return (
         <div class="rec-stats">
           {cells.map((c) => (
@@ -112,7 +151,7 @@ export default defineComponent({
       )
     }
 
-    /** 逐题明细里的一道题 */
+    /** 逐题明细里的一道题：跟卷面预览 / 答案解析同一种卡片 */
     const QuestionBlock = ({ a }: { a: RecordAnswer }) => {
       const keys = answerKeys(a.answer)
       const userKeys = answerKeys(a.userAnswer)
@@ -128,52 +167,72 @@ export default defineComponent({
               : { cls: 'no', text: '答错' }
 
       return (
-        <div class="rec-q">
+        <div class="pv-q static">
           <div class="pv-tagrow">
             <span class="pv-tag">{typeLabel(a.type)}</span>
-            <span class="pv-no">第 {a.no} 题</span>
             <span class={['rec-result', result.cls]}>{result.text}</span>
-            {a.full > 0 ? (
-              <span class="rec-score">{a.pending ? `0/${a.full} 分` : `${a.earned}/${a.full} 分`}</span>
-            ) : null}
+            {a.full > 0
+              ? <span class="rec-score">{a.pending ? `0/${a.full} 分` : `${a.earned}/${a.full} 分`}</span>
+              : null}
+            <span class="pv-no">第 {a.no} 题</span>
           </div>
 
-          {a.material ? <div class="pv-mat" innerHTML={renderMaterial(a.material)}></div> : null}
+          {a.material
+            ? (
+              <div class="pv-mat">
+                <div class="mh">材料</div>
+                <div innerHTML={renderMaterial(a.material)}></div>
+              </div>
+            )
+            : null}
           <div class="pv-stem" innerHTML={renderStem(a.stem) || '<span class="pv-ph">（题干为空）</span>'}></div>
 
-          {choice ? (
-            <div class="rec-opts">
-              {a.options.filter((o) => o.text.trim()).map((o) => {
-                const inAnswer = keys.includes(o.key.toUpperCase())
-                const picked = userKeys.includes(o.key.toUpperCase())
-                // 标准答案绿、自己的错选红，两个都中以绿为先
-                const cls = inAnswer ? 'right' : picked ? 'wrong' : ''
-                return (
-                  <div class={['rec-opt', cls]} key={o.key}>
-                    <span class="lt">{o.key}</span>
-                    <span class="text" innerHTML={renderInline(o.text)}></span>
-                  </div>
-                )
-              })}
-            </div>
-          ) : null}
+          {choice
+            ? (
+              <div class="pv-opts">
+                {a.options.filter((o) => o.text.trim()).map((o) => {
+                  const inAnswer = keys.includes(o.key.toUpperCase())
+                  const picked = userKeys.includes(o.key.toUpperCase())
+                  // 标准答案绿、自己的错选红，两个都中以绿为先
+                  const cls = inAnswer ? 'right' : picked ? 'wrong' : ''
+                  return (
+                    <div class={['pv-opt', cls]} key={o.key}>
+                      <span class="pv-key">{o.key}</span>
+                      <span class="pv-text" innerHTML={renderInline(o.text)}></span>
+                    </div>
+                  )
+                })}
+              </div>
+            )
+            : null}
 
           <div class="rec-ansbar">
             <div class="ok">正确答案：<b innerHTML={renderInline(a.answer) || '—'}></b></div>
-            <div class={['no', a.pending && 'pend']}>
+            <div class={[userCls(result.cls)]}>
               你的答案：<b innerHTML={renderInline(a.userAnswer) || '未作答'}></b>
             </div>
           </div>
 
-          {a.analysis ? (
-            <div class="rec-analysis">
-              <div class="mh">解析</div>
-              <div innerHTML={renderStem(a.analysis)}></div>
-            </div>
-          ) : null}
+          {a.analysis
+            ? (
+              <div class="ap-analysis">
+                <div class="mh">解析</div>
+                <div innerHTML={renderStem(a.analysis)}></div>
+              </div>
+            )
+            : null}
+          {a.knowledge ? <div class="ap-know">知识点：{a.knowledge}</div> : null}
         </div>
       )
     }
+
+    /** 页头：标题 + 右侧动作，跟卷面预览 / 答案解析同一条 */
+    const head = (right: any) => (
+      <div class="pv-head">
+        <span class="pv-head-t">作答记录</span>
+        <div class="pv-head-ops">{right}</div>
+      </div>
+    )
 
     /* ---------------- 详情视图 ---------------- */
     const detailView = () => {
@@ -181,19 +240,26 @@ export default defineComponent({
       const answers = d.answers || []
       return (
         <div class="ppane rec-detail">
-          <div class="rec-topbar">
-            <button class="rec-back" onClick={back}>‹ 返回记录列表</button>
-            <span class="rec-topbar-t">{d.name || d.paperName}</span>
-          </div>
+          {head(
+            <>
+              <button class="link-btn" onClick={back}>‹ 返回列表</button>
+              {props.standalone
+                ? null
+                : (
+                  <button class="link-btn" title="整页看这条记录（只读）" onClick={() => openInPage(d.id)}>
+                    新页面查看
+                  </button>
+                )}
+            </>,
+          )}
 
           <div class="rec-hero">
             <div class="rec-hero-head">
-              <span class="rec-mode">{d.mode || '练习'}</span>
               <h3>{d.name || d.paperName}</h3>
               <span class={['rec-chip', d.status]}>{statusLabel(d.status)}</span>
             </div>
             <div class="rec-hero-sub">
-              {formatTime(d.submittedAt || d.startedAt)}
+              {d.mode || '练习'} · {formatTime(d.submittedAt || d.startedAt)}
               {d.paperId < 0 ? ' · 整组作答' : ''}
             </div>
             <StatsBar r={d} />
@@ -203,10 +269,10 @@ export default defineComponent({
             <div class="rec-sheet-head">
               <h4>答题卡</h4>
               <div class="legend">
-                <span><i class="dot" style="background:#2BC8A0"></i>答对</span>
-                <span><i class="dot" style="background:#FF5A5A"></i>答错</span>
-                <span><i class="dot" style="background:#FFB43A"></i>待批改</span>
-                <span><i class="dot" style="background:#EDEFF3"></i>未答</span>
+                <span><i class="dot ok"></i>答对</span>
+                <span><i class="dot no"></i>答错</span>
+                <span><i class="dot pend"></i>待批改</span>
+                <span><i class="dot none"></i>未答</span>
               </div>
             </div>
             <div class="rec-grid">
@@ -226,10 +292,23 @@ export default defineComponent({
     /* ---------------- 列表视图 ---------------- */
     const listView = () => (
       <div class="ppane rec-list">
-        <div class="ver-tip">
-          <span>作答记录（只读）{total.value > records.value.length ? ` · 显示最近 ${records.value.length} / 共 ${total.value} 条` : ` · 共 ${total.value} 条`}</span>
-          <button class="link-btn" onClick={() => void load()}>刷新</button>
-        </div>
+        {head(
+          <>
+            <span class="pv-head-n">
+              {total.value > records.value.length
+                ? `最近 ${records.value.length} / 共 ${total.value} 条`
+                : `共 ${total.value} 条`}
+            </span>
+            <button class="link-btn" onClick={() => void load()}>刷新</button>
+            {props.standalone
+              ? null
+              : (
+                <button class="link-btn" title="整页看全部记录（只读）" onClick={() => openInPage()}>
+                  新页面查看
+                </button>
+              )}
+          </>,
+        )}
 
         {loading.value ? <div class="pv-empty">读取中…</div> : null}
 

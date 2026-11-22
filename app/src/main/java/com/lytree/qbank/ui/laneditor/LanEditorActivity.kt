@@ -4,9 +4,12 @@ import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -56,6 +59,8 @@ class LanEditorActivity : AppCompatActivity() {
         binding.btnCopyMcp.setOnClickListener { copyMcp() }
         binding.btnSavePassword.setOnClickListener { savePassword() }
         binding.btnClearPassword.setOnClickListener { clearPassword() }
+        binding.btnAllowBackground.setOnClickListener { allowBackground() }
+        binding.btnAppInfo.setOnClickListener { openAppInfo() }
 
         LanEditorStatus.running.observe(this) { render() }
         LanEditorStatus.url.observe(this) { render() }
@@ -190,6 +195,64 @@ class LanEditorActivity : AppCompatActivity() {
         LanEditorService.start(this, port)
         Toast.makeText(this, "正在启动…", Toast.LENGTH_SHORT).show()
         binding.root.postDelayed({ render() }, 600)
+        if (!LanEditorService.isBatteryUnrestricted(this)) binding.root.postDelayed({ warnBackground() }, 700)
+    }
+
+    // ---------------------------------------------------------------- 后台保持
+
+    /**
+     * 第一次在「系统还限制后台」的状态下启动服务时提一句。
+     *
+     * 只提一次：这一步不改系统设置的话网页迟早会失联，但每次都弹太像求人。
+     * 卡片上的「放宽后台限制 / 应用详情」随时能再进。
+     */
+    private fun warnBackground() {
+        if (isFinishing || isDestroyed) return
+        if (LanEditorService.isBatteryUnrestricted(this)) return
+        if (LanEditorPrefs.keepAlivePrompted(this)) return
+        LanEditorPrefs.markKeepAlivePrompted(this)
+        FbDialog.confirm(
+            this,
+            message = "服务已经在跑了，但系统还可能把它冻住：一熄屏或切到别的 App，" +
+                "电脑那边就会一直转圈到超时。\n\n把本 App 的省电策略设成「无限制」就稳了——" +
+                "小米 / 红米（HyperOS）在「应用详情 → 省电策略」里，顺手把「自启动」也打开。",
+            okText = "去设置",
+            cancelText = "以后再说",
+            cancelable = true,
+            onOk = { allowBackground() },
+        )
+    }
+
+    /** 直接弹系统的「是否允许忽略电池优化」；小米上是「无限制」那一步，不支持的 ROM 退到应用详情 */
+    private fun allowBackground() {
+        if (LanEditorService.isBatteryUnrestricted(this)) {
+            Toast.makeText(this, "已经放宽了，网页熄屏也能连", Toast.LENGTH_SHORT).show()
+            render()
+            return
+        }
+        val asked = runCatching {
+            startActivity(
+                Intent(
+                    Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    Uri.parse("package:$packageName")
+                )
+            )
+        }.isSuccess
+        if (!asked) openAppInfo()
+    }
+
+    /**
+     * 系统应用详情页：小米的「省电策略」「自启动」、华为的「应用启动管理」都在这一页附近。
+     * 这些开关没有公开 API，只能把人送到门口。
+     */
+    private fun openAppInfo() {
+        val opened = runCatching {
+            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+        }.isSuccess
+        if (!opened) {
+            runCatching { startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
+                .onFailure { Toast.makeText(this, "这台手机没开放这个设置页，去「设置 → 应用管理」里找本 App", Toast.LENGTH_LONG).show() }
+        }
     }
 
     private fun copyUrl() {
@@ -241,6 +304,22 @@ class LanEditorActivity : AppCompatActivity() {
         }
         binding.btnClearPassword.isEnabled = pwd != null
 
+        // 后台保持：系统的「忽略电池优化」是唯一能挡住息屏冻结的开关，App 只能查状态 + 把人送过去
+        val unrestricted = LanEditorService.isBatteryUnrestricted(this)
+        binding.tvKeepAlive.text = if (unrestricted) {
+            "已放宽：系统不会因为熄屏 / 切后台冻结本 App，电脑那边能一直连（Wi-Fi 与 CPU 锁由服务自己持有）。"
+        } else {
+            "当前受系统省电策略限制：熄屏或切到别的 App 后，系统可能把本 App 冻住，" +
+                "电脑上就卡在转圈直到超时。点「放宽后台限制」；小米 / 红米再进「应用详情 → 省电策略」选「无限制」。"
+        }
+        binding.tvKeepAlive.setTextColor(
+            ContextCompat.getColor(
+                this,
+                if (unrestricted) R.color.fb_text_tertiary else R.color.fb_danger
+            )
+        )
+        binding.btnAllowBackground.setText(if (unrestricted) "已放宽" else "放宽后台限制")
+
         // AI 接入卡片：未启动时给一份带占位地址的样例，启动后换成真实地址 + 写入口令
         // 设了密码就用密码，没设就用固定保存的那串（两者重启都不变）
         val mcp = LanEditorMcpConfig.json(url, if (running) LanEditorService.aiKey(this) else "")
@@ -255,7 +334,11 @@ class LanEditorActivity : AppCompatActivity() {
             } else {
                 "最近一次请求：$last"
             }
-            binding.tvHint.text = "手机锁屏不影响服务；离开这个页面服务仍在跑。网页上要先登录（如果设了密码），发布、回滚、删除会直接在手机当前界面弹确认框——不管你正在用哪个页面。"
+            binding.tvHint.text = if (unrestricted) {
+                "离开这个页面、手机锁屏服务都照跑（App 自己持着 Wi-Fi 与 CPU 锁）。网页上要先登录（如果设了密码），发布、回滚、删除会直接在手机当前界面弹确认框——不管你正在用哪个页面。"
+            } else {
+                "离开这个页面服务仍在跑，但系统还没放宽后台限制：锁屏或切走后可能被冻结，网页会转圈到超时。建议先点上面的「放宽后台限制」。发布、回滚、删除仍要在这台手机上确认。"
+            }
         } else {
             binding.tvBadge.setText("已停止")
             binding.tvBadge.setTextColor(ContextCompat.getColor(this, R.color.fb_text_tertiary))

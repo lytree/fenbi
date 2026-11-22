@@ -2043,6 +2043,15 @@ body.pane-dragging {
   .pv-head-n { @include label; color: var(--text-tertiary); }
 }
 
+/* 页头右侧的一组动作（刷新 / 返回 / 在新页面查看）：贴右，别把标题挤走 */
+.pv-head-ops {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+}
+
 .pv-q {
   background: var(--bg-container);
   border: 1px solid var(--border-secondary);
@@ -2059,6 +2068,13 @@ body.pane-dragging {
   &.focus {
     border-color: var(--primary);
     box-shadow: var(--focus-ring);
+  }
+
+  /* 只读场景（记录详情里的题）：卡片还在，但别给出「能点」的暗示 */
+  &.static {
+    cursor: default;
+
+    &:hover { border-color: var(--border-secondary); box-shadow: var(--shadow); }
   }
 }
 
@@ -2146,6 +2162,17 @@ body.pane-dragging {
   &.on {
     .pv-key { background: var(--primary-solid); border-color: var(--primary-solid); color: var(--on-primary); }
     .pv-text { color: var(--primary); font-weight: 500; }
+  }
+
+  /* 记录详情里的三态：标准答案绿、自己的错选红（都中以绿为先） */
+  &.right {
+    .pv-key { background: var(--success); border-color: var(--success); color: #fff; }
+    .pv-text { color: var(--success-text); }
+  }
+
+  &.wrong {
+    .pv-key { background: var(--error); border-color: var(--error); color: #fff; }
+    .pv-text { color: var(--error-text); }
   }
 }
 
@@ -4174,42 +4201,32 @@ body.pane-dragging {
 }
 
 // =============================================================================
-// 记录页（粉笔 Web 复刻）：配色取自粉笔练习报告 / 解析页
+// 记录页：和「卷面预览 / 答案解析」同一套版式
+//
+// 这里以前自带一套粉笔蓝的固定色（$c-fb-*）——夜里整页还是白的，卡片、标签、
+// 圆角也跟旁边两页不是一种东西。现在一律走令牌，能复用的骨架直接复用：
+//   页头 .pv-head / 题目卡 .pv-q / 选项 .pv-opt / 解析块 .ap-analysis
+// 只留下「记录才有」的四件：状态胶囊、统计条、答题卡、答案对照条。
 // =============================================================================
-
-$c-fb-blue: #3c7cfc;
-$c-fb-blue-soft: #ecf1ff;
-$c-fb-green: #2bc8a0;
-$c-fb-red: #ff5a5a;
-$c-fb-amber: #ffb43a;
-$c-fb-ink: #1b2126;
-$c-fb-sub: #868ea8;
-$c-fb-bg: #f4f6f9;
-$c-fb-line: #edeff3;
 
 .rec-list,
 .rec-detail {
-  padding: 12px 14px 40px;
-  background: $c-fb-bg;
+  padding-bottom: 32px;
 }
 
-// ---- 列表：每条记录一组卡片 -------------------------------------------------
+// ---- 列表：一条记录一张卡，样式对齐 .pv-q ---------------------------------
 
 .rec-card {
-  margin-top: 12px;
+  background: var(--bg-container);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-lg);
   padding: 14px 16px 10px;
-  background: #fff;
-  border: 1px solid $c-fb-line;
-  border-radius: 14px;
+  margin-bottom: 12px;
   cursor: pointer;
-  transition: box-shadow .15s, transform .15s;
+  box-shadow: var(--shadow);
+  transition: border-color .2s, box-shadow .2s;
 
-  &:hover {
-    box-shadow: 0 6px 18px rgba(60, 124, 252, .14);
-    transform: translateY(-1px);
-  }
-
-  &:active { transform: translateY(0); }
+  &:hover { border-color: var(--primary-border); box-shadow: var(--shadow-tertiary); }
 }
 
 .rec-card-head {
@@ -4224,61 +4241,58 @@ $c-fb-line: #edeff3;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 15px;
-  font-weight: 700;
-  color: $c-fb-ink;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
 }
 
 .rec-card-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 12px;
-  margin-top: 5px;
-  font-size: 12px;
-  color: $c-fb-sub;
+  margin-top: 4px;
+  @include label;
+  color: var(--text-tertiary);
 }
 
 .rec-card-go {
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px dashed $c-fb-line;
-  font-size: 12px;
-  color: $c-fb-blue;
+  border-top: 1px solid var(--border-secondary);
+  @include label;
+  color: var(--primary);
   text-align: center;
 }
 
-// ---- 状态 / 模式小标签 -------------------------------------------------------
+// ---- 状态胶囊：和 .pv-tag 同高同圆角 ---------------------------------------
 
 .rec-chip {
   flex: none;
-  padding: 1px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 500;
+  @include label;
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  color: var(--text-secondary);
 
-  &.done { background: $c-fb-blue-soft; color: $c-fb-blue; }
-  &.ongoing { background: #fff7e8; color: #d98f00; }
-  &.abandoned { background: #f2f2f5; color: $c-fb-sub; }
+  &.done { background: var(--primary-bg); border-color: var(--primary-border); color: var(--primary); }
+  &.ongoing { background: var(--warning-bg); border-color: var(--warning-border); color: var(--warning-text); }
+  &.abandoned { background: var(--bg-fill); border-color: transparent; color: var(--text-tertiary); }
 }
 
-.rec-mode {
-  flex: none;
-  padding: 1px 8px;
-  border-radius: 4px;
-  background: $c-fb-blue-soft;
-  color: $c-fb-blue;
-  font-size: 11px;
-}
-
-// ---- 粉笔式统计条：一共 / 答对 / 答错 / 正确率 / 用时 -----------------------
+// ---- 统计条：一共 / 答对 / 答错 / 正确率 / 用时 -----------------------------
 
 .rec-stats {
   display: flex;
   align-items: center;
   margin-top: 10px;
   padding: 10px 0;
-  border-radius: 8px;
-  background: $c-fb-bg;
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
 
   .stat {
     flex: 1;
@@ -4293,18 +4307,19 @@ $c-fb-line: #edeff3;
       top: 8px;
       bottom: 8px;
       width: 1px;
-      background: #e2e5ec;
+      background: var(--border-secondary);
     }
   }
 
   .k {
-    font-size: 11px;
-    color: $c-fb-sub;
+    @include label;
+    color: var(--text-tertiary);
     line-height: 1;
     margin-bottom: 6px;
   }
 
   .v {
+    @include tabular;
     font-size: 16px;
     font-weight: 600;
     line-height: 1;
@@ -4318,50 +4333,19 @@ $c-fb-line: #edeff3;
     }
   }
 
-  .c-blue { color: $c-fb-blue; }
-  .c-green { color: $c-fb-green; }
-  .c-red { color: $c-fb-red; }
+  .c-primary { color: var(--primary); }
+  .c-ok { color: var(--success-text); }
+  .c-no { color: var(--error-text); }
 }
 
-// ---- 详情：顶栏 + 成绩卡 -----------------------------------------------------
-
-.rec-topbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 4px;
-}
-
-.rec-back {
-  flex: none;
-  border: 1px solid #d6e2fe;
-  border-radius: 15px;
-  padding: 4px 12px;
-  background: #fff;
-  color: $c-fb-blue;
-  font-size: 12px;
-  cursor: pointer;
-
-  &:hover { background: $c-fb-blue-soft; }
-}
-
-.rec-topbar-t {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 13px;
-  font-weight: 600;
-  color: $c-fb-ink;
-}
+// ---- 详情：成绩概要 + 答题卡 ----------------------------------------------
 
 .rec-hero {
-  margin-top: 10px;
-  padding: 14px 16px 8px;
-  border-radius: 14px;
-  background:
-    radial-gradient(92% 96% at 100% 0%, rgba(150, 197, 255, .35) 0%, rgba(232, 244, 255, .25) 42%, rgba(255, 255, 255, 0) 74%),
-    linear-gradient(180deg, #eff8ff 0%, #fbfdff 40%, #fff 62%, #fff 100%);
-  border: 1px solid #d6e2fe;
+  margin-top: 12px;
+  padding: 14px 16px 6px;
+  border: 1px solid var(--primary-border);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, var(--primary-bg) 0%, var(--bg-container) 76%);
 }
 
 .rec-hero-head {
@@ -4377,24 +4361,24 @@ $c-fb-line: #edeff3;
     text-overflow: ellipsis;
     white-space: nowrap;
     font-size: 15px;
-    color: $c-fb-ink;
+    font-weight: 600;
+    color: var(--text);
   }
 }
 
 .rec-hero-sub {
-  margin-top: 5px;
-  font-size: 12px;
-  color: $c-fb-sub;
+  margin-top: 4px;
+  @include label;
+  color: var(--text-tertiary);
 }
-
-// ---- 答题卡色块 -------------------------------------------------------------
 
 .rec-sheet {
   margin-top: 12px;
   padding: 12px 16px 14px;
-  background: #fff;
-  border: 1px solid $c-fb-line;
-  border-radius: 14px;
+  background: var(--bg-container);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
 }
 
 .rec-sheet-head {
@@ -4404,15 +4388,16 @@ $c-fb-line: #edeff3;
   h4 {
     margin: 0;
     font-size: 13px;
-    color: $c-fb-ink;
+    font-weight: 600;
+    color: var(--text);
   }
 
   .legend {
     margin-left: auto;
     display: flex;
     gap: 12px;
-    font-size: 11px;
-    color: $c-fb-sub;
+    @include label;
+    color: var(--text-tertiary);
 
     span { display: flex; align-items: center; gap: 4px; }
   }
@@ -4422,6 +4407,11 @@ $c-fb-line: #edeff3;
     height: 8px;
     border-radius: 50%;
     display: inline-block;
+    background: var(--bg-fill-strong);
+
+    &.ok { background: var(--success); }
+    &.no { background: var(--error); }
+    &.pend { background: var(--warning); }
   }
 }
 
@@ -4432,135 +4422,223 @@ $c-fb-line: #edeff3;
   margin-top: 12px;
 
   .cell {
+    @include label;
     width: 30px;
     height: 30px;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 12px;
     font-weight: 600;
-    background: #edeff3;
-    color: $c-fb-sub;
+    background: var(--bg-fill);
+    color: var(--text-tertiary);
 
-    &.ok { background: $c-fb-green; color: #fff; }
-    &.no { background: $c-fb-red; color: #fff; }
-    &.pend { background: $c-fb-amber; color: #fff; }
+    &.ok { background: var(--success); color: #fff; }
+    &.no { background: var(--error); color: #fff; }
+    &.pend { background: var(--warning); color: #fff; }
   }
 }
 
-// ---- 逐题明细 ---------------------------------------------------------------
+// ---- 逐题：卡片本体用 .pv-q.static，这里只补「记录才有」的那几件 -----------
 
-.rec-qlist { margin-top: 14px; }
-
-.rec-q {
-  margin-top: 12px;
-  padding: 14px 16px;
-  background: #fff;
-  border: 1px solid $c-fb-line;
-  border-radius: 14px;
-}
+.rec-qlist { margin-top: 4px; }
+.rec-qlist > .pv-q:first-child { margin-top: 12px; }
 
 .rec-result {
-  margin-left: auto;
-  padding: 1px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 500;
+  flex: none;
+  @include label;
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
 
-  &.ok { background: rgba(43, 200, 160, .12); color: $c-fb-green; }
-  &.no { background: rgba(255, 90, 90, .1); color: $c-fb-red; }
-  &.part { background: #fff7e8; color: #d98f00; }
-  &.pend { background: #fff7e8; color: #d98f00; }
-  &.none { background: #f2f2f5; color: $c-fb-sub; }
+  &.ok { background: var(--success-bg); border-color: var(--success-border); color: var(--success-text); }
+  &.no { background: var(--error-bg); border-color: var(--error-border); color: var(--error-text); }
+  &.part, &.pend { background: var(--warning-bg); border-color: var(--warning-border); color: var(--warning-text); }
+  &.none { background: var(--bg-fill); color: var(--text-tertiary); }
 }
 
 .rec-score {
   flex: none;
-  font-size: 11px;
-  font-weight: 600;
-  color: $c-fb-sub;
+  @include label;
+  color: var(--text-tertiary);
 }
 
-.rec-opts {
-  margin-top: 10px;
-}
-
-.rec-opt {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 8px 10px;
-  margin-bottom: 6px;
-  border-radius: 8px;
-  background: #f5f7fa;
-
-  .lt {
-    flex: none;
-    width: 22px;
-    height: 22px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    font-weight: 600;
-    background: #e5e8ef;
-    color: $c-fb-sub;
-  }
-
-  .text {
-    flex: 1;
-    min-width: 0;
-    padding-top: 3px;
-    font-size: 13px;
-    line-height: 1.6;
-    color: $c-fb-ink;
-  }
-
-  &.right .lt { background: $c-fb-green; color: #fff; }
-  &.right { background: rgba(43, 200, 160, .1); }
-
-  &.wrong .lt { background: $c-fb-red; color: #fff; }
-  &.wrong { background: rgba(255, 90, 90, .08); }
-}
-
+/* 答案对照条：照 .pv-ans 的样子（上发丝线 + 小字），只是并排两栏 */
 .rec-ansbar {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-secondary);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  @include label;
+  color: var(--text-tertiary);
+
+  > div { display: flex; align-items: baseline; gap: 2px; }
+
+  b { font-weight: 600; margin-left: 2px; }
+  .ok b { color: var(--success-text); }
+  .no b { color: var(--error-text); }
+  .pend b { color: var(--warning-text); }
+  .none b { color: var(--text-tertiary); }
+}
+
+// =============================================================================
+// 单独查看页（?view=preview|answer|records）：一条窄顶栏 + 居中一栏正文
+//
+// 右栏窄（280–560px），整卷过一遍要一直滚；整页版把正文放宽到 980px，
+// 打印 / 投屏 / 对着电脑讲题都够用。骨架跟编辑器无关，只借用同一套令牌。
+// =============================================================================
+
+.full-root {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.fullbar {
+  flex: none;
   display: flex;
   align-items: center;
-  margin-top: 8px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  background: #f5f7fa;
-  font-size: 13px;
-  color: #5f677c;
+  gap: 16px;
+  height: var(--header-h);
+  padding: 0 20px;
+  background: rgba(255, 255, 255, .62);
+  backdrop-filter: blur(20px) saturate(1.2);
+  -webkit-backdrop-filter: blur(20px) saturate(1.2);
+  border-bottom: 1px solid var(--border-secondary);
+  position: relative;
+  z-index: 20;
+  transition: background-color .2s ease, border-color .2s ease;
 
-  > div { flex: 1; }
-
-  b {
-    font-size: 13px;
-    font-weight: 700;
-    margin-left: 2px;
+  :root[data-theme="dark"] & {
+    background: rgba(18, 13, 29, .68);
   }
-
-  .ok b { color: $c-fb-green; }
-  .no b { color: $c-fb-red; }
-  .no.pend b { color: #d98f00; }
 }
 
-.rec-analysis {
-  margin-top: 10px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: $c-fb-blue-soft;
-  font-size: 13px;
-  line-height: 1.7;
-  color: $c-fb-ink;
+.full-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
 
-  .mh {
-    font-size: 12px;
-    font-weight: 700;
-    color: $c-fb-blue;
-    margin-bottom: 4px;
+.full-logo {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius);
+  display: grid;
+  place-items: center;
+  background: linear-gradient(150deg, #9c82ff, #6f4ff2 58%, #5636d6);
+  color: var(--on-primary);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .4), var(--primary-glow);
+}
+
+.full-brand-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.35;
+  gap: 1px;
+
+  b { font-size: 14px; font-weight: 600; color: var(--text); white-space: nowrap; }
+
+  .full-meta {
+    @include label;
+    color: var(--text-tertiary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
+}
+
+.full-tabs { flex: none; }
+
+.full-actions {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+
+  .select { width: auto; max-width: 220px; }
+}
+
+.fullmain {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px 20px 40px;
+}
+
+/* 正文一栏：卷面 / 解析这种长文按 980 收窄，最长一行不至于难读 */
+.fullsheet {
+  max-width: 980px;
+  margin: 0 auto;
+  background: var(--bg-container);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  /* 整页里 .ppane 不再自己滚：滚动交给 .fullmain，滚动条只有一根 */
+  > .ppane { overflow: visible; padding: 22px 26px 26px; }
+
+  /* 记录页在整页里可以更宽：统计条和答题卡横着排得开 */
+  &.is-records { max-width: 1040px; }
+}
+
+.full-loading,
+.full-fallback {
+  color: var(--text-tertiary);
+  font-size: 14px;
+  text-align: center;
+  padding: 72px 12px;
+}
+
+.full-fallback-card {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 24px;
+  background: var(--bg-container);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow);
+  text-align: left;
+
+  h2 { margin: 0 0 10px; font-size: 16px; font-weight: 600; color: var(--text); }
+  p { margin: 0 0 16px; font-size: 14px; line-height: 1.7; color: var(--text-secondary); }
+}
+
+.full-fallback-ops { display: flex; gap: 8px; }
+
+/* 窄屏（投到平板 / 手机看）：顶栏折行，正文贴边 */
+@media (max-width: 860px) {
+  .fullbar {
+    height: auto;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    padding: 10px 12px;
+
+    /* 标题占满一行：不然「答案解析」会被挤成一列竖排的字 */
+    .full-brand { flex: 1 0 100%; }
+    /* 组名 · 卷名 · 题数这一串在窄屏上没法看全，索性不显示 */
+    .full-meta { display: none; }
+    .full-tabs { order: 3; width: 100%; }
+    .full-actions { flex: 1 0 auto; }
+  }
+
+  .fullmain { padding: 12px 12px 32px; }
+  .fullsheet > .ppane { padding: 16px 14px 20px; }
 }

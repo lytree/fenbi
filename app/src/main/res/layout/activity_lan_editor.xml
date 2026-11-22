@@ -162,6 +162,62 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/fb_space_20"
                 android:layout_marginBottom="@dimen/fb_space_8"
+                android:text="后台保持" />
+
+            <LinearLayout style="@style/FbCard">
+
+                <TextView
+                    style="@style/FbRowTitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="熄屏、切到别的 App 也要能连" />
+
+                <TextView
+                    android:id="@+id/tvKeepAlive"
+                    style="@style/FbRowSub"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnAllowBackground"
+                        style="@style/FbGhostButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="放宽后台限制" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnAppInfo"
+                        style="@style/FbGhostButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:layout_weight="1"
+                        android:text="应用详情" />
+                </LinearLayout>
+
+                <TextView
+                    style="@style/FbRowSub"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:lineSpacingExtra="2dp"
+                    android:text="服务本身是前台服务，但系统的省电策略还能把它冻住：进程被冻时 TCP 照样握手成功，浏览器就一直转圈到超时。\n小米 / 红米（HyperOS）：应用详情 → 省电策略 → 无限制，再打开「自启动」，多任务界面下拉加个锁更稳。\n华为 / 荣耀：应用启动管理 → 手动管理，三项全开。OPPO / vivo：允许后台活动 + 自启动。" />
+            </LinearLayout>
+
+            <TextView
+                style="@style/FbGroupTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/fb_space_20"
+                android:layout_marginBottom="@dimen/fb_space_8"
                 android:text="访问密码" />
 
             <LinearLayout style="@style/FbCard">
@@ -278,7 +334,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="12dp"
-                    android:text="提示：覆盖发布时旧卷的作答记录会清掉，但题目内容会自动存成一个版本，网页右侧「版本」里能回滚；加题过程中手机锁屏不影响服务。" />
+                    android:text="提示：覆盖发布时旧卷的作答记录会清掉，但题目内容会自动存成一个版本，网页右侧「版本」里能回滚；加题过程中手机锁屏也能连——前提是上面「后台保持」里已经放宽。" />
             </LinearLayout>
 
             <TextView

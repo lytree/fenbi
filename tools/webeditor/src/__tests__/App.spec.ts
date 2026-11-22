@@ -75,6 +75,30 @@ const RESOURCES = [
   { path: 'images/1/other.png', name: 'other.png', size: 512, mtime: 3 },
 ]
 
+const RECORDS = {
+  records: [
+    {
+      id: 7, paperId: 11, name: '行测 · 第 3 次', paperName: '行测', mode: '练习',
+      status: 'done', startedAt: 1763000000000, submittedAt: 1763003600000,
+      durationSec: 3600, total: 1, answered: 1, correct: 0, partial: 0,
+      score: 0, fullScore: 0,
+    },
+  ],
+  total: 1,
+}
+
+const RECORD = {
+  ...RECORDS.records[0],
+  answers: [
+    {
+      no: 1, type: 'single', stem: '第一题：没有语病的一项', material: '',
+      options: [{ key: 'A', text: '选项一' }, { key: 'B', text: '选项二' }],
+      answer: 'B', analysis: '因为选二', knowledge: '实词', userAnswer: 'A',
+      correct: false, partial: false, pending: false, earned: 0, full: 1,
+    },
+  ],
+}
+
 let published: any = null
 let deleteRequested: number[] = []
 let deleteCancelled: string[] = []
@@ -100,6 +124,8 @@ function mockFetch() {
       })
     }
     if (url.startsWith('/api/resources')) return json({ setId: 1, dir: 'images/1', files: RESOURCES })
+    if (url.startsWith('/api/records')) return json(RECORDS)
+    if (url.startsWith('/api/record')) return json(RECORD)
     if (url.startsWith('/api/resource')) {
       resourceDeleted.push(new URL(url, 'http://localhost').searchParams.get('p') || '')
       return json({ ok: true, path: resourceDeleted[resourceDeleted.length - 1] })
@@ -818,5 +844,67 @@ describe('局域网题库编辑器', () => {
 
     wrapper.unmount()
     Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 1440 })
+  })
+
+  it('右栏能把当前页整页打开：新标签页带上组 / 卷 / 页签', async () => {
+    const opened: string[] = []
+    const spy = vi.spyOn(window, 'open').mockImplementation(((url: string) => {
+      opened.push(url)
+      return null
+    }) as unknown as typeof window.open)
+
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+
+    // 校验 / 版本 / 资源没有整页版，先回到卷面预览
+    await wrapper.findAll('button').find((b) => b.text().includes('卷面预览'))!.trigger('click')
+    await flushPromises()
+
+    const btn = wrapper.find('[data-pane-full="preview"]')
+    expect(btn.exists()).toBe(true)
+    await btn.trigger('click')
+
+    expect(opened).toHaveLength(1)
+    expect(opened[0]).toContain('view=preview')
+    expect(opened[0]).toContain('setId=1')
+    expect(opened[0]).toContain('sheet=11')
+
+    // 切到「校验」这一页就没有这个按钮（那页没有整页版）
+    await wrapper.findAll('button').find((b) => b.text().trim() === '校验')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-pane-full]').exists()).toBe(false)
+
+    spy.mockRestore()
+    wrapper.unmount()
+  })
+
+  it('「记录」页与卷面预览 / 答案解析同一套版式：页头、卡片、选项、解析块都复用', async () => {
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+
+    await wrapper.findAll('button').find((b) => b.text() === '记录')!.trigger('click')
+    await flushPromises()
+
+    // 列表：页头用 .pv-head，卡片跟 .pv-q 一样的瓷片 + 统计条
+    expect(wrapper.find('.pv-head-t').text()).toBe('作答记录')
+    expect(wrapper.findAll('.rec-card')).toHaveLength(1)
+    expect(wrapper.find('.rec-stats').text()).toContain('一共')
+
+    await wrapper.find('.rec-card').trigger('click')
+    await flushPromises()
+
+    // 详情：成绩概要 + 答题卡 + 逐题（.pv-q.static / .pv-opt.right|wrong / .ap-analysis）
+    expect(wrapper.find('.rec-hero').exists()).toBe(true)
+    expect(wrapper.findAll('.rec-grid .cell')).toHaveLength(1)
+    expect(wrapper.findAll('.pv-q.static')).toHaveLength(1)
+    expect(wrapper.find('.pv-opt.right').text()).toContain('选项二')
+    expect(wrapper.find('.pv-opt.wrong').text()).toContain('选项一')
+    expect(wrapper.find('.ap-analysis').text()).toContain('因为选二')
+    expect(wrapper.text()).toContain('正确答案')
+    expect(wrapper.text()).toContain('你的答案')
+
+    // 详情里也能整页看这条记录
+    expect(wrapper.find('.rec-detail').text()).toContain('新页面查看')
+    wrapper.unmount()
   })
 })

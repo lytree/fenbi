@@ -21,6 +21,7 @@ object LanEditorPrefs {
     private const val KEY_PORT = "port"
     private const val KEY_PASSWORD = "password"
     private const val KEY_MCP_KEY = "mcp_key"
+    private const val KEY_KEEPALIVE_PROMPTED = "keepalive_prompted"
 
     const val DEFAULT_PORT = 8777
 
@@ -61,6 +62,19 @@ object LanEditorPrefs {
         }
         prefs.edit().putString(KEY_MCP_KEY, created).apply()
         return created
+    }
+
+    /**
+     * 「后台可能被系统冻住」这条提醒是否提过了。
+     *
+     * 只提一次：没放宽后台限制的话网页迟早失联，但每次启动都弹会变成骚扰，
+     * 页面上的「后台保持」卡片随时能再进设置。
+     */
+    fun keepAlivePrompted(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_KEEPALIVE_PROMPTED, false)
+
+    fun markKeepAlivePrompted(context: Context) {
+        prefs(context).edit().putBoolean(KEY_KEEPALIVE_PROMPTED, true).apply()
     }
 
     private fun prefs(context: Context) =

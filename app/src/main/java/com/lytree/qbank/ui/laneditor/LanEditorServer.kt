@@ -100,7 +100,9 @@ class LanEditorServer(
     private val clients: MutableSet<Socket> = Collections.synchronizedSet(HashSet())
 
     /** stop() 会把线程池 shutdownNow，重启时得换一个新的 */
-    private fun newWorkers(): ExecutorService = Executors.newFixedThreadPool(4) { r ->
+    private fun newWorkers(): ExecutorService = Executors.newFixedThreadPool(6) { r ->
+        // 6 个 = 浏览器对同一 host 的并发连接上限：连接级 close，页面一打开就是好几条并行，
+        // 池子比它小的话刷图 / 切页会排队，看起来就像「服务卡住了」
         Thread(r, "lan-editor-worker").apply { isDaemon = true }
     }
 
@@ -149,15 +151,23 @@ class LanEditorServer(
     // ---------------------------------------------------------------- 连接
 
     private fun acceptLoop(socket: ServerSocket) {
+        var failures = 0
         while (isRunning) {
             val client = try {
                 socket.accept()
             } catch (_: Exception) {
-                break                                   // stop() 关掉了 socket
+                // stop() 关掉了 socket：正常退出
+                if (!isRunning || socket.isClosed) break
+                // 端口还开着却 accept 失败（句柄耗尽、被系统掐断一次）：退避一下接着听。
+                // 以前这里直接 break，结果是「界面还显示运行中、网页却永远连不上」，
+                // 而同一次失败根本不会有人注意到——后台待久了最容易撞上。
+                failures++
+                runCatching { Thread.sleep(if (failures > 5) 1_000L else 100L) }
+                continue
             }
-            workers.execute {
-                runCatching { handle(client) }
-            }
+            failures = 0
+            runCatching { workers.execute { runCatching { handle(client) } } }
+                .onFailure { runCatching { client.close() } }
         }
     }
 

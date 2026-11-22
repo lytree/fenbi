@@ -19,12 +19,14 @@ import RecitePreview from './components/RecitePreview'
 import ModalHost from './components/ModalHost'
 import Toast from './components/Toast'
 import {
-  TYPE_SHORT, addQuestion, cancelWaiting, closeModal, currentQuestions, filtersActive, flushDraft,
+  TYPE_SHORT, addQuestion, cancelWaiting, closeModal, currentQuestions, currentSheet, filtersActive, flushDraft,
   handleImportFiles, issueCounts, library, level1Options, level2Options, loadSets, loadVersions,
   maybeRestoreDraft, openPasteDialog, openSet, publish, recite, resetFilters, saveLibrary,
   saveMindMap, saveRecite, showErrors, startDraftAutoSave, state,
   stopDraftAutoSave, switchMode, toast, typeCounts, ui, visibleIndexes,
 } from './store'
+import { isFullPane, openFullPage } from './fullview'
+import type { FullPane } from './fullview'
 import type { QuestionType } from './types'
 import { handleFileInput } from './images'
 import { initTheme } from './theme'
@@ -465,6 +467,22 @@ export default defineComponent({
                       记录
                     </button>
                   </div>
+                  {/* 窄栏里整卷过一遍太憋屈：这三页都能整页铺开看（新标签页，只读） */}
+                  {isFullPane(state.pane)
+                    ? (
+                      <button
+                        class="icon-btn pane-full"
+                        data-pane-full={state.pane}
+                        title="在新页面查看（整页铺开，只读）"
+                        onClick={() => openFullPage(state.pane as FullPane, {
+                          setId: state.paper?.id ?? 0,
+                          sheetId: currentSheet()?.id ?? 0,
+                        })}
+                      >
+                        ⤢
+                      </button>
+                    )
+                    : null}
                   <button class="icon-btn" title="收起预览" onClick={() => setPreviewHidden(true)}>⟩</button>
                 </div>
                 {state.pane === 'preview'
