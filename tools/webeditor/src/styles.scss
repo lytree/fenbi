@@ -2272,17 +2272,97 @@ body.pane-dragging {
   background: var(--bg-layout);
   border: 1px solid var(--border-secondary);
   border-radius: var(--radius);
-  padding: 12px;
-  margin-bottom: 12px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
   font-size: 14px;
   color: var(--text);
   line-height: 1.5715;
 
+  /* 资料头：资料 / 第 N–M 题 / 几小题共用 / 收起。
+     一个资料对应多道小题时，这几项就是「它们是一家」的凭据 */
   .mh {
-    @include label;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: 0 0 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px dashed var(--border-secondary);
+    font-size: 12px;
     color: var(--text-tertiary);
-    margin-bottom: 6px;
   }
+
+  .mtag {
+    height: 20px;
+    padding: 0 8px;
+    border-radius: 10px;
+    border: 1px solid var(--primary-border);
+    background: var(--primary-bg);
+    color: var(--primary);
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .mrange {
+    color: var(--text);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .mcount { color: var(--text-quaternary); }
+
+  .mfold {
+    margin-left: auto;
+    height: 22px;
+    padding: 0 8px;
+    border: 1px solid var(--border-secondary);
+    border-radius: 11px;
+    background: var(--bg-container);
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+    transition: color .15s, border-color .15s;
+
+    &:hover { color: var(--primary); border-color: var(--primary-border); }
+    .mf-t2 { display: none; }
+  }
+
+  /* 收起的是材料正文，小题留在原处——对着材料做小题时才不用来回滚 */
+  &.collapsed {
+    .mbody { display: none; }
+    .mfold .mf-t { display: none; }
+    .mfold .mf-t2 { display: inline; }
+    .mh { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+  }
+}
+
+/* 一组：资料卡 + 它带的小题。左轨把「这几题共用这份资料」画出来，
+   组与组之间留出比题间距更大的一段，扫一眼就知道换了资料 */
+.pv-group {
+  position: relative;
+  margin-bottom: 16px;
+  padding-left: 12px;
+
+  &::before {
+    content: "";
+    position: absolute;
+    left: 2px;
+    top: 10px;
+    bottom: 12px;
+    width: 2px;
+    border-radius: 2px;
+    /* 主色淡描边：比 border-secondary 明显一档，扫一眼能看出「这几题是一伙的」 */
+    background: var(--primary-border);
+  }
+
+  .pv-subs { display: grid; gap: 10px; }
+  .pv-subs .pv-q { margin-bottom: 0; }
+}
+
+@media (max-width: 720px) {
+  .pv-group { padding-left: 0; }
+  .pv-group::before { display: none; }
 }
 
 .pv-stem {

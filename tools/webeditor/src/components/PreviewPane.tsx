@@ -6,7 +6,7 @@ import {
 import { esc } from '../util'
 import { renderMaterial, renderStem } from '../markdown'
 import { LEVEL_NONE, level1Of, level2Of } from '../xingce'
-import { optionListHtml, writeZoneHtml } from '../qview'
+import { optionListHtml, writeZoneHtml, materialGroupHtml } from '../qview'
 
 /**
  * 右侧卷面预览：按粉笔答题页的版式排——材料卡与题目同列上下排（资料分析的形式），
@@ -57,10 +57,7 @@ export default defineComponent({
       return h
     }
 
-    /** 材料卡：资料分析的形式——材料自己一张卡放在小题前面，不再挤进第一题里 */
-    const materialHtml = (material: string, size: number): string =>
-      `<div class="pv-mat"><div class="mh">资料分析 · ${size} 小题</div>${renderMaterial(material)}</div>`
-
+    /** 材料题：材料卡 + 小题收进同一个 .pv-group，小题跟在后面、共用左轨 */
     const html = (): string => {
       const qs = currentQuestions()
       if (!qs.length) return '<div class="pv-empty">这份卷还没有题目</div>'
@@ -72,8 +69,15 @@ export default defineComponent({
       while (i < qs.length) {
         const g = groups.find((x) => x.start === i)
         if (g) {
-          out += materialHtml(g.material, g.end - g.start + 1)
-          for (let k = g.start; k <= g.end; k++) out += blockHtml(qs[k], k)
+          out += materialGroupHtml({
+            start: g.start + 1,
+            count: g.end - g.start + 1,
+            materialHtml: renderMaterial(g.material),
+            questionsHtml: qs
+              .slice(g.start, g.end + 1)
+              .map((q, k) => blockHtml(q, g.start + k))
+              .join(''),
+          })
           i = g.end + 1
         } else {
           out += blockHtml(qs[i], i)
@@ -85,6 +89,12 @@ export default defineComponent({
 
     const onClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement
+      // 资料头的「收起 / 展开」：只把材料正文收起来，小题留着
+      const fold = target.closest('.mfold') as HTMLElement | null
+      if (fold) {
+        fold.closest('.pv-mat')?.classList.toggle('collapsed')
+        return
+      }
       const hit = target.closest('.pv-q') as HTMLElement | null
       if (!hit) return
       const uid = Number(hit.dataset.uid)

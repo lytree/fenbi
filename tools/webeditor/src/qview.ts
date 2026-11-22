@@ -157,3 +157,57 @@ export function writeZoneHtml(type: string): string {
   const label = type === 'fill' ? '作答区 · 填空' : '作答区 · 主观题'
   return `<div class="pv-write ${esc(type)}"><span>${label}</span></div>`
 }
+
+/**
+ * 一则资料 + 它带的小题：三页统一成一个 `.pv-group`。
+ *
+ * 粉笔的卷面里，材料题不是「材料卡 + 一堆互不相干的小题」——小题要看得出一家人。
+ * 这里把材料卡和小题收进同一个组，左轨把范围画出来，头部标明「第 6–7 题 · 2 小题」，
+ * 资料可以单独收起（小题不跟着藏，方便对着材料做题）。
+ */
+export interface MaterialGroup {
+  /** 第一道小题在卷面上的题号（1 基） */
+  start: number
+  /** 这道资料带几道小题 */
+  count: number
+  /** 已经渲染好的材料 HTML */
+  materialHtml: string
+  /** 已经渲染好的小题 HTML（一组 `.pv-q`） */
+  questionsHtml: string
+}
+
+/** 材料卡头部：资料 / 题号范围 / 小题数 / 收起 */
+export function materialHeadHtml(start: number, count: number): string {
+  const end = start + count - 1
+  const range = count > 1 ? `第 ${start}–${end} 题` : `第 ${start} 题`
+  return (
+    '<div class="mh">' +
+    '<span class="mtag">资料</span>' +
+    `<span class="mrange">${range}</span>` +
+    `<span class="mcount">${count} 小题共用</span>` +
+    '<button class="mfold" data-fold="mat" title="收起 / 展开资料">' +
+    '<span class="mf-t">收起</span><span class="mf-t2">展开</span>' +
+    '</button>' +
+    '</div>'
+  )
+}
+
+/** 资料卡（头 + 正文），不含小题；记录页用 JSX 拼小题时也复用它 */
+export function materialCardHtml(start: number, count: number, materialHtml: string): string {
+  return (
+    '<div class="pv-mat">' +
+    materialHeadHtml(start, count) +
+    `<div class="mbody">${materialHtml}</div>` +
+    '</div>'
+  )
+}
+
+/** 整组：材料卡 + 小题，两组之间留出一段距离 */
+export function materialGroupHtml(p: MaterialGroup): string {
+  return (
+    '<div class="pv-group">' +
+    materialCardHtml(p.start, p.count, p.materialHtml) +
+    `<div class="pv-subs">${p.questionsHtml}</div>` +
+    '</div>'
+  )
+}

@@ -4,7 +4,7 @@ import { currentQuestions, editNote, focusQuestion, groupsOf, state, TYPE_LABEL 
 import { esc } from '../util'
 import { renderMaterial, renderStem } from '../markdown'
 import { LEVEL_NONE, level1Of, level2Of } from '../xingce'
-import { answerText, gridHtml, isBlank, noteActionHtml, normKeys, optionListHtml } from '../qview'
+import { answerText, gridHtml, isBlank, materialGroupHtml, noteActionHtml, normKeys, optionListHtml } from '../qview'
 import type { GridCell } from '../qview'
 
 /**
@@ -96,10 +96,7 @@ export default defineComponent({
       return h
     }
 
-    /** 材料卡：资料分析的形式——材料自己一张卡放在小题前面 */
-    const materialHtml = (material: string, size: number): string =>
-      `<div class="pv-mat"><div class="mh">资料分析 · ${size} 小题</div>${renderMaterial(material)}</div>`
-
+    /** 材料题：材料卡 + 它的小题收进同一个组，头部标出「第 N–M 题」 */
     const html = (): string => {
       const qs = currentQuestions()
       if (!qs.length) return '<div class="pv-empty">这份卷还没有题目</div>'
@@ -113,8 +110,15 @@ export default defineComponent({
       while (i < qs.length) {
         const g = groups.find((x) => x.start === i)
         if (g) {
-          out += materialHtml(g.material, g.end - g.start + 1)
-          for (let k = g.start; k <= g.end; k++) out += blockHtml(qs[k], k)
+          out += materialGroupHtml({
+            start: g.start + 1,
+            count: g.end - g.start + 1,
+            materialHtml: renderMaterial(g.material),
+            questionsHtml: qs
+              .slice(g.start, g.end + 1)
+              .map((q, k) => blockHtml(q, g.start + k))
+              .join(''),
+          })
           i = g.end + 1
         } else {
           out += blockHtml(qs[i], i)
@@ -126,6 +130,12 @@ export default defineComponent({
 
     const onClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement
+      // 资料头的「收起 / 展开」：收的是材料正文，小题留着（对着材料做题时更顺手）
+      const fold = target.closest('.mfold') as HTMLElement | null
+      if (fold) {
+        fold.closest('.pv-mat')?.classList.toggle('collapsed')
+        return
+      }
       // 笔记入口（题号行那支笔）与笔记条：打开笔记弹框，不触发跳题
       const noteHit = target.closest('[data-act="note"], [data-note-row]') as HTMLElement | null
       if (noteHit) {

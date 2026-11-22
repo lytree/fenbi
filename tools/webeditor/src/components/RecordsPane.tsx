@@ -6,7 +6,7 @@ import { currentSheet, editNote, state, TYPE_LABEL } from '../store'
 import { esc, formatTime } from '../util'
 import { renderMaterial, renderStem } from '../markdown'
 import { openFullPage } from '../fullview'
-import { answerText, gridHtml, isBlank, normKeys, optionListHtml } from '../qview'
+import { answerText, gridHtml, isBlank, materialCardHtml, normKeys, optionListHtml } from '../qview'
 import type { GridCell } from '../qview'
 
 /**
@@ -266,17 +266,31 @@ export default defineComponent({
       )
     }
 
-    /** 资料分析的题目形式：连续同材料的题共用一张材料卡，小题跟在后面 */
-    const detailBlocks = (answers: RecordAnswer[]) => {
-      const out: ({ kind: 'mat'; material: string; size: number } | { kind: 'q'; a: RecordAnswer })[] = []
+    /**
+     * 资料分析的题目形式：连续同材料的小题收进一个 `.pv-group`——材料卡在上、
+     * 小题跟在下、左轨连着，头部标出「第 6–7 题」。和卷面 / 解析两页同一个结构，
+     * 只是这里的小题带作答结果。
+     */
+    type DetailBlock =
+      | { kind: 'group'; material: string; start: number; count: number; answers: RecordAnswer[] }
+      | { kind: 'q'; a: RecordAnswer }
+
+    const detailBlocks = (answers: RecordAnswer[]): DetailBlock[] => {
+      const out: DetailBlock[] = []
       let i = 0
       while (i < answers.length) {
         const a = answers[i]
         if (a.material.trim()) {
           let j = i
           while (j < answers.length && answers[j].material === a.material) j++
-          out.push({ kind: 'mat', material: a.material, size: j - i })
-          for (let k = i; k < j; k++) out.push({ kind: 'q', a: answers[k] })
+          const group = answers.slice(i, j)
+          out.push({
+            kind: 'group',
+            material: a.material,
+            start: group[0].no,
+            count: group.length,
+            answers: group,
+          })
           i = j
         } else {
           out.push({ kind: 'q', a })
@@ -284,6 +298,13 @@ export default defineComponent({
         }
       }
       return out
+    }
+
+    /** 资料头的收起 / 展开：只收材料正文，小题留着 */
+    const onGroupClick = (e: MouseEvent) => {
+      const fold = (e.target as HTMLElement).closest('.mfold')
+      if (!fold) return
+      ;(e.currentTarget as HTMLElement).querySelector('.pv-mat')?.classList.toggle('collapsed')
     }
 
     /** 「考试情况」：粉笔报告里的模块行——本卷按题型聚合，各给一行 总题数 / 答对 / 正确率 */
@@ -385,11 +406,15 @@ export default defineComponent({
 
           <div class="rec-qlist">
             {detailBlocks(answers).map((b) =>
-              b.kind === 'mat'
+              b.kind === 'group'
                 ? (
-                  <div class="pv-mat" key={`mat-${b.size}-${b.material.slice(0, 8)}`}>
-                    <div class="mh">资料分析 · {b.size} 小题</div>
-                    <div innerHTML={renderMaterial(b.material)}></div>
+                  <div class="pv-group" key={`mat-${b.start}`} onClick={onGroupClick}>
+                    <div innerHTML={materialCardHtml(b.start, b.count, renderMaterial(b.material))}></div>
+                    <div class="pv-subs">
+                      {b.answers.map((a) => (
+                        <QuestionBlock a={a} key={`${a.no}-${a.stem.slice(0, 8)}`} />
+                      ))}
+                    </div>
                   </div>
                 )
                 : <QuestionBlock a={b.a} key={`${b.a.no}-${b.a.stem.slice(0, 8)}`} />,

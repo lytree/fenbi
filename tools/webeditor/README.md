@@ -94,6 +94,9 @@ allowBuilds:
 - **题型也共用一份渲染**：选项、答案宫格、作答区一律走 `qview.ts`（`optionListHtml / gridHtml /
   writeZoneHtml / noteActionHtml`），不要在某一页里另拼一套。单选圆徽标、多选与不定项方徽标、
   判断题 ✓/✗、填空与主观题无选项；答案串 `AC` / `A,C` / `A C` 都按字母拆（`ansSet`）。
+- **一则资料带多题是一个组**：卷面 / 解析用 `materialGroupHtml()`（材料卡 + `.pv-subs` 一次拼好），
+  记录页用 `materialCardHtml()` 拼材料、外面套 `.pv-group` 和 JSX 小题。别再退回「材料一张卡、
+  小题一堆散卡」——组头要写「资料 / 第 N–M 题 / k 小题共用」，收起只收材料正文、小题不动。
 - **笔记可写、记录不可写**：题号行右端的 ✎（`editNote()`）走 `POST /api/note`，按题目 id 直写
   `notes` 表，和 App 共用、不参与发布。记录页其它内容仍然只读，别顺手加「改分数」之类的入口。
 - **校验 / 版本 / 资源是弹框**：`ui.tool` 记当前开的是哪个，`openTool() / closeTool()` 进出，

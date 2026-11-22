@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  answerText, gridHtml, normKeys, noteActionHtml, optionListHtml, writeZoneHtml,
+  answerText, gridHtml, materialCardHtml, materialGroupHtml, materialHeadHtml,
+  normKeys, noteActionHtml, optionListHtml, writeZoneHtml,
 } from '../qview'
 
 /**
@@ -105,5 +106,39 @@ describe('题型渲染 · 答案', () => {
     expect(noteActionHtml(false)).not.toContain('pv-act on')
     expect(noteActionHtml(true)).toContain('编辑笔记')
     expect(noteActionHtml(true)).toContain('pv-act on')
+  })
+})
+
+describe('题型渲染 · 资料带多题', () => {
+  it('资料头标出题号范围与小题数', () => {
+    const html = materialHeadHtml(6, 2)
+    expect(html).toContain('第 6–7 题')
+    expect(html).toContain('2 小题共用')
+    expect(html).toContain('data-fold="mat"')
+    // 单题也成组：范围只写一个题号
+    expect(materialHeadHtml(6, 1)).toContain('第 6 题')
+  })
+
+  it('材料卡与小题收进同一个 .pv-group，小节容器单独一层', () => {
+    const html = materialGroupHtml({
+      start: 6,
+      count: 2,
+      materialHtml: '<p>材料正文</p>',
+      questionsHtml: '<div class="pv-q">6</div><div class="pv-q">7</div>',
+    })
+    expect(html).toContain('class="pv-group"')
+    expect(html).toContain('class="pv-mat"')
+    expect(html).toContain('第 6–7 题')
+    expect(html).toContain('class="mbody"')
+    expect(html).toContain('class="pv-subs"')
+    expect(html.match(/class="pv-q"/g)).toHaveLength(2)
+    // 材料在小题之前：组里先材料、后小题
+    expect(html.indexOf('pv-mat')).toBeLessThan(html.indexOf('pv-subs'))
+  })
+
+  it('记录页复用材料卡时只出卡片，不老带一层小题容器', () => {
+    const card = materialCardHtml(3, 4, '<p>正文</p>')
+    expect(card).toContain('第 3–6 题')
+    expect(card).not.toContain('pv-subs')
   })
 })

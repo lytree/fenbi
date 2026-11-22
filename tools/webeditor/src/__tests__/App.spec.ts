@@ -96,6 +96,18 @@ const RECORD = {
       answer: 'B', analysis: '因为选二', knowledge: '实词', userAnswer: 'A', note: '',
       correct: false, partial: false, pending: false, earned: 0, full: 1,
     },
+    {
+      id: 102, no: 2, type: 'single', stem: '第二题：收入是多少', material: '2025年1—2月，总收入5280.0亿元。',
+      options: [{ key: 'A', text: '选项一' }, { key: 'B', text: '选项二' }],
+      answer: 'B', analysis: '按材料读数', knowledge: '现期量', userAnswer: 'B', note: '',
+      correct: true, partial: false, pending: false, earned: 1, full: 1,
+    },
+    {
+      id: 103, no: 3, type: 'single', stem: '第三题：占比是多少', material: '2025年1—2月，总收入5280.0亿元。',
+      options: [{ key: 'A', text: '选项一' }, { key: 'B', text: '选项二' }],
+      answer: 'A', analysis: '比重计算', knowledge: '比重', userAnswer: 'B', note: '',
+      correct: false, partial: false, pending: false, earned: 0, full: 1,
+    },
   ],
 }
 
@@ -198,10 +210,27 @@ describe('局域网题库编辑器', () => {
 
     expect(wrapper.text()).toContain('2024国考')
     expect(wrapper.findAll('.qcard')).toHaveLength(3)
-    // 材料组：两道题共用一段材料，预览里只出现一次
+    // 材料组：两道题共用一段材料，预览里只出现一次，且材料与两道小题收在同一个组里
     expect(wrapper.findAll('.pv-q')).toHaveLength(3)
     expect(wrapper.findAll('.pv-mat')).toHaveLength(1)
+    expect(wrapper.findAll('.pv-group')).toHaveLength(1)
+    expect(wrapper.findAll('.pv-group .pv-q')).toHaveLength(2)
+    expect(wrapper.find('.pv-mat .mh').text()).toContain('第 2–3 题')
+    expect(wrapper.find('.pv-mat .mh').text()).toContain('2 小题共用')
     expect(wrapper.text()).toContain('第一题：没有语病的一项')
+    wrapper.unmount()
+  })
+
+  it('资料带的题：点「收起」只收材料正文，小题留在原处', async () => {
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+
+    const mat = wrapper.find('.pv-mat')
+    expect(mat.classes()).not.toContain('collapsed')
+    await wrapper.find('.pv-mat .mfold').trigger('click')
+    expect(wrapper.find('.pv-mat').classes()).toContain('collapsed')
+    // 收起来的是材料，不是整组：两道小题还在
+    expect(wrapper.findAll('.pv-group .pv-q')).toHaveLength(2)
     wrapper.unmount()
   })
 
@@ -906,8 +935,12 @@ describe('局域网题库编辑器', () => {
 
     // 详情：成绩概要 + 答题卡 + 逐题（.pv-q.static / .pv-opt.right|wrong / .sol-box）
     expect(wrapper.find('.rec-hero').exists()).toBe(true)
-    expect(wrapper.findAll('.rec-grid .cell')).toHaveLength(1)
-    expect(wrapper.findAll('.pv-q.static')).toHaveLength(1)
+    expect(wrapper.findAll('.rec-grid .cell')).toHaveLength(3)
+    expect(wrapper.findAll('.pv-q.static')).toHaveLength(3)
+    // 资料带两题：材料与第 2–3 题收在同一个组里
+    expect(wrapper.findAll('.rec-qlist .pv-group')).toHaveLength(1)
+    expect(wrapper.findAll('.rec-qlist .pv-group .pv-q')).toHaveLength(2)
+    expect(wrapper.find('.rec-qlist .pv-group .mh').text()).toContain('第 2–3 题')
     // 答错题的三态：错选红实心、没选到的正确答案绿描边（粉笔 ans-only）
     expect(wrapper.find('.pv-opt.wrong').text()).toContain('选项一')
     expect(wrapper.find('.pv-opt.ans-only').text()).toContain('选项二')
