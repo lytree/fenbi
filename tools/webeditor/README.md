@@ -48,8 +48,9 @@ tools/webeditor/
 Query 只带 `view / setId / sheet / recordId`，切页与换卷会 `replaceState` 写回地址，
 刷新和分享都落在原地。三页共用 `.pv-head / .pv-q / .pv-opt / .sol-box` 这套骨架，
 记录页不再自带固定色（以前是粉笔蓝，夜里整页发白）。
-「答案解析」「练习记录」两页里，资料题是**左右分屏**：材料钉左、题目在右，
-右栏只留题目 / 答案 / 解析（考点、笔记、笔记笔在分屏里隐藏）；≤860px 自动退回上下排。
+「答案解析」整页里，资料题按粉笔实测做**左右分屏**：700 高大卡、左「材料」白卡（自己滚）、
+中间 12px 可拖把手、右边题号页签 + 当前这一题（`.pv-split`，一次只摆一道，点页签换题）；
+整页解析宽 1180，≤1000px 退回上下排。「练习记录」整页仍是 `.pv-group.split`（材料钉左、题目全列）。
 
 「背诵」模式下 `RecitePane`（政治 / 常识：分类筛选 + 卡片列表 + 逐卡编辑，整份保存走手机确认）
 与 `WordsPane`（词条词库：搜索筛选 + 逐条编辑，直接写库）替换题库编辑区，右栏预览不渲染。
@@ -99,9 +100,9 @@ allowBuilds:
 - **一则资料带多题是一个组**：卷面 / 解析用 `materialGroupHtml()`（材料卡 + `.pv-subs` 一次拼好），
   记录页用 `materialCardHtml()` 拼材料、外面套 `.pv-group` 和 JSX 小题。别再退回「材料一张卡、
   小题一堆散卡」——组头要写「资料 / 第 N–M 题 / k 小题共用」，收起只收材料正文、小题不动。
-- **资料分屏只在整页**：`AnswerPane` 的 `full` / `RecordsPane` 的 `standalone` 才给组加 `split`，
-  CSS 也要挂在 `.fullsheet` 下（`.fullsheet .pv-group.split`）。编辑器窄栏永远上下排，别把分屏
-  条件写成只凭 `.split` 一个类。
+- **资料分屏只在整页**：`AnswerPane` 的 `full` 才走 `.pv-split`（照粉笔：左材料 + 右题号页签 + 单题，
+  页签切换状态在组件里的 `tabIdx`，宽度在 `matWidth`）；`RecordsPane` 的 `standalone` 用
+  `.pv-group.split`（材料钉左、题目全列）。编辑器窄栏永远上下排。
 - **笔记可写、记录不可写**：题号行右端的 ✎（`editNote()`）走 `POST /api/note`，按题目 id 直写
   `notes` 表，和 App 共用、不参与发布。记录页其它内容仍然只读，别顺手加「改分数」之类的入口。
 - **校验 / 版本 / 资源是弹框**：`ui.tool` 记当前开的是哪个，`openTool() / closeTool()` 进出，

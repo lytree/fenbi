@@ -2414,6 +2414,181 @@ body.pane-dragging {
   }
 }
 
+/* =============================================================================
+   整页解析 · 资料分屏（照粉笔解析页实测：700 高、左右两张白卡 + 中间拖柄）
+   左：材料白卡（「材料」小签 + 自己的滚动条）
+   右：题号页签（106题…，当前题下面一条主色短杠）+ 当前这一题
+   ========================================================================== */
+
+.pv-split {
+  display: grid;
+  grid-template-columns: var(--mat-w, 47%) 12px minmax(0, 1fr);
+  height: 700px;
+  margin-bottom: 22px;
+}
+
+.pv-split-mat,
+.pv-split-qs {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-container);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+}
+
+.pv-mat-tag {
+  align-self: flex-start;
+  flex: none;
+  margin: 12px 20px 2px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 4px;
+  background: var(--primary-bg);
+  color: var(--primary);
+  font-size: 12px;
+  line-height: 22px;
+}
+
+.pv-mat-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 20px 24px;
+  font-size: 15px;
+  line-height: 1.95;
+  color: var(--text);
+}
+
+/* 两栏之间的拖柄：中间一颗小抓点，拖它改左栏宽度 */
+.pv-split-grip {
+  position: relative;
+  cursor: col-resize;
+  user-select: none;
+
+  &::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 4px;
+    height: 34px;
+    transform: translate(-50%, -50%);
+    border-radius: 2px;
+    background: var(--border-secondary);
+    transition: background-color .15s;
+  }
+
+  &:hover::before { background: var(--primary-border); }
+}
+
+body.split-dragging { cursor: col-resize; user-select: none; }
+
+.pv-tabs {
+  flex: none;
+  display: flex;
+  gap: 30px;
+  height: 36px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border-secondary);
+  overflow-x: auto;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar { display: none; }
+}
+
+.pv-tab {
+  position: relative;
+  flex: none;
+  padding: 6px 0;
+  border: none;
+  background: transparent;
+  font-size: 15px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: color .15s;
+
+  &:hover { color: var(--text); }
+
+  &.active {
+    color: var(--text);
+    font-weight: 500;
+
+    /* 当前题下面那条主色短杠：粉笔页签的选中态 */
+    &::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      bottom: 0;
+      width: 50%;
+      height: 4px;
+      transform: translateX(-50%);
+      border-radius: 2px;
+      background: var(--primary);
+    }
+  }
+}
+
+.pv-tabbody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 20px 20px;
+}
+
+/* 分屏里的题比窄栏里松一档：粉笔的选项行高约 48、题干 16/1.9，
+   一屏只读一道题，不用像右栏那样省地方 */
+.pv-split .pv-stem {
+  font-size: 15px;
+  line-height: 1.8;
+}
+
+.pv-split .pv-opts { gap: 10px; }
+
+.pv-split .pv-opt {
+  padding: 9px 10px;
+  margin: 0 -10px;
+}
+
+/* 解析盒在整页里换成粉笔的浅灰底（窄栏保持白底，省得两处看着打架） */
+.pv-split .sol-box {
+  border-color: transparent;
+  background: var(--bg-layout);
+
+  .sol-h { background: transparent; }
+}
+
+/* 分屏右栏的题卡不再自带卡片壳：白底与发丝线交给外层白卡 */
+.pv-split-qs .pv-q {
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+
+  &:hover { border: none; box-shadow: none; }
+}
+
+/* 右栏只留「题目 + 答案 + 解析 + 考点」：笔记正文收进弹框，不铺在行间 */
+.pv-split-qs .note-row { display: none; }
+
+/* 窄一点（笔记本半屏 / 平板竖屏）：退回上下排，拖柄藏起来 */
+@media (max-width: 1000px) {
+  .pv-split {
+    grid-template-columns: 1fr;
+    height: auto;
+    gap: 12px;
+  }
+
+  .pv-split-grip { display: none; }
+  .pv-split-mat { max-height: 360px; }
+  .pv-split-qs { min-height: 520px; }
+}
+
 .pv-stem {
   font-size: 14px;
   line-height: 1.5715;
@@ -5200,6 +5375,9 @@ body.pane-dragging {
 
   /* 记录页在整页里可以更宽：统计条和答题卡横着排得开 */
   &.is-records { max-width: 1040px; }
+
+  /* 解析页要放下「材料 + 题目」两栏（粉笔实测 1180：586 + 12 + 586） */
+  &.is-answer { max-width: 1180px; }
 }
 
 .full-loading,

@@ -1,5 +1,5 @@
 import { defineComponent, nextTick, onMounted, ref, watch } from 'vue'
-import type { Question } from '../types'
+import type { Group, Question } from '../types'
 import { currentQuestions, editNote, focusQuestion, groupsOf, state, TYPE_LABEL } from '../store'
 import { esc } from '../util'
 import { renderMaterial, renderStem } from '../markdown'
@@ -25,6 +25,10 @@ export default defineComponent({
   },
   setup(props) {
     const pane = ref<HTMLElement | null>(null)
+    /** 每组资料当前看的是第几道小题（键 = 组首题的索引） */
+    const tabIdx = ref<Record<number, number>>({})
+    /** 每组资料左栏宽度（百分比，拖动分屏把手时改；键同上） */
+    const matWidth = ref<Record<number, number>>({})
 
     /** 把当前选中（state.focused）的那题滚到面板中间 */
     const scrollToFocused = (smooth: boolean) => {
@@ -116,17 +120,17 @@ export default defineComponent({
       while (i < qs.length) {
         const g = groups.find((x) => x.start === i)
         if (g) {
-          out += materialGroupHtml({
-            start: g.start + 1,
-            count: g.end - g.start + 1,
-            materialHtml: renderMaterial(g.material),
-            questionsHtml: qs
-              .slice(g.start, g.end + 1)
-              .map((q, k) => blockHtml(q, g.start + k))
-              .join(''),
-            // 整页查看里这组左右分屏：材料在左、题目在右；窄栏里还是上下排
-            split: props.full,
-          })
+          out += props.full
+            ? splitHtml(g, qs)
+            : materialGroupHtml({
+              start: g.start + 1,
+              count: g.end - g.start + 1,
+              materialHtml: renderMaterial(g.material),
+              questionsHtml: qs
+                .slice(g.start, g.end + 1)
+                .map((q, k) => blockHtml(q, g.start + k))
+                .join(''),
+            })
           i = g.end + 1
         } else {
           out += blockHtml(qs[i], i)
@@ -136,8 +140,45 @@ export default defineComponent({
       return out
     }
 
+    /**
+     * 整页里的资料分屏，照粉笔解析页的实测版式：一张 700 高的大卡切成两半——
+     * 左边「材料」白卡（自己的滚动条），右边顶上一排题号页签（106题 107题…，
+     * 当前题下面一条主色短杠），下面只摆当前这一题（题干 / 选项 / 答案宫格 /
+     * 解析 / 考点）。五道小题不再竖着堆，一屏只读一道，材料始终在左手边。
+     */
+    const splitHtml = (g: Group, qs: Question[]): string => {
+      const count = g.end - g.start + 1
+      const start = g.start + 1
+      const active = Math.min(tabIdx.value[g.start] ?? 0, count - 1)
+      const tabs = Array.from({ length: count }, (_, i) =>
+        `<button class="pv-tab${i === active ? ' active' : ''}" data-tab="${i}">${start + i}题</button>`,
+      ).join('')
+      const w = matWidth.value[g.start] ?? 47
+      return (
+        `<div class="pv-split" data-g="${g.start}" style="--mat-w:${w}%">` +
+        '<div class="pv-split-mat">' +
+        '<div class="pv-mat-tag">材料</div>' +
+        `<div class="pv-mat-body">${renderMaterial(g.material)}</div>` +
+        '</div>' +
+        `<div class="pv-split-grip" data-grip="${g.start}" title="拖动调整材料宽度"></div>` +
+        '<div class="pv-split-qs">' +
+        `<div class="pv-tabs">${tabs}</div>` +
+        `<div class="pv-tabbody">${blockHtml(qs[g.start + active], g.start + active)}</div>` +
+        '</div>' +
+        '</div>'
+      )
+    }
+
     const onClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement
+      // 资料分屏的题号页签：只换右栏摆哪道题，不跳左栏
+      const tab = target.closest('[data-tab]') as HTMLElement | null
+      if (tab) {
+        const split = tab.closest('.pv-split') as HTMLElement | null
+        const g = Number(split?.dataset.g)
+        if (Number.isFinite(g)) tabIdx.value[g] = Number(tab.dataset.tab)
+        return
+      }
       // 资料头的「收起 / 展开」：收的是材料正文，小题留着（对着材料做题时更顺手）
       const fold = target.closest('.mfold') as HTMLElement | null
       if (fold) {
@@ -167,8 +208,33 @@ export default defineComponent({
       if (index >= 0) focusQuestion(index)
     }
 
+    /** 拖动两栏之间的把手：改这一组左栏的百分比宽度（32%–68%，别把另一边挤没） */
+    const onPointerDown = (e: PointerEvent) => {
+      const grip = (e.target as HTMLElement).closest('[data-grip]') as HTMLElement | null
+      if (!grip || e.button !== 0) return
+      const split = grip.closest('.pv-split') as HTMLElement | null
+      const g = Number(split?.dataset.g)
+      if (!split || !Number.isFinite(g)) return
+      e.preventDefault()
+      const rect = split.getBoundingClientRect()
+      const move = (ev: PointerEvent) => {
+        const pct = ((ev.clientX - rect.left) / rect.width) * 100
+        matWidth.value[g] = Math.min(68, Math.max(32, Math.round(pct)))
+      }
+      const up = () => {
+        window.removeEventListener('pointermove', move)
+        window.removeEventListener('pointerup', up)
+        window.removeEventListener('pointercancel', up)
+        document.body.classList.remove('split-dragging')
+      }
+      document.body.classList.add('split-dragging')
+      window.addEventListener('pointermove', move)
+      window.addEventListener('pointerup', up)
+      window.addEventListener('pointercancel', up)
+    }
+
     return () => (
-      <div class="ppane" ref={pane} innerHTML={html()} onClick={onClick}></div>
+      <div class="ppane" ref={pane} innerHTML={html()} onClick={onClick} onPointerdown={onPointerDown}></div>
     )
   },
 })
