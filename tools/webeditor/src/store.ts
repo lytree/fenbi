@@ -1827,15 +1827,6 @@ export function setReciteCardAnswers(id: string, answers: string[]) {
   updateReciteCard(id, { answers })
 }
 
-/** 把选中的一段正文变成填空：正文加 ____，答案追加一项 */
-export function blankReciteSelection(id: string, term: string) {
-  const c = recite.catalog?.cards.find((x) => x.id === id)
-  if (!c || !term.trim()) return
-  c.text = `${c.text} ____ `
-  c.answers.push(term.trim())
-  markReciteDirty()
-}
-
 export function moveReciteCard(id: string, catId: string) {
   updateReciteCard(id, { cat: catId })
 }

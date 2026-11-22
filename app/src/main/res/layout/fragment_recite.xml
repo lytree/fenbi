@@ -99,15 +99,11 @@
                     android:fillViewport="true"
                     android:scrollbars="none">
 
-                    <TextView
+                    <com.lytree.qbank.ui.recite.ReciteRichView
                         android:id="@+id/cardText"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:lineSpacingExtra="7dp"
-                        android:paddingEnd="@dimen/fb_space_24"
-                        android:textColor="@color/fb_text_primary"
-                        android:textSize="@dimen/fb_text_card_title"
-                        tools:text="1.新时代坚持和发展中国特色社会主义——是方向和道路。____问题是关系党的事业兴衰成败第一位的问题。" />
+                        android:paddingEnd="@dimen/fb_space_24" />
                 </ScrollView>
 
                 <TextView

@@ -433,30 +433,20 @@ class ReciteOutlineFragment : Fragment() {
             item.row.setPaddingRelative(indent, 0, dp(4), 0)
             item.indentBar.isVisible = !isCard && entry.depth == 0
 
-            item.tvText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f + fontLevel * 2)
             // 能揭示的只有两种：卡片（自带 ____）和有挖空区间的导图行
             val canReveal = isCard || entry.cloze.isNotEmpty()
-            if (isCard) {
-                item.tvText.text = ReciteCloze.card(
-                    requireContext(), entry.text, entry.answers,
-                    reveal = !blind || entry.id in revealed,
-                )
-                item.tvText.setTextColor(ContextCompat.getColor(context, R.color.fb_text_primary))
-                item.tvText.setTypeface(null, Typeface.NORMAL)
-            } else {
-                item.tvText.text = ReciteCloze.line(
-                    requireContext(), entry.text, entry.cloze,
-                    reveal = !blind || entry.id in revealed,
-                )
-                val branch = entry.depth == 0
-                item.tvText.setTextColor(
-                    ContextCompat.getColor(
-                        context,
-                        if (branch) R.color.fb_text_title else R.color.fb_text_primary
-                    )
-                )
-                item.tvText.setTypeface(null, if (branch) Typeface.BOLD else Typeface.NORMAL)
-            }
+            val branch = !isCard && entry.depth == 0
+            item.tvText.bind(
+                text = entry.text,
+                answers = entry.answers,
+                cloze = entry.cloze,
+                reveal = !blind || entry.id in revealed,
+                card = isCard,
+                fontSp = 15f + fontLevel * 2,
+                lineSpacingDp = 4f,
+                colorRes = if (branch) R.color.fb_text_title else R.color.fb_text_primary,
+                bold = branch,
+            )
 
             item.row.isClickable = true
             item.row.setOnClickListener {

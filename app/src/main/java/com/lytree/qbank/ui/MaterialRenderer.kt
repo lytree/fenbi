@@ -136,7 +136,7 @@ object MaterialRenderer {
         fontScale: Float
     ): View {
         val tv = TextView(context)
-        tv.text = text
+        tv.text = InlineMarkdown.render(context, text)
         tv.setTextColor(
             ContextCompat.getColor(
                 context, if (night) R.color.fb_night_text_body else R.color.fb_text_body
@@ -438,7 +438,8 @@ object MaterialRenderer {
         scale: Float
     ): View {
         val tv = TextView(context)
-        tv.text = text
+        // 行内粗体 / 代码与网页端同口径：`**x**` 加粗、`` `x` `` 等宽底色，不让源码字符露出来
+        tv.text = InlineMarkdown.render(context, text)
         tv.setTextColor(
             ContextCompat.getColor(
                 context, if (night) R.color.fb_night_text_body else R.color.text_primary
@@ -454,7 +455,7 @@ object MaterialRenderer {
         return tv
     }
 
-    private fun buildTable(
+    internal fun buildTable(
         context: Context,
         table: Block.Table,
         night: Boolean,
@@ -501,7 +502,7 @@ object MaterialRenderer {
                 val value = row.getOrElse(c) { "" }
                 val isHeader = rowIndex < table.headerRows
                 val cell = TextView(context)
-                cell.text = value
+                cell.text = InlineMarkdown.render(context, value)
                 cell.textSize = fontSp
                 cell.setTextColor(
                     ContextCompat.getColor(
@@ -660,7 +661,7 @@ object MaterialRenderer {
      *
      * [onImageLongPress] 非空时图片自己吃掉长按（选项图长按 = 打叉排除），否则图可点会把父容器的长按挡掉。
      */
-    private fun buildImage(
+    internal fun buildImage(
         context: Context,
         src: String,
         alt: String,

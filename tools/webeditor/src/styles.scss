@@ -4048,6 +4048,32 @@ body.split-dragging { cursor: col-resize; user-select: none; }
   }
 }
 
+/* 正文 markdown 工具栏与排版预览：与材料编辑同一套手感，按钮小一号 */
+.r-tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+
+  .grow { flex: 1; }
+}
+
+.r-preview {
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-layout);
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: var(--text);
+  word-break: break-word;
+
+  p { margin: 0 0 6px; }
+  p:last-child { margin-bottom: 0; }
+}
+
 .ranswer {
   display: flex;
   align-items: center;

@@ -51,6 +51,26 @@ export function insertAtCursor(el: HTMLTextAreaElement, text: string) {
   grow(el)
 }
 
+/**
+ * 用左右标记把选区包起来（没选区就插入占位文字），光标落回中间。
+ * 加粗 / 行内代码这类「包一层」的按钮共用它。
+ */
+export function surroundAtCursor(
+  el: HTMLTextAreaElement,
+  left: string,
+  right = left,
+  placeholder = '文字',
+) {
+  const start = el.selectionStart ?? el.value.length
+  const end = el.selectionEnd ?? start
+  const inner = el.value.slice(start, end) || placeholder
+  el.value = el.value.slice(0, start) + left + inner + right + el.value.slice(end)
+  el.selectionStart = start + left.length
+  el.selectionEnd = start + left.length + inner.length
+  el.dispatchEvent(new Event('input', { bubbles: true }))
+  grow(el)
+}
+
 export const clampText = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s)
 
 let uidSeq = 0

@@ -5,12 +5,6 @@ import android.graphics.Typeface
 import android.graphics.drawable.RippleDrawable
 import android.os.Bundle
 import android.os.SystemClock
-import android.text.SpannableStringBuilder
-import android.text.Spanned
-import android.text.style.BackgroundColorSpan
-import android.text.style.ForegroundColorSpan
-import android.text.style.StyleSpan
-import android.text.style.UnderlineSpan
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
@@ -259,9 +253,17 @@ class ReciteFragment : Fragment() {
 
     private fun bindCard(card: ReciteCard) {
         val showAnswer = reciteMode || revealed
-        binding.cardText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f + fontLevel * 2)
-        binding.cardText.setLineSpacing(dp(7 + fontLevel).toFloat(), 1f)
-        binding.cardText.text = cardSpanned(card, reveal = showAnswer)
+        // 序号直接拼进正文：行内 Markdown 与挖空在同一套 run 里处理，加粗不会从「12. 」断开
+        binding.cardText.bind(
+            text = "${seqInScope(card)}. " + card.text,
+            answers = card.answers,
+            cloze = emptyList(),
+            reveal = showAnswer,
+            card = true,
+            fontSp = 16f + fontLevel * 2,
+            lineSpacingDp = (7 + fontLevel).toFloat(),
+            colorRes = R.color.fb_text_primary,
+        )
         binding.cardHint.setText(
             when {
                 reciteMode -> R.string.recite_hint_mode
@@ -330,42 +332,6 @@ class ReciteFragment : Fragment() {
     private fun seqInScope(card: ReciteCard): Int {
         val index = cardsInScope().indexOfFirst { it.id == card.id }
         return if (index >= 0) index + 1 else card.seq
-    }
-
-    /** 把正文里的 ____ 换成答案（或下划线），答案用主蓝高亮 */
-    private fun cardSpanned(card: ReciteCard, reveal: Boolean, withSeq: Boolean = true): CharSequence {
-        val context = requireContext()
-        val accent = ContextCompat.getColor(context, R.color.fb_primary)
-        val soft = ContextCompat.getColor(context, R.color.fb_primary_soft)
-        val hint = ContextCompat.getColor(context, R.color.fb_text_hint)
-        val sb = SpannableStringBuilder()
-        if (withSeq) sb.append("${seqInScope(card)}. ")
-
-        val parts = card.text.split("____")
-        for (i in parts.indices) {
-            sb.append(parts[i])
-            if (i >= card.answers.size) continue
-            val start = sb.length
-            if (reveal) {
-                sb.append(card.answers[i])
-                sb.setSpan(
-                    ForegroundColorSpan(accent), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-                sb.setSpan(
-                    BackgroundColorSpan(soft), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-                sb.setSpan(
-                    StyleSpan(Typeface.BOLD), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-            } else {
-                sb.append("______")
-                sb.setSpan(
-                    ForegroundColorSpan(hint), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-            }
-            sb.setSpan(UnderlineSpan(), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-        }
-        return sb
     }
 
     // ---------------------------------------------------------------- 手势：左右切题 / 长按看答案

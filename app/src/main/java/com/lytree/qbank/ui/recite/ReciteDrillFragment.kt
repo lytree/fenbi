@@ -3,7 +3,6 @@ package com.lytree.qbank.ui.recite
 import android.content.res.ColorStateList
 import android.os.Bundle
 import android.os.SystemClock
-import android.util.TypedValue
 import android.view.GestureDetector
 import android.view.HapticFeedbackConstants
 import android.view.LayoutInflater
@@ -192,8 +191,6 @@ class ReciteDrillFragment : Fragment() {
         binding.progressFill.requestLayout()
         binding.progressRest.requestLayout()
 
-        binding.tvText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f + fontLevel * 2)
-        binding.tvText.setLineSpacing(dp(8 + fontLevel * 2).toFloat(), 1f)
         renderText()
 
         // 已经是已背状态时，主按钮变成「下一条」，避免让人以为要再标一次
@@ -216,11 +213,16 @@ class ReciteDrillFragment : Fragment() {
     private fun renderText() {
         val item = scope.getOrNull(index) ?: return
         val show = reciteMode || revealed || peeking
-        binding.tvText.text = if (item.isCard) {
-            ReciteCloze.card(requireContext(), item.text, item.answers, show)
-        } else {
-            ReciteCloze.line(requireContext(), item.text, item.cloze, show)
-        }
+        binding.tvText.bind(
+            text = item.text,
+            answers = item.answers,
+            cloze = item.cloze,
+            reveal = show,
+            card = item.isCard,
+            fontSp = 18f + fontLevel * 2,
+            lineSpacingDp = (8 + fontLevel * 2).toFloat(),
+            colorRes = R.color.fb_text_primary,
+        )
         // 没有可遮的东西（单句短语、短标题）时，别提示「轻点揭示」——点了没反应更让人犯嘀咕
         val canReveal = item.isCard || item.cloze.isNotEmpty()
         binding.tvHint.setText(
@@ -330,7 +332,16 @@ class ReciteDrillFragment : Fragment() {
 
     private fun showUnavailable() {
         binding.titleBar.setTitle(getString(R.string.drill_title))
-        binding.tvText.setText(R.string.drill_empty)
+        binding.tvText.bind(
+            text = getString(R.string.drill_empty),
+            answers = emptyList(),
+            cloze = emptyList(),
+            reveal = true,
+            card = false,
+            fontSp = 18f,
+            lineSpacingDp = 8f,
+            colorRes = R.color.fb_text_primary,
+        )
         binding.tvHint.isVisible = false
         binding.bottomBar.isVisible = false
         binding.progressFill.isVisible = false
@@ -481,8 +492,7 @@ class ReciteDrillFragment : Fragment() {
             fontLevel = level
             ReciteRepository.setFontLevel(requireContext(), level)
             updateFontAction()
-            binding.tvText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f + level * 2)
-            binding.tvText.setLineSpacing(dp(8 + level * 2).toFloat(), 1f)
+            renderText()
         }
     }
 

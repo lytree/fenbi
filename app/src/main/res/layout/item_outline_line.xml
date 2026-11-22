@@ -24,18 +24,14 @@
         android:background="@color/fb_primary_ring"
         android:visibility="gone" />
 
-    <TextView
+    <com.lytree.qbank.ui.recite.ReciteRichView
         android:id="@+id/tvText"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:lineSpacingExtra="4dp"
         android:paddingTop="9dp"
         android:paddingEnd="@dimen/fb_space_8"
-        android:paddingBottom="9dp"
-        android:textColor="@color/fb_text_primary"
-        android:textSize="@dimen/fb_text_item_title"
-        tools:text="习近平新时代中国特色社会主义思想是马克思主义基本原理同中国具体实际相结合、同中华优秀传统文化相结合的重大成果。" />
+        android:paddingBottom="9dp" />
 
     <!-- 已背标记：40dp 点击区，空心 = 未背，实心主色 = 已背 -->
     <TextView

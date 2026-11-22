@@ -1,8 +1,10 @@
-import { defineComponent, ref } from 'vue'
+import { defineComponent, nextTick, ref } from 'vue'
 import type { ReciteCard } from '../types'
 import { renderRecite } from '../markdown'
+import { grow, insertAtCursor, surroundAtCursor } from '../util'
+import { pickImage } from '../images'
 import {
-  addReciteCard, addReciteCategory, blankReciteSelection, recite, reciteCardIssues,
+  addReciteCard, addReciteCategory, recite, reciteCardIssues,
   reciteVisibleCards, removeReciteCard, removeReciteCategory, renameReciteCategory,
   setReciteCardAnswers, toggleReciteCard, updateReciteCard,
 } from '../store'
@@ -22,19 +24,42 @@ const CardEditor = defineComponent({
   name: 'CardEditor',
   props: { card: { type: Object as () => ReciteCard, required: true } },
   setup(props) {
-    /** 选一段正文变填空：用选区，没选区就手动在末尾加 */
-    const onSelectionBlank = (e: Event) => {
-      const ta = e.target as HTMLTextAreaElement
-      const term = ta.value.slice(ta.selectionStart, ta.selectionEnd).trim()
-      if (term) {
-        blankReciteSelection(props.card.id, term)
-      } else {
-        updateReciteCard(props.card.id, {
-          text: `${props.card.text} ____ `,
-          answers: [...props.card.answers, ''],
-        })
-      }
+    /** 正文输入框：排版按钮要拿它的光标 / 选区 */
+    let area: HTMLTextAreaElement | null = null
+    /** 排版预览是纯查看，不写回数据 */
+    const preview = ref(false)
+
+    const withArea = (fn: (el: HTMLTextAreaElement) => void) => {
+      if (area) fn(area)
     }
+
+    /**
+     * 设为填空：把选中的文字**原地**换成 ____，并把这段文字插到对应序号的答案里。
+     *
+     * 之前是「不管选了什么，都在正文末尾加一个空」，插在中间的空会和答案对不上；
+     * 现在按选区前面已有的空数决定答案位置，顺序和正文一致。
+     */
+    const makeBlank = () => withArea((el) => {
+      const start = el.selectionStart ?? 0
+      const end = el.selectionEnd ?? start
+      const term = el.value.slice(start, end).trim()
+      const idx = (el.value.slice(0, start).match(/_{2,}/g) ?? []).length
+      const text = el.value.slice(0, start) + '____' + el.value.slice(end)
+      const answers = [...props.card.answers]
+      answers.splice(Math.min(idx, answers.length), 0, term)
+      updateReciteCard(props.card.id, { text, answers })
+      void nextTick(() => {
+        el.focus()
+        el.setSelectionRange(start + 4, start + 4)
+        grow(el)
+      })
+    })
+
+    const insertTable = () => withArea((el) => insertAtCursor(
+      el, '\n| 列1 | 列2 |\n| --- | --- |\n| 内容 | 内容 |\n',
+    ))
+
+    const addImage = () => withArea((el) => pickImage((path) => insertAtCursor(el, `![](${path})`)))
 
     const setAnswer = (i: number, v: string) => {
       const answers = props.card.answers.map((a, j) => (j === i ? v : a))
@@ -54,15 +79,49 @@ const CardEditor = defineComponent({
       return (
         <div class="rbody">
           <div class="rfield">
-            <label>正文（____ 是填空位，选中一段文字点「设为填空」可自动加空）</label>
+            <label>正文（支持 Markdown：**粗体**、`代码`、表格、图片；____ 是填空位）</label>
             <textarea
               rows={4}
               value={c.text}
               spellcheck={false}
               placeholder="例如：我国现行宪法是 ____ 年颁布的。"
-              onInput={(e) => updateReciteCard(c.id, { text: (e.target as HTMLTextAreaElement).value })}
-              onSelect={onSelectionBlank}
+              ref={(el: any) => {
+                area = (el as HTMLTextAreaElement | null)
+                if (area) grow(area)
+              }}
+              onFocus={(e) => grow(e.target as HTMLTextAreaElement)}
+              onInput={(e) => {
+                updateReciteCard(c.id, { text: (e.target as HTMLTextAreaElement).value })
+                grow(e.target as HTMLTextAreaElement)
+              }}
             />
+            <div class="r-tools">
+              <button
+                class="ghost sm"
+                title="把选中文字加粗（写成 **文字**）"
+                onClick={() => withArea((el) => surroundAtCursor(el, '**', '**', '粗体'))}
+              >加粗</button>
+              <button
+                class="ghost sm"
+                title="把选中文字排成行内代码"
+                onClick={() => withArea((el) => surroundAtCursor(el, '`', '`', '代码'))}
+              >代码</button>
+              <button class="ghost sm" title="插入一张 Markdown 表格" onClick={insertTable}>表格</button>
+              <button class="ghost sm" title="把图片插入光标处" onClick={addImage}>插图</button>
+              <button
+                class="ghost sm"
+                title="把选中文字原地换成填空位 ____"
+                onClick={makeBlank}
+              >设为填空</button>
+              <span class="grow"></span>
+              <button
+                class="ghost sm"
+                onClick={() => { preview.value = !preview.value }}
+              >{preview.value ? '收起预览' : '排版预览'}</button>
+            </div>
+            {preview.value
+              ? <div class="r-preview" innerHTML={renderRecite(c.text, c.answers, false)} />
+              : null}
           </div>
           <div class="rfield">
             <label>

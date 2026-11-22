@@ -101,14 +101,10 @@
                     android:fillViewport="true"
                     android:scrollbars="none">
 
-                    <TextView
+                    <com.lytree.qbank.ui.recite.ReciteRichView
                         android:id="@+id/tvText"
                         android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:lineSpacingExtra="8dp"
-                        android:textColor="@color/fb_text_primary"
-                        android:textSize="@dimen/fb_text_card_title"
-                        tools:text="习近平新时代中国特色社会主义思想是马克思主义基本原理同中国具体实际相结合、同中华优秀传统文化相结合的重大成果。" />
+                        android:layout_height="wrap_content" />
                 </ScrollView>
 
                 <TextView
