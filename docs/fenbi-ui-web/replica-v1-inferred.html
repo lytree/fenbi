@@ -1,0 +1,1214 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>粉笔 Web 端 · 答题 / 解析界面复刻</title>
+<style>
+:root{
+  --blue:#3c7cfc; --blue-soft:#eff2fe; --blue-soft2:#ebf1fe; --blue-line:#c9d8fd;
+  --green:#2bc8a0; --green-soft:#f4fcfa; --green-line:#bfece0;
+  --red:#ff5a5a; --red-soft:#fff7f7; --red-line:#ffd6d6;
+  --ink:#32343a; --ink2:#636e92; --ink3:#9ea5bb; --ink4:#afb6bc;
+  --line:#dde0e5; --line-soft:#eef0f4;
+  --bg:#f7f8fa; --fill:#f2f2f5; --fill2:#f5f7fa;
+  --orange:#ff7a00;
+  --sh:0 1px 2px rgba(16,24,40,.04), 0 10px 28px -18px rgba(16,24,40,.18);
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--bg);color:var(--ink);
+  font-family:"PingFang SC","Microsoft YaHei","Hiragino Sans GB","Source Han Sans SC",system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;
+}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+b,strong{font-weight:600}
+.sprite{position:absolute;width:0;height:0;overflow:hidden}
+.ic{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:#d8dce4;border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:#c4c9d4}
+::-webkit-scrollbar-track{background:transparent}
+
+/* ---------------- topbar ---------------- */
+.topbar{
+  height:56px;display:flex;align-items:center;gap:10px;padding:0 16px;
+  background:#fff;border-bottom:1px solid var(--line);position:relative;z-index:30;
+}
+.tb-left{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
+.tb-center{position:absolute;left:50%;transform:translateX(-50%)}
+.tb-right{display:flex;align-items:center;gap:2px;flex:none}
+.pt{min-width:0}
+.pt-main{font-size:13px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:min(46vw,520px)}
+.pt-sub{font-size:11px;color:var(--ink3);margin-top:-1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.icon-btn{width:34px;height:34px;border-radius:8px;display:grid;place-items:center;color:var(--ink2);transition:.14s;position:relative}
+.icon-btn:hover{background:var(--fill2);color:var(--ink)}
+.icon-btn.on{background:var(--blue-soft);color:var(--blue)}
+.icon-btn.on.flag{background:#fff4e8;color:var(--orange)}
+.icon-btn .dot-mark{position:absolute;top:7px;right:7px;width:5px;height:5px;border-radius:50%;background:var(--orange);display:none}
+.icon-btn.has-mark .dot-mark{display:block}
+.timer{
+  display:flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:16px;
+  background:var(--fill2);color:var(--ink3);font-variant-numeric:tabular-nums;font-size:13px;
+}
+.timer .t-val{font-size:14px;font-weight:600;color:var(--ink2)}
+.timer.warn{background:#fff3f3}
+.timer.warn,.timer.warn .t-val,.timer.warn .ic{color:var(--red)}
+.btn{
+  height:34px;padding:0 16px;border-radius:6px;font-size:14px;font-weight:500;
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;transition:.14s;white-space:nowrap;
+}
+.btn-primary{background:var(--blue);color:#fff;box-shadow:0 1px 2px rgba(60,124,252,.24)}
+.btn-primary:hover{background:#2f6ceb}
+.btn-primary:active{transform:translateY(1px)}
+.btn-ghost{background:#fff;border:1px solid var(--line);color:var(--ink)}
+.btn-ghost:hover{border-color:#c7ccd6;background:#fafbfc}
+.btn-soft{background:var(--blue-soft);color:var(--blue)}
+.btn-soft:hover{background:#e6ecfe}
+.btn-sm{height:30px;padding:0 12px;font-size:13px;border-radius:6px}
+.btn-block{width:100%;height:40px}
+
+/* ---------------- layout ---------------- */
+.body{height:calc(100vh - 56px);display:flex;overflow:hidden}
+.stage{flex:1;min-width:0;overflow-y:auto;overscroll-behavior:contain;padding:20px 24px 28px;scroll-behavior:smooth}
+.stage.is-split{display:flex;overflow:hidden;padding:16px 20px 20px}
+
+/* ---------------- sheet ---------------- */
+.sheet{
+  max-width:860px;margin:0 auto;background:#fff;border:1px solid var(--line-soft);
+  border-radius:12px;padding:26px 32px 24px;box-shadow:var(--sh);
+}
+.split{display:flex;gap:16px;flex:1;height:100%;min-height:0;width:100%;max-width:1480px;margin:0 auto}
+.mat,.pane{background:#fff;border:1px solid var(--line-soft);border-radius:12px;box-shadow:var(--sh);overflow-y:auto;padding:24px 26px}
+.mat{width:42%;flex:none}
+.pane{flex:1;min-width:0;display:flex;flex-direction:column}
+.pane>*{flex:0 0 auto}
+.pane .q-foot{margin-top:auto}
+.mat-h{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.tag{
+  height:21px;padding:0 7px;border-radius:3px;background:var(--blue-soft);color:var(--blue);
+  font-size:11px;font-weight:500;display:inline-flex;align-items:center;flex:none;letter-spacing:.2px;
+}
+.mat-title{font-size:13px;color:var(--ink2);font-weight:500}
+.mat-body{font-size:13.5px;line-height:1.95;color:#3d424a;text-align:justify}
+.mat-body p{margin:0 0 10px}
+.mat-body table{width:100%;border-collapse:collapse;font-size:12px;margin:12px 0 4px;font-variant-numeric:tabular-nums}
+.mat-body th,.mat-body td{border:1px solid var(--line-soft);padding:7px 8px;text-align:right}
+.mat-body th:first-child,.mat-body td:first-child{text-align:left}
+.mat-body th{background:var(--fill2);font-weight:600;color:var(--ink2);text-align:center;white-space:nowrap;font-size:11.5px}
+.mat-body th:first-child{text-align:left}
+.mat-body .cap{font-size:12px;color:var(--ink3);margin-top:2px}
+
+/* ---------------- question ---------------- */
+.q-head{display:flex;align-items:center;gap:9px;margin-bottom:14px}
+.q-no{font-size:17px;font-weight:700;letter-spacing:.2px}
+.q-meta{margin-left:auto;font-size:12px;color:var(--ink3);font-variant-numeric:tabular-nums}
+.stem{font-size:15.5px;line-height:1.9;color:#2b2e33;text-align:justify}
+.stem .sub{display:block;margin-top:8px;color:var(--ink2);font-size:14px}
+.figs{display:flex;align-items:center;gap:14px;margin:18px 0 8px;flex-wrap:wrap}
+.figs .fig{width:72px;height:72px}
+.figs .arrow{color:var(--ink4);font-size:14px}
+.figs .unknown{width:72px;height:72px;border:1px dashed var(--line);border-radius:6px;display:grid;place-items:center;color:var(--ink4);font-size:18px}
+
+.options{margin-top:18px;display:flex;flex-direction:column;gap:9px}
+.options.grid2{display:grid;grid-template-columns:1fr 1fr;gap:9px 14px}
+.opt{
+  display:flex;gap:11px;padding:8px 14px 8px 9px;border:1px solid transparent;border-radius:8px;
+  cursor:pointer;align-items:flex-start;transition:background .14s,border-color .14s;
+}
+.opt:hover{background:var(--fill2);border-color:#e5e8ee}
+.opt .dot{
+  width:26px;height:26px;border-radius:50%;background:var(--fill);color:var(--ink2);
+  font-size:13px;font-weight:600;display:grid;place-items:center;flex:none;margin-top:1px;transition:.14s;
+}
+.opt .txt{font-size:15px;line-height:1.75;padding-top:1px}
+.opt .txt .fig{width:88px;height:88px;margin-top:2px}
+.opt:has(.fig){position:relative;justify-content:center;padding:14px 12px}
+.opt:has(.fig) .dot{position:absolute;left:12px;top:12px;margin:0}
+.opt:has(.fig) .txt{padding-top:0}
+.opt.sel{background:var(--blue-soft);border-color:var(--blue-line)}
+.opt.sel .dot{background:var(--blue);color:#fff}
+.opt.right{background:var(--green-soft);border-color:var(--green-line)}
+.opt.right .dot{background:var(--green);color:#fff}
+.opt.wrong{background:var(--red-soft);border-color:var(--red-line)}
+.opt.wrong .dot{background:var(--red);color:#fff}
+.opt.dim{opacity:.72}
+
+.q-foot{display:flex;align-items:center;gap:10px;margin-top:26px;padding-top:18px;border-top:1px solid var(--line-soft)}
+.q-foot .hint{font-size:12.5px;color:var(--ink3);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.q-foot .btn{flex:none}
+.q-foot .spacer{flex:1}
+
+/* ---------------- solution ---------------- */
+.result{
+  display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:8px;margin-bottom:20px;
+  font-size:13.5px;font-weight:500;
+}
+.result .ic{width:17px;height:17px}
+.result.ok{background:var(--green-soft);color:#1aa07f;box-shadow:inset 0 0 0 1px var(--green-line)}
+.result.no{background:var(--red-soft);color:#e04b4b;box-shadow:inset 0 0 0 1px var(--red-line)}
+.result.miss{background:var(--fill2);color:var(--ink2);box-shadow:inset 0 0 0 1px #e6e9ef}
+.result .r-sub{margin-left:auto;font-size:12px;font-weight:400;color:var(--ink3)}
+
+.compare{display:flex;border-radius:8px;overflow:hidden;background:var(--fill2);margin-top:18px}
+.cmp{flex:1;display:flex;align-items:center;gap:7px;padding:11px 16px;font-size:13.5px;color:var(--ink2)}
+.cmp+.cmp{border-left:1px solid #e8ebf1}
+.cmp b{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums}
+.cmp .g{color:var(--green)}
+.cmp .r{color:var(--red)}
+.cmp .none{color:var(--ink3);font-size:13px;font-weight:400}
+
+.stats{display:flex;margin-top:12px;border:1px solid var(--line-soft);border-radius:8px;overflow:hidden;background:#fff}
+.stats .st{flex:1;padding:12px 8px;text-align:center}
+.stats .st+.st{border-left:1px solid var(--line-soft)}
+.stats .v{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.2}
+.stats .v i{font-size:11px;font-weight:500;font-style:normal;margin-left:1px}
+.stats .k{font-size:11.5px;color:var(--ink3);margin-top:3px}
+.blue{color:var(--blue)} .green{color:var(--green)} .red{color:var(--red)}
+
+.sec{margin-top:26px}
+.sec-h{display:flex;align-items:center;gap:8px;font-size:14.5px;font-weight:600;color:#2b2e33;margin-bottom:12px}
+.sec-h::before{content:"";width:3px;height:13px;border-radius:2px;background:var(--blue);flex:none}
+.sec-h .ic{color:var(--ink3);width:16px;height:16px;margin-left:auto;cursor:pointer;transition:.2s}
+.sec-h.collapsed .ic{transform:rotate(180deg)}
+.sec-h .badge{margin-left:auto;font-size:11px;font-weight:400;color:var(--ink3)}
+
+.analysis{font-size:14px;line-height:1.95;color:#3b4048;text-align:justify}
+.analysis p{margin:0 0 10px}
+.analysis .hl{color:var(--blue);font-weight:600}
+.analysis .tip{background:var(--fill2);border-left:2px solid var(--blue-line);padding:10px 14px;border-radius:0 6px 6px 0;font-size:13px;color:var(--ink2);margin:12px 0}
+.analysis .kv{display:flex;gap:8px;margin-top:10px}
+.analysis .kv b{color:var(--ink2);font-weight:500;flex:none}
+
+.video{display:flex;gap:14px;padding:10px;border:1px solid var(--line-soft);border-radius:10px;transition:.14s;cursor:pointer}
+.video:hover{border-color:var(--blue-line);background:#fbfcff}
+.video .cover{
+  width:196px;aspect-ratio:16/9;flex:none;border-radius:7px;position:relative;overflow:hidden;
+  background:radial-gradient(120% 120% at 20% 0%,#3d5687 0%,#22304d 46%,#131a2b 100%);
+  display:grid;place-items:center;color:#fff;
+}
+.video .cover .play{
+  width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.92);color:#233052;
+  display:grid;place-items:center;box-shadow:0 4px 12px rgba(0,0,0,.28);
+}
+.video .cover .play .ic{width:14px;height:14px;margin-left:1px}
+.video .cover .dur{
+  position:absolute;right:6px;bottom:6px;font-size:10.5px;padding:1px 5px;border-radius:3px;
+  background:rgba(0,0,0,.55);color:#fff;font-variant-numeric:tabular-nums;
+}
+.video .cover .poster-txt{position:absolute;left:10px;top:8px;font-size:11px;color:rgba(255,255,255,.72);letter-spacing:.4px}
+.video .v-info{min-width:0;display:flex;flex-direction:column;justify-content:center;gap:5px}
+.video .v-t{font-size:14px;font-weight:500;color:var(--ink);line-height:1.5}
+.video .v-m{font-size:12px;color:var(--ink3);display:flex;align-items:center;gap:6px}
+.stars{color:#ffb43a;letter-spacing:1px;font-size:11px}
+
+.pills{display:flex;flex-wrap:wrap;gap:8px}
+.pill{height:28px;padding:0 12px;border-radius:14px;background:var(--fill2);color:var(--ink2);font-size:12.5px;display:inline-flex;align-items:center}
+.pill.blue{background:var(--blue-soft);color:var(--blue)}
+
+.gblock{background:var(--fill2);border-radius:8px;padding:12px 14px;font-size:13px;color:var(--ink2);line-height:1.7}
+.gblock .src-t{color:var(--ink);font-size:13px}
+
+.similar{display:flex;align-items:center;gap:12px;background:linear-gradient(90deg,#f4f8ff,#fbfcff);border:1px solid #e6eeff;border-radius:10px;padding:14px 16px}
+.similar .s-t{flex:1;font-size:13px;color:var(--ink2);line-height:1.65}
+.similar .s-t b{color:var(--ink);font-weight:600}
+
+.note-row{display:flex;align-items:center;gap:10px;background:var(--fill2);border-radius:8px;padding:12px 14px;font-size:13px;color:var(--ink2)}
+.note-row .note-body{flex:1;color:var(--ink);font-size:13px;line-height:1.7;white-space:pre-wrap;word-break:break-word}
+.note-row.empty .note-body{color:var(--ink3)}
+
+.ai-row{display:flex;align-items:center;gap:10px;margin-top:26px;padding:12px 14px;border-radius:10px;background:linear-gradient(90deg,#f3f7ff,#f7f4ff);border:1px solid #e8e9ff}
+.ai-row .ic{color:#6e5bd8}
+.ai-row .ai-t{flex:1;font-size:13px;color:var(--ink2)}
+.ai-row .ai-t b{color:var(--ink)}
+
+/* ---------------- panel ---------------- */
+.panel{width:336px;flex:none;background:#fff;border-left:1px solid var(--line);display:flex;flex-direction:column}
+.pn-head{padding:18px 20px 10px;display:flex;align-items:center;gap:8px}
+.pn-title{font-size:15px;font-weight:600}
+.pn-count{margin-left:auto;font-size:12px;color:var(--ink3);font-variant-numeric:tabular-nums}
+.pn-count b{color:var(--blue);font-size:14px}
+.legend{display:flex;gap:14px;padding:0 20px 12px;font-size:11.5px;color:var(--ink2);border-bottom:1px solid var(--line-soft)}
+.lg{display:flex;align-items:center;gap:5px}
+.lg i{width:10px;height:10px;border-radius:3px;display:block}
+.lg i.a{background:var(--blue-soft2);box-shadow:inset 0 0 0 1px var(--blue)}
+.lg i.b{background:var(--fill)}
+.lg i.c{background:#fff;box-shadow:inset 0 0 0 1px var(--line)}
+.lg i.ok{background:var(--green-soft);box-shadow:inset 0 0 0 1px var(--green)}
+.lg i.no{background:var(--red-soft);box-shadow:inset 0 0 0 1px var(--red)}
+.pn-body{flex:1;overflow-y:auto;padding:4px 20px 12px}
+.sec-label{display:flex;justify-content:space-between;align-items:center;font-size:11.5px;color:var(--ink3);margin:14px 0 8px}
+.nums{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.num{
+  height:auto;aspect-ratio:1/1;border-radius:6px;background:var(--fill);color:var(--ink2);
+  font-size:14px;font-weight:500;display:grid;place-items:center;position:relative;
+  transition:.12s;font-variant-numeric:tabular-nums;outline:none;
+}
+.num:focus-visible{outline:2px solid #c9d8fd;outline-offset:2px}
+.num:hover{color:var(--ink);background:#ebedf1}
+.num.done{background:var(--blue-soft2);color:var(--blue);box-shadow:inset 0 0 0 1px var(--blue)}
+.num.ok{background:var(--green-soft);color:var(--green);box-shadow:inset 0 0 0 1px var(--green)}
+.num.no{background:var(--red-soft);color:var(--red);box-shadow:inset 0 0 0 1px var(--red)}
+.num.cur{box-shadow:inset 0 0 0 1px var(--blue),0 0 0 2px #dbe6ff;font-weight:600}
+.num.flag::after{
+  content:"";position:absolute;top:-1px;right:-1px;width:0;height:0;
+  border-top:9px solid var(--orange);border-left:9px solid transparent;border-top-right-radius:6px;
+}
+.pn-foot{padding:14px 20px 18px;border-top:1px solid var(--line-soft);background:#fff}
+.bar{height:6px;border-radius:3px;background:var(--fill);overflow:hidden;margin-bottom:10px}
+.bar i{display:block;height:100%;border-radius:3px;background:var(--blue);transition:width .3s}
+.pn-stat{font-size:12px;color:var(--ink3);margin-bottom:12px;display:flex;justify-content:space-between;gap:10px;white-space:nowrap}
+.pn-stat b{color:var(--ink2);font-weight:500}
+
+/* ---------------- overlays ---------------- */
+.mask{position:fixed;inset:0;background:rgba(16,24,40,.45);display:grid;place-items:center;z-index:100;animation:fade .16s ease}
+.mask[hidden]{display:none}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.dialog{width:392px;background:#fff;border-radius:12px;padding:22px 24px 18px;box-shadow:0 24px 60px -20px rgba(16,24,40,.4);animation:pop .18s ease}
+@keyframes pop{from{transform:translateY(8px);opacity:.6}to{transform:none;opacity:1}}
+.dlg-h{font-size:16px;font-weight:600;margin-bottom:8px}
+.dlg-b{font-size:13.5px;color:var(--ink2);line-height:1.8}
+.dlg-b .kv{display:flex;gap:18px;margin-top:12px;background:var(--fill2);border-radius:8px;padding:12px 14px}
+.dlg-b .kv div{flex:1}
+.dlg-b .kv .k{font-size:11.5px;color:var(--ink3)}
+.dlg-b .kv .v{font-size:16px;font-weight:600;color:var(--ink)}
+.dlg-f{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+.dialog textarea{
+  width:100%;height:104px;margin-top:12px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;
+  font:inherit;font-size:13.5px;line-height:1.7;resize:vertical;outline:none;color:var(--ink);
+}
+.dialog textarea:focus{border-color:var(--blue-line);box-shadow:0 0 0 3px rgba(60,124,252,.1)}
+
+.menu{
+  position:absolute;top:52px;right:14px;width:172px;background:#fff;border:1px solid var(--line);
+  border-radius:8px;box-shadow:0 12px 32px -12px rgba(16,24,40,.28);padding:6px;z-index:60;
+}
+.menu[hidden]{display:none}
+.menu button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:8px 10px;border-radius:6px;font-size:13px;color:var(--ink2)}
+.menu button:hover{background:var(--fill2);color:var(--ink)}
+.menu .sep{height:1px;background:var(--line-soft);margin:5px 8px}
+
+.toast{
+  position:fixed;left:50%;bottom:34px;transform:translate(-50%,14px);opacity:0;pointer-events:none;
+  background:rgba(32,36,44,.92);color:#fff;font-size:13px;padding:9px 16px;border-radius:8px;
+  transition:.22s;z-index:200;max-width:80vw;
+}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+
+@media (max-width:1180px){ .pt-main{max-width:34vw} }
+@media (max-width:980px){
+  .panel{display:none}
+  .tb-center{position:static;transform:none;margin-left:8px}
+}
+@media (max-width:860px){
+  .stage{padding:12px}
+  .sheet{padding:20px 18px}
+  .split{flex-direction:column}
+  .mat{width:auto;max-height:38vh}
+  .options.grid2{grid-template-columns:1fr}
+  .pt-main{max-width:30vw}
+}
+</style>
+</head>
+<body>
+<svg class="sprite" aria-hidden="true">
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.6V12l3 2"/></symbol>
+  <symbol id="i-flag" viewBox="0 0 24 24"><path d="M6 21V4"/><path d="M6 5h9.5l-1.3 3.4L15.5 12H6z"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 4.4l2.35 4.86 5.15.7-3.76 3.7.94 5.3L12 16.42 7.32 18.96l.94-5.3-3.76-3.7 5.15-.7z"/></symbol>
+  <symbol id="i-pen" viewBox="0 0 24 24"><path d="M4 20h4L18.5 9.5l-4-4L4 16z"/><path d="M13.6 6.4l4 4"/></symbol>
+  <symbol id="i-dots" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="18.5" cy="12" r="1.5" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-left" viewBox="0 0 24 24"><path d="M14.5 6l-6 6 6 6"/></symbol>
+  <symbol id="i-right" viewBox="0 0 24 24"><path d="M9.5 6l6 6-6 6"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M6 9.5l6 6 6-6"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5l10.5 6.5L8 18.5z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3.2l1.9 5.4 5.4 1.9-5.4 1.9L12 17.8l-1.9-5.4L4.7 10.5l5.4-1.9z"/><path d="M18.4 15.6l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.6l4.4 4.4L19 7.6"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-minus" viewBox="0 0 24 24"><path d="M7 12h10"/></symbol>
+  <symbol id="i-report" viewBox="0 0 24 24"><path d="M6 4h9l4 4v12H6z"/><path d="M14.5 4v4.5H19"/><path d="M9 13h6M9 16.5h4"/></symbol>
+  <symbol id="i-eraser" viewBox="0 0 24 24"><path d="M8 20h11"/><path d="M4.8 15.2l6-6a2 2 0 012.8 0l3.2 3.2a2 2 0 010 2.8L13.6 18.4H8z"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.2A8 8 0 019.8 4 8.2 8.2 0 1020 14.2z"/></symbol>
+</svg>
+
+<div class="app">
+  <header class="topbar">
+    <div class="tb-left">
+      <button class="icon-btn" id="btnBack" title="退出（Esc）"><svg class="ic"><use href="#i-back"/></svg></button>
+      <div class="pt">
+        <div class="pt-main" id="ptMain">2026年国家公务员录用考试《行政职业能力测验》（副省级）</div>
+        <div class="pt-sub" id="ptSub">资料分析 · 第 16/20 题</div>
+      </div>
+    </div>
+    <div class="tb-center">
+      <div class="timer" id="timer">
+        <svg class="ic" style="width:15px;height:15px"><use href="#i-clock"/></svg>
+        <span class="t-val" id="tVal">68:12</span>
+        <span class="t-sep">/</span>
+        <span class="t-total">120:00</span>
+      </div>
+    </div>
+    <div class="tb-right">
+      <button class="icon-btn" id="btnFlag" title="标记本题（F）">
+        <svg class="ic"><use href="#i-flag"/></svg><span class="dot-mark"></span>
+      </button>
+      <button class="icon-btn" id="btnFav" title="收藏本题（S）"><svg class="ic"><use href="#i-star"/></svg></button>
+      <button class="icon-btn" id="btnNote" title="本题笔记"><svg class="ic"><use href="#i-pen"/></svg></button>
+      <button class="icon-btn" id="btnMore" title="更多"><svg class="ic"><use href="#i-dots"/></svg></button>
+      <button class="btn btn-primary" id="btnSubmit" style="margin-left:6px">交卷</button>
+    </div>
+  </header>
+
+  <main class="body">
+    <section class="stage" id="stage"></section>
+    <aside class="panel" id="panel">
+      <div class="pn-head">
+        <span class="pn-title">答题卡</span>
+        <span class="pn-count"><b id="ansCount">0</b>/<span id="totalCount">20</span></span>
+      </div>
+      <div class="legend" id="legend"></div>
+      <div class="pn-body" id="pnBody"></div>
+      <div class="pn-foot">
+        <div class="bar"><i id="barFill" style="width:0"></i></div>
+        <div class="pn-stat"><span id="pnStat">已答 0 · 未答 20</span><span id="pnFlag">标记 0</span></div>
+        <button class="btn btn-primary btn-block" id="btnSubmit2">交卷并查看结果</button>
+      </div>
+    </aside>
+  </main>
+</div>
+
+<div class="menu" id="menu" hidden>
+  <button data-act="draft"><svg class="ic" style="width:16px;height:16px"><use href="#i-eraser"/></svg>草稿纸</button>
+  <button data-act="fix"><svg class="ic" style="width:16px;height:16px"><use href="#i-report"/></svg>题目纠错</button>
+  <button data-act="dark"><svg class="ic" style="width:16px;height:16px"><use href="#i-moon"/></svg>夜间模式</button>
+</div>
+
+<div class="mask" id="mask" hidden>
+  <div class="dialog" id="dialog"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  var ICON = function (id, cls) { return '<svg class="' + (cls || 'ic') + '"><use href="#' + id + '"/></svg>'; };
+  var FIG = function (x, y) {
+    return '<svg class="fig" viewBox="0 0 64 64"><rect x="1.2" y="1.2" width="61.6" height="61.6" rx="6" fill="#fff" stroke="#dde0e5"/>' +
+      '<circle cx="' + x + '" cy="' + y + '" r="8" fill="#3c7cfc"/></svg>';
+  };
+
+  /* ============================================================
+     试卷数据（自编题面，结构与粉笔一致）
+     ============================================================ */
+  var MATERIAL_DA = {
+    title: '2024年某市规模以上工业运行情况',
+    html:
+      '<p>2024年，某市规模以上工业增加值同比增长6.2%，增速比前三季度加快0.5个百分点。分三大门类看，采矿业增加值增长3.1%，制造业增长6.6%，电力、热力、燃气及水生产和供应业增长4.9%。分经济类型看，国有控股企业增加值增长4.4%，股份制企业增长7.1%，外商及港澳台商投资企业增长2.8%，私营企业增长5.9%。</p>' +
+      '<p>全年规模以上工业企业实现营业收入123458亿元，同比增长5.4%；利润总额7845亿元，同比增长8.1%。每百元营业收入中的成本为84.3元，比上年减少0.4元。</p>' +
+      '<table><thead><tr><th>指标</th><th>绝对量（亿元）</th><th>同比增长（%）</th></tr></thead><tbody>' +
+      '<tr><td>营业收入</td><td>123458</td><td>5.4</td></tr>' +
+      '<tr><td>营业成本</td><td>104086</td><td>5.1</td></tr>' +
+      '<tr><td>利润总额</td><td>7845</td><td>8.1</td></tr>' +
+      '<tr><td>　其中：制造业利润</td><td>6512</td><td>9.4</td></tr>' +
+      '<tr><td>研发费用</td><td>3120</td><td>11.2</td></tr>' +
+      '</tbody></table>' +
+      '<div class="cap">注：本表为规模以上工业企业口径，增速按可比口径计算。</div>'
+  };
+
+  var SECTIONS = [
+    {
+      name: '常识判断',
+      items: [
+        {
+          type: '单选题',
+          stem: '根据《中华人民共和国宪法》，下列关于国家机构的表述正确的是：',
+          opts: [
+            { k: 'A', html: '国务院总理由全国人民代表大会选举产生' },
+            { k: 'B', html: '中央军事委员会实行主席负责制' },
+            { k: 'C', html: '国家监察委员会只对全国人民代表大会常务委员会负责' },
+            { k: 'D', html: '最高人民法院对国务院负责' }
+          ],
+          ans: 'B', mine: 'B', rate: 78, time: 32, hard: 'A',
+          analysis: '<p>《宪法》第九十三条规定，中央军事委员会实行主席负责制。故 <span class="hl">B</span> 正确。</p>' +
+            '<div class="kv"><b>A 项</b><span>国务院总理由国家主席提名，全国人民代表大会决定，并非选举产生。</span></div>' +
+            '<div class="kv"><b>C 项</b><span>国家监察委员会对全国人民代表大会及其常务委员会负责。</span></div>' +
+            '<div class="kv"><b>D 项</b><span>最高人民法院对全国人民代表大会及其常务委员会负责，与国务院是并行关系。</span></div>',
+          points: ['宪法', '国家机构', '主席负责制'],
+          source: '内部题库 · 常识判断专项练习'
+        },
+        {
+          type: '单选题',
+          stem: '下列我国科技成就与其所属领域对应错误的是：',
+          opts: [
+            { k: 'A', html: '九章——量子计算' },
+            { k: 'B', html: '祖冲之号——量子计算' },
+            { k: 'C', html: '天问一号——月球探测' },
+            { k: 'D', html: '奋斗者号——深海载人潜水器' }
+          ],
+          ans: 'C', rate: 65, time: 21, hard: 'C',
+          analysis: '<p>天问一号是我国首次火星探测任务，“嫦娥”系列才是月球探测工程，故 <span class="hl">C</span> 项对应错误。</p>',
+          points: ['科技常识', '重大工程'],
+          source: '内部题库 · 常识判断专项练习'
+        },
+        {
+          type: '单选题',
+          stem: '下列关于我国社会主义基本经济制度的表述，正确的是：',
+          opts: [
+            { k: 'A', html: '公有制经济和非公有制经济在国民经济中的地位完全相同' },
+            { k: 'B', html: '按劳分配是现阶段唯一的分配方式' },
+            { k: 'C', html: '市场在资源配置中起决定性作用' },
+            { k: 'D', html: '国有经济必须在所有行业中占支配地位' }
+          ],
+          ans: 'C', mine: 'C', rate: 82, time: 26, hard: 'B',
+          analysis: '<p>党的十九届四中全会明确，<span class="hl">市场在资源配置中起决定性作用</span>，同时更好发挥政府作用。故 C 正确。</p>' +
+            '<p>A 项混淆了“地位”与“作用”，公有制为主体、多种所有制经济共同发展；B 项分配方式还包括按生产要素分配；D 项国有经济的主导作用体现在控制力上，而非所有行业。</p>',
+          points: ['经济常识', '基本经济制度'],
+          source: '内部题库 · 常识判断专项练习'
+        },
+        {
+          type: '单选题',
+          stem: '下列历史事件按时间先后排序正确的是：<span class="sub">①商鞅变法　②百家争鸣　③罢黜百家，独尊儒术　④文景之治</span>',
+          opts: [
+            { k: 'A', html: '②①④③' },
+            { k: 'B', html: '①②④③' },
+            { k: 'C', html: '②①③④' },
+            { k: 'D', html: '①②③④' }
+          ],
+          ans: 'A', mine: 'B', rate: 54, time: 47, hard: 'B', two: true,
+          analysis: '<p>百家争鸣出现在春秋战国时期；商鞅变法始于公元前356年；文景之治为西汉文帝、景帝时期（前180—前141年）；罢黜百家发生在汉武帝时期（前134年）。故顺序为 <span class="hl">②①④③</span>，选 A。</p>',
+          points: ['历史常识', '时间排序'],
+          source: '内部题库 · 常识判断专项练习'
+        },
+        {
+          type: '单选题',
+          stem: '下列生活现象与其涉及的物理原理对应错误的是：',
+          opts: [
+            { k: 'A', html: '高压锅煮饭更快——气压增大使沸点升高' },
+            { k: 'B', html: '夏天洒水降温——水蒸发吸热' },
+            { k: 'C', html: '汽车后视镜——凹面镜扩大视野' },
+            { k: 'D', html: '筷子在水中看起来变弯——光的折射' }
+          ],
+          ans: 'C', mine: 'C', rate: 71, time: 35, hard: 'C',
+          analysis: '<p>汽车后视镜利用的是<span class="hl">凸面镜</span>，成正立缩小的虚像，从而扩大视野；凹面镜用于聚光，如手电筒反光碗。故 C 项对应错误。</p>',
+          points: ['物理常识', '光学'],
+          source: '内部题库 · 常识判断专项练习'
+        }
+      ]
+    },
+    {
+      name: '言语理解与表达',
+      items: [
+        {
+          type: '单选题',
+          stem: '在信息过载的时代，真正的稀缺不是信息本身，而是______信息的注意力。当算法把源源不断的内容推到眼前，人们反而更容易陷入一种被动的浏览状态。<span class="sub">填入画横线部分最恰当的一项是：</span>',
+          opts: [
+            { k: 'A', html: '捕捉' },
+            { k: 'B', html: '筛选' },
+            { k: 'C', html: '储存' },
+            { k: 'D', html: '传播' }
+          ],
+          ans: 'B', mine: 'A', rate: 68, time: 41, hard: 'A', two: true,
+          analysis: '<p>横线处与“信息”搭配，且要与后文“被动的浏览状态”形成对照——稀缺的是<span class="hl">主动甄别</span>信息的能力。“筛选”最贴合语境。</p>' +
+            '<p>“捕捉”“储存”“传播”都无法与“注意力稀缺”构成语义呼应，且与“被动浏览”缺乏对比关系。</p>',
+          points: ['逻辑填空', '语境分析', '词语搭配'],
+          source: '内部题库 · 言语理解专项练习'
+        },
+        {
+          type: '单选题',
+          stem: '数字技术正在重塑乡村的产业形态。电商平台让山货出山，直播让非遗被看见，智慧农业让亩产提升。但技术只是工具，______。<span class="sub">填入画横线部分最恰当的一句是：</span>',
+          opts: [
+            { k: 'A', html: '乡村的全面振兴仍需久久为功' },
+            { k: 'B', html: '关键在于让农民真正参与并从中获益' },
+            { k: 'C', html: '这需要大量资金和人才的持续投入' },
+            { k: 'D', html: '城市的发展经验未必适用于乡村' }
+          ],
+          ans: 'B', mine: 'B', rate: 74, time: 38, hard: 'B',
+          analysis: '<p>“但”转折后应承接“技术只是工具”，落到<span class="hl">人的主体性</span>上。B 项“让农民参与并获益”与工具属性形成对照，衔接最紧密。</p>' +
+            '<p>A 项空泛，C 项只谈投入，D 项转移话题，均未回应“工具”这一落脚点。</p>',
+          points: ['语句填入', '转折关系'],
+          source: '内部题库 · 言语理解专项练习'
+        },
+        {
+          type: '单选题',
+          stem: '传统村落的价值不仅在于建筑，更在于附着其上的生活方式与人际网络。当村民搬离，房屋即便修葺一新，也只是布景。因此，保护的关键是让村落仍然“活着”。<span class="sub">这段文字意在说明：</span>',
+          opts: [
+            { k: 'A', html: '传统村落的建筑价值十分有限' },
+            { k: 'B', html: '村民外迁直接导致村落衰败' },
+            { k: 'C', html: '传统村落保护应重视人的存续' },
+            { k: 'D', html: '“布景式”保护缺乏实际意义' }
+          ],
+          ans: 'C', rate: 81, time: 44, hard: 'B',
+          analysis: '<p>文段由“不仅……更……”递进到生活方式与人际网络，尾句“让村落仍然活着”点明主旨，强调<span class="hl">人的存续</span>，C 项最准确。</p>' +
+            '<p>A、D 是论证过程中的局部信息；B 是问题表述，不是对策。</p>',
+          points: ['片段阅读', '主旨概括'],
+          source: '内部题库 · 言语理解专项练习'
+        },
+        {
+          type: '单选题',
+          stem: '下列各句中，没有语病的一句是：',
+          opts: [
+            { k: 'A', html: '通过这次集中学习，使大家提高了认识。' },
+            { k: 'B', html: '能否坚持锻炼，是身体健康的重要保证。' },
+            { k: 'C', html: '他不仅会弹钢琴，而且会画画。' },
+            { k: 'D', html: '我们要防止类似事故不再发生。' }
+          ],
+          ans: 'C', mine: 'C', rate: 76, time: 39, hard: 'C',
+          analysis: '<p>C 项搭配得当，没有语病。</p>' +
+            '<div class="kv"><b>A 项</b><span>“通过……使……”导致主语残缺。</span></div>' +
+            '<div class="kv"><b>B 项</b><span>“能否”是两面，与“重要保证”一面不搭配。</span></div>' +
+            '<div class="kv"><b>D 项</b><span>“防止”与“不再”双重否定，语意相反。</span></div>',
+          points: ['病句辨析', '成分残缺'],
+          source: '内部题库 · 言语理解专项练习'
+        },
+        {
+          type: '单选题',
+          stem: '将以下五个句子重新排列，语序正确的是：<span class="sub">①最终形成了一套完整的灌溉系统　②先民们在河谷地带开垦农田　③并修筑了纵横交错的沟渠　④为解决旱涝问题　⑤使零散的耕地连成一片</span>',
+          opts: [
+            { k: 'A', html: '②④③①⑤' },
+            { k: 'B', html: '④②③⑤①' },
+            { k: 'C', html: '②③④①⑤' },
+            { k: 'D', html: '④③②⑤①' }
+          ],
+          ans: 'B', mine: 'B', rate: 59, time: 62, hard: 'A', two: true,
+          analysis: '<p>④“为解决旱涝问题”是目的状语，置于句首最自然；②开垦农田是行为起点；③“并修筑”承接②；⑤是沟渠带来的直接效果；①“最终形成”收束全段。故顺序为 <span class="hl">④②③⑤①</span>。</p>',
+          points: ['语句排序', '行文逻辑'],
+          source: '内部题库 · 言语理解专项练习'
+        }
+      ]
+    },
+    {
+      name: '判断推理',
+      items: [
+        {
+          type: '单选题',
+          stem: '从所给的四个选项中，选择最合适的一个填入问号处，使之呈现一定的规律性。',
+          extra: '<div class="figs">' + FIG(18, 18) + FIG(46, 18) + FIG(46, 46) + '<span class="unknown">?</span></div>',
+          opts: [
+            { k: 'A', html: FIG(18, 46) },
+            { k: 'B', html: FIG(18, 18) },
+            { k: 'C', html: FIG(46, 18) },
+            { k: 'D', html: FIG(32, 32) }
+          ],
+          ans: 'A', mine: 'C', rate: 47, time: 73, hard: 'A', two: true,
+          analysis: '<p>观察黑点在正方形内的位置：左上 → 右上 → 右下，每次沿<span class="hl">顺时针方向移动一个角</span>。因此问号处黑点应位于左下角，选 A。</p>' +
+            '<p>图形推理中位置类规律优先看“平移方向 + 步长”，本题步长为 1，方向为顺时针。</p>',
+          points: ['图形推理', '位置类', '顺时针平移'],
+          source: '内部题库 · 判断推理专项练习',
+          video: { t: '图形推理：位置类的三种常见考法（平移 / 旋转 / 翻转）', dur: '06:18', score: '4.9', comments: '248' }
+        },
+        {
+          type: '单选题',
+          stem: '“锚定效应”指人们在做判断时过度依赖最初获得的信息，即使该信息与当前决策无关。<span class="sub">下列属于锚定效应的是：</span>',
+          opts: [
+            { k: 'A', html: '小王因第一家店报价 8000 元，觉得第二家 6500 元很便宜' },
+            { k: 'B', html: '小李根据天气预报决定是否带伞' },
+            { k: 'C', html: '小张比较了多家店铺的评价后作出选择' },
+            { k: 'D', html: '小赵凭多年经验判断股票走势' }
+          ],
+          ans: 'A', mine: 'A', rate: 85, time: 46, hard: 'B',
+          analysis: '<p>A 项中第一家店的报价成为“锚”，影响了小王对第二家价格的判断，符合定义。</p>' +
+            '<p>B 项依据有效信息决策；C 项是多源比较，恰是削弱锚定的做法；D 项属于经验判断，均不符合。</p>',
+          points: ['定义判断', '心理学效应'],
+          source: '内部题库 · 判断推理专项练习'
+        },
+        {
+          type: '单选题',
+          stem: '医生∶手术刀',
+          opts: [
+            { k: 'A', html: '画家∶画笔' },
+            { k: 'B', html: '农民∶土地' },
+            { k: 'C', html: '教师∶学生' },
+            { k: 'D', html: '厨师∶菜肴' }
+          ],
+          ans: 'A', rate: 88, time: 17, hard: 'D', two: true,
+          analysis: '<p>医生使用手术刀，二者是<span class="hl">职业与工具</span>的对应关系。画家使用画笔，关系一致，选 A。</p>' +
+            '<p>B 项土地是劳动对象；C 项学生是服务对象；D 项菜肴是劳动成果。</p>',
+          points: ['类比推理', '对应关系'],
+          source: '内部题库 · 判断推理专项练习'
+        },
+        {
+          type: '单选题',
+          stem: '某单位规定：只有通过考核，才能参加培训。小李参加了培训。<span class="sub">由此可以推出：</span>',
+          opts: [
+            { k: 'A', html: '小李通过了考核' },
+            { k: 'B', html: '小李没有通过考核' },
+            { k: 'C', html: '小李的考核成绩优秀' },
+            { k: 'D', html: '无法确定小李是否通过考核' }
+          ],
+          ans: 'A', mine: 'A', rate: 79, time: 28, hard: 'B',
+          analysis: '<p>“只有 A，才 B”可翻译为 <span class="hl">B → A</span>。已知小李参加培训（B 成立），可推出通过考核（A 成立），选 A。</p>',
+          points: ['翻译推理', '必要条件'],
+          source: '内部题库 · 判断推理专项练习'
+        },
+        {
+          type: '单选题',
+          stem: '研究发现，每天喝咖啡的人患某疾病的比例更低。因此，喝咖啡能预防该疾病。<span class="sub">以下哪项如果为真，最能削弱上述结论？</span>',
+          opts: [
+            { k: 'A', html: '喝咖啡的人群普遍收入更高、医疗条件更好' },
+            { k: 'B', html: '该研究的样本量超过十万人' },
+            { k: 'C', html: '咖啡中含有抗氧化物质' },
+            { k: 'D', html: '该疾病的整体发病率本身较低' }
+          ],
+          ans: 'A', mine: 'D', rate: 63, time: 58, hard: 'A',
+          analysis: '<p>题干由相关性推出因果。A 项指出存在<span class="hl">他因</span>（收入与医疗条件），切断了“喝咖啡→患病率低”的因果链，削弱力度最强。</p>' +
+            '<p>B 项加强可靠性；C 项提供机制解释，属于加强；D 项只说明基数低，不影响两组间的比较。</p>',
+          points: ['逻辑判断', '削弱论证', '他因削弱'],
+          source: '内部题库 · 判断推理专项练习',
+          video: { t: '论证削弱：他因、因果倒置与样本问题的力度比较', dur: '09:05', score: '4.7', comments: '512' }
+        }
+      ]
+    },
+    {
+      name: '资料分析',
+      material: MATERIAL_DA,
+      items: [
+        {
+          type: '单选题',
+          stem: '2024年该市规模以上工业营业收入利润率约为：',
+          opts: [
+            { k: 'A', html: '5.3%' },
+            { k: 'B', html: '6.4%' },
+            { k: 'C', html: '7.2%' },
+            { k: 'D', html: '8.9%' }
+          ],
+          ans: 'B', mine: 'C', rate: 62, time: 58, hard: 'C', two: true,
+          analysis: '<p>营业收入利润率 = 利润总额 ÷ 营业收入 = 7845 ÷ 123458 ≈ <span class="hl">6.35%</span>，与 B 项 6.4% 最接近。</p>' +
+            '<p>【速算】直除两位：7845 ÷ 123458 ≈ 0.0635，首两位商 63，即 6.3% 左右，四个选项中只有 B 落在这一区间，无需精算。</p>' +
+            '<div class="tip">易错点：把分母写成“营业成本”104086，会得到 7.5%，从而误选 C。利润率的分母是<span style="color:#32343a;font-weight:600">营业收入</span>，不是成本。</div>',
+          points: ['资料分析', '现期比重', '利润率', '直除法'],
+          source: '2026年国家公务员录用考试《行政职业能力测验》（副省级）第116题（考生回忆版）',
+          video: { t: '资料分析：利润率与比重类题目的速算套路', dur: '08:42', score: '4.8', comments: '126' },
+          similar: { text: '本题考点「现期比重 · 利润率」在近三年国考中出现 <b>12</b> 次，其中 8 次可用直除法在 30 秒内解决。', count: 5 },
+          note: '利润率 = 利润 ÷ 收入，别拿成本当分母。'
+        },
+        {
+          type: '单选题',
+          stem: '2024年该市规模以上工业企业营业收入利润率比上年约提高多少个百分点？',
+          opts: [
+            { k: 'A', html: '0.16' },
+            { k: 'B', html: '0.26' },
+            { k: 'C', html: '0.36' },
+            { k: 'D', html: '0.46' }
+          ],
+          ans: 'A', rate: 48, time: 96, hard: 'A', two: true,
+          analysis: '<p>先求基期利润率：基期利润 = 7845 ÷ 1.081 ≈ 7257，基期收入 = 123458 ÷ 1.054 ≈ 117134，基期利润率 ≈ 6.20%；现期 6.35%，提高约 <span class="hl">0.15～0.16 个百分点</span>，选 A。</p>' +
+            '<p>【速判】利润增速 8.1% 高于收入增速 5.4%，利润率必然上升；变化幅度 ≈ 6.35% × (8.1% − 5.4%) ÷ (1 + 8.1%) ≈ 0.16 个百分点。两步即可秒杀，无需精算两期。</p>',
+          points: ['资料分析', '两期比重', '利润率变化'],
+          source: '2026年国家公务员录用考试《行政职业能力测验》（副省级）第117题（考生回忆版）',
+          similar: { text: '「两期比重变化」是资料分析的高频难点，近五年国考平均每年考查 <b>2～3</b> 题。', count: 5 }
+        },
+        {
+          type: '单选题',
+          stem: '2024年该市制造业利润占规模以上工业企业利润总额的比重约为：',
+          opts: [
+            { k: 'A', html: '83%' },
+            { k: 'B', html: '78%' },
+            { k: 'C', html: '88%' },
+            { k: 'D', html: '73%' }
+          ],
+          ans: 'A', mine: 'A', rate: 80, time: 34, hard: 'C', two: true,
+          analysis: '<p>6512 ÷ 7845 ≈ <span class="hl">83.0%</span>，选 A。</p>' +
+            '<p>【估算】7845 × 80% = 6276，7845 × 85% = 6668，6512 介于两者之间且更靠下，故约为 83%。</p>',
+          points: ['资料分析', '现期比重'],
+          source: '内部题库 · 资料分析专项练习'
+        },
+        {
+          type: '单选题',
+          stem: '若2025年该市规模以上工业企业营业收入保持2024年的增速，预计将达到约多少亿元？',
+          opts: [
+            { k: 'A', html: '128600' },
+            { k: 'B', html: '130125' },
+            { k: 'C', html: '132400' },
+            { k: 'D', html: '134800' }
+          ],
+          ans: 'B', mine: 'B', rate: 84, time: 29, hard: 'B', two: true,
+          analysis: '<p>123458 × (1 + 5.4%) = 123458 + 6667 ≈ <span class="hl">130125</span> 亿元，选 B。</p>',
+          points: ['资料分析', '现期量计算'],
+          source: '内部题库 · 资料分析专项练习'
+        },
+        {
+          type: '单选题',
+          stem: '2024年该市外商及港澳台商投资企业增加值增速比股份制企业低约多少个百分点？',
+          opts: [
+            { k: 'A', html: '2.8' },
+            { k: 'B', html: '3.5' },
+            { k: 'C', html: '4.3' },
+            { k: 'D', html: '5.1' }
+          ],
+          ans: 'C', rate: 90, time: 15, hard: 'D', two: true,
+          analysis: '<p>7.1% − 2.8% = <span class="hl">4.3</span> 个百分点，选 C。注意“低多少”用减法，不要误算成比重。</p>',
+          points: ['资料分析', '简单计算'],
+          source: '内部题库 · 资料分析专项练习'
+        }
+      ]
+    }
+  ];
+
+  /* ---------- 展开题号 ---------- */
+  var counter = 0;
+  SECTIONS.forEach(function (s) {
+    s.start = counter + 1;
+    s.items.forEach(function (it) {
+      counter += 1;
+      it.no = counter;
+      it.section = s.name;
+      it.material = s.material || null;
+    });
+    s.end = counter;
+  });
+  var QUESTIONS = SECTIONS.reduce(function (a, s) { return a.concat(s.items); }, []);
+  var TOTAL = QUESTIONS.length;
+
+  /* ---------- 状态 ---------- */
+  var state = {
+    idx: 15,
+    mode: 'answer',
+    answers: {},
+    flags: {},
+    favs: {},
+    notes: {},
+    remaining: 68 * 60 + 12,
+    timerId: null
+  };
+  QUESTIONS.forEach(function (q) {
+    if (q.mine) state.answers[q.no] = q.mine;
+    if (q.note) state.notes[q.no] = q.note;
+  });
+  [3, 11, 17].forEach(function (n) { state.flags[n] = true; });
+  state.favs[6] = true;
+
+  /* ---------- 工具 ---------- */
+  var toastTimer = null;
+  function toast(msg) {
+    var t = $('#toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.classList.remove('show'); }, 2200);
+  }
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function fmt(sec) {
+    sec = Math.max(0, sec);
+    return pad(Math.floor(sec / 60)) + ':' + pad(sec % 60);
+  }
+  function esc(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function cur() { return QUESTIONS[state.idx]; }
+  function answeredCount() { return Object.keys(state.answers).length; }
+
+  /* ---------- 顶栏 ---------- */
+  function renderTop() {
+    var q = cur();
+    $('#ptSub').textContent = q.section + ' · 第 ' + q.no + '/' + TOTAL + ' 题' + (state.mode === 'solution' ? ' · 解析' : '');
+    $('#btnFlag').classList.toggle('on', !!state.flags[q.no]);
+    $('#btnFav').classList.toggle('on', !!state.favs[q.no]);
+    $('#btnNote').classList.toggle('on', !!state.notes[q.no]);
+    $('#btnSubmit').textContent = state.mode === 'solution' ? '查看报告' : '交卷';
+    $('#tVal').textContent = fmt(state.remaining);
+    var warn = state.remaining <= 300;
+    $('#timer').classList.toggle('warn', warn);
+  }
+
+  /* ---------- 题目主体 ---------- */
+  function optionsHtml(q) {
+    var mine = state.answers[q.no];
+    var sol = state.mode === 'solution';
+    var cls = 'options' + (q.two ? ' grid2' : '');
+    var html = '<div class="' + cls + '">';
+    q.opts.forEach(function (o) {
+      var st = '';
+      if (sol) {
+        if (o.k === q.ans) st = ' right';
+        else if (mine && mine === o.k) st = ' wrong';
+      } else if (mine === o.k) {
+        st = ' sel';
+      }
+      html += '<div class="opt' + st + '" data-k="' + o.k + '"><span class="dot">' + o.k + '</span><span class="txt">' + o.html + '</span></div>';
+    });
+    return html + '</div>';
+  }
+
+  function resultHtml(q) {
+    var mine = state.answers[q.no];
+    if (!mine) {
+      return '<div class="result miss">' + ICON('i-minus') + '本题未作答<span class="r-sub">解析仍可查看</span></div>';
+    }
+    if (mine === q.ans) {
+      return '<div class="result ok">' + ICON('i-check') + '回答正确<span class="r-sub">用时约 ' + q.time + ' 秒</span></div>';
+    }
+    return '<div class="result no">' + ICON('i-x') + '回答错误<span class="r-sub">正确答案 ' + q.ans + ' · 用时约 ' + q.time + ' 秒</span></div>';
+  }
+
+  function solutionHtml(q) {
+    var mine = state.answers[q.no];
+    var h = '';
+    h += '<div class="compare">' +
+      '<div class="cmp"><span>正确答案</span><b class="g">' + q.ans + '</b></div>' +
+      '<div class="cmp"><span>你的答案</span>' + (mine ? '<b class="' + (mine === q.ans ? 'g' : 'r') + '">' + mine + '</b>' : '<span class="none">未作答</span>') + '</div>' +
+      '</div>';
+    h += '<div class="stats">' +
+      '<div class="st"><div class="v blue">' + q.time + '<i>秒</i></div><div class="k">答题时间</div></div>' +
+      '<div class="st"><div class="v green">' + q.rate + '<i>%</i></div><div class="k">全站正确率</div></div>' +
+      '<div class="st"><div class="v red">' + q.hard + '</div><div class="k">易错项</div></div>' +
+      '</div>';
+
+    if (q.video) {
+      h += '<div class="sec"><div class="sec-h">解析视频<svg class="ic"><use href="#i-down"/></svg></div><div class="sec-body">' +
+        '<div class="video" data-act="play"><div class="cover"><span class="poster-txt">粉笔 · 视频解析</span>' +
+        '<span class="play">' + ICON('i-play') + '</span><span class="dur">' + q.video.dur + '</span></div>' +
+        '<div class="v-info"><div class="v-t">' + q.video.t + '</div>' +
+        '<div class="v-m"><span class="stars">★★★★★</span>' + q.video.score + ' 分 · ' + q.video.comments + ' 条评论</div>' +
+        '<div class="v-m">讲师讲解本题考点与同类题解法</div></div></div></div></div>';
+    }
+
+    h += '<div class="sec"><div class="sec-h">文字解析<svg class="ic"><use href="#i-down"/></svg></div>' +
+      '<div class="sec-body"><div class="analysis">' + q.analysis + '</div></div></div>';
+
+    if (q.similar) {
+      h += '<div class="sec"><div class="similar"><div class="s-t">' + q.similar.text + '</div>' +
+        '<button class="btn btn-soft btn-sm" data-act="practice">开始练习</button></div></div>';
+    }
+
+    if (q.points && q.points.length) {
+      h += '<div class="sec"><div class="sec-h">考点<svg class="ic"><use href="#i-down"/></svg></div><div class="sec-body"><div class="pills">' +
+        q.points.map(function (p, i) { return '<span class="pill' + (i === 0 ? ' blue' : '') + '">' + p + '</span>'; }).join('') +
+        '</div></div></div>';
+    }
+
+    if (q.source) {
+      h += '<div class="sec"><div class="sec-h">题目来源<svg class="ic"><use href="#i-down"/></svg></div>' +
+        '<div class="sec-body"><div class="gblock"><div class="src-t">' + q.source + '</div>' +
+        '<div style="margin-top:4px;color:#9ea5bb;font-size:12px">题目由考生回忆整理，解析为粉笔教研团队原创内容</div></div></div></div>';
+    }
+
+    var note = state.notes[q.no];
+    h += '<div class="sec"><div class="sec-h">我的笔记<svg class="ic"><use href="#i-down"/></svg></div><div class="sec-body">' +
+      '<div class="note-row' + (note ? '' : ' empty') + '"><span class="note-body">' + (note ? esc(note) : '还没有笔记，记录你的思路和易错点') + '</span>' +
+      '<button class="btn btn-soft btn-sm" data-act="note">' + (note ? '编辑笔记' : '添加笔记') + '</button></div></div></div>';
+
+    h += '<div class="ai-row">' + ICON('i-spark') + '<div class="ai-t">不满意这道解析？可以让 <b>AI 老师</b>针对你的答案「' +
+      (mine || '未作答') + '」讲一遍。</div><button class="btn btn-soft btn-sm" data-act="ai">问 AI</button></div>';
+
+    return h;
+  }
+
+  function questionBody(q) {
+    var sol = state.mode === 'solution';
+    var h = '';
+    if (sol) h += resultHtml(q);
+    h += '<div class="q-head"><span class="q-no">' + q.no + '.</span>' +
+      '<span class="tag">' + q.type + '</span>' +
+      '<span class="q-meta">' + (sol ? '解析' : q.section) + '</span></div>';
+    h += '<div class="stem">' + q.stem + '</div>';
+    if (q.extra) h += q.extra;
+    h += optionsHtml(q);
+    if (sol) h += solutionHtml(q);
+
+    h += '<div class="q-foot"><button class="btn btn-ghost btn-sm" data-nav="prev"' + (state.idx === 0 ? ' disabled style="opacity:.45;cursor:not-allowed"' : '') + '>' +
+      ICON('i-left') + '上一题</button>' +
+      '<span class="hint">已答 ' + answeredCount() + '/' + TOTAL + ' · A–D 作答 · ←/→ 切题</span>' +
+      '<span class="spacer"></span>' +
+      '<button class="btn btn-primary btn-sm" data-nav="next"' + (state.idx === TOTAL - 1 ? ' disabled style="opacity:.45;cursor:not-allowed"' : '') + '>下一题' + ICON('i-right') + '</button>' +
+      '</div>';
+    return h;
+  }
+
+  function renderStage() {
+    var q = cur();
+    var stage = $('#stage');
+    var mat = q.material;
+    stage.classList.toggle('is-split', !!mat);
+    if (mat) {
+      stage.innerHTML = '<div class="split">' +
+        '<div class="mat"><div class="mat-h"><span class="tag">材料</span><span class="mat-title">' + mat.title + '</span></div>' +
+        '<div class="mat-body">' + mat.html + '</div></div>' +
+        '<div class="pane">' + questionBody(q) + '</div></div>';
+    } else {
+      stage.innerHTML = '<div class="sheet">' + questionBody(q) + '</div>';
+    }
+  }
+
+  /* ---------- 答题卡 ---------- */
+  function renderPanel() {
+    var sol = state.mode === 'solution';
+    var q = cur();
+    $('#totalCount').textContent = TOTAL;
+    $('#ansCount').textContent = answeredCount();
+
+    $('#legend').innerHTML = sol
+      ? '<span class="lg"><i class="ok"></i>答对</span><span class="lg"><i class="no"></i>答错</span><span class="lg"><i class="b"></i>未答</span>'
+      : '<span class="lg"><i class="a"></i>已答</span><span class="lg"><i class="b"></i>未答</span><span class="lg"><i class="c"></i>标记</span>';
+
+    var html = '';
+    SECTIONS.forEach(function (s) {
+      html += '<div class="sec-label"><span>' + s.name + '</span><span>' + s.start + '–' + s.end + '</span></div><div class="nums">';
+      s.items.forEach(function (it) {
+        var mine = state.answers[it.no];
+        var cls = 'num';
+        if (sol) {
+          if (mine) cls += (mine === it.ans ? ' ok' : ' no');
+        } else if (mine) {
+          cls += ' done';
+        }
+        if (it.no === q.no) cls += ' cur';
+        if (state.flags[it.no]) cls += ' flag';
+        html += '<button class="' + cls + '" data-no="' + it.no + '" title="第 ' + it.no + ' 题' + (state.flags[it.no] ? ' · 已标记' : '') + '">' + it.no + '</button>';
+      });
+      html += '</div>';
+    });
+    $('#pnBody').innerHTML = html;
+
+    var pct = Math.round(answeredCount() / TOTAL * 100);
+    $('#barFill').style.width = pct + '%';
+    var wrong = 0, right = 0;
+    if (sol) {
+      QUESTIONS.forEach(function (it) {
+        var m = state.answers[it.no];
+        if (m) { if (m === it.ans) right++; else wrong++; }
+      });
+    }
+    $('#pnStat').innerHTML = sol
+      ? '<span>答对 <b>' + right + '</b> · 答错 <b>' + wrong + '</b></span><span>正确率 <b>' + (right + wrong ? Math.round(right / (right + wrong) * 100) : 0) + '%</b></span>'
+      : '<span>已答 <b>' + answeredCount() + '</b>/' + TOTAL + '</span><span>标记 <b>' + Object.keys(state.flags).length + '</b></span>';
+    $('#btnSubmit2').textContent = sol ? '查看练习报告' : '交卷并查看结果';
+  }
+
+  /* ---------- 渲染 ---------- */
+  function render(keepScroll) {
+    var stage = $('#stage');
+    var sc = stage.scrollTop;
+    var pane = $('.pane');
+    var ps = pane ? pane.scrollTop : 0;
+    renderTop();
+    renderStage();
+    renderPanel();
+    if (keepScroll) {
+      stage.scrollTop = sc;
+      var p2 = $('.pane');
+      if (p2) p2.scrollTop = ps;
+    }
+  }
+
+  function goto(i) {
+    if (i < 0 || i >= TOTAL) return;
+    state.idx = i;
+    render();
+    $('#stage').scrollTop = 0;
+    var p = $('.pane'); if (p) p.scrollTop = 0;
+    var m = $('.mat'); if (m) m.scrollTop = 0;
+  }
+
+  function choose(k) {
+    if (state.mode === 'solution') { toast('已交卷，答案不可修改'); return; }
+    state.answers[cur().no] = k;
+    render(true);
+  }
+
+  /* ---------- 弹窗 ---------- */
+  function openDialog(html) {
+    $('#dialog').innerHTML = html;
+    $('#mask').hidden = false;
+  }
+  function closeDialog() {
+    $('#mask').hidden = true;
+    $('#dialog').innerHTML = '';
+  }
+
+  function confirmSubmit() {
+    var a = answeredCount();
+    openDialog(
+      '<div class="dlg-h">确认交卷？</div>' +
+      '<div class="dlg-b">交卷后答案不可修改，系统会立即批改并展开全部解析。' +
+      '<div class="kv">' +
+      '<div><div class="k">已作答</div><div class="v">' + a + ' 题</div></div>' +
+      '<div><div class="k">未作答</div><div class="v">' + (TOTAL - a) + ' 题</div></div>' +
+      '<div><div class="k">剩余时间</div><div class="v">' + fmt(state.remaining) + '</div></div>' +
+      '</div></div>' +
+      '<div class="dlg-f"><button class="btn btn-ghost" data-dlg="cancel">再检查一下</button>' +
+      '<button class="btn btn-primary" data-dlg="ok">确认交卷</button></div>'
+    );
+  }
+
+  function submit() {
+    state.mode = 'solution';
+    closeDialog();
+    stopTimer();
+    var right = 0, wrong = 0;
+    QUESTIONS.forEach(function (q) {
+      var m = state.answers[q.no];
+      if (m) { if (m === q.ans) right++; else wrong++; }
+    });
+    render();
+    $('#stage').scrollTop = 0;
+    toast('已交卷：答对 ' + right + ' 题，答错 ' + wrong + ' 题，未答 ' + (TOTAL - right - wrong) + ' 题');
+  }
+
+  function openNote() {
+    var q = cur();
+    openDialog(
+      '<div class="dlg-h">本题笔记</div>' +
+      '<div class="dlg-b">笔记会同步到错题本与个人中心，支持在解析页回看。</div>' +
+      '<textarea id="noteTa" placeholder="记录解题思路、易错点或需要回看的知识点…">' + esc(state.notes[q.no] || '') + '</textarea>' +
+      '<div class="dlg-f"><button class="btn btn-ghost" data-dlg="cancel">取消</button>' +
+      '<button class="btn btn-primary" data-dlg="save-note">保存笔记</button></div>'
+    );
+    setTimeout(function () { var ta = $('#noteTa'); if (ta) ta.focus(); }, 30);
+  }
+
+  /* ---------- 计时 ---------- */
+  function stopTimer() {
+    if (state.timerId) { clearInterval(state.timerId); state.timerId = null; }
+  }
+  function startTimer() {
+    stopTimer();
+    state.timerId = setInterval(function () {
+      if (state.mode !== 'answer') return;
+      state.remaining -= 1;
+      if (state.remaining <= 0) {
+        state.remaining = 0;
+        renderTop();
+        stopTimer();
+        toast('考试时间到，系统已自动交卷');
+        state.mode = 'solution';
+        render();
+        return;
+      }
+      renderTop();
+    }, 1000);
+  }
+
+  /* ---------- 事件 ---------- */
+  function bind() {
+    $('#stage').addEventListener('click', function (e) {
+      var opt = e.target.closest('.opt');
+      if (opt) { choose(opt.dataset.k); return; }
+      var nav = e.target.closest('[data-nav]');
+      if (nav) { goto(state.idx + (nav.dataset.nav === 'next' ? 1 : -1)); return; }
+      var head = e.target.closest('.sec-h');
+      if (head) {
+        head.classList.toggle('collapsed');
+        var body = head.nextElementSibling;
+        if (body) body.hidden = !body.hidden;
+        return;
+      }
+      var act = e.target.closest('[data-act]');
+      if (act) {
+        var a = act.dataset.act;
+        if (a === 'note') return openNote();
+        if (a === 'play') return toast('视频解析：复刻环境未接入播放器');
+        if (a === 'practice') return toast('举一反三：已生成 5 道同类题');
+        if (a === 'ai') return toast('AI 老师：正在根据你的作答生成讲解');
+      }
+    });
+
+    $('#pnBody').addEventListener('click', function (e) {
+      var n = e.target.closest('.num');
+      if (!n) return;
+      var no = parseInt(n.dataset.no, 10);
+      goto(QUESTIONS.findIndex(function (q) { return q.no === no; }));
+    });
+
+    $('#btnFlag').addEventListener('click', function () {
+      var no = cur().no;
+      if (state.flags[no]) { delete state.flags[no]; toast('已取消标记'); }
+      else { state.flags[no] = true; toast('已标记本题，可在答题卡中快速定位'); }
+      render(true);
+    });
+    $('#btnFav').addEventListener('click', function () {
+      var no = cur().no;
+      if (state.favs[no]) { delete state.favs[no]; toast('已取消收藏'); }
+      else { state.favs[no] = true; toast('已收藏本题'); }
+      render(true);
+    });
+    $('#btnNote').addEventListener('click', openNote);
+
+    $('#btnSubmit').addEventListener('click', function () {
+      if (state.mode === 'solution') { toast('练习报告页不在本次复刻范围'); return; }
+      confirmSubmit();
+    });
+    $('#btnSubmit2').addEventListener('click', function () {
+      if (state.mode === 'solution') { toast('练习报告页不在本次复刻范围'); return; }
+      confirmSubmit();
+    });
+
+    $('#btnBack').addEventListener('click', function () {
+      toast(state.mode === 'solution' ? '返回练习报告' : '退出后进度会自动保存，下次可继续作答');
+    });
+
+    $('#btnMore').addEventListener('click', function (e) {
+      e.stopPropagation();
+      var m = $('#menu');
+      m.hidden = !m.hidden;
+      if (!m.hidden) {
+        var r = $('#btnMore').getBoundingClientRect();
+        m.style.top = r.bottom + 6 + 'px';
+        m.style.right = (window.innerWidth - r.right) + 'px';
+      }
+    });
+    $('#menu').addEventListener('click', function (e) {
+      var b = e.target.closest('button');
+      if (!b) return;
+      var act = b.dataset.act;
+      $('#menu').hidden = true;
+      if (act === 'draft') toast('草稿纸：复刻环境未实现画笔');
+      if (act === 'fix') toast('已提交纠错，教研会在 24 小时内复核');
+      if (act === 'dark') toast('粉笔 Web 端支持深色模式（本次复刻未开放）');
+    });
+    document.addEventListener('click', function () { $('#menu').hidden = true; });
+
+    $('#mask').addEventListener('click', function (e) {
+      if (e.target.id === 'mask') return closeDialog();
+      var b = e.target.closest('[data-dlg]');
+      if (!b) return;
+      var act = b.dataset.dlg;
+      if (act === 'cancel') return closeDialog();
+      if (act === 'ok') return submit();
+      if (act === 'save-note') {
+        var v = ($('#noteTa') || {}).value || '';
+        if (v.trim()) state.notes[cur().no] = v.trim();
+        else delete state.notes[cur().no];
+        closeDialog();
+        render(true);
+        toast(v.trim() ? '笔记已保存' : '笔记已清空');
+      }
+    });
+
+    document.addEventListener('keydown', function (e) {
+      if (/^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
+      if (e.key === 'Escape') { closeDialog(); $('#menu').hidden = true; return; }
+      if (e.key === 'ArrowLeft') { goto(state.idx - 1); return; }
+      if (e.key === 'ArrowRight') { goto(state.idx + 1); return; }
+      var k = e.key.toUpperCase();
+      if ('ABCD'.indexOf(k) > -1) {
+        var q = cur();
+        if (q.opts.some(function (o) { return o.k === k; })) choose(k);
+      }
+      if (k === 'F') { $('#btnFlag').click(); }
+      if (k === 'S') { $('#btnFav').click(); }
+    });
+  }
+
+  /* ---------- 启动 ---------- */
+  function boot() {
+    var params = new URLSearchParams(location.search);
+    var qp = parseInt(params.get('q'), 10);
+    if (qp && qp >= 1 && qp <= TOTAL) state.idx = qp - 1;
+    if (params.get('mode') === 'solution') state.mode = 'solution';
+
+    bind();
+    render();
+    if (state.mode === 'answer') startTimer();
+    else $('#tVal').textContent = fmt(state.remaining);
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>
