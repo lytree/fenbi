@@ -1383,7 +1383,6 @@ button {
     }
   }
 
-  /* 图文排版：把选中的段落包成 :::figure 块 */
   .gh-tools {
     display: flex;
     align-items: center;
@@ -3037,40 +3036,6 @@ body.split-dragging { cursor: col-resize; user-select: none; }
   &-full { width: 100%; }
 }
 
-/* 图文排版（:::figure）：和 App 的 buildFigure 一一对应——
-   左右并排用 row-reverse 换边，图列宽度取 --fwr（默认 38%），多图在列里竖着摞 */
-.pv-fig {
-  display: flex;
-  gap: 12px;
-  margin: 8px 0;
-  align-items: flex-start;
-
-  &-top, &-bottom { flex-direction: column; }
-  &-right { flex-direction: row-reverse; }
-
-  &-imgs {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    min-width: 0;
-
-    .pv-img { margin: 0; }
-  }
-
-  &-left > &-imgs, &-right > &-imgs { flex: 0 0 var(--fwr, 38%); }
-  &-top > &-imgs, &-bottom > &-imgs { width: 100%; }
-
-  &-row > &-imgs {
-    flex-direction: row;
-    flex-wrap: wrap;
-    width: 100%;
-
-    .pv-img { flex: 1 1 28%; min-width: 0; max-width: 33%; object-fit: contain; }
-  }
-
-  &-txt { flex: 1 1 auto; min-width: 0; }
-}
-
 .pv-note {
   @include label;
   display: inline-flex;
@@ -3094,15 +3059,6 @@ body.split-dragging { cursor: col-resize; user-select: none; }
 
   td, th { border: 1px solid var(--border-secondary); padding: 6px 8px; color: var(--text); }
   th { background: var(--bg-layout); color: var(--text); font-weight: 600; }
-}
-
-.pv-chart {
-  border: 1px dashed var(--border);
-  background: var(--bg-layout);
-  border-radius: var(--radius);
-  padding: 12px;
-  font-size: 12px;
-  color: var(--text-secondary);
 }
 
 /* =============================================================================
@@ -5422,4 +5378,394 @@ body.split-dragging { cursor: col-resize; user-select: none; }
 
   .fullmain { padding: 12px 12px 32px; }
   .fullsheet > .ppane { padding: 16px 14px 20px; }
+}
+
+
+/* =============================================================================
+   整页「卷面预览」= 粉笔试卷作答页（spa.fenbi.com/ti/exam/exercise/…）
+   -----------------------------------------------------------------------------
+   实测（1440 视口、内容 1180）：
+     · 页底 #F8F9FD；每张题卡白底、圆角 8、内距 12/20/16，卡间距 20
+     · 章头 1180×90，蓝白渐变 + 白描边，科目 16px，题数 14px，说明 14px #868EA8
+     · 题号 15px；题型标签 12px、padding 5/10、蓝字蓝淡底、圆角 4
+     · 题干 16px；选项行 48 高（padding 8/10），32px 圆徽标（描边 #E9EEF7、字 #868EA8）
+     · 资料题 1180×700：左 704（材料白卡，自己滚）+ 4px 缝 + 右 468（题号页签 + 小题流）
+   这里只挂 .paper 作用域，别影响答案解析 / 记录两页的同一套 .pv-q 骨架。
+   ========================================================================== */
+
+/* 卷面比解析页再宽一档，底色换成「卷子纸」的灰，白卡才立得起来 */
+.fullsheet.is-preview {
+  max-width: 1180px;
+  background: var(--bg-layout);
+}
+
+.fullsheet.is-preview > .ppane.paper {
+  /* 底部给答题卡留出位置：最后一道题别被那一条压住 */
+  padding: 20px 24px 116px;
+}
+
+/* ---- 章头：科目 + 题数 + 这一部分的作答说明 ---- */
+.paper .pv-chapter {
+  position: relative;
+  padding: 18px 20px;
+  margin-bottom: 20px;
+  border: 1px solid var(--bg-container);
+  border-radius: 8px;
+  background:
+    linear-gradient(160deg, var(--bg-container) -12%, transparent 30%),
+    linear-gradient(180deg, var(--primary-bg) 0%, var(--bg-container) 100%);
+  overflow: hidden;
+
+  .ch-name {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    font-size: 16px;
+    font-weight: 400;
+    color: var(--text);
+    line-height: 1.5715;
+  }
+
+  .ch-num {
+    font-size: 14px;
+    color: var(--text);
+    @include tabular;
+  }
+
+  .ch-desc {
+    margin-top: 6px;
+    font-size: 14px;
+    line-height: 22px;
+    color: var(--text-tertiary);
+  }
+}
+
+/* ---- 题卡：白底、圆角 8、20 间距；题干 16px，选项 48 高一行 ---- */
+.paper .pv-q {
+  padding: 12px 20px 16px;
+  margin-bottom: 20px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  box-shadow: none;
+  scroll-margin: 88px 0 120px;
+
+  &:hover { border-color: var(--primary-border); }
+
+  &.focus {
+    border-color: var(--primary);
+    box-shadow: var(--focus-ring);
+  }
+}
+
+.paper .pv-tagrow {
+  gap: 10px;
+  margin-bottom: 10px;
+  min-height: 50px;
+}
+
+.paper .pv-no {
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--text);
+}
+
+/* 题型标签：粉笔是「蓝字 + 4% 蓝底」，没有描边 */
+.paper .pv-tag {
+  height: 22px;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 4px;
+  background: var(--primary-bg);
+  color: var(--primary);
+  font-size: 12px;
+  line-height: 12px;
+  font-weight: 400;
+}
+
+.paper .pv-stem {
+  font-size: 16px;
+  line-height: 1.95;
+  text-align: justify;
+}
+
+.paper .pv-opts {
+  margin-top: 6px;
+  gap: 2px;
+}
+
+.paper .pv-opt {
+  align-items: center;
+  gap: 12px;
+  /* 8 上下的内距 + 1px 透明描边 + 30 行高 ≈ 粉笔的 48 一行 */
+  padding: 7px 10px;
+  margin: 0 -10px;
+  border-radius: 8px;
+  font-size: 16px;
+  line-height: 1.9;
+}
+
+.paper .pv-key {
+  width: 32px;
+  height: 32px;
+  margin-top: 0;
+  border-color: var(--border-secondary);
+  background: var(--bg-container);
+  color: var(--text-tertiary);
+  font-size: 16px;
+}
+
+/* 填空 / 主观题的作答区在卷面上也松一档 */
+.paper .pv-write { min-height: 72px; }
+
+/* ---- 资料题：左材料 + 右「题号页签 + 小题流」，整块 700 高 ---- */
+.pp-split {
+  display: grid;
+  grid-template-columns: var(--mat-w, 60%) 4px minmax(0, 1fr);
+  height: 700px;
+  margin-bottom: 20px;
+  /* 跳题时把整块分屏停在顶栏下方，别钻到顶栏 / 答题卡底下 */
+  scroll-margin: 88px 0 40px;
+}
+
+.pp-mat,
+.pp-qs {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-container);
+  border: 1px solid transparent;
+  border-radius: 8px;
+}
+
+.pp-mat {
+  .pv-mat-tag {
+    align-self: flex-start;
+    flex: none;
+    margin: 12px 20px 2px;
+    height: 22px;
+    padding: 0 8px;
+    border-radius: 4px;
+    background: var(--primary-bg);
+    color: var(--primary);
+    font-size: 12px;
+    line-height: 22px;
+  }
+}
+
+.pp-mat-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 20px 24px;
+  font-size: 15px;
+  line-height: 1.95;
+  color: var(--text);
+}
+
+/* 两栏之间：4px 的缝，悬停才显出一道细线（粉笔那个小把手） */
+.pp-grip {
+  position: relative;
+  cursor: col-resize;
+  user-select: none;
+
+  &::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 4px;
+    height: 26px;
+    transform: translate(-50%, -50%);
+    border-radius: 2px;
+    background: var(--border-secondary);
+    transition: background-color .15s;
+  }
+
+  &:hover::before { background: var(--primary-border); }
+}
+
+.pp-qs {
+  .pv-tabs {
+    height: 36px;
+    padding: 0 20px;
+    border-bottom: 1px solid var(--border-secondary);
+  }
+
+  /* 小题连着排：一道接一道，卡与卡之间一条发丝线，不再各立一张白卡 */
+  .pp-qs-body .pv-q {
+    padding: 16px 0;
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+
+    &:hover { border: none; box-shadow: none; }
+
+    &.focus {
+      /* 分屏里的小题没有卡片壳可描边：左侧一条主色竖条 + 一档淡底，跳题时看得见 */
+      box-shadow: inset 3px 0 0 var(--primary);
+      background: var(--bg-sunken);
+    }
+  }
+
+  .pp-qs-body .pv-q + .pv-q { border-top: 1px solid var(--border-secondary); }
+
+  /* 右栏窄一点：题干与选项都不必撑到 16px，48 行高也收一收 */
+  .pv-stem { font-size: 15px; line-height: 1.9; }
+  .pv-opt { font-size: 15px; padding: 6px 10px; }
+}
+
+.pp-qs-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 20px 24px;
+  scroll-behavior: smooth;
+}
+
+/* ---- 底部答题卡：一条标签 + 可摊开的题号格 ---- */
+.paper-dock {
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  z-index: 30;
+  width: min(1180px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px;
+  background: var(--bg-container);
+  border: 1px solid var(--border-secondary);
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+  box-shadow: 0 -10px 28px -18px rgba(44, 24, 96, .3);
+}
+
+.dock-tag {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 8px;
+  /* 实心块用 primary-solid：夜里 --primary 会抬亮成浅紫，白字压不住 */
+  background: var(--primary-solid);
+  color: var(--on-primary);
+  cursor: pointer;
+  transition: background-color .15s;
+
+  &:hover { background: var(--primary-solid-hover); }
+
+  .dt-name { font-size: 15px; font-weight: 600; letter-spacing: .5px; }
+
+  .dt-sub {
+    font-size: 12px;
+    opacity: .82;
+    @include tabular;
+
+    i { font-style: normal; margin: 0 1px; opacity: .7; }
+  }
+
+  .dt-chev {
+    font-size: 11px;
+    transform: rotate(-90deg);
+    transition: transform .2s;
+  }
+}
+
+.paper-dock.open .dock-tag .dt-chev { transform: rotate(90deg); }
+
+/* 缺答案的提示：没补齐时是橙字，齐了转成灰，扫一眼就知道这卷能不能发 */
+.dock-miss {
+  font-size: 12px;
+  color: var(--warning-text);
+
+  &.ok { color: var(--text-quaternary); }
+}
+
+.paper-dock.open { flex-wrap: wrap; }
+
+.dock-body {
+  flex: 1 0 100%;
+  /* 粉笔那张答题卡是 252 高（内部自己滚），这里跟着来，别糊住半屏卷面 */
+  max-height: 252px;
+  overflow-y: auto;
+  padding: 6px 0 8px;
+  border-top: 1px solid var(--border-secondary);
+  margin-top: 2px;
+}
+
+.dock-ch + .dock-ch { margin-top: 14px; }
+
+.dock-ch-name {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  margin-bottom: 8px;
+
+  span { color: var(--text-quaternary); }
+}
+
+.dock-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dock-cell {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: var(--bg-layout);
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color .15s, border-color .15s, color .15s;
+  @include tabular;
+
+  &:hover { border-color: var(--primary-border); color: var(--primary); }
+
+  &.on {
+    background: var(--primary-bg);
+    border-color: var(--primary-border);
+    color: var(--primary);
+    font-weight: 600;
+  }
+
+  /* 缺答案：右上角一颗橙点。不是「答错了」——卷面预览里本来就没有作答 */
+  &.miss::after {
+    content: "";
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--warning);
+  }
+}
+
+/* 窄屏：资料分屏退回上下排，答题卡贴满整宽 */
+@media (max-width: 1000px) {
+  .pp-split {
+    grid-template-columns: 1fr;
+    height: auto;
+    gap: 12px;
+  }
+
+  .pp-grip { display: none; }
+  .pp-mat-body { max-height: 420px; }
+  .pp-qs-body { overflow: visible; max-height: none; }
+  .pp-qs .pv-tabs { position: sticky; top: 0; background: var(--bg-container); z-index: 2; }
+
+  .paper-dock { width: 100vw; border-radius: 0; }
+  .fullsheet.is-preview > .ppane.paper { padding: 14px 14px 116px; }
+  .paper .pv-stem,
+  .paper .pv-opt { font-size: 15px; }
 }

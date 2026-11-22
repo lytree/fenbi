@@ -28,16 +28,15 @@ tools/webeditor/
     api.ts                # /api/* 的封装
     fullview.ts           # 整页查看的地址约定：?view=preview|answer|records + setId/sheet/recordId
     paste.ts              # 批量粘贴文本 → 题目
-    markdown.ts           # 预览用的 Markdown 子集（表格/图片/:::chart）
+    markdown.ts           # 预览用的 Markdown 子集（表格/图片）
     qview.ts              # 三页共用的题型渲染：单选圆 / 多选方 / 判断勾叉 / 填空主观作答区 + 宫格条
-    figure.ts             # 图文排版：把选中段落包成 :::figure（两种视图共用）
     images.ts             # 插图、粘贴截图
     types.ts              # 与 LanEditorStore.kt / LanEditorRecite.kt / LanEditorWords.kt 的 JSON 约定
     theme.ts              # 明暗主题：data-theme + localStorage + 跟系统
     scale.ts              # 界面缩放：CSS zoom 顶栏五档（A−/A+），档位记 localStorage
     styles.scss           # 「淡紫瓷面」皮肤：一套令牌 + 明 / 暗两套值（[data-theme="dark"]）
     components/           # TopBar（模式切换 + 复制 MCP）/ Sidebar / SheetBar / QuestionList /
-                          # MaterialList / QuestionCard / PreviewPane / AnswerPane / RecordsPane /
+                          # MaterialList / QuestionCard / PreviewPane / PaperDock / AnswerPane / RecordsPane /
                           # FullView（整页查看的壳）/ IssuePane / VersionPane /
                           # ModalHost / Toast / RecitePane（背诵卡编辑）/ WordsPane（词条编辑）
     __tests__/            # vitest + jsdom：App.spec（编辑器主链路）/ fullview.spec（整页查看）等
@@ -46,8 +45,11 @@ tools/webeditor/
 **整页查看**：卷面预览 / 答案解析 / 记录在右栏挤得慌（卷面预览已从右栏撤掉，只剩答案解析 / 记录），所以另有一个整页版。同一个 bundle、
 同一个 store，`main.tsx` 读 `?view=preview|answer|records` 决定挂 `App` 还是 `FullView`；
 Query 只带 `view / setId / sheet / recordId`，切页与换卷会 `replaceState` 写回地址，
-刷新和分享都落在原地。三页共用 `.pv-head / .pv-q / .pv-opt / .sol-box` 这套骨架，
+刷新和分享都落在原地。答案解析与记录两页共用 `.pv-head / .pv-q / .pv-opt / .sol-box` 这套骨架，
 记录页不再自带固定色（以前是粉笔蓝，夜里整页发白）。
+「卷面预览」是照粉笔**试卷作答页**（`spa.fenbi.com/ti/exam/exercise/…`）另起的一层皮（`.paper` 作用域）：
+章卡 + 白题卡 + 底部答题卡，资料题走 `.pp-split`（左「材料」白卡 + 右题号页签 + 小题流）。
+题型仍然同源（都走 `qview.ts`），别把两套卡片的骨架混着改。
 「答案解析」整页里，资料题按粉笔实测做**左右分屏**：700 高大卡、左「材料」白卡（自己滚）、
 中间 12px 可拖把手、右边题号页签 + 当前这一题（`.pv-split`，一次只摆一道，点页签换题）；
 整页解析宽 1180，≤1000px 退回上下排。「练习记录」整页仍是 `.pv-group.split`（材料钉左、题目全列）。
@@ -61,7 +63,7 @@ Query 只带 `view / setId / sheet / recordId`，切页与换卷会 `replaceStat
 ```bash
 pnpm install       # 首次；锁文件是 pnpm-lock.yaml
 pnpm dev           # 本地起 dev server（接口需要真机服务或自建 mock，没有本地试卷包退路）
-pnpm test          # 冒烟 + 材料模式 + 预览同步 + 整页查看 + 题型渲染 + 笔记：打开一组 → 加题 → 发布 / 版本面板 / 删除只发请求（135 例）
+pnpm test          # 冒烟 + 材料模式 + 预览同步 + 整页查看 + 题型渲染 + 卷面分章/答题卡 + 笔记（142 例）
 pnpm build         # 产物写进 ../../app/src/main/assets/webeditor/
 ```
 
@@ -91,14 +93,19 @@ allowBuilds:
 - **材料逐行重复**是 App 的硬规则：材料只在「材料组头」或「材料模式」的材料编辑区里改，
   两条路径都走 `setGroupMaterial()` 写回组内每一题，不要在单题上散着改（除非点「移出材料组」）。
   材料模式的说明见 [docs/14](../../docs/14-材料多题编辑模式.md)。
-- **三页共用一套骨架**：卷面预览（整页）/ 答案解析 / 记录都走 `.pv-head` / `.pv-q` / `.pv-opt` /
-  `.sol-box`（可折叠解析盒），颜色只用令牌（`var(--*)`）。记录页**不要再引入自己的固定色**——以前那套粉笔蓝
-  在夜间主题下就是一块白，改版后才对齐。
+- **答案解析 / 记录共用一套骨架**：`.pv-head` / `.pv-q` / `.pv-opt` / `.sol-box`（可折叠解析盒），
+  颜色只用令牌（`var(--*)`）。记录页**不要再引入自己的固定色**——以前那套粉笔蓝在夜间主题下就是一块白。
+- **卷面预览是另一套皮**：`PreviewPane` 的根是 `.ppane.paper`，样式全部挂在 `.paper` 下（章卡 `.pv-chapter`、
+  题卡尺寸、48 高一行的选项、32px 圆徽标）；资料题是 `.pp-split`（1180×700，左材料 + 右页签 + 小题流），
+  底部 `PaperDock` 是固定条。**别在 `.paper` 外改 `.pv-q` 的尺寸**——解析页与记录页靠原值排版。
+- **整卷是一段 innerHTML**：`PreviewPane` 里任何响应式状态都会触发整段重建，页签选中态与两栏滚动位置会丢。
+  所以「当前题」只改类名（`markFocus`），答题卡单独拆成 `PaperDock` 组件，重画前用 `onBeforeUpdate`
+  记下 `.pp-qs-body` 的 `scrollTop`、重画后还回去。
 - **题型也共用一份渲染**：选项、答案宫格、作答区一律走 `qview.ts`（`optionListHtml / gridHtml /
   writeZoneHtml / noteActionHtml`），不要在某一页里另拼一套。单选圆徽标、多选与不定项方徽标、
   判断题 ✓/✗、填空与主观题无选项；答案串 `AC` / `A,C` / `A C` 都按字母拆（`ansSet`）。
-- **一则资料带多题是一个组**：卷面 / 解析用 `materialGroupHtml()`（材料卡 + `.pv-subs` 一次拼好），
-  记录页用 `materialCardHtml()` 拼材料、外面套 `.pv-group` 和 JSX 小题。别再退回「材料一张卡、
+- **一则资料带多题是一个组**：解析用 `materialGroupHtml()`（材料卡 + `.pv-subs` 一次拼好），
+  记录页用 `materialCardHtml()` 拼材料、外面套 `.pv-group` 和 JSX 小题，卷面预览用 `.pp-split`。别再退回「材料一张卡、
   小题一堆散卡」——组头要写「资料 / 第 N–M 题 / k 小题共用」，收起只收材料正文、小题不动。
 - **资料分屏只在整页**：`AnswerPane` 的 `full` 才走 `.pv-split`（照粉笔：左材料 + 右题号页签 + 单题，
   页签切换状态在组件里的 `tabIdx`，宽度在 `matWidth`）；`RecordsPane` 的 `standalone` 用

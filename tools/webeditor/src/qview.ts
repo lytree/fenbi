@@ -9,6 +9,7 @@
 import type { OptionItem } from './types'
 import { esc } from './util'
 import { renderInline } from './markdown'
+import { level1Of } from './xingce'
 
 export interface QuestionLike {
   /** 题型：Question 是 QuestionType，记录接口回来的是裸字符串，两边都收 */
@@ -156,6 +157,28 @@ export function writeZoneHtml(type: string): string {
   if (!isBlank(type)) return ''
   const label = type === 'fill' ? '作答区 · 填空' : '作答区 · 主观题'
   return `<div class="pv-write ${esc(type)}"><span>${label}</span></div>`
+}
+
+/**
+ * 卷面分章：连续同一科目（一级题型）的题算一章，和粉笔作答页的大标题同口径。
+ * 卷面预览的章头、底部答题卡的分组都按它走，两处的科目与题数才是同一个数。
+ */
+export interface PaperChapter {
+  name: string
+  /** 这一章在卷面上的起止下标（0 基，含） */
+  start: number
+  end: number
+}
+
+export function chaptersOf(qs: { subject?: string }[]): PaperChapter[] {
+  const out: PaperChapter[] = []
+  qs.forEach((q, i) => {
+    const name = level1Of({ subject: q.subject ?? '' }) || '未分章'
+    const last = out[out.length - 1]
+    if (last && last.name === name) last.end = i
+    else out.push({ name, start: i, end: i })
+  })
+  return out
 }
 
 /**
