@@ -8,8 +8,8 @@ import { renderInline, renderMaterial, renderStem } from '../markdown'
 import { LEVEL_NONE, level1Of, level2Of } from '../xingce'
 
 /**
- * 右侧卷面预览：尽量贴近 App 答题页的样子——材料在首题通栏、题型小标、圆形选项徽标。
- * 纯卷面，不带答案（答案/解析看旁边的「答案解析」页）。
+ * 右侧卷面预览：按粉笔答题页的版式排——材料卡与题目同列上下排（资料分析的形式），
+ * 题号在题型标签前，选项是圆徽标行。纯卷面，不带答案（答案/解析看旁边的「答案解析」页）。
  * 双向联动：点预览里的题会跳到左边对应卡片；左边选中哪题，预览也滚到同一题并高亮。
  */
 export default defineComponent({
@@ -28,26 +28,23 @@ export default defineComponent({
     // 预览内容每次都是整段 innerHTML 重建的，聚焦项的高亮类跟着重建，
     // 所以等这一帧渲染完再去滚（否则拿到的是旧的节点）
     watch(() => state.focused, () => { void nextTick(() => scrollToFocused(true)) })
-    // 从「校验 / 版本」切回预览时组件才挂载，先直接定位到当前选中的题，不做平滑滚动
+    // 从「校验 / 版本」弹框关掉、预览重新露出时组件还在，滚一次兜底
     onMounted(() => { void nextTick(() => scrollToFocused(false)) })
 
-    const blockHtml = (q: Question, index: number, material: string): string => {
+    const blockHtml = (q: Question, index: number): string => {
       const focus = state.focused === q._uid ? ' focus' : ''
       const opts = q.options.filter((o) => o.text.trim())
 
       let h = `<div class="pv-q${focus}" data-uid="${q._uid}">`
-      // 卷面题型小标：有行测两级题型就按「一级 · 二级」显示，否则退回作答形式（单选 / 多选…）
+      // 粉笔口径：题号在前，题型标签跟在后；有行测两级题型就按「一级 · 二级」显示
       const lv1 = level1Of(q)
       const lv2 = level2Of(q)
       const hasTypeTree = !!lv1 || !!lv2
-      h += `<div class="pv-tagrow"><span class="pv-tag">${
+      h += `<div class="pv-tagrow"><span class="pv-no">${index + 1}.</span><span class="pv-tag">${
         hasTypeTree ? esc(lv1 || LEVEL_NONE) : TYPE_LABEL[q.type]
       }</span>`
       if (hasTypeTree) h += `<span class="pv-tag lv2">${esc(lv2 || LEVEL_NONE)}</span>`
-      h += `<span class="pv-no">第 ${index + 1} 题</span>`
       h += '</div>'
-
-      if (material) h += `<div class="pv-mat"><div class="mh">材料</div>${renderMaterial(material)}</div>`
 
       // 题干里带表格时 renderStem 会排出真表格（和 App 的 renderStemRich 同一套口径）
       h += `<div class="pv-stem">${renderStem(q.stem) || '<span class="pv-ph">（题干为空）</span>'}</div>`
@@ -71,6 +68,10 @@ export default defineComponent({
       return h
     }
 
+    /** 材料卡：资料分析的形式——材料自己一张卡放在小题前面，不再挤进第一题里 */
+    const materialHtml = (material: string, size: number): string =>
+      `<div class="pv-mat"><div class="mh">资料分析 · ${size} 小题</div>${renderMaterial(material)}</div>`
+
     const html = (): string => {
       const qs = currentQuestions()
       if (!qs.length) return '<div class="pv-empty">这份卷还没有题目</div>'
@@ -82,12 +83,11 @@ export default defineComponent({
       while (i < qs.length) {
         const g = groups.find((x) => x.start === i)
         if (g) {
-          for (let k = g.start; k <= g.end; k++) {
-            out += blockHtml(qs[k], k, k === g.start ? g.material : '')
-          }
+          out += materialHtml(g.material, g.end - g.start + 1)
+          for (let k = g.start; k <= g.end; k++) out += blockHtml(qs[k], k)
           i = g.end + 1
         } else {
-          out += blockHtml(qs[i], i, '')
+          out += blockHtml(qs[i], i)
           i += 1
         }
       }

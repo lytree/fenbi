@@ -45,7 +45,7 @@ tools/webeditor/
 **整页查看**：卷面预览 / 答案解析 / 记录在右栏挤得慌，所以另有一个整页版。同一个 bundle、
 同一个 store，`main.tsx` 读 `?view=preview|answer|records` 决定挂 `App` 还是 `FullView`；
 Query 只带 `view / setId / sheet / recordId`，切页与换卷会 `replaceState` 写回地址，
-刷新和分享都落在原地。三页共用 `.pv-head / .pv-q / .pv-opt / .ap-analysis` 这套骨架，
+刷新和分享都落在原地。三页共用 `.pv-head / .pv-q / .pv-opt / .sol-box` 这套骨架，
 记录页不再自带固定色（以前是粉笔蓝，夜里整页发白）。
 
 「背诵」模式下 `RecitePane`（政治 / 常识：分类筛选 + 卡片列表 + 逐卡编辑，整份保存走手机确认）
@@ -88,8 +88,11 @@ allowBuilds:
   两条路径都走 `setGroupMaterial()` 写回组内每一题，不要在单题上散着改（除非点「移出材料组」）。
   材料模式的说明见 [docs/14](../../docs/14-材料多题编辑模式.md)。
 - **右栏三页共用一套骨架**：卷面预览 / 答案解析 / 记录都走 `.pv-head` / `.pv-q` / `.pv-opt` /
-  `.ap-analysis`，颜色只用令牌（`var(--*)`）。记录页**不要再引入自己的固定色**——以前那套粉笔蓝
+  `.sol-box`（可折叠解析盒），颜色只用令牌（`var(--*)`）。记录页**不要再引入自己的固定色**——以前那套粉笔蓝
   在夜间主题下就是一块白，改版后才对齐。
+- **校验 / 版本 / 资源是弹框**：`ui.tool` 记当前开的是哪个，`openTool() / closeTool()` 进出，
+  `ToolDialog` 统一渲染；入口在页签条右端（`.tool-tab`，带计数徽标）。别再把它们塞回右栏页签——
+  右栏只留卷面三页。
 - **删除不在网页上执行**：`requestDeleteSet()` 只调 `/api/delete/request`，然后每 1.2 秒轮询
   `/api/delete/status`，直到手机点确认 / 拒绝 / 超时。别在前端加「直接删」的调用——
   手机端根本没有那个接口，加了也是 404。

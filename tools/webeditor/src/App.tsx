@@ -7,10 +7,8 @@ import MaterialList from './components/MaterialList'
 import GroupBoard from './components/GroupBoard'
 import PreviewPane from './components/PreviewPane'
 import AnswerPane from './components/AnswerPane'
-import IssuePane from './components/IssuePane'
-import VersionPane from './components/VersionPane'
-import ResourcePane from './components/ResourcePane'
 import RecordsPane from './components/RecordsPane'
+import ToolDialog from './components/ToolDialog'
 import RecitePane from './components/RecitePane'
 import LibraryPane from './components/LibraryPane'
 import WordsPane from './components/WordsPane'
@@ -19,9 +17,9 @@ import RecitePreview from './components/RecitePreview'
 import ModalHost from './components/ModalHost'
 import Toast from './components/Toast'
 import {
-  TYPE_SHORT, addQuestion, cancelWaiting, closeModal, currentQuestions, currentSheet, filtersActive, flushDraft,
-  handleImportFiles, issueCounts, library, level1Options, level2Options, loadSets, loadVersions,
-  maybeRestoreDraft, openPasteDialog, openSet, publish, recite, resetFilters, saveLibrary,
+  TYPE_SHORT, addQuestion, cancelWaiting, closeModal, closeTool, currentQuestions, currentSheet, filtersActive, flushDraft,
+  handleImportFiles, issueCounts, library, level1Options, level2Options, loadSets, maybeRestoreDraft, openPasteDialog,
+  openSet, openTool, publish, recite, resetFilters, saveLibrary,
   saveMindMap, saveRecite, showErrors, startDraftAutoSave, state,
   stopDraftAutoSave, switchMode, toast, typeCounts, ui, visibleIndexes,
 } from './store'
@@ -173,6 +171,10 @@ export default defineComponent({
         // 等手机确认时按 Esc 等于撤回请求，别只是把弹窗关掉留个悬案
         if (ui.modal.kind === 'waiting') { void cancelWaiting(); return }
         closeModal(ui.modal.kind === 'confirm' ? false : null)
+      }
+      if (e.key === 'Escape' && ui.tool) {
+        e.preventDefault()
+        closeTool()
       }
       // 界面缩放：Ctrl +/− 逐档、Ctrl 0 回 100%（截下来别让浏览器自己缩页面）
       if (mod && (e.key === '=' || e.key === '+')) {
@@ -438,33 +440,45 @@ export default defineComponent({
                       答案解析
                     </button>
                     <button
-                      class={['ptab', state.pane === 'issue' && 'active']}
-                      onClick={() => { state.pane = 'issue' }}
-                    >
-                      校验
-                      <span class={['pill', counts().errors > 0 && 'hot']}>
-                        {counts().errors + counts().warns}
-                      </span>
-                    </button>
-                    <button
-                      class={['ptab', state.pane === 'version' && 'active']}
-                      onClick={() => { state.pane = 'version'; void loadVersions() }}
-                    >
-                      版本
-                      <span class="pill">{state.versions.length}</span>
-                    </button>
-                    <button
-                      class={['ptab', state.pane === 'resource' && 'active']}
-                      data-pane="resource"
-                      onClick={() => { state.pane = 'resource' }}
-                    >
-                      资源
-                    </button>
-                    <button
                       class={['ptab', state.pane === 'records' && 'active']}
                       onClick={() => { state.pane = 'records' }}
                     >
                       记录
+                    </button>
+                  </div>
+                  {/* 校验 / 版本 / 资源：弹框入口。挂页签条右端、带计数徽标——
+                      有发布拦停错误时红底白字，比塞在页签里醒目得多 */}
+                  <div class="tool-tabs">
+                    <button
+                      class={['tool-tab', ui.tool === 'issue' && 'open', counts().errors > 0 && 'alarm']}
+                      data-tool-tab="issue"
+                      title="校验：发布会被拦下 / 静默丢掉的坑"
+                      onClick={() => openTool('issue')}
+                    >
+                      校验
+                      {(() => {
+                        const n = counts().errors + counts().warns
+                        if (!n) return <span class="tool-tab-badge ok">✓</span>
+                        return <span class={['tool-tab-badge', counts().errors > 0 && 'hot']}>{n}</span>
+                      })()}
+                    </button>
+                    <button
+                      class={['tool-tab', ui.tool === 'version' && 'open']}
+                      data-tool-tab="version"
+                      title="版本：覆盖发布 / 回滚前的自动存档"
+                      onClick={() => openTool('version')}
+                    >
+                      版本
+                      {state.versions.length ? <span class="tool-tab-badge">{state.versions.length}</span> : null}
+                    </button>
+                    <button
+                      class={['tool-tab', ui.tool === 'resource' && 'open']}
+                      data-tool-tab="resource"
+                      title="资源：本组图片的上传 / 替换 / 清理"
+                      onClick={() => openTool('resource')}
+                    >
+                      资源
+                      {state.resources.length ? <span class="tool-tab-badge">{state.resources.length}</span> : null}
                     </button>
                   </div>
                   {/* 窄栏里整卷过一遍太憋屈：这三页都能整页铺开看（新标签页，只读） */}
@@ -489,13 +503,7 @@ export default defineComponent({
                   ? <PreviewPane />
                   : state.pane === 'answer'
                     ? <AnswerPane />
-                    : state.pane === 'issue'
-                      ? <IssuePane />
-                      : state.pane === 'records'
-                        ? <RecordsPane />
-                        : state.pane === 'resource'
-                          ? <ResourcePane />
-                          : <VersionPane />}
+                    : <RecordsPane />}
               </aside>
             )
             : null}
@@ -506,6 +514,7 @@ export default defineComponent({
         </main>
 
         <ModalHost />
+        <ToolDialog />
         <Toast />
 
         <input

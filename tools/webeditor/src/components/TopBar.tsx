@@ -1,6 +1,6 @@
 import { defineComponent } from 'vue'
 import {
-  issueCounts, markDirty, markReciteDirty, publish, recite, requestMcpConfig, resetRecite, saveRecite,
+  issueCounts, markDirty, markReciteDirty, openTool, publish, recite, requestMcpConfig, resetRecite, saveRecite,
   showErrors, state, switchMode, toast, ui,
 } from '../store'
 import { theme, toggleTheme } from '../theme'
@@ -31,7 +31,7 @@ export default defineComponent({
     const check = () => {
       if (!state.paper) return
       const { errors, warns } = issueCounts()
-      state.pane = 'issue'
+      openTool('issue')
       toast(
         errors ? `本地检查发现 ${errors} 个错误，发布会被拦下` : `本地检查通过${warns ? ` · ${warns} 条提醒` : ''}`,
         errors ? 'err' : 'ok',

@@ -207,7 +207,7 @@ describe('单独查看页 · 整页壳', () => {
     expect(wrapper.findAll('.pv-q.static')).toHaveLength(2)
     expect(wrapper.find('.pv-opt.right').text()).toContain('乙')
     expect(wrapper.find('.pv-opt.wrong').text()).toContain('乙')
-    expect(wrapper.find('.ap-analysis').text()).toContain('选乙')
+    expect(wrapper.find('.sol-box').text()).toContain('选乙')
     expect(wrapper.text()).toContain('正确答案')
     expect(wrapper.text()).toContain('你的答案')
     wrapper.unmount()

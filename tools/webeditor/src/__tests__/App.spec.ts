@@ -565,7 +565,7 @@ describe('局域网题库编辑器', () => {
     state.paper!.sheets[0].questions[0].stem +=
       '\n![x](images/1/used.png)\n![y](images/1/gone.png)'
 
-    await wrapper.find('[data-pane="resource"]').trigger('click')
+    await wrapper.find('[data-tool-tab="resource"]').trigger('click')
     await flushPromises()
 
     expect(wrapper.findAll('.res-item')).toHaveLength(3)
@@ -594,7 +594,7 @@ describe('局域网题库编辑器', () => {
     const wrapper = mount(App, { attachTo: document.body })
     await flushPromises()
 
-    await wrapper.find('[data-pane="resource"]').trigger('click')
+    await wrapper.find('[data-tool-tab="resource"]').trigger('click')
     await flushPromises()
 
     const btn = wrapper.findAll('button').find((b) => b.text() === '整理图片')
@@ -639,8 +639,8 @@ describe('局域网题库编辑器', () => {
     await addBtn!.trigger('click')
     await flushPromises()
 
-    const checkBtn = wrapper.findAll('button').find((b) => b.text().trim() === '校验')
-    await checkBtn!.trigger('click')
+    const checkBtn = wrapper.find('[data-tool-tab="issue"]')
+    await checkBtn.trigger('click')
     await flushPromises()
     expect(wrapper.text()).toContain('题干为空')
     wrapper.unmount()
@@ -869,10 +869,14 @@ describe('局域网题库编辑器', () => {
     expect(opened[0]).toContain('setId=1')
     expect(opened[0]).toContain('sheet=11')
 
-    // 切到「校验」这一页就没有这个按钮（那页没有整页版）
-    await wrapper.findAll('button').find((b) => b.text().trim() === '校验')!.trigger('click')
+    // 切到「校验」：现在是弹框入口，不再换右栏页签——弹框开出来，整页按钮还跟着预览页走
+    await wrapper.find('[data-tool-tab="issue"]').trigger('click')
     await flushPromises()
-    expect(wrapper.find('[data-pane-full]').exists()).toBe(false)
+    expect(wrapper.find('.tool-dialog').exists()).toBe(true)
+    expect(wrapper.find('[data-pane-full="preview"]').exists()).toBe(true)
+    await wrapper.find('.tool-close').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.tool-dialog').exists()).toBe(false)
 
     spy.mockRestore()
     wrapper.unmount()
@@ -893,13 +897,14 @@ describe('局域网题库编辑器', () => {
     await wrapper.find('.rec-card').trigger('click')
     await flushPromises()
 
-    // 详情：成绩概要 + 答题卡 + 逐题（.pv-q.static / .pv-opt.right|wrong / .ap-analysis）
+    // 详情：成绩概要 + 答题卡 + 逐题（.pv-q.static / .pv-opt.right|wrong / .sol-box）
     expect(wrapper.find('.rec-hero').exists()).toBe(true)
     expect(wrapper.findAll('.rec-grid .cell')).toHaveLength(1)
     expect(wrapper.findAll('.pv-q.static')).toHaveLength(1)
-    expect(wrapper.find('.pv-opt.right').text()).toContain('选项二')
+    // 答错题的三态：错选红实心、没选到的正确答案绿描边（粉笔 ans-only）
     expect(wrapper.find('.pv-opt.wrong').text()).toContain('选项一')
-    expect(wrapper.find('.ap-analysis').text()).toContain('因为选二')
+    expect(wrapper.find('.pv-opt.ans-only').text()).toContain('选项二')
+    expect(wrapper.find('.sol-box').text()).toContain('因为选二')
     expect(wrapper.text()).toContain('正确答案')
     expect(wrapper.text()).toContain('你的答案')
 

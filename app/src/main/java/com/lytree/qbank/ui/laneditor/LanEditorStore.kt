@@ -109,11 +109,15 @@ class LanEditorStore(private val context: Context) {
             }
             // 禁用题也要读出来：编辑器上要能看到「已禁用」并随时启用，发布时也靠它们保持原位置
             val questions = db.listQuestions(p.id, limit, includeDisabled = true)
+            // 笔记挂在题目 id 上（App 端写），网页上只读展示；批量读省得逐题点一次库
+            val notes = db.getNotes(questions.map { it.id })
             sheets.put(
                 JSONObject()
                     .put("id", p.id)
                     .put("name", p.name)
-                    .put("questions", JSONArray().apply { questions.forEach { put(questionToJson(it, setId)) } })
+                    .put("questions", JSONArray().apply {
+                        questions.forEach { put(questionToJson(it, setId, notes[it.id] ?: "")) }
+                    })
             )
         }
         return JSONObject()
@@ -129,7 +133,7 @@ class LanEditorStore(private val context: Context) {
      * @param setId 当前打开的组；大于 0 时把题目里的图片搬进 `images/<setId>/` 并改写成该相对路径。
      *              作答记录（[loadRecord]）不传，图片路径保持库里的原样。
      */
-    private fun questionToJson(q: Question, setId: Long = 0): JSONObject = JSONObject().apply {
+    private fun questionToJson(q: Question, setId: Long = 0, note: String = ""): JSONObject = JSONObject().apply {
         put("type", typeKey(q.type))
         put("subject", q.subject)
         put("material", editorText(q.material, setId))
@@ -153,6 +157,8 @@ class LanEditorStore(private val context: Context) {
         put("keywords", q.keywords)
         // 选项排布按题存：'' = 单列 1×4，'2x2' = 两列；网页按这题自己的值渲染与切换
         put("optionLayout", q.optionLayout)
+        // 笔记只读透传（App 端编辑）：解析页 / 记录详情里按粉笔的样子铺一张笔记行
+        put("note", note)
         put("disabled", q.disabled)
         put("id", q.id)
     }
@@ -202,8 +208,9 @@ class LanEditorStore(private val context: Context) {
             emptyMap()
         }
         val answers = JSONArray()
+        val notes = db.getNotes(rec.results.map { it.question.id })
         rec.results.sortedBy { order[it.question.id] ?: Int.MAX_VALUE }.forEachIndexed { i, a ->
-            val q = questionToJson(a.question).apply {
+            val q = questionToJson(a.question, note = notes[a.question.id] ?: "").apply {
                 put("no", order[a.question.id] ?: (i + 1))
                 put("userAnswer", a.userAnswer)
                 put("correct", a.correct)

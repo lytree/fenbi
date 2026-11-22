@@ -1,10 +1,15 @@
 import { defineComponent } from 'vue'
-import { collectIssues, focusQuestion, state } from '../store'
+import { closeTool, collectIssues, focusQuestion, state } from '../store'
 
-/** 校验面板：把「发布时会被拦下 / 会被静默丢掉」的坑一次列出来，点一条跳到那道题 */
+/** 校验面板：把「发布时会被拦下 / 会被静默丢掉」的坑一次列出来，点一条跳到那道题。
+ *  现在住在弹框里：跳过去之后顺手把弹框关掉，别挡着看题。 */
 export default defineComponent({
   name: 'IssuePane',
   setup() {
+    const jump = (index: number) => {
+      focusQuestion(index)
+      closeTool()
+    }
     return () => {
       if (!state.paper) return <div class="pv-empty">还没有打开任何一组</div>
       const issues = collectIssues()
@@ -25,7 +30,7 @@ export default defineComponent({
             <div
               key={k}
               class={['issue', it.level === 'error' ? 'e' : 'w']}
-              onClick={() => focusQuestion(it.index)}
+              onClick={() => jump(it.index)}
             >
               <span class="lv">{it.level === 'error' ? '!' : '·'}</span>
               <span class="msg">{it.message}</span>

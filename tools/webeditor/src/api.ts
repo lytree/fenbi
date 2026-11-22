@@ -149,6 +149,8 @@ export interface RecordAnswer {
   answer: string
   analysis: string
   knowledge: string
+  /** App 端写的文字笔记，只读 */
+  note: string
   userAnswer: string
   /** 客观题判分结果；pending = 还没批（主观题） */
   correct: boolean

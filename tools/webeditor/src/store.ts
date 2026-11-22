@@ -94,7 +94,8 @@ export const state = reactive({
   subjectFilter: 'all' as SubjectFilter,
   /** 二级题型筛（值取归一后的知识点名） */
   subTopicFilter: 'all' as SubjectFilter,
-  pane: 'preview' as 'preview' | 'answer' | 'issue' | 'version' | 'resource' | 'records',
+  // 右栏只剩卷面三页；校验 / 版本 / 资源改走弹框（ui.tool），不再占页签
+  pane: 'preview' as 'preview' | 'answer' | 'records',
   versions: [] as VersionInfo[],
   versionLoading: false,
   /** 当前这组的图片资源（右栏「资源」页签） */
@@ -120,7 +121,19 @@ export const ui = reactive({
   draftSavedAt: 0,
   /** 「导入文件」的解析结果，弹层开着期间持有 */
   importPreview: null as ImportPreview | null,
+  /** 工具弹框：校验 / 版本 / 资源，null = 没开。以前是右栏页签，太挤也容易被忽略 */
+  tool: null as 'issue' | 'version' | 'resource' | null,
 })
+
+/** 打开工具弹框；版本页顺手拉一次列表（和以前切页签时的口径一致） */
+export function openTool(kind: 'issue' | 'version' | 'resource') {
+  ui.tool = kind
+  if (kind === 'version') void loadVersions()
+}
+
+export function closeTool() {
+  ui.tool = null
+}
 
 let toastTimer: number | undefined
 export function toast(text: string, kind: '' | 'ok' | 'err' = '') {

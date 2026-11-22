@@ -777,7 +777,8 @@ button {
   }
 }
 
-/* 侧栏右缘的收起拉手：骑在侧栏和编辑区之间的缝上，半嵌进编辑区边缘 */
+/* 侧栏右缘的收起拉手：骑在侧栏和编辑区之间的缝上，半嵌进编辑区边缘。
+   小一号：功能一眼能认出来就行，别在版面中间立一根显眼的柱子 */
 .sidebar-tab {
   position: absolute;
   /* 缝宽 14px：侧栏右边缘 + 半条缝，正好落在两块瓷板交界上 */
@@ -785,8 +786,8 @@ button {
   top: 50%;
   transform: translate(-50%, -50%);
   z-index: 30;
-  width: 22px;
-  height: 52px;
+  width: 16px;
+  height: 36px;
   padding: 0;
   display: grid;
   place-items: center;
@@ -794,7 +795,8 @@ button {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: -8px 0 22px -14px rgba(44, 24, 96, .28);
-  color: var(--text-tertiary);
+  color: var(--text-quaternary);
+  font-size: 11px;
 
   &:hover {
     color: var(--primary);
@@ -810,8 +812,8 @@ button {
   top: 58%;
   transform: translateY(-50%);
   z-index: 30;
-  width: 26px;
-  height: 56px;
+  width: 18px;
+  height: 42px;
   padding: 0;
   display: grid;
   place-items: center;
@@ -820,13 +822,14 @@ button {
   border-left: none;
   border-radius: 0 var(--radius) var(--radius) 0;
   box-shadow: 8px 0 22px -14px rgba(44, 24, 96, .28);
-  color: var(--text-tertiary);
+  color: var(--text-quaternary);
+  font-size: 11px;
 
   &:hover {
     color: var(--primary);
     border-color: var(--primary-border);
     background: var(--primary-bg);
-    width: 30px;
+    width: 22px;
   }
 }
 
@@ -838,8 +841,8 @@ button {
   top: 58%;
   transform: translateY(-50%);
   z-index: 30;
-  width: 26px;
-  height: 56px;
+  width: 18px;
+  height: 42px;
   padding: 0;
   display: grid;
   place-items: center;
@@ -848,13 +851,14 @@ button {
   border-right: none;
   border-radius: var(--radius) 0 0 var(--radius);
   box-shadow: -8px 0 22px -14px rgba(44, 24, 96, .28);
-  color: var(--text-tertiary);
+  color: var(--text-quaternary);
+  font-size: 11px;
 
   &:hover {
     color: var(--primary);
     border-color: var(--primary-border);
     background: var(--primary-bg);
-    width: 30px;
+    width: 22px;
   }
 }
 
@@ -2013,6 +2017,123 @@ body.pane-dragging {
 
 .ppane { flex: 1; overflow-y: auto; padding: 18px; min-height: 0; }
 
+/* 工具弹框入口（校验 / 版本 / 资源）：页签条右端的小胶囊 + 计数徽标。
+   以前它们各占一个页签，把卷面三页挤成六选三还容易被忽略；
+   现在右栏只留卷面三页，这三块改成弹框，入口靠徽标色抢视线 */
+.tool-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  margin-left: 6px;
+  padding-left: 10px;
+  border-left: 1px solid var(--border-secondary);
+}
+
+.tool-tab {
+  height: 26px;
+  padding: 0 4px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--bg-container);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  transition: border-color .18s, color .18s, background-color .18s;
+
+  &:hover { color: var(--primary); border-color: var(--primary-border); background: var(--primary-bg); }
+
+  &.open { color: var(--primary); border-color: var(--primary); background: var(--primary-bg); }
+
+  /* 有会拦下发布的错误：整枚胶囊染红，不用翻进弹框就知道过不了 */
+  &.alarm {
+    color: var(--error-text);
+    border-color: var(--error-border);
+    background: var(--error-bg);
+    font-weight: 500;
+
+    &:hover { color: var(--error-text); border-color: var(--error); }
+  }
+}
+
+.tool-tab-badge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  display: inline-grid;
+  place-items: center;
+  font-size: 11px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  background: var(--bg-fill-strong);
+  color: var(--text-secondary);
+
+  &.ok { background: var(--success-bg); color: var(--success-text); }
+  &.hot { background: var(--error); color: #fff; font-weight: 600; }
+}
+
+/* 工具弹框本体：比确认框宽一档，头下不画通栏线（标题自带徽标收边） */
+.tool-mask { z-index: 110; }
+
+.tool-dialog {
+  width: min(720px, 92vw);
+  max-height: 84vh;
+
+  &.modal { padding: 0; }
+}
+
+.tool-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 14px 16px 12px 20px;
+  border-bottom: 1px solid var(--border-secondary);
+
+  .tool-title { font-size: 15px; font-weight: 600; color: var(--text); }
+}
+
+.tool-badge {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  display: inline-grid;
+  place-items: center;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  background: var(--bg-fill-strong);
+  color: var(--text-secondary);
+
+  &.hot { background: var(--error); color: #fff; font-weight: 600; }
+  &.ok { background: var(--success-bg); color: var(--success-text); }
+}
+
+.tool-close {
+  margin-left: auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 18px;
+
+  &:hover { background: var(--bg-fill); color: var(--text); }
+}
+
+.tool-body {
+  overflow-y: auto;
+  padding: 14px 20px 18px;
+  max-height: calc(84vh - 56px);
+}
+
+
 /* 样张页眉：标题前一枚主色圆点，和右侧计数拉开层次 */
 .pv-head {
   display: flex;
@@ -2103,8 +2224,11 @@ body.pane-dragging {
 
 .pv-no {
   @include label;
-  color: var(--text-quaternary);
-  margin-left: auto;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 500;
+  margin-right: 2px;
+  font-variant-numeric: tabular-nums;
 }
 
 .pv-mat {
@@ -2153,41 +2277,59 @@ body.pane-dragging {
 
 .pv-opt {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   align-items: flex-start;
   font-size: 14px;
   color: var(--text);
   line-height: 1.5715;
+  padding: 7px 10px;
+  margin: 0 -10px;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  transition: background-color .15s, border-color .15s;
 
   &.on {
     .pv-key { background: var(--primary-solid); border-color: var(--primary-solid); color: var(--on-primary); }
     .pv-text { color: var(--primary); font-weight: 500; }
+    background: var(--primary-bg);
+    border-color: var(--primary-border);
   }
 
-  /* 记录详情里的三态：标准答案绿、自己的错选红（都中以绿为先） */
+  /* 记录详情里的粉笔三态：标准答案绿、自己的错选红、没选到的正确答案绿描边——
+     行底跟着上一态淡色，一眼分清「选对的」和「该选的」 */
   &.right {
+    background: var(--success-bg);
+    border-color: var(--success-border);
     .pv-key { background: var(--success); border-color: var(--success); color: #fff; }
     .pv-text { color: var(--success-text); }
   }
 
   &.wrong {
+    background: var(--error-bg);
+    border-color: var(--error-border);
     .pv-key { background: var(--error); border-color: var(--error); color: #fff; }
     .pv-text { color: var(--error-text); }
+  }
+
+  &.ans-only {
+    .pv-key { background: var(--bg-container); border-color: var(--success); border-width: 1.5px; color: var(--success-text); }
+    .pv-text { color: var(--success-text); }
   }
 }
 
 .pv-key {
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   border: 1px solid var(--border);
   display: grid;
   place-items: center;
-  font-size: 12px;
+  font-size: 13px;
   flex: none;
   color: var(--text-secondary);
   background: var(--bg-container);
-  margin-top: 2px;
+  margin-top: 1px;
+  font-variant-numeric: tabular-nums;
 }
 
 .pv-ans {
@@ -2200,28 +2342,275 @@ body.pane-dragging {
   b { color: var(--success-text); font-weight: 600; }
 }
 
-/* 「答案解析」页：解析块沿用材料框的视觉，知识点一行小字收尾 */
-.ap-analysis {
-  margin-top: 10px;
-  background: var(--bg-layout);
-  border: 1px solid var(--border-secondary);
-  border-radius: var(--radius);
-  padding: 12px;
-  font-size: 14px;
-  color: var(--text);
-  line-height: 1.5715;
-
-  .mh {
-    @include label;
-    color: var(--text-tertiary);
-    margin-bottom: 6px;
-  }
-}
+/* 「答案解析」页的解析块改走 .sol-box（可折叠）、知识点改走 .kp 胶囊，
+   这两个旧的灰底块类不再使用；.ap-know 留给非折叠场景兜底 */
 
 .ap-know {
   margin-top: 8px;
   @include label;
   color: var(--text-tertiary);
+}
+
+/* 宫格条：灰底圆角一整条，格子竖线分隔，值大字着色、名小字灰（两格：正确答案 / 你的答案） */
+.ov-grid {
+  margin-top: 14px;
+  padding: 12px 0;
+  background: var(--bg-layout);
+  border-radius: var(--radius-lg);
+  display: grid;
+
+  &.c1 { grid-template-columns: 1fr; }
+  &.c2 { grid-template-columns: repeat(2, 1fr); }
+  &.c3 { grid-template-columns: repeat(3, 1fr); }
+  &.c4 { grid-template-columns: repeat(4, 1fr); }
+}
+
+.ov {
+  text-align: center;
+  position: relative;
+  padding: 0 8px;
+
+  /* 非首格的左侧竖线：和粉笔一样只在灰条内部画分隔 */
+  & + .ov::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 14%;
+    height: 72%;
+    width: 1px;
+    background: var(--border-secondary);
+  }
+
+  .v {
+    font-size: 17px;
+    font-weight: 600;
+    line-height: 1.35;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    word-break: break-all;
+
+    i { font-style: normal; font-size: 12px; color: var(--text-tertiary); font-weight: 400; }
+    &.g { color: var(--success-text); }
+    &.r { color: var(--error-text); }
+    &.b { color: var(--primary); }
+    &.o { color: var(--warning-text); }
+    &.ok { color: var(--success-text); }
+    &.no { color: var(--error-text); }
+    &.pend { color: var(--warning-text); }
+    &.none { color: var(--text-quaternary); }
+  }
+
+  .k {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    margin-top: 2px;
+  }
+}
+
+/* 折叠解析盒：蓝条 + 标题 + 右侧箭头，点标题行收起 / 展开（粉笔 sol-box 的口径） */
+.sol-box {
+  margin-top: 12px;
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+
+  .sol-h {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 42px;
+    padding: 0 14px;
+    cursor: pointer;
+    user-select: none;
+    background: var(--bg-container);
+
+    .bar { width: 3px; height: 14px; border-radius: 2px; background: var(--primary); }
+    .t { font-size: 14px; font-weight: 500; color: var(--text); }
+
+    .chev {
+      margin-left: auto;
+      color: var(--text-tertiary);
+      font-size: 13px;
+      transition: transform .2s;
+      transform: rotate(90deg);
+    }
+  }
+
+  .sol-body {
+    padding: 2px 14px 14px;
+    font-size: 14px;
+    line-height: 1.9;
+    color: var(--text);
+    white-space: pre-wrap;
+    text-align: justify;
+  }
+
+  &.collapsed .sol-h .chev { transform: rotate(0deg); }
+  &.collapsed .sol-body { display: none; }
+}
+
+/* 考点胶囊（粉笔 kp）：蓝底白字圆胶囊，一行可多个 */
+.kp-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-secondary);
+
+  .kp {
+    height: 26px;
+    padding: 0 14px;
+    border-radius: 13px;
+    background: var(--primary);
+    color: var(--on-primary);
+    font-size: 12.5px;
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+/* 笔记行（粉笔 note-row）：灰底圆角一条，左侧小签 + 正文；没笔记时给一句灰色提示 */
+.note-row {
+  margin-top: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: var(--bg-layout);
+  border-radius: var(--radius-lg);
+  padding: 12px 14px;
+  font-size: 13px;
+
+  .nl {
+    flex: none;
+    @include label;
+    color: var(--text-tertiary);
+    padding-top: 1px;
+  }
+
+  .nb {
+    flex: 1;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.6;
+
+    &.empty { color: var(--text-quaternary); }
+  }
+}
+
+/* 逐题卡顶部对错色条（粉笔解析页）：卡顶一条渐隐色带，滚长卷时扫一眼就知道对错 */
+.pv-q.r-ok::before,
+.pv-q.r-no::before,
+.pv-q.r-pend::before,
+.pv-q.r-none::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+.pv-q.r-ok::before { background: linear-gradient(180deg, var(--success), transparent); opacity: .55; }
+.pv-q.r-no::before { background: linear-gradient(180deg, var(--error), transparent); opacity: .5; }
+.pv-q.r-pend::before { background: linear-gradient(180deg, var(--warning), transparent); opacity: .5; }
+.pv-q.r-none::before { background: var(--border-secondary); }
+
+/* 记录详情的得分行：粉笔「我的得分 2.4/100 · 总用时 4分58秒」那一行的口径 */
+.rec-score-line {
+  display: flex;
+  align-items: flex-end;
+  gap: 22px;
+  padding: 10px 2px 2px;
+
+  .score b {
+    font-size: 30px;
+    font-weight: 600;
+    color: var(--primary);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .score i {
+    font-style: normal;
+    font-size: 13px;
+    color: var(--text-tertiary);
+    margin-left: 2px;
+  }
+  .time {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    display: inline-flex;
+    flex-direction: column;
+
+    b { font-size: 15px; color: var(--text); font-variant-numeric: tabular-nums; }
+  }
+}
+
+/* 考试情况（粉笔 exam-card）：按题型一行一条，行尾挂 总题数 / 答对 / 正确率 */
+.exam-card {
+  background: var(--bg-container);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 14px 16px 4px;
+  margin-bottom: 12px;
+
+  .ec-h {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+
+  .ec-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 40px;
+    border-bottom: 1px solid var(--border-secondary);
+    font-size: 13px;
+    color: var(--text-tertiary);
+
+    &:last-child { border-bottom: 0; }
+
+    .name {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text);
+      min-width: 0;
+    }
+
+    .ico {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      flex: none;
+      font-size: 11px;
+      background: var(--primary-bg);
+      color: var(--primary);
+    }
+
+    .stat {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+
+      b { font-weight: 500; color: var(--text); }
+      .g { color: var(--success-text); }
+    }
+  }
 }
 
 .pv-empty {
@@ -4205,7 +4594,7 @@ body.pane-dragging {
 //
 // 这里以前自带一套粉笔蓝的固定色（$c-fb-*）——夜里整页还是白的，卡片、标签、
 // 圆角也跟旁边两页不是一种东西。现在一律走令牌，能复用的骨架直接复用：
-//   页头 .pv-head / 题目卡 .pv-q / 选项 .pv-opt / 解析块 .ap-analysis
+//   页头 .pv-head / 题目卡 .pv-q / 选项 .pv-opt / 解析盒 .sol-box
 // 只留下「记录才有」的四件：状态胶囊、统计条、答题卡、答案对照条。
 // =============================================================================
 
@@ -4421,11 +4810,12 @@ body.pane-dragging {
   gap: 8px;
   margin-top: 12px;
 
+  /* 粉笔答题卡的口径：36px 方块、圆角小一点，绿 / 红 / 橙 / 灰四态实心 */
   .cell {
     @include label;
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -4466,25 +4856,7 @@ body.pane-dragging {
   color: var(--text-tertiary);
 }
 
-/* 答案对照条：照 .pv-ans 的样子（上发丝线 + 小字），只是并排两栏 */
-.rec-ansbar {
-  margin-top: 12px;
-  padding-top: 8px;
-  border-top: 1px solid var(--border-secondary);
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 20px;
-  @include label;
-  color: var(--text-tertiary);
-
-  > div { display: flex; align-items: baseline; gap: 2px; }
-
-  b { font-weight: 600; margin-left: 2px; }
-  .ok b { color: var(--success-text); }
-  .no b { color: var(--error-text); }
-  .pend b { color: var(--warning-text); }
-  .none b { color: var(--text-tertiary); }
-}
+/* 答案对照条已由宫格条 .ov-grid 接管，旧的 .rec-ansbar 拆掉了 */
 
 // =============================================================================
 // 单独查看页（?view=preview|answer|records）：一条窄顶栏 + 居中一栏正文

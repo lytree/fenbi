@@ -12,11 +12,13 @@ import { openFullPage } from '../fullview'
  *
  * 两层视图：
  * - 列表：每条记录一张卡（练习名 + 状态 + 统计条），点进详情；
- * - 详情：成绩概要 + 答题卡色块 + 逐题明细（选项着色 / 答案对照 / 解析）。
+ * - 详情：粉笔解析页的复刻——得分卡（大号蓝分 + 总用时）→「考试情况」按题型分行
+ *   → 答题卡色块 → 逐题解析（顶部对错色条、选项三态、灰底宫格条、折叠解析、
+ *   考点胶囊、笔记行），资料分析的材料单独成卡放在小题前面。
  *
  * 版式跟「卷面预览 / 答案解析」同一套：页头用 `.pv-head`、题目卡用 `.pv-q`、
- * 选项用 `.pv-opt`、解析块用 `.ap-analysis`——三页来回切不会觉得换了套皮，
- * 明暗两套主题也跟着令牌一起翻，不再有自己的固定色。
+ * 选项用 `.pv-opt`、解析块用 `.sol-box`——三页来回切不会觉得换了套皮，
+ * 明暗两套主题也跟着令牌一起翻。
  *
  * 记录是只读的：这里只回看，批改仍然在 App / 对话里做。
  */
@@ -151,7 +153,15 @@ export default defineComponent({
       )
     }
 
-    /** 逐题明细里的一道题：跟卷面预览 / 答案解析同一种卡片 */
+    /** 折叠解析盒：点标题行收起 / 展开（箭头跟着翻） */
+    const toggleSol = (e: MouseEvent) => {
+      ;(e.currentTarget as HTMLElement).closest('.sol-box')?.classList.toggle('collapsed')
+    }
+
+    /**
+     * 逐题解析里的一道题：粉笔解析页的版式。
+     * `material` 由外面的资料分组渲染（材料卡在小题前面），这里不再重复铺一遍。
+     */
     const QuestionBlock = ({ a }: { a: RecordAnswer }) => {
       const keys = answerKeys(a.answer)
       const userKeys = answerKeys(a.userAnswer)
@@ -166,25 +176,25 @@ export default defineComponent({
               ? { cls: 'ok', text: '答对' }
               : { cls: 'no', text: '答错' }
 
+      // 宫格条两格：正确答案 / 你的答案（按对错着色）；得分与结果在题号行的徽标里已有
+      const cells = [
+        `<div class="ov"><div class="v g">${renderInline(a.answer) || '—'}</div><div class="k">正确答案</div></div>`,
+        `<div class="ov"><div class="v ${userCls(result.cls)}">${
+          renderInline(a.userAnswer) || '未作答'
+        }</div><div class="k">你的答案</div></div>`,
+      ]
+
       return (
-        <div class="pv-q static">
+        <div class={['pv-q', 'static', `r-${result.cls}`]}>
           <div class="pv-tagrow">
+            <span class="pv-no">{a.no}.</span>
             <span class="pv-tag">{typeLabel(a.type)}</span>
-            <span class={['rec-result', result.cls]}>{result.text}</span>
             {a.full > 0
               ? <span class="rec-score">{a.pending ? `0/${a.full} 分` : `${a.earned}/${a.full} 分`}</span>
               : null}
-            <span class="pv-no">第 {a.no} 题</span>
+            <span class={['rec-result', result.cls]}>{result.text}</span>
           </div>
 
-          {a.material
-            ? (
-              <div class="pv-mat">
-                <div class="mh">材料</div>
-                <div innerHTML={renderMaterial(a.material)}></div>
-              </div>
-            )
-            : null}
           <div class="pv-stem" innerHTML={renderStem(a.stem) || '<span class="pv-ph">（题干为空）</span>'}></div>
 
           {choice
@@ -193,8 +203,9 @@ export default defineComponent({
                 {a.options.filter((o) => o.text.trim()).map((o) => {
                   const inAnswer = keys.includes(o.key.toUpperCase())
                   const picked = userKeys.includes(o.key.toUpperCase())
-                  // 标准答案绿、自己的错选红，两个都中以绿为先
-                  const cls = inAnswer ? 'right' : picked ? 'wrong' : ''
+                  // 粉笔三态：答对时你的选择绿实心；答错时错选红实心、
+                  // 没选到的正确答案绿描边（ans-only），剩下的保持素色
+                  const cls = picked && inAnswer ? 'right' : inAnswer ? 'ans-only' : picked ? 'wrong' : ''
                   return (
                     <div class={['pv-opt', cls]} key={o.key}>
                       <span class="pv-key">{o.key}</span>
@@ -206,22 +217,76 @@ export default defineComponent({
             )
             : null}
 
-          <div class="rec-ansbar">
-            <div class="ok">正确答案：<b innerHTML={renderInline(a.answer) || '—'}></b></div>
-            <div class={[userCls(result.cls)]}>
-              你的答案：<b innerHTML={renderInline(a.userAnswer) || '未作答'}></b>
-            </div>
-          </div>
+          <div class="ov-grid c2" innerHTML={cells.join('')}></div>
 
           {a.analysis
             ? (
-              <div class="ap-analysis">
-                <div class="mh">解析</div>
-                <div innerHTML={renderStem(a.analysis)}></div>
+              <div class="sol-box">
+                <div class="sol-h" onClick={toggleSol}>
+                  <span class="bar"></span>
+                  <span class="t">解析</span>
+                  <span class="chev">❯</span>
+                </div>
+                <div class="sol-body" innerHTML={renderStem(a.analysis)}></div>
               </div>
             )
             : null}
-          {a.knowledge ? <div class="ap-know">知识点：{a.knowledge}</div> : null}
+          {a.knowledge
+            ? <div class="kp-row"><span class="kp">{a.knowledge}</span></div>
+            : null}
+          <div class="note-row">
+            <span class="nl">笔记</span>
+            {a.note?.trim()
+              ? <span class="nb">{a.note}</span>
+              : <span class="nb empty">暂无笔记 · 在 App 答题页长按画笔添加</span>}
+          </div>
+        </div>
+      )
+    }
+
+    /** 资料分析的题目形式：连续同材料的题共用一张材料卡，小题跟在后面 */
+    const detailBlocks = (answers: RecordAnswer[]) => {
+      const out: ({ kind: 'mat'; material: string; size: number } | { kind: 'q'; a: RecordAnswer })[] = []
+      let i = 0
+      while (i < answers.length) {
+        const a = answers[i]
+        if (a.material.trim()) {
+          let j = i
+          while (j < answers.length && answers[j].material === a.material) j++
+          out.push({ kind: 'mat', material: a.material, size: j - i })
+          for (let k = i; k < j; k++) out.push({ kind: 'q', a: answers[k] })
+          i = j
+        } else {
+          out.push({ kind: 'q', a })
+          i++
+        }
+      }
+      return out
+    }
+
+    /** 「考试情况」：粉笔报告里的模块行——本卷按题型聚合，各给一行 总题数 / 答对 / 正确率 */
+    const ExamCard = ({ answers }: { answers: RecordAnswer[] }) => {
+      const rows = new Map<string, { total: number; correct: number }>()
+      for (const a of answers) {
+        const t = typeLabel(a.type)
+        const r = rows.get(t) ?? { total: 0, correct: 0 }
+        r.total++
+        if (!a.pending && a.correct) r.correct++
+        rows.set(t, r)
+      }
+      return (
+        <div class="exam-card">
+          <div class="ec-h">考试情况</div>
+          {[...rows.entries()].map(([t, r]) => (
+            <div class="ec-row" key={t}>
+              <span class="name"><span class="ico">{t.slice(0, 1)}</span>{t}</span>
+              <span class="stat">
+                总题数 <b>{r.total}</b> 题
+                <span>答对 <b class="g">{r.correct}</b> 题</span>
+                <span>正确率 <b>{r.total ? Math.round((r.correct / r.total) * 100) : 0}%</b></span>
+              </span>
+            </div>
+          ))}
         </div>
       )
     }
@@ -262,8 +327,22 @@ export default defineComponent({
               {d.mode || '练习'} · {formatTime(d.submittedAt || d.startedAt)}
               {d.paperId < 0 ? ' · 整组作答' : ''}
             </div>
+            {/* 粉笔得分卡：大号蓝分 + 满分 + 总用时 */}
+            <div class="rec-score-line">
+              {d.fullScore > 0
+                ? (
+                  <span class="score">
+                    <b>{d.score}</b>
+                    <i>/{d.fullScore}</i>
+                  </span>
+                )
+                : <span class="score"><b>{accuracy(d)}%</b><i>正确率</i></span>}
+              <span class="time"><b>{fmtDuration(d.durationSec)}</b>总用时</span>
+            </div>
             <StatsBar r={d} />
           </div>
+
+          <ExamCard answers={answers} />
 
           <div class="rec-sheet">
             <div class="rec-sheet-head">
@@ -283,7 +362,16 @@ export default defineComponent({
           </div>
 
           <div class="rec-qlist">
-            {answers.map((a) => <QuestionBlock a={a} key={`${a.no}-${a.stem.slice(0, 8)}`} />)}
+            {detailBlocks(answers).map((b) =>
+              b.kind === 'mat'
+                ? (
+                  <div class="pv-mat" key={`mat-${b.size}-${b.material.slice(0, 8)}`}>
+                    <div class="mh">资料分析 · {b.size} 小题</div>
+                    <div innerHTML={renderMaterial(b.material)}></div>
+                  </div>
+                )
+                : <QuestionBlock a={b.a} key={`${b.a.no}-${b.a.stem.slice(0, 8)}`} />,
+            )}
           </div>
         </div>
       )
