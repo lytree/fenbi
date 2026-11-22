@@ -185,6 +185,13 @@ foreach (var (pg, lines) in pages)
             continue;
         }
 
+        // 顶部的「十、重要指示」这类小标题只做分段，不能并进上一条正文
+        if (r.Y < 490 && Regex.IsMatch(t, @"^[一二三四五六七八九十]+、"))
+        {
+            curCard = null;
+            continue;
+        }
+
         var m = Regex.Match(t, @"^(\d{1,3})\s*[.．、,，]\s*(.*)$");
         if (m.Success && r.X >= 150 && r.X <= 310)
         {
@@ -219,7 +226,7 @@ foreach (var (pg, lines) in pages)
 
 foreach (var c in cards)
 {
-    var text = string.Join("\n", c.Lines.Select(Polish)).Trim();
+    var text = Polish(string.Join("\n", c.Lines)).Trim();
     text = Regex.Replace(text, @"\n{2,}", "\n");
     var (withBlanks, answers) = Blank(text);
     c.Text = withBlanks;
@@ -309,7 +316,7 @@ static List<Row> MergeRows(List<Line> lines)
         if (rows.Count > 0 && Math.Abs(rows[^1].Y - l.Y) <= 12)
         {
             var last = rows[^1];
-            rows[^1] = new Row(last.Y, last.X, l.X2, last.Text + l.Text);
+            rows[^1] = new Row(last.Y, last.X, l.X2, JoinOverlap(last.Text, l.Text));
         }
         else
         {
@@ -317,6 +324,20 @@ static List<Row> MergeRows(List<Line> lines)
         }
     }
     return rows;
+}
+
+/// <summary>
+/// 同一行的两个识别框拼接：OCR 常把「第八节发」和「发展全过程人民民主」切成两块，
+/// 直接相加会得到「第八节发发展…」。两端有重叠时只取一次。
+/// </summary>
+static string JoinOverlap(string a, string b)
+{
+    if (a.EndsWith(b, StringComparison.Ordinal)) return a;
+    if (b.StartsWith(a, StringComparison.Ordinal)) return b;
+    int max = Math.Min(a.Length, b.Length);
+    for (int k = max; k > 0; k--)
+        if (a.EndsWith(b[..k], StringComparison.Ordinal)) return a + b[k..];
+    return a + b;
 }
 
 /// <summary>水印、页码、单字符碎片。</summary>
@@ -342,8 +363,41 @@ static string Polish(string t)
         ("注人", "注入"), ("加人", "加入"), ("投人", "投入"), ("人市", "入市"),
         ("福社", "福祉"), ("路身", "跻身"), ("会唔", "会晤"),
         ("強大", "强大"), ("区別", "区别"), ("部份", "部分"),
+        // 数字「十」被识成「土」：只收「第几届 / 十几大 / 十五五」这类不会与「土地」混淆的搭配
+        ("土一届", "十一届"), ("土四大", "十四大"), ("土五大", "十五大"),
+        ("土六大", "十六大"), ("土七大", "十七大"), ("土八大", "十八大"),
+        ("土九大", "十九大"), ("土五五", "十五五"),
+        ("士四大", "十四大"), ("士五大", "十五大"), ("士六大", "十六大"),
+        ("士七大", "十七大"), ("士八大", "十八大"), ("士九大", "十九大"),
+        ("士一届", "十一届"), ("士二届", "十二届"), ("士三届", "十三届"),
+        ("士四届", "十四届"), ("士五届", "十五届"), ("士六届", "十六届"),
+        ("士七届", "十七届"), ("士八届", "十八届"), ("士九届", "十九届"),
+        ("土二年", "十二年"),
+        ("上四个坚持", "十四个坚持"), ("上三个方面成就", "十三个方面成就"),
+        ("一而就", "一蹴而就"), ("真抓实十", "真抓实干"), ("于事和干净", "干事和干净"),
+        ("票赋", "禀赋"), ("十部队伍", "干部队伍"), ("暮然回首", "蓦然回首"),
+        ("并行不悸", "并行不悖"), ("白年老店", "百年老店"),
     };
     foreach (var (a, b) in FIXES) t = t.Replace(a, b, StringComparison.Ordinal);
+    // 引号错配：开后单引号收成双引号 / 开后双引号收成单引号
+    t = Regex.Replace(t, @"‘([^’”]{2,20})”", "‘$1’");
+    t = Regex.Replace(t, @"“([^“”‘]{1,20})’", "“$1”");
+    t = Regex.Replace(t, @"“([^“”]{2,30})'", "“$1”");
+    // 中文正文里的半角标点收成全角
+    t = Regex.Replace(t, @"(?<=[\u4e00-\u9fff])[;:](?=[\u4e00-\u9fff])", m => m.Value == ";" ? "；" : "：");
+    // 行尾被识别成一串点号的省略号
+    t = Regex.Replace(t, @"[.·]{2,}\s*$", "……");
+    // 拼接两行时可能出现的叠标点（「成就。” + “结合」）
+    t = Regex.Replace(t, @"([，。；：、])\1+", "$1");
+    // 红字/下划线块被识别成的尾巴碎片
+    t = Regex.Replace(t, @"支美$", "");
+    t = Regex.Replace(t, @"，生(?=[，。]|$)", "");
+    // 跨页断行把开引号留在上一页
+    t = Regex.Replace(t, @"^十五五”", "“十五五”");
+    t = Regex.Replace(t, @"共同富裕十五五”", "共同富裕“十五五”");
+    t = Regex.Replace(t, @"^一国两制”", "“一国两制”");
+    t = Regex.Replace(t, @"坚持“大稳定、小调整$", "坚持“大稳定、小调整”");
+    t = Regex.Replace(t, @"。，", "。");
     return t;
 }
 
@@ -352,6 +406,9 @@ static (string Text, List<string> Answers) Blank(string text)
 {
     var spans = new List<(int Start, int Len, string Answer)>();
     foreach (Match m in Regex.Matches(text, @"[“「]([^”」]{2,14})[”」]"))
+        spans.Add((m.Index, m.Length, m.Value));
+    // 「‘三个进一步解放’」这类嵌套引号（外层是双引号时不会与上面重叠）
+    foreach (Match m in Regex.Matches(text, @"‘([^’]{2,14})’"))
         spans.Add((m.Index, m.Length, m.Value));
     foreach (Match m in Regex.Matches(text, @"(?<!\d)(\d{4})(?=年)"))
         spans.Add((m.Index, m.Length, m.Value));
