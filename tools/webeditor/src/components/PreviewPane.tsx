@@ -4,8 +4,9 @@ import {
   currentQuestions, focusQuestion, groupsOf, state, TYPE_LABEL,
 } from '../store'
 import { esc } from '../util'
-import { renderInline, renderMaterial, renderStem } from '../markdown'
+import { renderMaterial, renderStem } from '../markdown'
 import { LEVEL_NONE, level1Of, level2Of } from '../xingce'
+import { optionListHtml, writeZoneHtml } from '../qview'
 
 /**
  * 右侧卷面预览：按粉笔答题页的版式排——材料卡与题目同列上下排（资料分析的形式），
@@ -33,7 +34,7 @@ export default defineComponent({
 
     const blockHtml = (q: Question, index: number): string => {
       const focus = state.focused === q._uid ? ' focus' : ''
-      const opts = q.options.filter((o) => o.text.trim())
+      const typeKey = q.type
 
       let h = `<div class="pv-q${focus}" data-uid="${q._uid}">`
       // 粉笔口径：题号在前，题型标签跟在后；有行测两级题型就按「一级 · 二级」显示
@@ -41,7 +42,7 @@ export default defineComponent({
       const lv2 = level2Of(q)
       const hasTypeTree = !!lv1 || !!lv2
       h += `<div class="pv-tagrow"><span class="pv-no">${index + 1}.</span><span class="pv-tag">${
-        hasTypeTree ? esc(lv1 || LEVEL_NONE) : TYPE_LABEL[q.type]
+        hasTypeTree ? esc(lv1 || LEVEL_NONE) : TYPE_LABEL[typeKey]
       }</span>`
       if (hasTypeTree) h += `<span class="pv-tag lv2">${esc(lv2 || LEVEL_NONE)}</span>`
       h += '</div>'
@@ -49,20 +50,8 @@ export default defineComponent({
       // 题干里带表格时 renderStem 会排出真表格（和 App 的 renderStemRich 同一套口径）
       h += `<div class="pv-stem">${renderStem(q.stem) || '<span class="pv-ph">（题干为空）</span>'}</div>`
 
-      if (opts.length) {
-        // 选项排布看**这一题自己**的值（网页题目卡里逐题切），和 App 答题页同一套口径
-        const two = q.optionLayout === '2x2' && opts.length >= 2
-        h += `<div class="pv-opts${two ? ' two' : ''}">`
-        h += opts
-          .map(
-            (o) =>
-              `<div class="pv-opt">` +
-              `<span class="pv-key">${esc(o.key)}</span>` +
-              `<span class="pv-text">${renderInline(o.text)}</span></div>`,
-          )
-          .join('')
-        h += '</div>'
-      }
+      // 选项按题型走共用渲染：多选方徽标、判断勾叉；填空 / 主观题没有选项，给作答区
+      h += optionListHtml(q) || writeZoneHtml(typeKey)
 
       h += '</div>'
       return h

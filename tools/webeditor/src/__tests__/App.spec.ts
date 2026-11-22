@@ -91,9 +91,9 @@ const RECORD = {
   ...RECORDS.records[0],
   answers: [
     {
-      no: 1, type: 'single', stem: '第一题：没有语病的一项', material: '',
+      id: 101, no: 1, type: 'single', stem: '第一题：没有语病的一项', material: '',
       options: [{ key: 'A', text: '选项一' }, { key: 'B', text: '选项二' }],
-      answer: 'B', analysis: '因为选二', knowledge: '实词', userAnswer: 'A',
+      answer: 'B', analysis: '因为选二', knowledge: '实词', userAnswer: 'A', note: '',
       correct: false, partial: false, pending: false, earned: 0, full: 1,
     },
   ],
@@ -104,6 +104,7 @@ let deleteRequested: number[] = []
 let deleteCancelled: string[] = []
 let resourceDeleted: string[] = []
 let migrateCalls: number[] = []
+let noteSaved: { questionId: number; note: string }[] = []
 
 function mockFetch() {
   published = null
@@ -111,6 +112,7 @@ function mockFetch() {
   deleteCancelled = []
   resourceDeleted = []
   migrateCalls = []
+  noteSaved = []
   const fn = vi.fn(async (input: any, init?: RequestInit) => {
     const url = String(input)
     if (url.startsWith('/api/papers')) return json(SETS)
@@ -126,6 +128,11 @@ function mockFetch() {
     if (url.startsWith('/api/resources')) return json({ setId: 1, dir: 'images/1', files: RESOURCES })
     if (url.startsWith('/api/records')) return json(RECORDS)
     if (url.startsWith('/api/record')) return json(RECORD)
+    if (url.startsWith('/api/note')) {
+      const body = JSON.parse(String(init?.body))
+      noteSaved.push(body)
+      return json({ ok: true, note: body.note })
+    }
     if (url.startsWith('/api/resource')) {
       resourceDeleted.push(new URL(url, 'http://localhost').searchParams.get('p') || '')
       return json({ ok: true, path: resourceDeleted[resourceDeleted.length - 1] })
@@ -910,6 +917,34 @@ describe('局域网题库编辑器', () => {
 
     // 详情里也能整页看这条记录
     expect(wrapper.find('.rec-detail').text()).toContain('新页面查看')
+    wrapper.unmount()
+  })
+
+  it('解析页的笔记笔：点开弹框写笔记，按题目 id 直写 notes 表', async () => {
+    const wrapper = mount(App, { attachTo: document.body })
+    await flushPromises()
+
+    await wrapper.findAll('button').find((b) => b.text() === '答案解析')!.trigger('click')
+    await flushPromises()
+
+    // 没笔记时题号行只留一支笔，不再在整卷上铺空笔记行
+    expect(wrapper.find('.pv-q .pv-act').exists()).toBe(true)
+    expect(wrapper.find('.note-row').exists()).toBe(false)
+
+    await wrapper.find('.pv-q .pv-act').trigger('click')
+    await flushPromises()
+
+    const area = wrapper.find('.modal textarea')
+    expect(area.exists()).toBe(true)
+    await area.setValue('这题的坑在第二空')
+    const ok = wrapper.findAll('.modal button').find((b) => b.text().includes('保存笔记'))
+    expect(ok).toBeTruthy()
+    await ok!.trigger('click')
+    await flushPromises()
+
+    // 笔记挂在题目 id 上（101 是第一题），不走发布确认
+    expect(noteSaved).toEqual([{ questionId: 101, note: '这题的坑在第二空' }])
+    expect(wrapper.find('.note-row').text()).toContain('这题的坑在第二空')
     wrapper.unmount()
   })
 })

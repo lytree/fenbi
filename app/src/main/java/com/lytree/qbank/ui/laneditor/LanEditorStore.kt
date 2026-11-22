@@ -244,6 +244,17 @@ class LanEditorStore(private val context: Context) {
     // ---------------------------------------------------------------- 写
 
     /**
+     * 网页编辑器写笔记：和 App 答题页 / 解析页共用 `notes` 表，按题目 id 落库。
+     * 笔记不参与发布，也不算卷面改动——改完刷新「答案解析」页就能看到。
+     */
+    fun saveNote(questionId: Long, note: String): String {
+        require(db.getQuestion(questionId) != null) { "题目不存在（可能已被删除）" }
+        val trimmed = note.trim()
+        db.setNote(questionId, trimmed)
+        return trimmed
+    }
+
+    /**
      * 发布一组：标题 + 若干份卷。
      *
      * @param replace 同标题已存在时是否覆盖；false 时抛错让前端先确认，

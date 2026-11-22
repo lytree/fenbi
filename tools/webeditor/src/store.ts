@@ -144,6 +144,39 @@ export function toast(text: string, kind: '' | 'ok' | 'err' = '') {
   toastTimer = window.setTimeout(() => { ui.toastShow = false }, 3200)
 }
 
+/* ------------------------------------------------------------------ 笔记 */
+
+/**
+ * 改一道题的笔记（粉笔解析页那支笔）。
+ *
+ * 笔记挂在题目 id 上、和 App 答题页 / 解析页共用一张表，所以它不参与发布：
+ * 存完就落库，不走手机确认。刚在网页上新建还没发布的题没有 id，只能先发布再写。
+ *
+ * `target` 直接是响应式对象（题目 / 记录里的一题），保存成功就地改 `note`，
+ * 三页都会立刻刷成新内容，不用整卷重读。
+ */
+export async function editNote(target: { id?: number; note?: string }, where: string): Promise<void> {
+  const text = await askText({
+    title: `笔记 · ${where}`,
+    label: '笔记只挂在题目上，不参与发布；App 答题页和解析页读的是同一份。',
+    value: target.note ?? '',
+    rows: 6,
+    okText: '保存笔记',
+  })
+  if (text === null) return
+  if (!target.id) {
+    toast('这题还没发布到手机，发布后再写笔记', 'err')
+    return
+  }
+  try {
+    const res = await api.note(target.id, text)
+    target.note = res.note
+    toast(res.note ? '笔记已保存' : '笔记已清空', 'ok')
+  } catch (e) {
+    toast(e instanceof Error ? e.message : '保存笔记失败', 'err')
+  }
+}
+
 /* ------------------------------------------------------------------ 弹层 */
 
 export function askText(opts: {
@@ -245,7 +278,9 @@ export function refreshGroups() {
 
 export function ansSet(q: Question): string[] {
   if (q.type === 'truefalse') return q.answer ? [q.answer] : []
-  return (q.answer || '').toUpperCase().split(',').map((s) => s.trim()).filter(Boolean)
+  // 答案有三种常见写法：AC / A,C / A C（导入的卷子多是第一种，网页手点的是第二种）。
+  // 统一按字母拆开，选中态与「答案不在选项范围内」的校验才是同一个口径
+  return (q.answer || '').toUpperCase().split(/[^A-H]+/).filter(Boolean)
 }
 
 export function ansValues(q: Question): string[] {

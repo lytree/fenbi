@@ -141,6 +141,8 @@ export interface RecordInfo {
 
 /** 逐题明细里的一道题：题面 + 这次作答的结果 */
 export interface RecordAnswer {
+  /** 题目 id：笔记按它落库（记录本身只读，笔记挂在题上） */
+  id: number
   no: number
   type: string
   stem: string
@@ -149,7 +151,7 @@ export interface RecordAnswer {
   answer: string
   analysis: string
   knowledge: string
-  /** App 端写的文字笔记，只读 */
+  /** 这道题的笔记（和 App 共用 notes 表）：解析页 / 记录详情点笔记行就能改 */
   note: string
   userAnswer: string
   /** 客观题判分结果；pending = 还没批（主观题） */
@@ -271,6 +273,13 @@ export const api = {
 
   /** 一次作答的逐题明细：用户答案、标准答案、对错、得分，按卷面顺序 */
   record: (id: number) => request<RecordDetail>(`/api/record?id=${id}`),
+
+  /**
+   * 写一道题的笔记。笔记挂在题目 id 上，和 App 答题页 / 解析页共用 `notes` 表；
+   * 不参与发布（`/api/note` 直写库，不走手机确认）。
+   */
+  note: (questionId: number, note: string) =>
+    request<{ ok: boolean; note: string }>('/api/note', jsonPost({ questionId, note })),
 
   /* ------------ 背诵词库（政治 / 常识） ------------ */
 

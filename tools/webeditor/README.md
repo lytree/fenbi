@@ -29,6 +29,7 @@ tools/webeditor/
     fullview.ts           # 整页查看的地址约定：?view=preview|answer|records + setId/sheet/recordId
     paste.ts              # 批量粘贴文本 → 题目
     markdown.ts           # 预览用的 Markdown 子集（表格/图片/:::chart）
+    qview.ts              # 三页共用的题型渲染：单选圆 / 多选方 / 判断勾叉 / 填空主观作答区 + 宫格条
     figure.ts             # 图文排版：把选中段落包成 :::figure（两种视图共用）
     images.ts             # 插图、粘贴截图
     types.ts              # 与 LanEditorStore.kt / LanEditorRecite.kt / LanEditorWords.kt 的 JSON 约定
@@ -57,7 +58,7 @@ Query 只带 `view / setId / sheet / recordId`，切页与换卷会 `replaceStat
 ```bash
 pnpm install       # 首次；锁文件是 pnpm-lock.yaml
 pnpm dev           # 本地起 dev server（接口需要真机服务或自建 mock，没有本地试卷包退路）
-pnpm test          # 冒烟 + 材料模式 + 预览同步 + 整页查看：打开一组 → 加题 → 发布 / 版本面板 / 删除只发请求（124 例）
+pnpm test          # 冒烟 + 材料模式 + 预览同步 + 整页查看 + 题型渲染 + 笔记：打开一组 → 加题 → 发布 / 版本面板 / 删除只发请求（135 例）
 pnpm build         # 产物写进 ../../app/src/main/assets/webeditor/
 ```
 
@@ -90,6 +91,11 @@ allowBuilds:
 - **右栏三页共用一套骨架**：卷面预览 / 答案解析 / 记录都走 `.pv-head` / `.pv-q` / `.pv-opt` /
   `.sol-box`（可折叠解析盒），颜色只用令牌（`var(--*)`）。记录页**不要再引入自己的固定色**——以前那套粉笔蓝
   在夜间主题下就是一块白，改版后才对齐。
+- **题型也共用一份渲染**：选项、答案宫格、作答区一律走 `qview.ts`（`optionListHtml / gridHtml /
+  writeZoneHtml / noteActionHtml`），不要在某一页里另拼一套。单选圆徽标、多选与不定项方徽标、
+  判断题 ✓/✗、填空与主观题无选项；答案串 `AC` / `A,C` / `A C` 都按字母拆（`ansSet`）。
+- **笔记可写、记录不可写**：题号行右端的 ✎（`editNote()`）走 `POST /api/note`，按题目 id 直写
+  `notes` 表，和 App 共用、不参与发布。记录页其它内容仍然只读，别顺手加「改分数」之类的入口。
 - **校验 / 版本 / 资源是弹框**：`ui.tool` 记当前开的是哪个，`openTool() / closeTool()` 进出，
   `ToolDialog` 统一渲染；入口在页签条右端（`.tool-tab`，带计数徽标）。别再把它们塞回右栏页签——
   右栏只留卷面三页。

@@ -862,6 +862,18 @@ button {
   }
 }
 
+/* 三个收起 / 展开拉手（侧栏缝上的、左侧贴边的、右侧贴边的）：
+   个头收小（16×36 / 18×42）不抢版面，但箭头与描边直接用主色——
+   以前是四级灰，得凑近才看得见，等于把「能收起来」这件事藏了 */
+.sidebar-tab,
+.sidebar-fab,
+.preview-fab {
+  color: var(--primary);
+  border-color: var(--primary-border);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 /* =============================================================================
    4. 目录（菜单项：44 高、10 圆角、选中用主色淡底 + 左侧主色竖条）
    ========================================================================== */
@@ -2201,6 +2213,31 @@ body.pane-dragging {
 
 .pv-tagrow { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
 
+/* 题号行右端的操作位（笔记笔）：粉笔解析页卡片右上角那一枚。
+   默认是灰的，鼠标移上去 / 已写过笔记时染成主色，不写笔记也不抢视线 */
+.pv-acts {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.pv-act {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-tertiary);
+  display: grid;
+  place-items: center;
+  transition: color .15s, background-color .15s;
+
+  &:hover { color: var(--primary); background: var(--primary-bg); }
+  &.on { color: var(--primary); background: var(--primary-bg); }
+}
+
 .pv-tag {
   @include label;
   height: 22px;
@@ -2273,6 +2310,33 @@ body.pane-dragging {
 
     @media (max-width: 1100px) { grid-template-columns: 1fr; }
   }
+
+  /* 多选 / 不定项：选矿是方的（粉笔同款），单选保持圆 */
+  &.multi .pv-key {
+    border-radius: 7px;
+    font-size: 12.5px;
+  }
+
+  /* 判断题：徽标换成勾 / 叉，不再摆 A / B */
+  &.tf .pv-key {
+    font-size: 14px;
+    font-weight: 600;
+  }
+}
+
+/* 填空 / 主观题的作答区：预览里的一层虚框，说明「这题要写」 */
+.pv-write {
+  margin-top: 10px;
+  min-height: 62px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-layout);
+  display: grid;
+  place-items: center;
+  font-size: 12.5px;
+  color: var(--text-quaternary);
+
+  &.subjective { min-height: 96px; }
 }
 
 .pv-opt {
@@ -2363,6 +2427,21 @@ body.pane-dragging {
   &.c2 { grid-template-columns: repeat(2, 1fr); }
   &.c3 { grid-template-columns: repeat(3, 1fr); }
   &.c4 { grid-template-columns: repeat(4, 1fr); }
+
+  /* 填空 / 主观题的参考答案常常成段：整条改成上下叠的两格，格间横线分隔，
+     值左对齐、字号收到正文尺寸——塞进 17px 的方块里只会挤成一坨 */
+  &.long {
+    grid-template-columns: 1fr !important;
+    padding: 2px 0;
+
+    .ov + .ov::before {
+      left: 16px;
+      right: 16px;
+      top: 0;
+      width: auto;
+      height: 1px;
+    }
+  }
 }
 
 .ov {
@@ -2404,6 +2483,25 @@ body.pane-dragging {
     font-size: 12px;
     color: var(--text-tertiary);
     margin-top: 2px;
+  }
+
+  /* 长文本格：左对齐、正文尺寸、保留换行（填空 / 主观题的答案） */
+  &.long {
+    text-align: left;
+    padding: 10px 16px;
+
+    .v {
+      font-size: 14px;
+      font-weight: 400;
+      line-height: 1.85;
+      white-space: pre-wrap;
+      word-break: break-word;
+
+      p { margin: 0 0 6px; }
+      p:last-child { margin-bottom: 0; }
+    }
+
+    .k { margin-top: 4px; }
   }
 }
 
@@ -2484,6 +2582,10 @@ body.pane-dragging {
   border-radius: var(--radius-lg);
   padding: 12px 14px;
   font-size: 13px;
+  cursor: pointer;
+  transition: background-color .15s;
+
+  &:hover { background: var(--primary-bg); }
 
   .nl {
     flex: none;

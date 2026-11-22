@@ -1,15 +1,19 @@
 import { defineComponent, nextTick, onMounted, ref, watch } from 'vue'
 import type { Question } from '../types'
-import { currentQuestions, focusQuestion, groupsOf, state, TYPE_LABEL } from '../store'
+import { currentQuestions, editNote, focusQuestion, groupsOf, state, TYPE_LABEL } from '../store'
 import { esc } from '../util'
-import { renderInline, renderMaterial, renderStem } from '../markdown'
+import { renderMaterial, renderStem } from '../markdown'
 import { LEVEL_NONE, level1Of, level2Of } from '../xingce'
+import { answerText, gridHtml, isBlank, noteActionHtml, normKeys, optionListHtml } from '../qview'
+import type { GridCell } from '../qview'
 
 /**
  * 右侧「答案解析」页：粉笔解析页的版式——每题一张卡，答案铺成灰底宫格条，
  * 解析装进可折叠的「解析」盒（蓝条 + 标题 + 箭头，点标题收起 / 展开），
- * 知识点画成蓝色胶囊，App 端写的笔记以只读行收尾。
- * 卷面预览（PreviewPane）保持纯卷面；双向联动口径与它一致：点题跳左卡片，左边选中这里滚过来。
+ * 知识点画成蓝色胶囊，笔记点一下就能改（和 App 同一份 notes 表）。
+ * 六种题型各有各的摆法：单选圆徽标、多选/不定项方徽标、判断勾叉、
+ * 填空与主观题没有选项、参考答案整段铺开。卷面预览保持纯卷面；
+ * 双向联动口径与它一致：点题跳左卡片，左边选中这里滚过来。
  */
 export default defineComponent({
   name: 'AnswerPane',
@@ -29,10 +33,9 @@ export default defineComponent({
 
     const blockHtml = (q: Question, index: number): string => {
       const focus = state.focused === q._uid ? ' focus' : ''
-      const opts = q.options.filter((o) => o.text.trim())
 
       let h = `<div class="pv-q${focus}" data-uid="${q._uid}">`
-      // 粉笔口径：题号在前，题型标签跟在后
+      // 粉笔口径：题号在前，题型标签跟在后；右端那支笔就是笔记入口（有笔记时染蓝）
       const lv1 = level1Of(q)
       const lv2 = level2Of(q)
       const hasTypeTree = !!lv1 || !!lv2
@@ -40,33 +43,37 @@ export default defineComponent({
         hasTypeTree ? esc(lv1 || LEVEL_NONE) : TYPE_LABEL[q.type]
       }</span>`
       if (hasTypeTree) h += `<span class="pv-tag lv2">${esc(lv2 || LEVEL_NONE)}</span>`
+      h += `<span class="pv-acts">${noteActionHtml(!!q.note?.trim())}</span>`
       h += '</div>'
 
       h += `<div class="pv-stem">${renderStem(q.stem) || '<span class="pv-ph">（题干为空）</span>'}</div>`
 
-      if (opts.length) {
-        const two = q.optionLayout === '2x2' && opts.length >= 2
-        h += `<div class="pv-opts${two ? ' two' : ''}">`
-        h += opts
-          .map(
-            (o) =>
-              `<div class="pv-opt">` +
-              `<span class="pv-key">${esc(o.key)}</span>` +
-              `<span class="pv-text">${renderInline(o.text)}</span></div>`,
-          )
-          .join('')
-        h += '</div>'
-      }
+      // 选项按题型走共用渲染：多选方徽标、判断勾叉。正确答案用「绿描边」标出来
+      // （粉笔解析态里「该选但没选」的那种写法），填空 / 主观题没有选项
+      h += optionListHtml(q, { keys: normKeys(q.type, q.answer), userKeys: [] })
 
-      // 答案宫格：空答案标「待补」，整卷扫缺一眼能看到
+      // 答案宫格：选择题给「正确答案 / 分值」；填空与主观题的参考答案常常成段，
+      // 走 long 格整段铺开，别塞进 17px 的宫格里挤成一条
       const score = typeof q.score === 'string' ? q.score.trim() : String(q.score ?? '').trim()
-      const cells = [
-        `<div class="ov"><div class="v g">${q.answer ? esc(q.answer) : '<span class="pv-pending">待补</span>'}</div><div class="k">正确答案</div></div>`,
-      ]
-      if (score && Number(score) > 0) {
-        cells.push(`<div class="ov"><div class="v b">${esc(score)}</div><div class="k">分值</div></div>`)
+      const ans = answerText(q.type, q.answer)
+      const cells: GridCell[] = []
+      if (isBlank(q.type)) {
+        cells.push({
+          k: '参考答案',
+          v: ans ? renderStem(ans) : '<span class="pv-pending">待补</span>',
+          cls: 'g',
+          long: true,
+        })
+        if (score && Number(score) > 0) cells.push({ k: '满分', v: esc(score), cls: 'b' })
+      } else {
+        cells.push({
+          k: '正确答案',
+          v: ans ? esc(ans) : '<span class="pv-pending">待补</span>',
+          cls: 'g',
+        })
+        if (score && Number(score) > 0) cells.push({ k: '分值', v: esc(score), cls: 'b' })
       }
-      h += `<div class="ov-grid c${cells.length}">${cells.join('')}</div>`
+      h += gridHtml(cells)
 
       // 解析盒：点标题行收起 / 展开（箭头跟着翻）；没有解析就不出这个盒
       if (q.analysis.trim()) {
@@ -78,13 +85,13 @@ export default defineComponent({
       if (q.knowledge.trim()) {
         h += `<div class="kp-row"><span class="kp">${esc(q.knowledge)}</span></div>`
       }
-      // 笔记是 App 端写的，这里只读：有内容摆内容，没内容摆一句提示占位
-      h += '<div class="note-row">' +
-        '<span class="nl">笔记</span>' +
-        (q.note?.trim()
-          ? `<span class="nb">${esc(q.note)}</span>`
-          : '<span class="nb empty">暂无笔记 · 在 App 答题页长按画笔添加</span>') +
-        '</div>'
+      // 有笔记才铺这一条；没笔记就靠题号行那支笔，别在整卷上铺一堆空行
+      if (q.note?.trim()) {
+        h += '<div class="note-row" data-note-row>' +
+          '<span class="nl">笔记</span>' +
+          `<span class="nb">${esc(q.note)}</span>` +
+          '</div>'
+      }
       h += '</div>'
       return h
     }
@@ -119,6 +126,16 @@ export default defineComponent({
 
     const onClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement
+      // 笔记入口（题号行那支笔）与笔记条：打开笔记弹框，不触发跳题
+      const noteHit = target.closest('[data-act="note"], [data-note-row]') as HTMLElement | null
+      if (noteHit) {
+        const card = noteHit.closest('.pv-q') as HTMLElement | null
+        const uid = Number(card?.dataset.uid)
+        const qs = currentQuestions()
+        const index = qs.findIndex((q) => q._uid === uid)
+        if (index >= 0) void editNote(qs[index], `第 ${index + 1} 题`)
+        return
+      }
       // 解析盒标题行：收起 / 展开，不触发下面的跳题
       const solHead = target.closest('.sol-h') as HTMLElement | null
       if (solHead) {

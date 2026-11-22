@@ -2,10 +2,12 @@ import { defineComponent, ref } from 'vue'
 import type { PropType } from 'vue'
 import { api } from '../api'
 import type { RecordAnswer, RecordDetail, RecordInfo } from '../api'
-import { currentSheet, state, TYPE_LABEL } from '../store'
-import { formatTime } from '../util'
-import { renderInline, renderMaterial, renderStem } from '../markdown'
+import { currentSheet, editNote, state, TYPE_LABEL } from '../store'
+import { esc, formatTime } from '../util'
+import { renderMaterial, renderStem } from '../markdown'
 import { openFullPage } from '../fullview'
+import { answerText, gridHtml, isBlank, normKeys, optionListHtml } from '../qview'
+import type { GridCell } from '../qview'
 
 /**
  * 右栏「记录」页：全库的作答记录，按记录逐条成组展示。
@@ -45,10 +47,6 @@ const accuracy = (r: { total: number; correct: number }): number =>
 
 const typeLabel = (t: string): string =>
   (TYPE_LABEL as Record<string, string>)[t] || t
-
-/** 选项题的答案串按字母拆开（"AC" → ['A','C']），判断题的 正确/错误 原样返回 */
-const answerKeys = (ans: string): string[] =>
-  ans.trim().toUpperCase().replace(/[^A-H]/g, '').split('').filter(Boolean)
 
 /**
  * 「你的答案」那一栏按结果上色：对了绿、错了红、待批 / 部分对用橙、没答灰。
@@ -159,13 +157,13 @@ export default defineComponent({
     }
 
     /**
-     * 逐题解析里的一道题：粉笔解析页的版式。
+     * 逐题解析里的一道题：粉笔解析页的版式，六种题型同一套骨架。
      * `material` 由外面的资料分组渲染（材料卡在小题前面），这里不再重复铺一遍。
      */
     const QuestionBlock = ({ a }: { a: RecordAnswer }) => {
-      const keys = answerKeys(a.answer)
-      const userKeys = answerKeys(a.userAnswer)
-      const choice = a.options.some((o) => o.text.trim())
+      const keys = normKeys(a.type, a.answer)
+      const userKeys = normKeys(a.type, a.userAnswer)
+      const blank = isBlank(a.type)
       const result = a.pending
         ? { cls: 'pend', text: '待批改' }
         : !a.userAnswer.trim()
@@ -176,13 +174,30 @@ export default defineComponent({
               ? { cls: 'ok', text: '答对' }
               : { cls: 'no', text: '答错' }
 
-      // 宫格条两格：正确答案 / 你的答案（按对错着色）；得分与结果在题号行的徽标里已有
-      const cells = [
-        `<div class="ov"><div class="v g">${renderInline(a.answer) || '—'}</div><div class="k">正确答案</div></div>`,
-        `<div class="ov"><div class="v ${userCls(result.cls)}">${
-          renderInline(a.userAnswer) || '未作答'
-        }</div><div class="k">你的答案</div></div>`,
-      ]
+      // 选择题两格：正确答案 / 你的答案（按对错着色）；填空与主观题把两边都整段铺开
+      const cells: GridCell[] = []
+      const std = answerText(a.type, a.answer)
+      if (blank) {
+        cells.push({
+          k: '你的答案',
+          v: a.userAnswer.trim() ? renderStem(a.userAnswer) : '<span class="pv-ph">未作答</span>',
+          cls: userCls(result.cls),
+          long: true,
+        })
+        cells.push({
+          k: '参考答案',
+          v: std ? renderStem(std) : '<span class="pv-pending">待补</span>',
+          cls: 'g',
+          long: true,
+        })
+      } else {
+        cells.push({ k: '正确答案', v: std ? esc(std) : '—', cls: 'g' })
+        cells.push({
+          k: '你的答案',
+          v: a.userAnswer.trim() ? esc(answerText(a.type, a.userAnswer)) : '未作答',
+          cls: userCls(result.cls),
+        })
+      }
 
       return (
         <div class={['pv-q', 'static', `r-${result.cls}`]}>
@@ -193,31 +208,36 @@ export default defineComponent({
               ? <span class="rec-score">{a.pending ? `0/${a.full} 分` : `${a.earned}/${a.full} 分`}</span>
               : null}
             <span class={['rec-result', result.cls]}>{result.text}</span>
+            {/* 粉笔卡片右上角那支笔：笔记入口，有笔记时染蓝 */}
+            <span class="pv-acts">
+              <button
+                class={['pv-act', !!a.note?.trim() && 'on']}
+                title={a.note?.trim() ? '编辑笔记' : '写笔记'}
+                aria-label="笔记"
+                onClick={(e) => { e.stopPropagation(); void editNote(a, `第 ${a.no} 题`) }}
+              >
+                <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+                  <path
+                    d="M11.4 2.1a1.4 1.4 0 0 1 2 0l.5.5a1.4 1.4 0 0 1 0 2L5.6 12.9l-3.1.8.8-3.1 8.1-8.5Z"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.3"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </button>
+            </span>
           </div>
 
           <div class="pv-stem" innerHTML={renderStem(a.stem) || '<span class="pv-ph">（题干为空）</span>'}></div>
 
-          {choice
-            ? (
-              <div class="pv-opts">
-                {a.options.filter((o) => o.text.trim()).map((o) => {
-                  const inAnswer = keys.includes(o.key.toUpperCase())
-                  const picked = userKeys.includes(o.key.toUpperCase())
-                  // 粉笔三态：答对时你的选择绿实心；答错时错选红实心、
-                  // 没选到的正确答案绿描边（ans-only），剩下的保持素色
-                  const cls = picked && inAnswer ? 'right' : inAnswer ? 'ans-only' : picked ? 'wrong' : ''
-                  return (
-                    <div class={['pv-opt', cls]} key={o.key}>
-                      <span class="pv-key">{o.key}</span>
-                      <span class="pv-text" innerHTML={renderInline(o.text)}></span>
-                    </div>
-                  )
-                })}
-              </div>
-            )
+          {/* 选项按题型走共用渲染：多选方徽标、判断勾叉；填空 / 主观题没有选项，
+              作答内容在下面的宫格条里（你的答案 / 参考答案） */}
+          {a.options?.some((o) => o.text.trim())
+            ? <div innerHTML={optionListHtml(a, { keys, userKeys })}></div>
             : null}
 
-          <div class="ov-grid c2" innerHTML={cells.join('')}></div>
+          <div innerHTML={gridHtml(cells)}></div>
 
           {a.analysis
             ? (
@@ -234,12 +254,14 @@ export default defineComponent({
           {a.knowledge
             ? <div class="kp-row"><span class="kp">{a.knowledge}</span></div>
             : null}
-          <div class="note-row">
-            <span class="nl">笔记</span>
-            {a.note?.trim()
-              ? <span class="nb">{a.note}</span>
-              : <span class="nb empty">暂无笔记 · 在 App 答题页长按画笔添加</span>}
-          </div>
+          {a.note?.trim()
+            ? (
+              <div class="note-row" title="点击编辑笔记" onClick={() => void editNote(a, `第 ${a.no} 题`)}>
+                <span class="nl">笔记</span>
+                <span class="nb">{a.note}</span>
+              </div>
+            )
+            : null}
         </div>
       )
     }

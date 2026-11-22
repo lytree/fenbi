@@ -324,6 +324,17 @@ class LanEditorServer(
                 json(store.loadSet(id))
             }
 
+            // 笔记：和 App 答题页共用同一张 notes 表，网页「答案解析」页点笔记行就能改
+            "/api/note" -> {
+                val body = readJson(req) ?: return jsonError(400, "请求不是合法 JSON")
+                val questionId = body.optLong("questionId", 0L)
+                if (questionId <= 0L) return jsonError(400, "缺少题目 id")
+                runCatching { store.saveNote(questionId, body.optString("note", "")) }.fold(
+                    onSuccess = { json(JSONObject().put("ok", true).put("note", it)) },
+                    onFailure = { jsonError(400, it.message ?: "保存笔记失败") },
+                )
+            }
+
             // ---- 发布：AI 带 key 直发，网页登记一条「等手机点确认」 ----
             "/api/publish" -> handlePublish(req)
 
