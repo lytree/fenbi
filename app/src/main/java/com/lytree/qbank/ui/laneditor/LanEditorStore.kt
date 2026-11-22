@@ -6,6 +6,7 @@ import com.lytree.qbank.data.db.QBankDb
 import com.lytree.qbank.data.db.SetImport
 import com.lytree.qbank.data.model.ExamRecord
 import com.lytree.qbank.data.model.Option
+import com.lytree.qbank.data.model.PaperRef
 import com.lytree.qbank.data.model.Question
 import com.lytree.qbank.data.model.QuestionType
 import org.json.JSONArray
@@ -209,8 +210,11 @@ class LanEditorStore(private val context: Context) {
         }
         val answers = JSONArray()
         val notes = db.getNotes(rec.results.map { it.question.id })
+        // 记录里的题目来自题库，图片是发布时换成的手机绝对路径；不带上 setId 的话，
+        // questionToJson 里的 editorText 会原样返回绝对路径，网页 /api/img 只认 images/… 就全变裂图。
+        val setId = db.getPaperOrGroup(rec.paperId)?.setId ?: PaperRef.setIdOf(rec.paperId)
         rec.results.sortedBy { order[it.question.id] ?: Int.MAX_VALUE }.forEachIndexed { i, a ->
-            val q = questionToJson(a.question, note = notes[a.question.id] ?: "").apply {
+            val q = questionToJson(a.question, setId = setId, note = notes[a.question.id] ?: "").apply {
                 put("no", order[a.question.id] ?: (i + 1))
                 put("userAnswer", a.userAnswer)
                 put("correct", a.correct)
