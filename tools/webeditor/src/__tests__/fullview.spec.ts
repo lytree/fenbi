@@ -210,6 +210,16 @@ describe('单独查看页 · 整页壳', () => {
     expect(wrapper.find('.sol-box').text()).toContain('选乙')
     expect(wrapper.text()).toContain('正确答案')
     expect(wrapper.text()).toContain('你的答案')
+
+    // 详情页底部也有答题卡：格子按对错上色，一条格一题
+    const dock = wrapper.find('.paper-dock')
+    expect(dock.exists()).toBe(true)
+    expect(dock.find('.dt-sub').text()).toBe('2 题')
+    await dock.find('.dock-tag').trigger('click')
+    const cells = wrapper.findAll('.paper-dock .dock-cell')
+    expect(cells).toHaveLength(2)
+    expect(cells[0].classes()).toContain('ok')
+    expect(cells[1].classes()).toContain('no')
     wrapper.unmount()
   })
 

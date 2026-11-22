@@ -122,4 +122,12 @@ describe('卷面预览（粉笔作答页版式）', () => {
     expect(state.focused).toBe(3)
     wrapper.unmount()
   })
+
+  it('题号行不再挂笔记笔：卷面预览只校样', () => {
+    const wrapper = mount(PreviewPane)
+    expect(wrapper.find('.pv-tagrow .pv-acts').exists()).toBe(false)
+    // 题号与题型标签还在
+    expect(wrapper.findAll('.paper .pv-q .pv-tagrow .pv-tag').length).toBeGreaterThan(0)
+    wrapper.unmount()
+  })
 })

@@ -6,6 +6,7 @@ import { renderMaterial, renderStem } from '../markdown'
 import { LEVEL_NONE, level1Of, level2Of } from '../xingce'
 import { answerText, gridHtml, isBlank, materialGroupHtml, noteActionHtml, normKeys, optionListHtml } from '../qview'
 import type { GridCell } from '../qview'
+import PaperDock from './PaperDock'
 
 /**
  * 「答案解析」页：粉笔解析页的版式——每题一张卡，答案铺成灰底宫格条，
@@ -35,10 +36,30 @@ export default defineComponent({
       const uid = state.focused
       if (uid === null) return
       const hit = pane.value?.querySelector(`.pv-q[data-uid="${uid}"]`) as HTMLElement | null
-      hit?.scrollIntoView({ block: 'center', behavior: smooth ? 'smooth' : 'auto' })
+      // jsdom（单测）里没有 scrollIntoView，跳过这一步
+      if (typeof hit?.scrollIntoView === 'function') {
+        hit.scrollIntoView({ block: 'center', behavior: smooth ? 'smooth' : 'auto' })
+      }
     }
 
-    watch(() => state.focused, () => { void nextTick(() => scrollToFocused(true)) })
+    /**
+     * 整页分屏里一组材料只摆一道小题：从答题卡跳到组内第 3 题时，
+     * 得先把这个组的页签切过去，否则滚到的还是原来那道。
+     */
+    const syncSplitTab = () => {
+      if (!props.full) return
+      const qs = currentQuestions()
+      const i = qs.findIndex((q) => q._uid === state.focused)
+      if (i < 0) return
+      for (const g of groupsOf(qs)) {
+        if (i >= g.start && i <= g.end) tabIdx.value[g.start] = i - g.start
+      }
+    }
+
+    watch(() => state.focused, () => {
+      syncSplitTab()
+      void nextTick(() => scrollToFocused(true))
+    })
     onMounted(() => { void nextTick(() => scrollToFocused(false)) })
 
     const blockHtml = (q: Question, index: number): string => {
@@ -234,7 +255,12 @@ export default defineComponent({
     }
 
     return () => (
-      <div class="ppane" ref={pane} innerHTML={html()} onClick={onClick} onPointerdown={onPointerDown}></div>
+      <>
+        <div class="ppane" ref={pane} innerHTML={html()} onClick={onClick} onPointerdown={onPointerDown}></div>
+        {/* 解析页也有同一条答题卡：整卷滚到哪儿都能一步跳到某一题（分屏组会顺手切页签）。
+            这里没有作答进度，收起时只写题数；答案齐没齐页头已经写了。 */}
+        {props.full ? <PaperDock progress={false} hint={false} /> : null}
+      </>
     )
   },
 })

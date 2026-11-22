@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import AnswerPane from '../components/AnswerPane'
-import { state } from '../store'
+import { currentQuestions, state } from '../store'
 
 /**
  * 答案解析的两种外框：
@@ -90,6 +90,35 @@ describe('答案解析的资料分组', () => {
     expect(body.text()).toContain('第二小题')
     expect(body.text()).not.toContain('第一小题')
     expect(wrapper.findAll('.pv-tabbody .pv-q')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
+  it('整页查看：底部也有一条答题卡（没有作答进度，只写题数）', () => {
+    const wrapper = mount(AnswerPane, { props: { full: true } })
+    const dock = wrapper.find('.paper-dock')
+    expect(dock.exists()).toBe(true)
+    expect(dock.find('.dt-sub').text()).toBe('3 题')
+    // 缺答案提示由页头负责，这里不再重复
+    expect(dock.find('.dock-miss').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('答题卡跳到材料组里的小题：那个组的页签跟着切过去', async () => {
+    const wrapper = mount(AnswerPane, { props: { full: true } })
+    await wrapper.find('.dock-tag').trigger('click')
+    // 第 3 题（下标 2）是这一组的第二小题
+    await wrapper.findAll('.paper-dock .dock-cell')[2].trigger('click')
+    await wrapper.vm.$nextTick()
+
+    expect(state.focused).toBe(currentQuestions()[2]._uid)
+    expect(wrapper.find('.pv-split .pv-tab.active').text()).toBe('3题')
+    expect(wrapper.find('.pv-tabbody').text()).toContain('第二小题')
+    wrapper.unmount()
+  })
+
+  it('编辑器右栏不挂答题卡（那条是钉在整页底边的）', () => {
+    const wrapper = mount(AnswerPane)
+    expect(wrapper.find('.paper-dock').exists()).toBe(false)
     wrapper.unmount()
   })
 })

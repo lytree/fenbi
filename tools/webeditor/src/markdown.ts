@@ -5,23 +5,22 @@ import { esc } from './util'
  * 图片地址 → <img>。网络图片 App 读不了，只提示不加载。
  *
  * `full` = 铺满这一栏（材料里图片行尾写 `{size=full}`）；
- * 其余按「原图尺寸、最多放大 2 倍」排——和 App 的 AdaptiveImageView 同一口径：
- * 图比行窄就居中放着，别为填满一行把小图拉糊。
+ * 其余「原图多大就多大，宽了就收到栏宽」：尺寸全交给 CSS（`.pv-img { max-width:100% }`）。
+ * 以前这里用 `onload` 把 max-width 改成 `naturalWidth*2`，等于给图片开了「可以比栏还宽」的
+ * 口子——材料里的图一宽就冲出左栏被裁掉半张，还把小图拉糊。别再往 img 上塞内联尺寸。
  */
 function imgTag(src: string, full = false): string {
   const s = (src || '').trim()
   if (!s) return ''
+  const cls = `pv-img${full ? ' pv-img-full' : ''}`
   if (s.startsWith('data:')) {
-    return `<img class="pv-img${full ? ' pv-img-full' : ''}" src="${esc(s)}">`
+    return `<img class="${cls}" src="${esc(s)}">`
   }
   if (/^(https?:)?\/\//.test(s)) {
     return `<div class="pv-note">⚠ 网络图片 App 不支持（只读手机本地图片），这里只是预览</div>`
   }
   const rel = s.replace(/^\.\//, '')
-  const cls = `pv-img${full ? ' pv-img-full' : ''}`
-  // 2 倍上限跟 App 一致：原图像素宽 ×2 是允许的最大显示宽度，比这更宽的行不再拉
-  const clamp = full ? '' : ` onload="this.style.maxWidth=(this.naturalWidth*2)+'px'"`
-  return `<img class="${cls}" src="${esc(api.imgUrl(rel))}"${clamp} ` +
+  return `<img class="${cls}" src="${esc(api.imgUrl(rel))}" ` +
     `onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'pv-note',textContent:'这张图在手机里没找到'}))">`
 }
 

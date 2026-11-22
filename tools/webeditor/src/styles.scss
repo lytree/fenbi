@@ -3026,8 +3026,11 @@ body.split-dragging { cursor: col-resize; user-select: none; }
   line-height: 1.5715;
 }
 
+/* 图片：原图多大就多大，宽了就收到栏宽（模板里不再挂内联 max-width，见 markdown.ts）。
+   材料栏 / 题目栏都是窄栏，图一旦比栏宽就会冲出面板被裁掉。 */
 .pv-img {
   max-width: 100%;
+  height: auto;
   border-radius: var(--radius-sm);
   margin: 6px 0;
   display: block;
@@ -5404,6 +5407,15 @@ body.split-dragging { cursor: col-resize; user-select: none; }
   padding: 20px 24px 116px;
 }
 
+/* 答案解析 / 练习记录也有同一条答题卡了：同样给它让出底部那一条 */
+.fullsheet.is-answer > .ppane,
+.fullsheet.is-records > .ppane {
+  padding-bottom: 116px;
+}
+
+/* 答题卡跟着各自那一栏的宽度走（记录页窄一档） */
+.fullsheet.is-records .paper-dock { width: min(1040px, calc(100vw - 32px)); }
+
 /* ---- 章头：科目 + 题数 + 这一部分的作答说明 ---- */
 .paper .pv-chapter {
   position: relative;
@@ -5589,13 +5601,16 @@ body.split-dragging { cursor: col-resize; user-select: none; }
 .pp-qs {
   .pv-tabs {
     height: 36px;
-    padding: 0 20px;
+    /* 与右栏小题正文左对齐（.pp-qs-body 的 20 + 小题卡的 12） */
+    padding: 0 32px;
     border-bottom: 1px solid var(--border-secondary);
   }
 
-  /* 小题连着排：一道接一道，卡与卡之间一条发丝线，不再各立一张白卡 */
+  /* 小题连着排：一道接一道，卡与卡之间一条发丝线，不再各立一张白卡。
+     左右各留 12：当前题的左侧主色竖条是 inset 阴影，画在卡片自己的左沿上，
+     卡片没有内距的话这条 3px 就正好压在题号首字和选项圆徽标上（看着像被裁掉一条）。 */
   .pp-qs-body .pv-q {
-    padding: 16px 0;
+    padding: 16px 12px;
     margin: 0;
     border: none;
     border-radius: 0;
@@ -5615,7 +5630,10 @@ body.split-dragging { cursor: col-resize; user-select: none; }
 
   /* 右栏窄一点：题干与选项都不必撑到 16px，48 行高也收一收 */
   .pv-stem { font-size: 15px; line-height: 1.9; }
-  .pv-opt { font-size: 15px; padding: 6px 10px; }
+
+  /* 选项行在大卡里靠 -10 的负边距出血（贴到卡片 10px 处）；右栏卡片自己只有 12 的内距，
+     再出血就贴到面板边、被竖条压住，所以这里不许出血 */
+  .pv-opt { font-size: 15px; padding: 6px 10px; margin: 0; }
 }
 
 .pp-qs-body {
@@ -5645,7 +5663,11 @@ body.split-dragging { cursor: col-resize; user-select: none; }
   box-shadow: 0 -10px 28px -18px rgba(44, 24, 96, .3);
 }
 
+/* 标签就是整行按钮：flex:1 撑满这条底栏（以前只有一小块，右边空一大截）。
+   「答题卡 0/135」靠左，缺答案提示居中靠右，箭头贴到最右端。 */
 .dock-tag {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -5670,6 +5692,9 @@ body.split-dragging { cursor: col-resize; user-select: none; }
     i { font-style: normal; margin: 0 1px; opacity: .7; }
   }
 
+  /* 中间那根弹簧：把提示与箭头推到右端 */
+  .dt-spacer { flex: 1; }
+
   .dt-chev {
     font-size: 11px;
     transform: rotate(-90deg);
@@ -5679,24 +5704,33 @@ body.split-dragging { cursor: col-resize; user-select: none; }
 
 .paper-dock.open .dock-tag .dt-chev { transform: rotate(90deg); }
 
-/* 缺答案的提示：没补齐时是橙字，齐了转成灰，扫一眼就知道这卷能不能发 */
+/* 缺答案的提示：坐在蓝色按钮右端，用白字的不同浓度区分（按钮上压不住橙字） */
 .dock-miss {
+  flex: none;
   font-size: 12px;
-  color: var(--warning-text);
+  color: var(--on-primary);
+  opacity: .72;
 
-  &.ok { color: var(--text-quaternary); }
+  /* 有缺答案：加一枚半透明胶囊，扫一眼就知道这卷还不能发 */
+  &.alert {
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .2);
+    opacity: 1;
+  }
 }
 
 .paper-dock.open { flex-wrap: wrap; }
 
+/* 摊开的题号板：DOM 里排在标签前面，所以分隔线与内距都朝下（它贴在标签上沿） */
 .dock-body {
   flex: 1 0 100%;
   /* 粉笔那张答题卡是 252 高（内部自己滚），这里跟着来，别糊住半屏卷面 */
   max-height: 252px;
   overflow-y: auto;
-  padding: 6px 0 8px;
-  border-top: 1px solid var(--border-secondary);
-  margin-top: 2px;
+  padding: 8px 0 6px;
+  border-bottom: 1px solid var(--border-secondary);
+  margin-bottom: 2px;
 }
 
 .dock-ch + .dock-ch { margin-top: 14px; }
@@ -5730,6 +5764,12 @@ body.split-dragging { cursor: col-resize; user-select: none; }
   @include tabular;
 
   &:hover { border-color: var(--primary-border); color: var(--primary); }
+
+  /* 记录页：格子按对错上色，与记录里那张答题卡同一个口径 */
+  &.ok { background: var(--success); color: #fff; }
+  &.no { background: var(--error); color: #fff; }
+  &.pend { background: var(--warning); color: #fff; }
+  &.none { background: var(--bg-fill); color: var(--text-tertiary); }
 
   &.on {
     background: var(--primary-bg);

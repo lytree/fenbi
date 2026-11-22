@@ -2,18 +2,18 @@ import {
   defineComponent, nextTick, onBeforeUnmount, onBeforeUpdate, onMounted, onUpdated, ref, watch,
 } from 'vue'
 import type { Group, Question } from '../types'
-import { currentQuestions, editNote, focusQuestion, groupsOf, state, TYPE_LABEL } from '../store'
+import { currentQuestions, focusQuestion, groupsOf, state, TYPE_LABEL } from '../store'
 import { esc } from '../util'
 import { renderMaterial, renderStem } from '../markdown'
-import { chaptersOf, noteActionHtml, optionListHtml, writeZoneHtml } from '../qview'
+import { chaptersOf, optionListHtml, writeZoneHtml } from '../qview'
 import PaperDock from './PaperDock'
 
 /**
  * 整页版「卷面预览」：照粉笔试卷作答页（`spa.fenbi.com/ti/exam/exercise/…`）实测的版式排。
  *
  * - 顶上一张「章」卡：科目名 + 题数（`（20题）`）+ 该部分的作答说明，底色是蓝白渐变
- * - 每题一张白卡：题号 15px + 蓝色小标签（单选题 / 多选题…）+ 右端笔记笔；
- *   题干 16px、选项 48px 高一行、32px 圆徽标
+ * - 每题一张白卡：题号 15px + 蓝色小标签（单选题 / 多选题…）；
+ *   题干 16px、选项 48px 高一行、32px 圆徽标（校样页不再挂右上角那支笔记笔）
  * - 资料分析：1180×700 的大卡切成两半——左边「材料」白卡（自己滚，可拖宽），
  *   右边顶上题号页签、下面小题连着滚（点页签跳题），和作答页一模一样
  * - 底部一条固定的「答题卡」（`PaperDock`）：展开按科目铺题号格，点格子跳题
@@ -56,13 +56,12 @@ export default defineComponent({
       )
     }
 
-    /** 一道题的白卡：题号 + 题型标签 + 笔记笔，下面是题干与选项 */
+    /** 一道题的白卡：题号 + 题型标签，下面是题干与选项（卷面预览只校样，不放笔记笔） */
     const cardHtml = (q: Question, index: number): string => {
       let h = `<article class="pv-q" data-uid="${q._uid}" id="q-${index + 1}">`
       h += '<div class="pv-tagrow">' +
         `<span class="pv-no">${index + 1}.</span>` +
         `<span class="pv-tag">${esc(TYPE_LABEL[q.type] || q.type)}</span>` +
-        `<span class="pv-acts">${noteActionHtml(!!q.note?.trim())}</span>` +
         '</div>'
       h += `<div class="pv-stem">${renderStem(q.stem) || '<span class="pv-ph">（题干为空）</span>'}</div>`
       // 选项按题型走共用渲染：多选方徽标、判断勾叉；填空 / 主观题给作答区
@@ -213,16 +212,6 @@ export default defineComponent({
         tab.parentElement?.querySelectorAll('.pv-tab').forEach((t) => {
           t.classList.toggle('active', t === tab)
         })
-        return
-      }
-      // 笔记入口：打开笔记弹框，不触发跳题
-      const noteHit = target.closest('[data-act="note"]') as HTMLElement | null
-      if (noteHit) {
-        const card = noteHit.closest('.pv-q') as HTMLElement | null
-        const uid = Number(card?.dataset.uid)
-        const qs = currentQuestions()
-        const index = qs.findIndex((q) => q._uid === uid)
-        if (index >= 0) void editNote(qs[index], `第 ${index + 1} 题`)
         return
       }
       const hit = target.closest('.pv-q') as HTMLElement | null

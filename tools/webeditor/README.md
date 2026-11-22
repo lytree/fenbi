@@ -53,6 +53,8 @@ Query 只带 `view / setId / sheet / recordId`，切页与换卷会 `replaceStat
 「答案解析」整页里，资料题按粉笔实测做**左右分屏**：700 高大卡、左「材料」白卡（自己滚）、
 中间 12px 可拖把手、右边题号页签 + 当前这一题（`.pv-split`，一次只摆一道，点页签换题）；
 整页解析宽 1180，≤1000px 退回上下排。「练习记录」整页仍是 `.pv-group.split`（材料钉左、题目全列）。
+**底部那条答题卡（`PaperDock`）三页都有**：卷面预览写 `0/N` + 缺答案提示，解析页写 `N 题`，
+记录页按对错给格子上色；收起时是一整条按钮（撑满整行），展开时题号板朝上长、标签留在最底下。
 
 「背诵」模式下 `RecitePane`（政治 / 常识：分类筛选 + 卡片列表 + 逐卡编辑，整份保存走手机确认）
 与 `WordsPane`（词条词库：搜索筛选 + 逐条编辑，直接写库）替换题库编辑区，右栏预览不渲染。
@@ -63,7 +65,7 @@ Query 只带 `view / setId / sheet / recordId`，切页与换卷会 `replaceStat
 ```bash
 pnpm install       # 首次；锁文件是 pnpm-lock.yaml
 pnpm dev           # 本地起 dev server（接口需要真机服务或自建 mock，没有本地试卷包退路）
-pnpm test          # 冒烟 + 材料模式 + 预览同步 + 整页查看 + 题型渲染 + 卷面分章/答题卡 + 笔记（142 例）
+pnpm test          # 冒烟 + 材料模式 + 预览同步 + 整页查看 + 题型渲染 + 卷面分章/答题卡 + 笔记（146 例）
 pnpm build         # 产物写进 ../../app/src/main/assets/webeditor/
 ```
 
@@ -111,7 +113,11 @@ allowBuilds:
   页签切换状态在组件里的 `tabIdx`，宽度在 `matWidth`）；`RecordsPane` 的 `standalone` 用
   `.pv-group.split`（材料钉左、题目全列）。编辑器窄栏永远上下排。
 - **笔记可写、记录不可写**：题号行右端的 ✎（`editNote()`）走 `POST /api/note`，按题目 id 直写
-  `notes` 表，和 App 共用、不参与发布。记录页其它内容仍然只读，别顺手加「改分数」之类的入口。
+  `notes` 表，和 App 共用、不参与发布。解析页 / 记录页有这支笔，**卷面预览没有**（那一页只做校样，
+  只留卷面）；要加回来先想清楚它算不算编辑。记录页其它内容仍然只读，别顺手加「改分数」之类的入口。
+- **图片尺寸只交给 CSS**：`markdown.ts` 的 `imgTag` **不许**往 `<img>` 上塞内联 `width / max-width`
+  （以前那句 `onload="maxWidth = naturalWidth*2"` 就是图片冲出左栏、右半边被裁掉的原因）。
+  `.pv-img { max-width:100% }` 一条就够：原图多大就多大，比栏宽就等比收窄。
 - **校验 / 版本 / 资源是弹框**：`ui.tool` 记当前开的是哪个，`openTool() / closeTool()` 进出，
   `ToolDialog` 统一渲染；入口在页签条右端（`.tool-tab`，带计数徽标）。别再把它们塞回右栏页签——
   右栏只留答案解析与记录两页，**卷面预览只在整页查看里**。

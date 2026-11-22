@@ -8,6 +8,7 @@ import { renderMaterial, renderStem } from '../markdown'
 import { openFullPage } from '../fullview'
 import { answerText, gridHtml, isBlank, materialCardHtml, normKeys, optionListHtml } from '../qview'
 import type { GridCell } from '../qview'
+import PaperDock from './PaperDock'
 
 /**
  * 右栏「记录」页：全库的作答记录，按记录逐条成组展示。
@@ -307,6 +308,15 @@ export default defineComponent({
       ;(e.currentTarget as HTMLElement).querySelector('.pv-mat')?.classList.toggle('collapsed')
     }
 
+    /**
+     * 底部答题卡跳题：题目在 DOM 里就是 `.rec-qlist` 下按顺序排的那串 `.pv-q`
+     * （资料组的小题也在里面，顺序与 answers 一致），按序号滚过去即可。
+     */
+    const jumpToAnswer = (i: number) => {
+      const el = document.querySelectorAll<HTMLElement>('.rec-qlist .pv-q')[i]
+      el?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    }
+
     /** 「考试情况」：粉笔报告里的模块行——本卷按题型聚合，各给一行 总题数 / 答对 / 正确率 */
     const ExamCard = ({ answers }: { answers: RecordAnswer[] }) => {
       const rows = new Map<string, { total: number; correct: number }>()
@@ -347,6 +357,7 @@ export default defineComponent({
       const d = detail.value!
       const answers = d.answers || []
       return (
+        <>
         <div class="ppane rec-detail">
           {head(
             <>
@@ -425,6 +436,20 @@ export default defineComponent({
             )}
           </div>
         </div>
+        {/* 记录详情也有同一条答题卡：格子按对错上色（与上面那张答题卡同一个口径），
+            翻到卷尾想回看某一题时不用一路滚回去。整页版才给，编辑器右栏没这份余量。 */}
+        {props.standalone && answers.length
+          ? (
+            <PaperDock
+              progress={false}
+              hint={false}
+              groups={[{ name: d.name || d.paperName || '本卷', start: 0, end: answers.length - 1 }]}
+              marks={answers.map(cellClass)}
+              pick={jumpToAnswer}
+            />
+          )
+          : null}
+        </>
       )
     }
 
