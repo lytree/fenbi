@@ -5252,8 +5252,9 @@ body.split-dragging { cursor: col-resize; user-select: none; }
 // =============================================================================
 // 单独查看页（?view=preview|answer|records）：一条窄顶栏 + 居中一栏正文
 //
-// 右栏窄（280–560px），整卷过一遍要一直滚；整页版把正文放宽到 980px，
+// 右栏窄（280–560px），整卷过一遍要一直滚；整页版把正文铺开，
 // 打印 / 投屏 / 对着电脑讲题都够用。骨架跟编辑器无关，只借用同一套令牌。
+// Web 端不设宽度上限：正文跟着视口走（只留 .fullmain 的外边距），宽屏上不再两边空一大截。
 // =============================================================================
 
 .full-root {
@@ -5343,9 +5344,12 @@ body.split-dragging { cursor: col-resize; user-select: none; }
   padding: 20px 20px 40px;
 }
 
-/* 正文一栏：卷面 / 解析这种长文按 980 收窄，最长一行不至于难读 */
+/* 正文一栏：Web 端不限制宽度，跟着视口铺满。
+   以前按 980 / 1040 / 1180 分级收窄，宽屏显示器上两边会空出大半屏，
+   题目卡也被压成一条；现在宽度只由 .fullmain 的内边距决定。 */
 .fullsheet {
-  max-width: 980px;
+  width: 100%;
+  max-width: none;
   margin: 0 auto;
   background: var(--bg-container);
   border: 1px solid var(--border-secondary);
@@ -5357,12 +5361,6 @@ body.split-dragging { cursor: col-resize; user-select: none; }
 
   /* 整页里 .ppane 不再自己滚：滚动交给 .fullmain，滚动条只有一根 */
   > .ppane { overflow: visible; padding: 22px 26px 26px; }
-
-  /* 记录页在整页里可以更宽：统计条和答题卡横着排得开 */
-  &.is-records { max-width: 1040px; }
-
-  /* 解析页要放下「材料 + 题目」两栏（粉笔实测 1180：586 + 12 + 586） */
-  &.is-answer { max-width: 1180px; }
 }
 
 .full-loading,
@@ -5422,9 +5420,8 @@ body.split-dragging { cursor: col-resize; user-select: none; }
    这里只挂 .paper 作用域，别影响答案解析 / 记录两页的同一套 .pv-q 骨架。
    ========================================================================== */
 
-/* 卷面比解析页再宽一档，底色换成「卷子纸」的灰，白卡才立得起来 */
+/* 卷面页沿用「卷子纸」的灰底，白卡才立得起来；宽度和其它整页一样铺满 */
 .fullsheet.is-preview {
-  max-width: 1180px;
   background: var(--bg-layout);
 }
 
@@ -5439,8 +5436,8 @@ body.split-dragging { cursor: col-resize; user-select: none; }
   padding-bottom: 116px;
 }
 
-/* 答题卡跟着各自那一栏的宽度走（记录页窄一档） */
-.fullsheet.is-records .paper-dock { width: min(1040px, calc(100vw - 32px)); }
+/* 答题卡与正文同宽由 .paper-dock 自己的 width 决定（calc(100vw - 40px)，
+   抵消 .fullmain 左右各 20 的外距）；窄屏另有 100vw 的全宽规则，三页共用一套。 */
 
 /* ---- 章头：科目 + 题数 + 这一部分的作答说明 ---- */
 .paper .pv-chapter {
@@ -5676,7 +5673,8 @@ body.split-dragging { cursor: col-resize; user-select: none; }
   left: 50%;
   bottom: 0;
   z-index: 30;
-  width: min(1180px, calc(100vw - 32px));
+  /* 与 .fullmain 的内边距对齐；不再按 1180 收窄，宽屏上跟题目卡同一条边 */
+  width: calc(100vw - 40px);
   transform: translateX(-50%);
   display: flex;
   align-items: center;
