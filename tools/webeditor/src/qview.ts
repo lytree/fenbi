@@ -225,7 +225,7 @@ export function materialCardHtml(start: number, count: number, materialHtml: str
   )
 }
 
-/** 整组：材料卡 + 小题，两组之间留出一段距离（整页解析的资料分屏另走 `.pv-split`） */
+/** 整组：材料卡 + 小题，两组之间留出一段距离（整页版的资料分屏另走 `.pp-split`，见 splitpane.ts） */
 export function materialGroupHtml(p: MaterialGroup): string {
   return (
     '<div class="pv-group">' +
