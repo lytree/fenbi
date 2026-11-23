@@ -1,4 +1,4 @@
-import { defineComponent, ref } from 'vue'
+import { defineComponent, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import type { PropType } from 'vue'
 import { api } from '../api'
 import type { RecordAnswer, RecordDetail, RecordInfo } from '../api'
@@ -8,6 +8,7 @@ import { renderMaterial, renderStem } from '../markdown'
 import { openFullPage } from '../fullview'
 import { answerText, gridHtml, isBlank, materialCardHtml, normKeys, optionListHtml } from '../qview'
 import type { GridCell } from '../qview'
+import { useSplitGroup } from '../splitpane'
 import PaperDock from './PaperDock'
 
 /**
@@ -17,11 +18,11 @@ import PaperDock from './PaperDock'
  * - 列表：每条记录一张卡（练习名 + 状态 + 统计条），点进详情；
  * - 详情：粉笔解析页的复刻——得分卡（大号蓝分 + 总用时）→「考试情况」按题型分行
  *   → 答题卡色块 → 逐题解析（顶部对错色条、选项三态、灰底宫格条、折叠解析、
- *   考点胶囊、笔记行），资料分析的材料单独成卡放在小题前面。
+ *   考点胶囊、笔记行），资料题走和卷面 / 解析同一块左右分屏。
  *
  * 版式跟「卷面预览 / 答案解析」同一套：页头用 `.pv-head`、题目卡用 `.pv-q`、
- * 选项用 `.pv-opt`、解析块用 `.sol-box`——三页来回切不会觉得换了套皮，
- * 明暗两套主题也跟着令牌一起翻。
+ * 选项用 `.pv-opt`、解析块用 `.sol-box`、资料分屏用 `.pp-split`（`splitpane.ts`）
+ * ——三页来回切不会觉得换了套皮，明暗两套主题也跟着令牌一起翻。
  *
  * 记录是只读的：这里只回看，批改仍然在 App / 对话里做。
  */
@@ -76,6 +77,10 @@ export default defineComponent({
     const detail = ref<RecordDetail | null>(null)
     const detailLoading = ref(false)
 
+    /** 详情那块正文：资料题分屏的页签 / 拖把手都挂在它上面（与另外两页同一套） */
+    const pane = ref<HTMLElement | null>(null)
+    const split = useSplitGroup(pane)
+
     const load = async () => {
       loading.value = true
       loadError.value = ''
@@ -113,6 +118,30 @@ export default defineComponent({
       loadError.value = ''
       props.onRecordChange?.(0)
     }
+
+    /**
+     * 详情正文是异步加载之后才有的，元素出现的那一刻才挂得上滚轮监听——
+     * 右栏一滚，题号页签要跟着亮（与卷面 / 解析两页同一套，见 `splitpane.ts`）。
+     */
+    let bound: HTMLElement | null = null
+    const onScrollCapture = (e: Event) => split.onScrollCapture(e)
+
+    const bindSplit = async () => {
+      await nextTick()
+      const el = pane.value
+      if (!el || el === bound) return
+      bound?.removeEventListener('scroll', onScrollCapture, true)
+      el.addEventListener('scroll', onScrollCapture, true)
+      bound = el
+      split.applyWidths()
+      split.syncAll()
+    }
+
+    watch(detail, () => { void bindSplit() })
+    onBeforeUnmount(() => {
+      bound?.removeEventListener('scroll', onScrollCapture, true)
+      bound = null
+    })
 
     /** 整页看：列表页 / 当前这条记录，地址里带全，刷新也停在原地 */
     const openInPage = (recordId = 0) => {
@@ -201,7 +230,7 @@ export default defineComponent({
       }
 
       return (
-        <div class={['pv-q', 'static', `r-${result.cls}`]}>
+        <div class={['pv-q', 'static', `r-${result.cls}`]} data-uid={String(a.no)}>
           <div class="pv-tagrow">
             <span class="pv-no">{a.no}.</span>
             <span class="pv-tag">{typeLabel(a.type)}</span>
@@ -268,9 +297,9 @@ export default defineComponent({
     }
 
     /**
-     * 资料分析的题目形式：连续同材料的小题收进一个 `.pv-group`——材料卡在上、
-     * 小题跟在下、左轨连着，头部标出「第 6–7 题」。和卷面 / 解析两页同一个结构，
-     * 只是这里的小题带作答结果。
+     * 资料分析的题目形式：连续同材料的小题收进一个组——材料在上、小题在下、左轨连着，
+     * 头部标出「第 6–7 题」（编辑器右栏）。整页版换成和卷面 / 解析同一块左右分屏，
+     * 见 [splitBlock]。
      */
     type DetailBlock =
       | { kind: 'group'; material: string; start: number; count: number; answers: RecordAnswer[] }
@@ -309,12 +338,12 @@ export default defineComponent({
     }
 
     /**
-     * 底部答题卡跳题：题目在 DOM 里就是 `.rec-qlist` 下按顺序排的那串 `.pv-q`
-     * （资料组的小题也在里面，顺序与 answers 一致），按序号滚过去即可。
+     * 底部答题卡跳题：分屏里的小题要连滚两层（整块 → 右栏），
+     * 交给 `splitpane` 按 `data-uid`（记录里就是题号）找。
      */
     const jumpToAnswer = (i: number) => {
-      const el = document.querySelectorAll<HTMLElement>('.rec-qlist .pv-q')[i]
-      el?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+      const a = detail.value?.answers?.[i]
+      if (a) split.scrollToCard(a.no, true)
     }
 
     /** 「考试情况」：粉笔报告里的模块行——本卷按题型聚合，各给一行 总题数 / 答对 / 正确率 */
@@ -352,13 +381,49 @@ export default defineComponent({
       </div>
     )
 
+    /**
+     * 整页版的资料题：和「卷面预览 / 答案解析」是同一块左右分屏——左边「材料」白卡
+     * 自己滚、中间拖把手、右边题号页签 + 这一组的小题连着排。结构与样式全靠
+     * `splitpane.ts` 定下的那套类名，只是这里的小题是 Vue 组件（带作答结果），
+     * 没法像那两页一样拼 HTML 串，所以壳子手写一遍、类名照抄。
+     * 小题卡上的 `data-uid` 就是题号，页签的 `data-tab` 写同一个值。
+     */
+    const splitBlock = (b: { material: string; start: number; answers: RecordAnswer[] }) => (
+      <div class="pp-split" data-g={b.start} key={`mat-${b.start}`}>
+        <div class="pp-mat">
+          <span class="pv-mat-tag">材料</span>
+          <div class="pp-mat-body" innerHTML={renderMaterial(b.material)}></div>
+        </div>
+        <div class="pp-grip" title="拖动调整材料宽度"></div>
+        <div class="pp-qs">
+          <div class="pv-tabs">
+            {b.answers.map((a, k) => (
+              <button class={['pv-tab', k === 0 && 'active']} data-tab={String(a.no)}>
+                {a.no}题
+              </button>
+            ))}
+          </div>
+          <div class="pp-qs-body">
+            {b.answers.map((a) => (
+              <QuestionBlock a={a} key={`${a.no}-${a.stem.slice(0, 8)}`} />
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+
     /* ---------------- 详情视图 ---------------- */
     const detailView = () => {
       const d = detail.value!
       const answers = d.answers || []
       return (
         <>
-        <div class="ppane rec-detail">
+        <div
+          class="ppane rec-detail"
+          ref={pane}
+          onClick={(e: MouseEvent) => { split.onClick(e) }}
+          onPointerdown={split.onPointerDown}
+        >
           {head(
             <>
               <button class="link-btn" onClick={back}>‹ 返回列表</button>
@@ -418,20 +483,18 @@ export default defineComponent({
           <div class="rec-qlist">
             {detailBlocks(answers).map((b) =>
               b.kind === 'group'
-                ? (
-                  <div
-                    class={['pv-group', props.standalone && 'split']}
-                    key={`mat-${b.start}`}
-                    onClick={onGroupClick}
-                  >
-                    <div innerHTML={materialCardHtml(b.start, b.count, renderMaterial(b.material))}></div>
-                    <div class="pv-subs">
-                      {b.answers.map((a) => (
-                        <QuestionBlock a={a} key={`${a.no}-${a.stem.slice(0, 8)}`} />
-                      ))}
+                ? (props.standalone
+                  ? splitBlock(b)
+                  : (
+                    <div class="pv-group" key={`mat-${b.start}`} onClick={onGroupClick}>
+                      <div innerHTML={materialCardHtml(b.start, b.count, renderMaterial(b.material))}></div>
+                      <div class="pv-subs">
+                        {b.answers.map((a) => (
+                          <QuestionBlock a={a} key={`${a.no}-${a.stem.slice(0, 8)}`} />
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )
+                  ))
                 : <QuestionBlock a={b.a} key={`${b.a.no}-${b.a.stem.slice(0, 8)}`} />,
             )}
           </div>

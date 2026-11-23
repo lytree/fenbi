@@ -2364,81 +2364,16 @@ body.pane-dragging {
   .pv-group::before { display: none; }
 }
 
-/* 整页查看里的资料题：左右分屏——材料钉在左边自己滚，题目在右边往下走。
-   右栏只留「题目 + 答案 + 解析」这一路信息（考点 / 笔记 / 笔记笔在分屏里收起，
-   那几样属于编辑侧的活，读答案时反而挡眼）。
-   编辑器右栏没有 .fullsheet 祖先，所以同一份 DOM 在窄栏里仍然是上下排。 */
-.fullsheet .pv-group.split {
-  display: grid;
-  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
-  gap: 18px;
-  align-items: start;
-  padding-left: 0;
-  margin-bottom: 22px;
-
-  &::before { display: none; }
-
-  > .pv-mat {
-    position: sticky;
-    /* 顶到整页顶栏下方一点：材料跟着滚，但不钻到顶栏底下 */
-    top: 6px;
-    margin-bottom: 0;
-    max-height: calc(100vh - 150px);
-    overflow: auto;
-  }
-
-  .kp-row,
-  .note-row,
-  .pv-acts { display: none; }
-
-  /* 右栏第一张卡和材料卡顶对齐，视觉上是一条基线 */
-  .pv-subs { padding-top: 0; }
-}
-
-/* 记录页的整页版更宽（1040）：右栏略宽一点，选项不至于挤成两行 */
-.fullsheet.is-records .pv-group.split {
-  grid-template-columns: minmax(0, 0.88fr) minmax(0, 1.12fr);
-}
-
-/* 窄屏（投到平板 / 手机）：分屏退回上下排，材料不再钉住 */
-@media (max-width: 860px) {
-  .fullsheet .pv-group.split {
-    grid-template-columns: 1fr;
-    gap: 10px;
-
-    > .pv-mat {
-      position: static;
-      max-height: none;
-    }
-  }
-}
-
 /* =============================================================================
-   整页解析 · 资料分屏（照粉笔解析页实测：700 高、左右两张白卡 + 中间拖柄）
-   左：材料白卡（「材料」小签 + 自己的滚动条）
-   右：题号页签（106题…，当前题下面一条主色短杠）+ 当前这一题
+   资料题分屏的共用零件（`.pp-split`：卷面预览 / 答案解析 / 练习记录三页同一套）
+   -----------------------------------------------------------------------------
+   结构由 `src/splitpane.ts` 拼，这里只管样子：
+     · 左栏「材料」白卡：顶上一枚蓝签，正文自己滚（`.pp-mat` / `.pp-mat-body` 在下面）
+     · 中间 4px 把手：悬停显一道主色细线，按住拖改左栏宽度
+     · 右栏：顶上题号页签（当前题下面一条主色短杠）+ 一组小题连着排
    ========================================================================== */
 
-.pv-split {
-  display: grid;
-  grid-template-columns: var(--mat-w, 47%) 12px minmax(0, 1fr);
-  height: 700px;
-  margin-bottom: 22px;
-}
-
-.pv-split-mat,
-.pv-split-qs {
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  background: var(--bg-container);
-  border: 1px solid var(--border-secondary);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow);
-}
-
+/* 左栏那枚「材料」小签：三页同一个样子 */
 .pv-mat-tag {
   align-self: flex-start;
   flex: none;
@@ -2450,38 +2385,6 @@ body.pane-dragging {
   color: var(--primary);
   font-size: 12px;
   line-height: 22px;
-}
-
-.pv-mat-body {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 6px 20px 24px;
-  font-size: 15px;
-  line-height: 1.95;
-  color: var(--text);
-}
-
-/* 两栏之间的拖柄：中间一颗小抓点，拖它改左栏宽度 */
-.pv-split-grip {
-  position: relative;
-  cursor: col-resize;
-  user-select: none;
-
-  &::before {
-    content: "";
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    width: 4px;
-    height: 34px;
-    transform: translate(-50%, -50%);
-    border-radius: 2px;
-    background: var(--border-secondary);
-    transition: background-color .15s;
-  }
-
-  &:hover::before { background: var(--primary-border); }
 }
 
 body.split-dragging { cursor: col-resize; user-select: none; }
@@ -2529,63 +2432,6 @@ body.split-dragging { cursor: col-resize; user-select: none; }
       background: var(--primary);
     }
   }
-}
-
-.pv-tabbody {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 14px 20px 20px;
-}
-
-/* 分屏里的题比窄栏里松一档：粉笔的选项行高约 48、题干 16/1.9，
-   一屏只读一道题，不用像右栏那样省地方 */
-.pv-split .pv-stem {
-  font-size: 15px;
-  line-height: 1.8;
-}
-
-.pv-split .pv-opts { gap: 10px; }
-
-.pv-split .pv-opt {
-  padding: 9px 10px;
-  margin: 0 -10px;
-}
-
-/* 解析盒在整页里换成粉笔的浅灰底（窄栏保持白底，省得两处看着打架） */
-.pv-split .sol-box {
-  border-color: transparent;
-  background: var(--bg-layout);
-
-  .sol-h { background: transparent; }
-}
-
-/* 分屏右栏的题卡不再自带卡片壳：白底与发丝线交给外层白卡 */
-.pv-split-qs .pv-q {
-  padding: 0;
-  margin: 0;
-  border: none;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-
-  &:hover { border: none; box-shadow: none; }
-}
-
-/* 右栏只留「题目 + 答案 + 解析 + 考点」：笔记正文收进弹框，不铺在行间 */
-.pv-split-qs .note-row { display: none; }
-
-/* 窄一点（笔记本半屏 / 平板竖屏）：退回上下排，拖柄藏起来 */
-@media (max-width: 1000px) {
-  .pv-split {
-    grid-template-columns: 1fr;
-    height: auto;
-    gap: 12px;
-  }
-
-  .pv-split-grip { display: none; }
-  .pv-split-mat { max-height: 360px; }
-  .pv-split-qs { min-height: 520px; }
 }
 
 .pv-stem {
@@ -5574,6 +5420,16 @@ body.split-dragging { cursor: col-resize; user-select: none; }
   border-radius: 8px;
 }
 
+/* 答案解析 / 练习记录两页的底是白的（不像卷面那张灰纸）：同一块分屏在这里补一道
+   发丝边 + 一层浅影，「左材料 / 右题目」才立得起来，不然看着是一整片白 */
+.fullsheet.is-answer .pp-mat,
+.fullsheet.is-answer .pp-qs,
+.fullsheet.is-records .pp-mat,
+.fullsheet.is-records .pp-qs {
+  border-color: var(--border-secondary);
+  box-shadow: var(--shadow);
+}
+
 .pp-mat {
   .pv-mat-tag {
     align-self: flex-start;
@@ -5665,6 +5521,20 @@ body.split-dragging { cursor: col-resize; user-select: none; }
   overflow-y: auto;
   padding: 4px 20px 24px;
   scroll-behavior: smooth;
+}
+
+/* 记录页的分屏里，小题带着作答结果：卡顶那条渐变色带在「没有卡片壳」的右栏里悬着
+   不好看，改成贴着左沿的一条竖色条——扫一眼就知道这题答对 / 答错 / 没答 */
+.pp-qs-body .pv-q.r-ok::before,
+.pp-qs-body .pv-q.r-no::before,
+.pp-qs-body .pv-q.r-pend::before,
+.pp-qs-body .pv-q.r-none::before {
+  top: 14px;
+  bottom: 14px;
+  right: auto;
+  width: 3px;
+  height: auto;
+  border-radius: 2px;
 }
 
 /* ---- 底部答题卡：一条标签 + 可摊开的题号格 ---- */

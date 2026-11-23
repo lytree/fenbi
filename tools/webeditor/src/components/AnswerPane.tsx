@@ -1,4 +1,4 @@
-import { defineComponent, nextTick, onMounted, ref, watch } from 'vue'
+import { defineComponent, nextTick, onBeforeUnmount, onBeforeUpdate, onMounted, onUpdated, ref, watch } from 'vue'
 import type { Group, Question } from '../types'
 import { currentQuestions, editNote, focusQuestion, groupsOf, state, TYPE_LABEL } from '../store'
 import { esc } from '../util'
@@ -6,6 +6,8 @@ import { renderMaterial, renderStem } from '../markdown'
 import { LEVEL_NONE, level1Of, level2Of } from '../xingce'
 import { answerText, gridHtml, isBlank, materialGroupHtml, noteActionHtml, normKeys, optionListHtml } from '../qview'
 import type { GridCell } from '../qview'
+import { splitGroupHtml, useSplitGroup } from '../splitpane'
+import type { SplitTab } from '../splitpane'
 import PaperDock from './PaperDock'
 
 /**
@@ -17,6 +19,10 @@ import PaperDock from './PaperDock'
  *
  * 两处用：编辑器右栏（窄，资料题上下排）与整页查看（`full`，资料题左右分屏）。
  * 编辑器里点题跳左卡片、左边选中这里滚过来；整页版没有编辑区，只有内容。
+ *
+ * 整页版的资料题与「卷面预览」是**同一块分屏**（`splitpane.ts`）：左边「材料」白卡
+ * 自己滚、中间拖把手、右边题号页签 + 这一组的小题连着排。点页签滚到那道小题、
+ * 滚到哪道页签就亮哪枚——不再一题一页地换。
  */
 export default defineComponent({
   name: 'AnswerPane',
@@ -26,41 +32,24 @@ export default defineComponent({
   },
   setup(props) {
     const pane = ref<HTMLElement | null>(null)
-    /** 每组资料当前看的是第几道小题（键 = 组首题的索引） */
-    const tabIdx = ref<Record<number, number>>({})
-    /** 每组资料左栏宽度（百分比，拖动分屏把手时改；键同上） */
-    const matWidth = ref<Record<number, number>>({})
-
-    /** 把当前选中（state.focused）的那题滚到面板中间 */
-    const scrollToFocused = (smooth: boolean) => {
-      const uid = state.focused
-      if (uid === null) return
-      const hit = pane.value?.querySelector(`.pv-q[data-uid="${uid}"]`) as HTMLElement | null
-      // jsdom（单测）里没有 scrollIntoView，跳过这一步
-      if (typeof hit?.scrollIntoView === 'function') {
-        hit.scrollIntoView({ block: 'center', behavior: smooth ? 'smooth' : 'auto' })
-      }
-    }
+    const split = useSplitGroup(pane)
 
     /**
-     * 整页分屏里一组材料只摆一道小题：从答题卡跳到组内第 3 题时，
-     * 得先把这个组的页签切过去，否则滚到的还是原来那道。
+     * 分屏里哪枚页签该亮：这组里如果正看着某一题就是它，否则第一题。
+     * 之后右栏一滚，`splitpane` 会自己把页签跟过去。
      */
-    const syncSplitTab = () => {
-      if (!props.full) return
-      const qs = currentQuestions()
-      const i = qs.findIndex((q) => q._uid === state.focused)
-      if (i < 0) return
-      for (const g of groupsOf(qs)) {
-        if (i >= g.start && i <= g.end) tabIdx.value[g.start] = i - g.start
-      }
+    const activeOf = (cards: Question[]): number => {
+      const hit = cards.find((q) => q._uid === state.focused)
+      return (hit ?? cards[0])._uid
     }
 
-    watch(() => state.focused, () => {
-      syncSplitTab()
-      void nextTick(() => scrollToFocused(true))
-    })
-    onMounted(() => { void nextTick(() => scrollToFocused(false)) })
+    /** 把当前选中（state.focused）的那题带到眼前：分屏里的滚两层，独立题滚到顶 */
+    const scrollToFocused = (smooth: boolean) => {
+      if (state.focused === null) return
+      split.scrollToCard(state.focused, smooth)
+    }
+
+    watch(() => state.focused, () => { void nextTick(() => scrollToFocused(true)) })
 
     const blockHtml = (q: Question, index: number): string => {
       const focus = state.focused === q._uid ? ' focus' : ''
@@ -162,44 +151,26 @@ export default defineComponent({
     }
 
     /**
-     * 整页里的资料分屏，照粉笔解析页的实测版式：一张 700 高的大卡切成两半——
-     * 左边「材料」白卡（自己的滚动条），右边顶上一排题号页签（106题 107题…，
-     * 当前题下面一条主色短杠），下面只摆当前这一题（题干 / 选项 / 答案宫格 /
-     * 解析 / 考点）。五道小题不再竖着堆，一屏只读一道，材料始终在左手边。
+     * 整页里的资料分屏，与「卷面预览」同一块（`splitpane.ts`）：左边「材料」白卡
+     * （自己的滚动条），中间拖把手，右边题号页签 + 这一组的小题连着排。
+     * 点页签滚到那道小题，滚到哪道页签亮哪枚——和粉笔解析页一样，材料始终在左手边。
      */
     const splitHtml = (g: Group, qs: Question[]): string => {
-      const count = g.end - g.start + 1
-      const start = g.start + 1
-      const active = Math.min(tabIdx.value[g.start] ?? 0, count - 1)
-      const tabs = Array.from({ length: count }, (_, i) =>
-        `<button class="pv-tab${i === active ? ' active' : ''}" data-tab="${i}">${start + i}题</button>`,
-      ).join('')
-      const w = matWidth.value[g.start] ?? 47
-      return (
-        `<div class="pv-split" data-g="${g.start}" style="--mat-w:${w}%">` +
-        '<div class="pv-split-mat">' +
-        '<div class="pv-mat-tag">材料</div>' +
-        `<div class="pv-mat-body">${renderMaterial(g.material)}</div>` +
-        '</div>' +
-        `<div class="pv-split-grip" data-grip="${g.start}" title="拖动调整材料宽度"></div>` +
-        '<div class="pv-split-qs">' +
-        `<div class="pv-tabs">${tabs}</div>` +
-        `<div class="pv-tabbody">${blockHtml(qs[g.start + active], g.start + active)}</div>` +
-        '</div>' +
-        '</div>'
-      )
+      const cards = qs.slice(g.start, g.end + 1)
+      const tabs: SplitTab[] = cards.map((q, k) => ({ id: q._uid, label: `${g.start + k + 1}题` }))
+      return splitGroupHtml({
+        key: g.start,
+        tabs,
+        activeId: activeOf(cards),
+        materialHtml: renderMaterial(g.material),
+        bodyHtml: cards.map((q, k) => blockHtml(q, g.start + k)).join(''),
+      })
     }
 
     const onClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement
-      // 资料分屏的题号页签：只换右栏摆哪道题，不跳左栏
-      const tab = target.closest('[data-tab]') as HTMLElement | null
-      if (tab) {
-        const split = tab.closest('.pv-split') as HTMLElement | null
-        const g = Number(split?.dataset.g)
-        if (Number.isFinite(g)) tabIdx.value[g] = Number(tab.dataset.tab)
-        return
-      }
+      // 资料分屏的题号页签：只滚右栏，不跳左栏
+      if (split.onClick(e)) return
       // 资料头的「收起 / 展开」：收的是材料正文，小题留着（对着材料做题时更顺手）
       const fold = target.closest('.mfold') as HTMLElement | null
       if (fold) {
@@ -229,34 +200,32 @@ export default defineComponent({
       if (index >= 0) focusQuestion(index)
     }
 
-    /** 拖动两栏之间的把手：改这一组左栏的百分比宽度（32%–68%，别把另一边挤没） */
-    const onPointerDown = (e: PointerEvent) => {
-      const grip = (e.target as HTMLElement).closest('[data-grip]') as HTMLElement | null
-      if (!grip || e.button !== 0) return
-      const split = grip.closest('.pv-split') as HTMLElement | null
-      const g = Number(split?.dataset.g)
-      if (!split || !Number.isFinite(g)) return
-      e.preventDefault()
-      const rect = split.getBoundingClientRect()
-      const move = (ev: PointerEvent) => {
-        const pct = ((ev.clientX - rect.left) / rect.width) * 100
-        matWidth.value[g] = Math.min(68, Math.max(32, Math.round(pct)))
-      }
-      const up = () => {
-        window.removeEventListener('pointermove', move)
-        window.removeEventListener('pointerup', up)
-        window.removeEventListener('pointercancel', up)
-        document.body.classList.remove('split-dragging')
-      }
-      document.body.classList.add('split-dragging')
-      window.addEventListener('pointermove', move)
-      window.addEventListener('pointerup', up)
-      window.addEventListener('pointercancel', up)
-    }
+    // 重绘（换当前题 / 改笔记）会把整段 innerHTML 换掉：右栏的滚动位置、
+    // 拖过的左栏宽度、页签亮态都在 DOM 上，重画前记一份、画完还回去
+    onBeforeUpdate(() => split.remember())
+    onUpdated(() => split.restore())
+
+    const onScrollCapture = (e: Event) => split.onScrollCapture(e)
+
+    onMounted(() => {
+      pane.value?.addEventListener('scroll', onScrollCapture, true)
+      void nextTick(() => {
+        scrollToFocused(false)
+        split.applyWidths()
+        split.syncAll()
+      })
+    })
+    onBeforeUnmount(() => { pane.value?.removeEventListener('scroll', onScrollCapture, true) })
 
     return () => (
       <>
-        <div class="ppane" ref={pane} innerHTML={html()} onClick={onClick} onPointerdown={onPointerDown}></div>
+        <div
+          class="ppane"
+          ref={pane}
+          innerHTML={html()}
+          onClick={onClick}
+          onPointerdown={split.onPointerDown}
+        ></div>
         {/* 解析页也有同一条答题卡：整卷滚到哪儿都能一步跳到某一题（分屏组会顺手切页签）。
             这里没有作答进度，收起时只写题数；答案齐没齐页头已经写了。 */}
         {props.full ? <PaperDock progress={false} hint={false} /> : null}
