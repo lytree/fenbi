@@ -2,4 +2,5 @@
 # 键名与形状也变了：allowBuilds 是以包名为键的映射。
 # esbuild 的 postinstall 要跑（校验/链接平台二进制，Vite 打包依赖它），其余默认一律不跑。
 allowBuilds:
+  '@parcel/watcher': true
   esbuild: true

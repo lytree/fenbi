@@ -67,22 +67,32 @@ Query 只带 `view / setId / sheet / recordId`，切页与换卷会 `replaceStat
 ```bash
 pnpm install       # 首次；锁文件是 pnpm-lock.yaml
 pnpm dev           # 本地起 dev server（接口需要真机服务或自建 mock，没有本地试卷包退路）
-pnpm test          # 冒烟 + 材料模式 + 预览同步 + 整页查看 + 题型渲染 + 卷面分章/答题卡 + 笔记（146 例）
+pnpm test          # 冒烟 + 材料模式 + 预览同步 + 整页查看 + 题型渲染 + 卷面分章/答题卡 + 笔记（150 例）
 pnpm build         # 产物写进 ../../app/src/main/assets/webeditor/
 ```
 
 `pnpm build` 之后直接 `./gradlew assembleDebug` 就行，Kotlin 侧不用改。
 
 包管理用 **pnpm 12**（`packageManager` 已钉在 `package.json` 里）。
-pnpm 10+ 默认拦掉依赖的安装脚本，esbuild 必须在 `pnpm-workspace.yaml` 的白名单里：
+pnpm 10+ 默认拦掉依赖的安装脚本，要在 `pnpm-workspace.yaml` 的白名单里放行：
 
 ```yaml
 allowBuilds:
+  '@parcel/watcher': true
   esbuild: true
 ```
 
-漏了这行，`pnpm install` 会以 `ERR_PNPM_IGNORED_BUILDS` 失败。
+漏了已装依赖对应的那行，`pnpm install` / `pnpm add` 会以 `ERR_PNPM_IGNORED_BUILDS` 失败
+（注意 `pnpm add` 失败时是**静默中断**：先打印 “Already up to date”，版本其实没动）。
 **不要**写回 `package.json` 的 `pnpm.onlyBuiltDependencies`——pnpm 12 已经不读它了。
+
+### Vite 8 + vue-jsx 的虚拟模块
+
+Vite 8 换成 rolldown 内核，vue-jsx 注入的 `/vue-jsx/vdom` 这类虚拟 id 在 **vitest** 的
+module runner 里会被当成磁盘绝对路径，报 `The argument 'filename' must be a file URL object…
+Received 'file:///vue-jsx/vdom'`。`vite.config.ts` 因此用 `resolve.alias` 把这四个 helper id
+指向 `@vue-jsx/runtime/dist/*.js`（内容与插件 `load` 返回的同源），`@vue-jsx/runtime` 也就必须
+显式留在 `devDependencies` 里。生产构建本身不受影响，删掉这段 alias 只会让 `pnpm test` 挂。
 
 > 构建产物（`app/src/main/assets/webeditor/index.html` 与 `assets/*`）**要提交**，
 > 这样别人 clone 下来不装 Node 也能打包 APK。`node_modules/` 不提交。
