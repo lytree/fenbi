@@ -206,6 +206,8 @@
             android:paddingTop="@dimen/fb_space_12"
             android:paddingEnd="@dimen/fb_space_12">
 
+            <!-- 第一行：材料标签 + 组内进度。按钮放到第二行——左栏只有 40% 宽，
+                 四个元素塞一行时「收起材料」会被挤出可视区（手机上直接看不见）。 -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -222,11 +224,15 @@
                     style="@style/FbCaption"
                     android:layout_marginStart="@dimen/fb_space_8"
                     tools:text="1/4" />
+            </LinearLayout>
 
-                <Space
-                    android:layout_width="0dp"
-                    android:layout_height="1dp"
-                    android:layout_weight="1" />
+            <!-- 第二行：弹出整页看 / 收起材料，右对齐 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/fb_space_4"
+                android:gravity="end|center_vertical"
+                android:orientation="horizontal">
 
                 <!-- 左栏窄，表格 / 图表看不全时弹到整页看 -->
                 <LinearLayout
@@ -254,7 +260,7 @@
                 <TextView
                     android:id="@+id/btnSplitCollapse"
                     style="@style/FbCaption"
-                    android:layout_marginStart="@dimen/fb_space_4"
+                    android:layout_marginStart="@dimen/fb_space_8"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:padding="@dimen/fb_space_4"
                     android:text="@string/material_collapse" />

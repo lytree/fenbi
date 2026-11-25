@@ -80,7 +80,11 @@
             android:theme="@style/Theme.QBank.Popup" />
         <activity android:name=".ui.ReportActivity" android:exported="false" />
         <!-- 解析页：与答题页同一套卷面，只读 + 答案解析（错题解析 / 全部解析 / 点题号进入） -->
-        <activity android:name=".ui.QuestionReviewActivity" android:exported="false" />
+        <activity
+            android:name=".ui.QuestionReviewActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:resizeableActivity="true" />
         <!-- 补录答案：逐题填标准答案（键盘弹出时列表要能被顶上去） -->
         <activity
             android:name=".ui.AnswerEntryActivity"

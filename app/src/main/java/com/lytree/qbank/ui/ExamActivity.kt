@@ -70,8 +70,6 @@ class ExamActivity : AppCompatActivity() {
         private const val KEY_MULTI_BROWSE = "multi_browse"
         /** 平板新版式（材料组一题一页）只清一次老的「多题浏览」标记 */
         private const val KEY_TABLET_SPLIT_SEEN = "tablet_split_seen"
-        /** 就地分屏「材料 / 题目」上下占比（0.2～0.8，默认材料 45%） */
-        private const val KEY_SPLIT_RATIO = "split_material_ratio"
         private const val KEY_PRACTICE = "practice_mode"
 
         /**
@@ -184,22 +182,17 @@ class ExamActivity : AppCompatActivity() {
         get() = ScreenAdapt.isTablet(resources.configuration)
 
     /** 是否处于「弹出材料」左右分屏状态（就地分屏，可收起还原） */
-    private var splitMode = false
-    /** 当前分屏的这一组（同一份材料的全部题，保持卷内顺序） */
-    private var splitGroup: List<Question> = emptyList()
-    /** 材料组第一题在整卷中的位置（0 起），右栏题号按整卷序号显示 */
-    private var splitGroupOffset = 0
+    private val splitMode: Boolean
+        get() = ::splitPane.isInitialized && splitPane.isOpen
+
     /**
-     * 分屏右栏的分页表：**一页 = 一组**（一则材料 + 它的全部小题）。
+     * 就地左右分屏：左栏材料 / 右栏整组题。
      *
-     * 与分屏页（已下线）同一口径：右栏整组铺成一条连续卷面，左右滑动整组翻页，
-     * 左栏材料跟着整块换——对着同一则材料连做几道小题时不用来回翻页。
+     * 版式、分页、中缝拖拽、左轨拖拽条、写画锚点全在 [SplitPaneController] 里——
+     * **解析页用的是同一个类**，两页的手感（含中缝比例记忆、左栏「弹出材料」）才是同一份，
+     * 不会各写一套慢慢走偏。
      */
-    private var splitPages: List<PaperStructure.Group> = emptyList()
-    private var splitPager: ViewPager2? = null
-    private var splitPagerAdapter: SplitSheetAdapter? = null
-    /** 本页题目卡（作答 / 标记后只重绑这一张，不动页内滚动位置） */
-    private val splitCards = HashMap<Long, ItemQuestionPageBinding>()
+    private lateinit var splitPane: SplitPaneController
 
     private lateinit var inkToolbar: InkToolbarController
     /** 多题浏览适配器（连续滚动） */
@@ -306,20 +299,9 @@ class ExamActivity : AppCompatActivity() {
             setupInk()
             applyWindowInsets()
 
-            // 「收起材料」：退出就地分屏，还原浏览模式
-            binding.btnSplitCollapse.setOnClickListener { closeSplit() }
-            // 左栏「弹出材料」：半栏宽看不清表格 / 图表时，弹到整页看（解析页同一套页面）
-            binding.btnSplitExpand.setOnClickListener {
-                val material = splitGroup.firstOrNull()?.material
-                if (material.isNullOrBlank()) return@setOnClickListener
-                val popup = Intent(this@ExamActivity, MaterialPopupActivity::class.java)
-                popup.putExtra(MaterialPopupActivity.EXTRA_MATERIAL, material)
-                popup.putExtra(MaterialPopupActivity.EXTRA_NIGHT, nightMode)
-                popup.putExtra(MaterialPopupActivity.EXTRA_FONT_SCALE, fontScale)
-                startActivity(popup)
-            }
-            // 中缝手柄：左右拖动改「材料 / 题目」两栏占比（比例记忆）
-            setupSplitResize()
+            // 「收起材料」/ 左栏「弹出材料」（整页看）/ 中缝拖拽：都由分屏控制器绑好，
+            // 与解析页共用同一份实现（见 SplitPaneController）
+            setupSplitPane()
 
             // 启动时就把上次选的浏览模式落到位（旧实现只在点按钮时才应用，偏好读了等于没读）
             applyBrowseMode()
@@ -628,219 +610,90 @@ class ExamActivity : AppCompatActivity() {
     }
 
     /**
-     * 「弹出材料」。
+     * 「弹出材料」入口（题目卡 / 材料组页头都落这里）。
      *
      * **只在「一则材料带多道小题」时才有这个交互**——一道材料只带一道题时，材料在卡上
-     * 已经整段完整展开，弹出只是把同一段文字再看一遍，入口和浮层都省掉（卡片上的按钮
-     * 也由 [QuestionCardBinder] 按组题量隐藏）。
+     * 已经整段完整展开，弹出只是把同一段文字再看一遍（卡片按钮由 [QuestionCardBinder] 按组题量隐藏，
+     * 控制器里再兜一层）。
      *
      * 交互对齐粉笔资料分析：**不分手机 / 平板，一点就地切成左右两栏**——
-     * 左栏材料（可「收起材料」还原，中缝可拖动调占比），右栏这组题铺成一条连续卷面，
-     * 左右滑动整组翻页；顶栏仍是单题模式那一套（下载 / 交卷 / 答题卡 / 更多），
-     * 题目卡上的「笔」直接在这道题上圈画。
+     * 左栏材料（可「收起材料」还原，中缝可拖动调占比，可再弹整页看表格），
+     * 右栏这组题铺成一条连续卷面，左右滑动整组翻页；顶栏仍在这一页。
+     * 版式与解析页共用 [SplitPaneController]。
      */
     private fun showMaterialPopup(q: Question) {
         if (q.material.isBlank()) return
-        // 以材料为准：这组 = 该题所属的材料组（跨大类的同名材料本来就断成两组）
-        val group = structure.groupOf(q)?.takeIf { it.isMaterialGroup }?.questions.orEmpty()
-        // 一材料一题：不弹（按钮已隐藏，这里再兜一层，防止别的入口绕过来）
-        if (group.size < 2) return
-        openSplit(q)
-    }
-
-    /** 进入就地左右分屏：左材料 / 右整组题，定位到打开分屏的那道题 */
-    private fun openSplit(q: Question) {
         binding.morePanel.visibility = View.GONE
-        // 分页表按当前范围切：一组一页，滑到下一组时左栏材料整块换掉
-        splitPages = structure.groups.filter { it.questions.isNotEmpty() }
-        val page = splitPages.indexOfFirst { g -> g.questions.any { it.id == q.id } }
-            .takeIf { it >= 0 } ?: 0
-        splitMode = true
-        splitGroup = splitPages.getOrNull(page)?.questions.orEmpty()
-        splitGroupOffset = splitPages.getOrNull(page)?.startIndex ?: 0
-        currentPos = questions.indexOfFirst { it.id == q.id }.takeIf { it >= 0 } ?: currentPos
-        // 分屏左右两栏各滚各的：写画（笔记）模式下左边缘也放一条拖拽条
-        binding.inkOverlay.leftRailEnabled = true
-        renderSplitMaterial()
-        setupSplitPager(page)
-        applySplitVisibility()
-        refreshSplitProgress()
-        syncInkQuestion()
-        binding.inkOverlay.invalidate()
+        splitPane.open(q)
     }
 
     /**
-     * 中缝手柄：左右拖动改「材料 / 题目」两栏占比（25%～75%，默认材料 40%，对齐粉笔）。
-     *
-     * 材料常常比题目长得多：固定五五分要么材料翻半天、要么题目只剩几个字；
-     * 看表格的时候把材料拉宽，读题的时候再收回去。比例存偏好，重进沿用。
+     * 分屏控制器接线：答题页只提供「卡片怎么绑」和「换题后刷什么」，
+     * 版式 / 分页 / 中缝 / 左轨拖拽条 / 锚点 / 左栏「弹出材料」都在 [SplitPaneController] 里。
      */
-    private fun setupSplitResize() {
-        val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
-        val minPct = 0.25f
-        val maxPct = 0.75f
-
-        fun applyRatio(pct: Float) {
-            val r = pct.coerceIn(minPct, maxPct)
-            val left = binding.splitLeftPane.layoutParams as? LinearLayout.LayoutParams ?: return
-            val right = binding.splitQuestionPane.layoutParams as? LinearLayout.LayoutParams ?: return
-            // 权重按 0~1000 分（LinearLayout 只认整数权重，用浮点会四舍五入到 1:1）
-            left.weight = r * 1000f
-            right.weight = 1000f - left.weight
-            binding.splitLeftPane.layoutParams = left
-            binding.splitQuestionPane.layoutParams = right
-        }
-        applyRatio(prefs.getFloat(KEY_SPLIT_RATIO, 0.4f))
-
-        var startX = 0f
-        var startPct = 0.4f
-        binding.splitHandle.setOnTouchListener { v, ev ->
-            when (ev.actionMasked) {
-                android.view.MotionEvent.ACTION_DOWN -> {
-                    startX = ev.rawX
-                    startPct = prefs.getFloat(KEY_SPLIT_RATIO, 0.4f).coerceIn(minPct, maxPct)
-                    true
-                }
-                android.view.MotionEvent.ACTION_MOVE -> {
-                    val w = binding.splitBody.width.coerceAtLeast(1)
-                    applyRatio(startPct + (ev.rawX - startX) / w)
-                    binding.inkOverlay.invalidate()
-                    true
-                }
-                android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
-                    val left = binding.splitLeftPane.layoutParams as LinearLayout.LayoutParams
-                    prefs.edit().putFloat(KEY_SPLIT_RATIO, left.weight / 1000f).apply()
-                    v.performClick()
-                    true
-                }
-                else -> false
-            }
-        }
-    }
-
-    private fun renderSplitMaterial() {
-        MaterialRenderer.render(this, binding.splitMaterialContent, splitGroup.first().material, nightMode, fontScale)
-        binding.splitMaterialContent.applyNavBarBottomPadding()
-        binding.splitMaterialScroll.scrollTo(0, 0)
-    }
-
-    /**
-     * 右栏：**一组题一页**，页内铺成一条连续卷面。
-     *
-     * 左右分栏的场景是「对着这则材料连做几道小题」：整组摊开才不用为了对数据反复翻页；
-     * 换组时左栏材料整块换掉，右栏换一整组题。卡片复用卷面同一套 [QuestionCardBinder]，
-     * 题号 / 题型 / 标记 / 笔 / 收藏都在，手写标注直接落在这一道题上。
-     */
-    private fun setupSplitPager(page: Int) {
-        val pager = ViewPager2(this).apply {
-            orientation = ViewPager2.ORIENTATION_HORIZONTAL
-            // 左右各留一页：滑到下一组时卷面已经绑好，不会白一下
-            offscreenPageLimit = 1
-        }
-        val adapter = SplitSheetAdapter()
-        pager.adapter = adapter
-        pager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
-            override fun onPageSelected(position: Int) {
-                val group = splitPages.getOrNull(position) ?: return
-                splitGroup = group.questions
-                splitGroupOffset = group.startIndex
-                // 左栏材料整块换成这一组的
-                renderSplitMaterial()
-                currentPos = group.startIndex
-                currentSplitScroll()?.scrollTo(0, 0)
-                refreshSplitProgress()
+    private fun setupSplitPane() {
+        splitPane = SplitPaneController(
+            ctx = this,
+            views = SplitPaneController.Views(
+                body = binding.splitBody,
+                leftPane = binding.splitLeftPane,
+                tvTag = binding.tvSplitTag,
+                tvProgress = binding.tvSplitProgress,
+                btnExpand = binding.btnSplitExpand,
+                btnCollapse = binding.btnSplitCollapse,
+                materialScroll = binding.splitMaterialScroll,
+                materialContent = binding.splitMaterialContent,
+                handle = binding.splitHandle,
+                handleBar = binding.splitHandleBar,
+                questionPane = binding.splitQuestionPane
+            ),
+            questions = { questions },
+            structure = { structure },
+            inkOverlay = binding.inkOverlay,
+            isNight = { nightMode },
+            fontScale = { fontScale },
+            currentIndex = { currentPos },
+            setCurrentIndex = { currentPos = it },
+            onQuestionChanged = {
+                // 分屏内滚到别的题：笔迹跟着换人（左栏进度由控制器自己刷）
                 syncInkQuestion()
                 binding.inkOverlay.invalidate()
+            },
+            bindCard = { card, q, index, isLast -> bindSplitCard(card, q, index, isLast) },
+            onOpenFullMaterial = { material -> openMaterialFullPage(material) },
+            onVisibilityChanged = { open ->
+                if (open) {
+                    binding.splitBody.visibility = View.VISIBLE
+                    binding.questionList.visibility = View.GONE
+                    binding.pager.visibility = View.GONE
+                } else {
+                    binding.splitBody.visibility = View.GONE
+                    // 收起分屏顺手收起「更多」面板（否则它浮在还原后的卷面上）
+                    binding.morePanel.visibility = View.GONE
+                    // 收起后按当前题恢复多题 / 单题的显隐与定位
+                    applyBrowseMode()
+                    refreshCards()
+                    syncInkQuestion()
+                }
+                binding.inkOverlay.post { binding.inkOverlay.invalidate() }
             }
-        })
-
-        binding.splitQuestionPane.removeAllViews()
-        binding.splitQuestionPane.addView(
-            pager,
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
         )
-        splitPager = pager
-        splitPagerAdapter = adapter
-        // 初次定位不带动画，也不触发翻页回调：材料 / 顶部状态手动刷过一次了
-        pager.setCurrentItem(page.coerceIn(0, (splitPages.size - 1).coerceAtLeast(0)), false)
     }
 
-    /** 分屏右栏的一页：独立滚动的容器 + 页内连续排开的题目卡 */
-    private inner class SplitSheetAdapter : RecyclerView.Adapter<SplitSheetHolder>() {
-
-        override fun getItemCount(): Int = splitPages.size
-
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): SplitSheetHolder {
-            val hPad = resources.getDimensionPixelSize(R.dimen.fb_content_padding_h)
-            val topPad = resources.getDimensionPixelSize(R.dimen.fb_space_8)
-            val bottomPad = resources.getDimensionPixelSize(R.dimen.fb_space_24)
-            val page = androidx.core.widget.NestedScrollView(parent.context).apply {
-                layoutParams = RecyclerView.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
-                )
-                isFillViewport = true
-                overScrollMode = View.OVER_SCROLL_NEVER
-                // 页底留白铺在滚动区里，滚到底最后一道题不会贴着屏幕边
-                setPadding(0, 0, 0, bottomPad)
-                clipToPadding = false
-            }
-            val list = LinearLayout(parent.context).apply {
-                orientation = LinearLayout.VERTICAL
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                )
-                setPadding(hPad, topPad, hPad, 0)
-            }
-            page.addView(list)
-            // 页内滚动 → 当前题跟着走（计时 / 笔迹 / 顶栏题号都按它）
-            page.setOnScrollChangeListener(
-                androidx.core.widget.NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, _ ->
-                    onSplitSheetScrolled(list, scrollY)
-                }
-            )
-            return SplitSheetHolder(page, list)
-        }
-
-        override fun onBindViewHolder(holder: SplitSheetHolder, position: Int) {
-            val group = splitPages.getOrNull(position) ?: return
-            val list = holder.list
-            // 组结构没变就复用卡片：作答重绑 / 翻回来都不重建，页内滚动位置保住
-            if (holder.startIndex != group.startIndex || list.childCount != group.count) {
-                // 只清这一页自己的卡片映射；左右各缓存的那一页留着
-                for (i in 0 until list.childCount) {
-                    val ref = list.getChildAt(i).tag as? SplitCard ?: continue
-                    splitCards.remove(questions.getOrNull(ref.index)?.id)
-                }
-                list.removeAllViews()
-                val inflater = layoutInflater
-                group.questions.forEachIndexed { k, _ ->
-                    val card = ItemQuestionPageBinding.inflate(inflater, list, false)
-                    card.root.tag = SplitCard(group.startIndex + k, card)
-                    list.addView(card.root)
-                }
-                holder.startIndex = group.startIndex
-            }
-            group.questions.forEachIndexed { k, q ->
-                val card = (list.getChildAt(k).tag as SplitCard).binding
-                splitCards[q.id] = card
-                bindSplitCard(card, q, group.startIndex + k, isLast = k == group.count - 1)
-            }
-        }
+    /** 左栏「弹出材料」：半栏宽看不清表格 / 图表时弹到整页看（与解析页同一个页面、同一份日夜） */
+    private fun openMaterialFullPage(material: String) {
+        val popup = Intent(this, MaterialPopupActivity::class.java)
+        popup.putExtra(MaterialPopupActivity.EXTRA_MATERIAL, material)
+        popup.putExtra(MaterialPopupActivity.EXTRA_NIGHT, nightMode)
+        popup.putExtra(MaterialPopupActivity.EXTRA_FONT_SCALE, fontScale)
+        startActivity(popup)
     }
 
-    /** 一页的载体：滚动容器 + 页内卡片列 */
-    private class SplitSheetHolder(
-        val scroll: androidx.core.widget.NestedScrollView,
-        val list: LinearLayout
-    ) : RecyclerView.ViewHolder(scroll) {
-        /** 这页装的是哪一组（组首题号），用来判断能不能复用页内卡片 */
-        var startIndex: Int = -1
+    /** 收起分屏（返回键 / 「收起材料」）：还原浏览版式，停在同一道题 */
+    private fun closeSplit() {
+        if (!splitMode) return
+        splitPane.close()
     }
-
-    /** 页内一张卡：整卷题号 + 卡片绑定 */
-    private class SplitCard(val index: Int, val binding: ItemQuestionPageBinding)
 
     /** 分屏右栏的一张题卡：与卷面同一套绑定，材料已在左栏所以卡内不再渲染 */
     private fun bindSplitCard(
@@ -863,11 +716,11 @@ class ExamActivity : AppCompatActivity() {
             cb = QuestionCardBinder.Callbacks(
                 onMarkToggle = { qq ->
                     toggleMark(qq)
-                    rebindSplitCard(qq)
+                    splitPane.rebind(qq)
                 },
                 onFavoriteToggle = { qq ->
                     toggleFavorite(qq)
-                    rebindSplitCard(qq)
+                    splitPane.rebind(qq)
                 },
                 // 笔直接在这道题上圈画：遮盖层按卡片锚定，分屏两栏各写各的
                 onInkClicked = { qq -> startInkFor(qq) },
@@ -878,85 +731,9 @@ class ExamActivity : AppCompatActivity() {
             // 材料在左栏整栏展示，卡片不再重复渲染（「弹出材料」入口随之收起）
             hideMaterial = true,
             moduleHeader = null,
-            materialGroupSize = splitGroup.size,
+            materialGroupSize = splitPane.groupSize,
             showDivider = !isLast
         )
-    }
-
-    /** 只重绑一张卡：作答 / 标记 / 收藏后就地刷新，不动页内滚动位置 */
-    private fun rebindSplitCard(q: Question) {
-        val card = splitCards[q.id] ?: return
-        val idx = questions.indexOfFirst { it.id == q.id }
-        if (idx < 0) return
-        val lastId = splitPages.firstOrNull { it.contains(idx) }?.questions?.lastOrNull()?.id
-        bindSplitCard(card, q, idx, isLast = lastId == q.id)
-    }
-
-    /** 分屏右栏当前页的滚动容器（笔迹滚动通道 / 页内定位都拿它） */
-    private fun currentSplitScroll(): androidx.core.widget.NestedScrollView? {
-        val pager = splitPager ?: return null
-        val rv = pager.getChildAt(0) as? RecyclerView ?: return null
-        for (i in 0 until rv.childCount) {
-            val page = rv.getChildAt(i)
-            if (rv.getChildAdapterPosition(page) == pager.currentItem) {
-                return page as? androidx.core.widget.NestedScrollView
-            }
-        }
-        return null
-    }
-
-    private fun currentSplitList(): LinearLayout? =
-        currentSplitScroll()?.getChildAt(0) as? LinearLayout
-
-    /**
-     * 页内滚动：把「当前题」拨到最上面露出来的那道。
-     *
-     * 一条卷面装整组小题，只有题号跟着滚才谈得上「每题用时」和「笔迹绑哪一题」；
-     * 每帧都算太费，只在下标真的变了才刷新顶栏与计时。
-     */
-    private fun onSplitSheetScrolled(list: LinearLayout, scrollY: Int) {
-        val line = scrollY + (resources.displayMetrics.density * 24).toInt()
-        var index = -1
-        for (i in 0 until list.childCount) {
-            val child = list.getChildAt(i)
-            if (child.top <= line) index = (child.tag as? SplitCard)?.index ?: index
-        }
-        if (index < 0 || index == currentPos) return
-        currentPos = index
-        refreshSplitProgress()
-        syncInkQuestion()
-        binding.inkOverlay.invalidate()
-    }
-
-    /** 分屏里翻到某一题：同组滚到那张卡，跨组整页换过去（左栏材料跟着换） */
-    private fun showInSplit(index: Int) {
-        // 分屏收起后迟到的「自动下一题」不能再动当前题定位
-        if (!splitMode) return
-        val page = splitPages.indexOfFirst { it.contains(index) }
-        if (page < 0) return
-        if (page != splitPager?.currentItem) {
-            splitPager?.setCurrentItem(page, true)
-            currentPos = index
-            // 换页后页内排版才落定，滚动放到下一帧
-            binding.splitQuestionPane.post { scrollSplitToQuestion(index, smooth = true) }
-        } else {
-            scrollSplitToQuestion(index, smooth = true)
-        }
-        refreshSplitProgress()
-        syncInkQuestion()
-    }
-
-    /** 把页内某道题顶到可视区顶部 */
-    private fun scrollSplitToQuestion(index: Int, smooth: Boolean = false) {
-        val list = currentSplitList() ?: return
-        val scroll = currentSplitScroll() ?: return
-        for (i in 0 until list.childCount) {
-            val child = list.getChildAt(i)
-            val ref = child.tag as? SplitCard ?: continue
-            if (ref.index != index) continue
-            if (smooth) scroll.smoothScrollTo(0, child.top) else scroll.scrollTo(0, child.top)
-            return
-        }
     }
 
     /**
@@ -964,57 +741,22 @@ class ExamActivity : AppCompatActivity() {
      *
      * 自动滚只限**组内**：右栏整组小题连排，下一题滚出来就行；做完组内最后一道
      * 不翻到下一组——换组翻页（左栏材料整块换掉）是用户自己的动作，不替他做。
+     * 自动下一题固定开启（0.5.9 起不再提供开关）。
      */
     private fun onSplitAnswered(q: Question) {
         currentPos = questions.indexOfFirst { it.id == q.id }.takeIf { it >= 0 } ?: currentPos
         if (practiceMode && !submitted && q.id !in revealed) {
             revealed.add(q.id)
             // 已判分集合是答题页那一份，重绑这一张就带上对错与解析
-            rebindSplitCard(q)
+            splitPane.rebind(q)
         }
-        refreshSplitProgress()
         syncLiveRecord()
         if (q.type != com.lytree.qbank.data.model.QuestionType.SINGLE) return
         val next = currentPos + 1
         if (next >= questions.size) return
         // 下一题不在这组里 = 刚做完的是组尾最后一题：留在原地
-        if (next !in splitGroupOffset until splitGroupOffset + splitGroup.size) return
-        binding.splitQuestionPane.postDelayed({ showInSplit(next) }, 220)
-    }
-
-    /** 左栏头部的小进度：组内第几题 / 共几题 */
-    private fun refreshSplitProgress() {
-        val inGroup = (currentPos - splitGroupOffset)
-            .coerceIn(0, (splitGroup.size - 1).coerceAtLeast(0))
-        binding.tvSplitProgress.text =
-            getString(R.string.question_index, inGroup + 1, splitGroup.size)
-    }
-
-    /** 收起材料：还原为原浏览模式，停在分屏里正在看的那道题 */
-    private fun closeSplit() {
-        splitMode = false
-        splitPager = null
-        splitPagerAdapter = null
-        splitCards.clear()
-        // 退出分屏就收掉左边缘那条拖拽条：普通页面左边缘是书写区，只留右边一条
-        binding.inkOverlay.leftRailEnabled = false
-        applySplitVisibility()
-        refreshCards()
-        syncInkQuestion()
-    }
-
-    private fun applySplitVisibility() {
-        if (splitMode) {
-            binding.splitBody.visibility = View.VISIBLE
-            binding.questionList.visibility = View.GONE
-            binding.pager.visibility = View.GONE
-        } else {
-            binding.splitBody.visibility = View.GONE
-            binding.splitQuestionPane.removeAllViews()
-            // applyBrowseMode 会按 currentPos 恢复多题 / 单题的显隐与定位
-            applyBrowseMode()
-        }
-        binding.inkOverlay.post { binding.inkOverlay.invalidate() }
+        if (next !in splitPane.groupOffset until splitPane.groupOffset + splitPane.groupSize) return
+        binding.splitQuestionPane.postDelayed({ splitPane.showQuestion(next) }, 220)
     }
 
     private fun toggleMorePanel() {
@@ -1030,12 +772,8 @@ class ExamActivity : AppCompatActivity() {
         adapter.notifyDataSetChanged()
         pagerAdapter.fontScale = fontScale
         pagerAdapter.notifyDataSetChanged()
-        // 分屏右栏与左栏材料跟着一起缩放：重绑整组后把位置滚回当前题
-        splitPagerAdapter?.notifyDataSetChanged()
-        if (splitMode) {
-            binding.splitQuestionPane.post { scrollSplitToQuestion(currentPos) }
-            renderSplitMaterial()
-        }
+        // 分屏右栏与左栏材料跟着一起缩放：控制器重绑整组后把位置滚回当前题
+        splitPane.refresh()
     }
 
     private fun setNightMode(on: Boolean) {        if (nightMode == on) return
@@ -1119,9 +857,8 @@ class ExamActivity : AppCompatActivity() {
         // 多题滚列表，单题滚当前页；材料组页上下分栏，按纵向落点分流（上滚材料 / 下滚题目）
         binding.inkOverlay.scrollTargetResolver = { x, y ->
             when {
-                // 左右分屏：落点在左栏就滚材料，右栏滚当前这组题
-                splitMode && x <= binding.splitLeftPane.right -> binding.splitMaterialScroll
-                splitMode -> currentSplitScroll()
+                // 左右分屏：控制器按落点分流（左栏滚材料、右栏滚当前这组题）
+                splitMode -> splitPane.scrollTargetForInk(x)
                 multiBrowse -> binding.questionList
                 else -> currentPageScrollForInk(y)
             }
@@ -1239,17 +976,7 @@ class ExamActivity : AppCompatActivity() {
 
         when {
             // 就地分屏：左栏材料 + 右栏这组题的每一张卡，各自锚定互不串位
-            splitMode -> {
-                splitGroup.firstOrNull()?.let {
-                    addMaterial(binding.splitMaterialContent, it.id, binding.splitMaterialScroll)
-                }
-                val list = currentSplitList() ?: return out
-                for (i in 0 until list.childCount) {
-                    val card = list.getChildAt(i)
-                    val idx = (card.tag as? SplitCard)?.index ?: continue
-                    addQuestion(card, questions.getOrNull(idx)?.id ?: 0L)
-                }
-            }
+            splitMode -> splitPane.collectAnchors(out, base)
             // 多题浏览：列表里的每张卡 = 一道题（材料只在材料组首题卡上）
             multiBrowse -> {
                 val rv = binding.questionList
@@ -1385,7 +1112,7 @@ class ExamActivity : AppCompatActivity() {
             currentPos = idx
             when {
                 // 分屏右栏是一条卷面：滚到这道题，别的容器都是隐藏的
-                splitMode -> showInSplit(idx)
+                splitMode -> splitPane.showQuestion(idx)
                 // 通铺：原地进写画，不动滚动位置
                 multiBrowse -> Unit
                 else -> showQuestion(idx)
@@ -1397,7 +1124,7 @@ class ExamActivity : AppCompatActivity() {
             if (idx >= 0) {
                 currentPos = idx
                 when {
-                    splitMode -> scrollSplitToQuestion(idx)
+                    splitMode -> splitPane.scrollTo(idx)
                     // 通铺：不整题落位，只把被工具条压住的那几十 dp 补回来
                     multiBrowse -> nudgeCardOutOfInkBar(idx)
                     else -> {
@@ -1692,11 +1419,7 @@ class ExamActivity : AppCompatActivity() {
             pagerAdapter.notifyDataSetChanged()
         }
         // 分屏右栏：这组题的每一张卡都按新宽度重排（大图 / 表格才不会留白或溢出）
-        splitPagerAdapter?.notifyDataSetChanged()
-        if (splitMode) {
-            binding.splitQuestionPane.post { scrollSplitToQuestion(currentPos) }
-            renderSplitMaterial()
-        }
+        splitPane.refresh()
     }
 
     // ---------------- 标记 / 收藏 / 笔记 ----------------
@@ -1891,21 +1614,9 @@ class ExamActivity : AppCompatActivity() {
         // 系统栏跟着顶栏走，否则深色顶栏上会压一条白状态栏
         applySystemBars(night, barBg)
 
-        // 弹出材料就地分屏（上材料 / 下题目）：材料底 / 材料标签 / 进度 / 收起按钮 / 中缝手柄
-        binding.splitLeftPane.setBackgroundColor(color(if (night) R.color.fb_night_material_bg else R.color.fb_bar_bg))
-        binding.tvSplitTag.setBackgroundResource(if (night) R.drawable.bg_fb_tag_night else R.drawable.bg_fb_material_tag)
-        binding.tvSplitTag.setTextColor(color(if (night) R.color.fb_night_tag_text else R.color.fb_blue_ink))
-        binding.tvSplitProgress.setTextColor(metaColor)
-        binding.btnSplitCollapse.setTextColor(metaColor)
-        // 左栏头部的「弹出材料」：图标与文字一起换色
-        (binding.btnSplitExpand.getChildAt(0) as ImageView).setColorFilter(metaColor)
-        (binding.btnSplitExpand.getChildAt(1) as TextView).setTextColor(metaColor)
-        binding.splitHandleBar.setBackgroundResource(
-            if (night) R.drawable.bg_fb_drag_bar_night else R.drawable.bg_fb_drag_bar
-        )
-        // 分屏右栏：整组卡片按夜间重绑（卡片配色在 bindSplitCard 里跟 nightMode 走）
-        splitPagerAdapter?.notifyDataSetChanged()
-        if (splitMode) renderSplitMaterial()
+        // 分屏：左栏材料底 / 「材料」标签 / 进度 / 收起 / 手柄，右栏整组卡片一起换夜间配色
+        //（与解析页共用 SplitPaneController.applyColors，色板同源）
+        splitPane.refresh()
 
         // 面板里分段控件的选中态依赖 nightMode，必须先刷新
         refreshMorePanelState()

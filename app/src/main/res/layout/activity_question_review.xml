@@ -48,6 +48,126 @@
             android:background="@color/fb_sheet_bg"
             android:visibility="gone" />
 
+        <!-- ===== 弹出材料：就地左右分屏（左材料 / 右整组题，中间手柄可左右拖动） =====
+             与答题页同一份版式与同一个控制器（SplitPaneController）：解析页只是右栏的卡片
+             多出答案 / 解析块，分屏本身的手感（比例记忆、可拖、可收起、可再弹整页）完全一致。 -->
+        <LinearLayout
+            android:id="@+id/splitBody"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="horizontal"
+            android:visibility="gone">
+
+            <!-- 左栏：材料，可收起（weight 1000 = 与右栏按比例分） -->
+            <LinearLayout
+                android:id="@+id/splitLeftPane"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="400"
+                android:background="@color/fb_bar_bg"
+                android:orientation="vertical"
+                android:paddingStart="@dimen/fb_space_12"
+                android:paddingTop="@dimen/fb_space_12"
+                android:paddingEnd="@dimen/fb_space_12">
+
+                <!-- 第一行：材料标签 + 组内进度。按钮放到第二行——左栏只有 40% 宽，
+                     四个元素塞一行时「收起材料」会被挤出可视区。与答题页同一份结构。 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/tvSplitTag"
+                        style="@style/FbTag"
+                        android:text="@string/tag_material" />
+
+                    <TextView
+                        android:id="@+id/tvSplitProgress"
+                        style="@style/FbCaption"
+                        android:layout_marginStart="@dimen/fb_space_8" />
+                </LinearLayout>
+
+                <!-- 第二行：弹出整页看 / 收起材料，右对齐 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/fb_space_4"
+                    android:gravity="end|center_vertical"
+                    android:orientation="horizontal">
+
+                    <!-- 左栏窄，表格 / 图表看不全时弹到整页看 -->
+                    <LinearLayout
+                        android:id="@+id/btnSplitExpand"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="@dimen/fb_space_4">
+
+                        <ImageView
+                            android:layout_width="@dimen/fb_icon_sm_size"
+                            android:layout_height="@dimen/fb_icon_sm_size"
+                            android:contentDescription="@null"
+                            android:src="@drawable/ic_fb_material_expand"
+                            android:tint="@color/fb_text_meta" />
+
+                        <TextView
+                            style="@style/FbCaption"
+                            android:layout_marginStart="@dimen/fb_space_4"
+                            android:text="@string/material_pop_out" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/btnSplitCollapse"
+                        style="@style/FbCaption"
+                        android:layout_marginStart="@dimen/fb_space_8"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:padding="@dimen/fb_space_4"
+                        android:text="@string/material_collapse" />
+                </LinearLayout>
+
+                <androidx.core.widget.NestedScrollView
+                    android:id="@+id/splitMaterialScroll"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_marginTop="@dimen/fb_space_8"
+                    android:layout_weight="1"
+                    android:fillViewport="true"
+                    android:scrollbars="none">
+
+                    <LinearLayout
+                        android:id="@+id/splitMaterialContent"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical" />
+                </androidx.core.widget.NestedScrollView>
+            </LinearLayout>
+
+            <!-- 中缝：整条都是热区，左右拖动改两栏占比；grip 只是个视觉小竖条 -->
+            <FrameLayout
+                android:id="@+id/splitHandle"
+                android:layout_width="14dp"
+                android:layout_height="match_parent">
+
+                <View
+                    android:id="@+id/splitHandleBar"
+                    android:layout_width="4dp"
+                    android:layout_height="44dp"
+                    android:layout_gravity="center"
+                    android:background="@drawable/bg_fb_drag_bar" />
+            </FrameLayout>
+
+            <!-- 右栏：这一组材料对应的整组小题，铺成一条连续卷面（运行时放入按组分页的分页器） -->
+            <FrameLayout
+                android:id="@+id/splitQuestionPane"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="600" />
+        </LinearLayout>
+
         <!-- 遮盖层（可写）：笔迹按「本条记录 + 题目」存取，答题时画的圈回来看解析还在 -->
         <com.lytree.qbank.ui.InkOverlay
             android:id="@+id/inkOverlay"
@@ -61,5 +181,73 @@
             android:layout_width="match_parent"
             android:layout_height="@dimen/fb_ink_bar_h"
             android:layout_gravity="top" />
+
+        <!-- ===== 更多（字号 / 日夜） =====
+             答题页的这些显示设置放在「更多」面板里；解析页不给作答专属项（自动下一题 / 练习模式 /
+             导入答案），只留显示相关的两项，档位与答题页共用一份偏好。 -->
+        <LinearLayout
+            android:id="@+id/morePanel"
+            android:layout_width="178dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|end"
+            android:layout_marginTop="2dp"
+            android:layout_marginEnd="@dimen/fb_space_8"
+            android:background="@drawable/bg_fb_panel"
+            android:elevation="10dp"
+            android:orientation="vertical"
+            android:paddingStart="@dimen/fb_space_16"
+            android:paddingTop="@dimen/fb_space_12"
+            android:paddingEnd="@dimen/fb_space_16"
+            android:paddingBottom="@dimen/fb_space_12"
+            android:visibility="gone">
+
+            <!-- 字号：小 / 中 / 大 -->
+            <LinearLayout
+                android:id="@+id/rowFontSize"
+                android:layout_width="match_parent"
+                android:layout_height="36dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/btnFontSmall"
+                    style="@style/FbFontAa"
+                    android:text="Aa"
+                    android:textSize="@dimen/fb_text_body_size" />
+
+                <TextView
+                    android:id="@+id/btnFontMedium"
+                    style="@style/FbFontAa"
+                    android:text="Aa"
+                    android:textSize="@dimen/fb_text_bar_title" />
+
+                <TextView
+                    android:id="@+id/btnFontLarge"
+                    style="@style/FbFontAa"
+                    android:text="Aa"
+                    android:textSize="@dimen/fb_text_page_title" />
+            </LinearLayout>
+
+            <!-- 日间 / 夜间 -->
+            <LinearLayout
+                android:id="@+id/rowDayNight"
+                android:layout_width="match_parent"
+                android:layout_height="30dp"
+                android:layout_marginTop="@dimen/fb_space_8"
+                android:background="@drawable/bg_fb_segment_track"
+                android:orientation="horizontal"
+                android:padding="3dp">
+
+                <TextView
+                    android:id="@+id/btnDay"
+                    style="@style/FbSegmentPill"
+                    android:text="@string/mode_day" />
+
+                <TextView
+                    android:id="@+id/btnNight"
+                    style="@style/FbSegmentPill"
+                    android:text="@string/mode_night" />
+            </LinearLayout>
+        </LinearLayout>
     </FrameLayout>
 </LinearLayout>

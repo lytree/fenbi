@@ -1,12 +1,14 @@
 package com.lytree.qbank.ui
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -60,6 +62,8 @@ class QuestionReviewActivity : AppCompatActivity() {
 
         private const val PREFS = "exam_prefs"
         private const val KEY_FONT_SCALE = "font_scale"
+        /** 与答题页共用：日间 / 夜间 */
+        private const val KEY_NIGHT = "night_mode"
         /** 与答题页共用：多题连续卷面 / 单题一屏一题 */
         private const val KEY_MULTI_BROWSE = "multi_browse"
         /** 与答题页同一组字号档位，复习时字号不该和做题时不一样（整体比最初放大一号） */
@@ -69,6 +73,17 @@ class QuestionReviewActivity : AppCompatActivity() {
     private lateinit var binding: ActivityQuestionReviewBinding
     private lateinit var db: QBankDb
     private lateinit var inkToolbar: InkToolbarController
+
+    /**
+     * 「弹出材料」就地左右分屏：与答题页**同一个控制器**。
+     *
+     * 解析页在这里只改一件事——卡片绑定是只读的、卡尾多出答案 / 解析块（见 [setupList]），
+     * 分屏的版式、比例记忆、左栏整页查看、中缝拖拽全部共用，不会做出两套手感。
+     */
+    private lateinit var splitPane: SplitPaneController
+
+    /** 日间 / 夜间：与答题页共用 `exam_prefs.night_mode` */
+    private var night = false
 
     /** 顶栏那颗「多题 / 单题」：文字写当前方式，点一下换另一种 */
     private lateinit var modeAction: TextView
@@ -89,6 +104,12 @@ class QuestionReviewActivity : AppCompatActivity() {
 
     /** 当前正看着的题在 [questions] 里的下标（多题取首个可见项，单题取当前页首题） */
     private var currentPos = 0
+
+    /** 作答（题目 id → 用户答案）：解析块里「你的答案 / 结果」由 binder 判 */
+    private val answers = HashMap<Long, String>()
+
+    /** 本次卷面结构：材料组划分与材料序号都从这里取（与答题页同一份口径） */
+    private lateinit var paper: PaperStructure
 
     /** 解析三项（题目 id → 统计）：进页时一次读全，笔记卡 / 统计行都从这里取 */
     private var stats: Map<Long, QuestionStats> = emptyMap()
@@ -167,6 +188,34 @@ class QuestionReviewActivity : AppCompatActivity() {
         if (::inkToolbar.isInitialized) binding.inkOverlay.flush()
     }
 
+    /** 分屏时返回键先收起分屏（与答题页同一个手势口径），再退解析页 */
+    override fun onBackPressed() {
+        if (::splitPane.isInitialized && splitPane.isOpen) {
+            splitPane.close()
+            return
+        }
+        super.onBackPressed()
+    }
+
+    /**
+     * 平板旋转 / 多窗口改尺寸：**不重建页面，就地重排**。
+     *
+     * 清单里给这一页也配了 `configChanges`（与答题页同一份）。不配的话一旋转 Activity 就重建——
+     * 「当前题」回到 intent 里的起点、临时标记与笔记编辑状态全丢、正开着的分屏被收起；
+     * 而答题页同样操作是原地不动的。这里只做必要的事：方向锁按形态重下（手机万一本机型
+     * 允许旋转，仍钉回竖屏）、两套容器按新宽度重绑、分屏重排并把位置留在当前题。
+     */
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        ScreenAdapt.applyOrientation(this)
+        // 宽度变了：卡片里的表格 / 配图 / 选项行都要重新量一遍
+        listAdapter?.notifyDataSetChanged()
+        pagerAdapter?.notifyDataSetChanged()
+        // 分屏：左栏材料按新栏宽重画、右栏整组卡片重绑，位置停在当前题
+        if (::splitPane.isInitialized) splitPane.refresh()
+        applySystemBars()
+    }
+
     private fun render(data: LoadedData) {
         val record = data.record
         val policy = data.policy
@@ -186,7 +235,7 @@ class QuestionReviewActivity : AppCompatActivity() {
         questions = items.map { it.question }
 
         // 作答按题 id 带进卡片：解析块里的「你的答案 / 结果」直接由 binder 判
-        val answers = HashMap<Long, String>()
+        answers.clear()
         record.results.forEach { answers[it.question.id] = it.userAnswer }
         // 材料锚点用「组首题 id」：同一则材料带的几道题共用一份材料笔迹（与答题页一致）
         val firstOfMaterial = HashMap<String, Long>()
@@ -207,17 +256,23 @@ class QuestionReviewActivity : AppCompatActivity() {
 
         // 卷面结构：材料组 / 大类 / 组内题量都从这里取，与答题页同一份口径。
         // 错题解析给的是子集，结构按子集重算——相邻同材料的题照样并成一组。
-        val paper = PaperStructure(questions)
+        paper = PaperStructure(questions)
         // 题号按原卷编号：错题解析只翻错题，但卡上还得写「第 8 题」而不是「第 3 题」
         val numberOf: (Int) -> Int = { index -> numbers[index] }
 
         val start = intent.getIntExtra(EXTRA_START, 0).coerceIn(0, questions.lastIndex)
         currentPos = start
 
+        // 显示口径先读进来：字号 / 日夜 / 浏览方式都与答题页共用一份偏好，
+        // 做题时怎么设的，回来看解析还是什么样子。
+        val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
+        night = prefs.getBoolean(KEY_NIGHT, false)
+        multiBrowse = prefs.getBoolean(KEY_MULTI_BROWSE, !isTablet)
+
         setupList(answers, paper, numberOf)
         setupPager(answers, paper, numberOf)
 
-        // 顶栏右侧两个动作：浏览方式（写当前方式，点一下换）+ 看原题
+        // 顶栏右侧：浏览方式（写当前方式，点一下换）+ 看原题 + 更多（字号 / 日夜）
         modeAction = binding.titleBar.addTextAction(getString(R.string.review_mode_multi)) {
             toggleBrowse()
         }
@@ -225,12 +280,15 @@ class QuestionReviewActivity : AppCompatActivity() {
         binding.titleBar.addTextAction(getString(R.string.report_action_open_paper)) {
             openInPaper(currentPos)
         }
+        binding.titleBar.addIconAction(R.drawable.ic_fb_more, getString(R.string.action_more)) {
+            toggleMorePanel()
+        }
 
-        multiBrowse = getSharedPreferences(PREFS, MODE_PRIVATE)
-            .getBoolean(KEY_MULTI_BROWSE, !isTablet)
-
+        setupSplitPane()
+        setupMorePanel()
         setupInk()
         applyMode(persist = false)
+        applyNightMode()
     }
 
     /** 多题连续卷面：与答题页同一个列表适配器，只读 + 答案解析 */
@@ -250,6 +308,7 @@ class QuestionReviewActivity : AppCompatActivity() {
             policyProvider = { judge },
             fontScale = fontScale(),
             numberAt = numberOf,
+            night = night,
             // 只读只管作答；笔 / 标记 / 收藏看解析时照样要做
             readOnly = true,
             showMarkFavorite = true,
@@ -301,6 +360,7 @@ class QuestionReviewActivity : AppCompatActivity() {
             policyProvider = { judge },
             fontScale = fontScale(),
             revealAnswers = true,
+            night = night,
             numberAt = numberOf,
             // 平板与答题页同一套版式：材料组按题拆页，材料固定在这页上区
             tabletSplit = isTablet,
@@ -340,6 +400,8 @@ class QuestionReviewActivity : AppCompatActivity() {
      * [persist] 为 true 才写偏好（进页面时只是读出偏好，不该回写）。
      */
     private fun applyMode(persist: Boolean = true) {
+        // 分屏开着时不动两个容器的显隐：收起分屏那一步会自己按当前题恢复
+        if (splitPane.isOpen) return
         val multi = multiBrowse
         binding.questionList.visibility = if (multi) View.VISIBLE else View.GONE
         binding.pager.visibility = if (multi) View.GONE else View.VISIBLE
@@ -371,6 +433,8 @@ class QuestionReviewActivity : AppCompatActivity() {
 
     /** 顶栏「多题 / 单题」：换浏览方式并给一句反馈 */
     private fun toggleBrowse() {
+        // 分屏里换浏览方式：先收起，再按新方式还原（否则容器显隐被分屏挡住）
+        if (splitPane.isOpen) splitPane.close()
         multiBrowse = !multiBrowse
         applyMode()
         Toast.makeText(
@@ -392,15 +456,270 @@ class QuestionReviewActivity : AppCompatActivity() {
         binding.titleBar.setTitle(getString(R.string.report_analysis_page_title, number + 1, total))
     }
 
+    /**
+     * 「弹出材料」：**与答题页一模一样，就地切成左右分屏**。
+     *
+     * 以前这里直接 startActivity 到整页只读，看解析时点一下材料，整个解析页就被顶走，
+     * 回来还得重新定位；而且夜间模式下弹出来是白底（没把 night 传过去）。
+     * 现在走同一个 [SplitPaneController]：左栏材料 / 右栏这组小题，中缝可拖、可收起、
+     * 可再弹整页看表格；差别只有右栏卡片是只读的、卡尾带答案与解析。
+     */
     private fun openMaterial(q: Question) {
         if (q.material.isBlank()) return
+        binding.morePanel.visibility = View.GONE
+        splitPane.open(q)
+    }
+
+    /**
+     * 分屏接线：解析页只注入「只读 + 答案解析」的卡片绑定，其余与答题页同一份实现。
+     */
+    private fun setupSplitPane() {
+        splitPane = SplitPaneController(
+            ctx = this,
+            views = SplitPaneController.Views(
+                body = binding.splitBody,
+                leftPane = binding.splitLeftPane,
+                tvTag = binding.tvSplitTag,
+                tvProgress = binding.tvSplitProgress,
+                btnExpand = binding.btnSplitExpand,
+                btnCollapse = binding.btnSplitCollapse,
+                materialScroll = binding.splitMaterialScroll,
+                materialContent = binding.splitMaterialContent,
+                handle = binding.splitHandle,
+                handleBar = binding.splitHandleBar,
+                questionPane = binding.splitQuestionPane,
+                // content 整块已经让过底部导航条（见 onCreate），材料别再让一次
+                materialPadNavBar = false
+            ),
+            questions = { questions },
+            structure = { paper },
+            inkOverlay = binding.inkOverlay,
+            isNight = { night },
+            fontScale = { fontScale() },
+            currentIndex = { currentPos },
+            setCurrentIndex = { currentPos = it },
+            onQuestionChanged = {
+                // 分屏里滚到别的题：顶栏题号 / 笔迹跟着换（临时标记是「看这一题时」的记号）
+                syncChrome()
+                clearTempMark()
+                syncInkQuestion()
+                binding.inkOverlay.invalidate()
+            },
+            bindCard = { card, q, index, isLast -> bindSplitCard(card, q, index, isLast) },
+            onOpenFullMaterial = { material -> openMaterialFullPage(material) },
+            onVisibilityChanged = { open ->
+                if (open) {
+                    binding.splitBody.visibility = View.VISIBLE
+                    binding.questionList.visibility = View.GONE
+                    binding.pager.visibility = View.GONE
+                } else {
+                    binding.splitBody.visibility = View.GONE
+                    // 收起分屏顺手收起「更多」面板（否则它浮在还原后的卷面上）
+                    binding.morePanel.visibility = View.GONE
+                    // 收起后按当前题恢复多题 / 单题版式
+                    applyMode(persist = false)
+                    syncChrome()
+                    syncInkQuestion()
+                }
+                binding.inkOverlay.post { binding.inkOverlay.invalidate() }
+            }
+        )
+    }
+
+    /**
+     * 分屏右栏的一张题卡：与卷面同一套绑定，只读 + 卡尾答案 / 解析 / 统计 / 笔记。
+     * 材料已在左栏整栏展示，卡内不再重复渲染。
+     */
+    private fun bindSplitCard(
+        card: com.lytree.qbank.databinding.ItemQuestionPageBinding,
+        q: Question,
+        index: Int,
+        isLast: Boolean
+    ) {
+        val judge = policy ?: return
+        QuestionCardBinder.bind(
+            b = card,
+            // 错题解析只翻错题：题号仍按原卷算
+            position = numbers.getOrNull(index) ?: index,
+            q = q,
+            answers = answers,
+            marked = marked,
+            favorites = favorites,
+            revealAnswers = true,
+            policy = judge,
+            fontScale = fontScale(),
+            cb = QuestionCardBinder.Callbacks(
+                // 标记 / 收藏 / 笔记的重绑都由 refreshCard 分流（分屏开着时落到控制器的卡片上）
+                onMarkToggle = { qq -> toggleMark(qq) },
+                onFavoriteToggle = { qq -> toggleFavorite(qq) },
+                onInkClicked = { qq -> startInkFor(qq) },
+                onNoteClicked = { qq -> showNoteDialog(qq) },
+                onAnswerChanged = {}
+            ),
+            night = night,
+            // 材料在左栏整栏展示，卡片不再重复渲染
+            hideMaterial = true,
+            moduleHeader = null,
+            materialGroupSize = splitPane.groupSize,
+            showDivider = !isLast,
+            readOnly = true,
+            showMarkFavorite = true,
+            showInk = true,
+            stats = stats,
+            notes = notes
+        )
+    }
+
+    /** 左栏「弹出材料」：整页只读看表格（与答题页同一个页面，夜间同色） */
+    private fun openMaterialFullPage(material: String) {
         startActivity(
             Intent(this, MaterialPopupActivity::class.java).apply {
-                putExtra(MaterialPopupActivity.EXTRA_MATERIAL, q.material)
+                putExtra(MaterialPopupActivity.EXTRA_MATERIAL, material)
+                putExtra(MaterialPopupActivity.EXTRA_NIGHT, night)
                 putExtra(MaterialPopupActivity.EXTRA_FONT_SCALE, fontScale())
             }
         )
     }
+
+    // ---------------- 更多（字号 / 日夜）：与答题页共用偏好 ----------------
+
+    /**
+     * 「更多」面板：只放**显示相关**的两项（字号、日夜）。
+     *
+     * 答题页那份面板里还有自动下一题 / 练习模式 / 导入答案，那些是作答专属，
+     * 解析页不该出现；字号与日夜是看题时的眼睛问题，做题时怎么调，看解析还能接着调，
+     * 所以档位与答题页写同一份 `exam_prefs`。
+     */
+    private fun setupMorePanel() {
+        binding.btnFontSmall.setOnClickListener { setFontScale(0) }
+        binding.btnFontMedium.setOnClickListener { setFontScale(1) }
+        binding.btnFontLarge.setOnClickListener { setFontScale(2) }
+        binding.btnDay.setOnClickListener { setNightMode(false) }
+        binding.btnNight.setOnClickListener { setNightMode(true) }
+        refreshMorePanelState()
+    }
+
+    private fun toggleMorePanel() {
+        binding.morePanel.visibility =
+            if (binding.morePanel.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+    }
+
+    /** 字号：写回与答题页共用的档位，三套容器（列表 / 分页 / 分屏）一起重绑 */
+    private fun setFontScale(idx: Int) {
+        val i = idx.coerceIn(0, FONT_SCALES.lastIndex)
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putInt(KEY_FONT_SCALE, i).apply()
+        val scale = FONT_SCALES[i]
+        listAdapter?.fontScale = scale
+        pagerAdapter?.fontScale = scale
+        listAdapter?.notifyDataSetChanged()
+        pagerAdapter?.notifyDataSetChanged()
+        splitPane.refresh()
+        refreshMorePanelState()
+    }
+
+    /** 日间 / 夜间：与答题页同一个偏好键，回答题页也是这个颜色 */
+    private fun setNightMode(on: Boolean) {
+        if (night == on) return
+        night = on
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(KEY_NIGHT, on).apply()
+        applyNightMode()
+    }
+
+    /**
+     * 把夜间配色铺到整页：标题栏 / 卷面底 / 两套容器 / 遮盖层 / 写画工具条 / 分屏 / 系统栏。
+     *
+     * 与答题页同一套 `fb_night_*` 色板；解析页以前完全没有夜间（顶栏也没有入口），
+     * 于是「做题时开着夜间，点错题解析白得刺眼」。
+     */
+    private fun applyNightMode() {
+        val barColor = color(R.color.fb_night_bar, R.color.fb_bar_bg)
+        binding.titleBar.applyNightMode(night)
+        binding.content.setBackgroundColor(color(R.color.fb_night_sheet_bg, R.color.fb_sheet_bg))
+
+        // 更多面板：底 / 分段轨道（选中胶囊在 refreshMorePanelState 里按 night 换）
+        binding.morePanel.setBackgroundResource(
+            if (night) R.drawable.bg_fb_panel_night else R.drawable.bg_fb_panel
+        )
+        binding.rowDayNight.setBackgroundResource(
+            if (night) R.drawable.bg_fb_segment_track_night else R.drawable.bg_fb_segment_track
+        )
+
+        // 写画：工具条底色、图标两态、遮盖纸
+        binding.inkBar.root.setBackgroundColor(barColor)
+        inkToolbar.applyNightMode(night)
+        binding.inkOverlay.night = night
+
+        // 系统栏跟着顶栏走，否则深色顶栏上会压一条白状态栏
+        applySystemBars()
+
+        // 卡片：两套容器 + 分屏右栏（配色在 binder 里跟 night 走，重绑才生效）
+        listAdapter?.night = night
+        pagerAdapter?.night = night
+        listAdapter?.notifyDataSetChanged()
+        pagerAdapter?.notifyDataSetChanged()
+        splitPane.refresh()
+        refreshMorePanelState()
+    }
+
+    /** 状态栏 / 导航栏：夜间用深底 + 浅色图标，日间反之（旋转后窗口属性可能被系统重置，也要重下一次） */
+    private fun applySystemBars() {
+        val barColor = color(R.color.fb_night_bar, R.color.fb_bar_bg)
+        window.statusBarColor = barColor
+        window.navigationBarColor = barColor
+        androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).run {
+            isAppearanceLightStatusBars = !night
+            isAppearanceLightNavigationBars = !night
+        }
+    }
+
+    private fun refreshMorePanelState() {
+        val idx = getSharedPreferences(PREFS, MODE_PRIVATE).getInt(KEY_FONT_SCALE, 1)
+        styleAa(binding.btnFontSmall, idx == 0)
+        styleAa(binding.btnFontMedium, idx == 1)
+        styleAa(binding.btnFontLarge, idx == 2)
+        styleSegment(binding.btnDay, !night)
+        styleSegment(binding.btnNight, night)
+    }
+
+    /** 字号档位：三个不同字号的「Aa」，选中加深、未选浅灰（与答题页同一套） */
+    private fun styleAa(view: TextView, selected: Boolean) {
+        view.setTextColor(
+            color(
+                if (selected && night) R.color.fb_night_text
+                else if (selected) R.color.fb_text_title
+                else if (night) R.color.fb_night_text_meta
+                else R.color.fb_text_meta
+            )
+        )
+        view.setTypeface(
+            null,
+            if (selected) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL
+        )
+    }
+
+    /** 分段胶囊：选中项白底深字，未选中透明底灰字；夜间换成深色胶囊 */
+    private fun styleSegment(view: TextView, selected: Boolean) {
+        view.setBackgroundResource(
+            when {
+                selected && night -> R.drawable.bg_fb_segment_pill_night
+                selected -> R.drawable.bg_fb_segment_pill
+                else -> R.drawable.bg_fb_segment_pill_off
+            }
+        )
+        view.setTextColor(
+            color(
+                if (selected && night) R.color.fb_night_segment_text_sel
+                else if (selected) R.color.fb_segment_text_sel
+                else if (night) R.color.fb_night_segment_text
+                else R.color.fb_segment_text
+            )
+        )
+    }
+
+    private fun color(nightRes: Int, dayRes: Int): Int =
+        ContextCompat.getColor(this, if (night) nightRes else dayRes)
+
+    private fun color(res: Int): Int = ContextCompat.getColor(this, res)
 
     private fun openInPaper(position: Int) {
         val rec = record ?: return
@@ -470,10 +789,17 @@ class QuestionReviewActivity : AppCompatActivity() {
     /** 换题时抹掉临时标记：只重绑被标过的那几张卡，不动当前滚动位置 */
     private fun clearTempMark() {
         if (marked.isEmpty()) return
-        val indexes = marked.mapNotNull { qid ->
-            questions.indexOfFirst { it.id == qid }.takeIf { it >= 0 }
-        }
+        val qids = marked.mapNotNull { qid -> questions.firstOrNull { it.id == qid } }
         marked.clear()
+        if (qids.isEmpty()) return
+        // 分屏右栏是另一套卡片容器：直接按题重绑（列表 / 分页器此时都是 GONE，通知它们也没用）
+        if (splitPane.isOpen) {
+            qids.forEach { splitPane.rebind(it) }
+            return
+        }
+        val indexes = qids.mapNotNull { q ->
+            questions.indexOfFirst { it.id == q.id }.takeIf { it >= 0 }
+        }
         if (indexes.isEmpty()) return
         // 滚动回调里容器正在滚，放到下一帧再重绑
         val host: View = if (multiBrowse) binding.questionList else binding.pager
@@ -493,6 +819,11 @@ class QuestionReviewActivity : AppCompatActivity() {
      * 可能把「当前题」带跑——与答题页的刷新口径一致。
      */
     private fun refreshCard(q: Question) {
+        // 分屏右栏：卡片在控制器的映射里
+        if (splitPane.isOpen) {
+            splitPane.rebind(q)
+            return
+        }
         val idx = questions.indexOfFirst { it.id == q.id }
         if (idx < 0) return
         if (multiBrowse) {
@@ -529,9 +860,11 @@ class QuestionReviewActivity : AppCompatActivity() {
         }
 
         // 写画时按右边缘的拖拽条滚卷面：多题滚列表，单题滚当前页
-        //（材料组页上区是材料、下面是题目，按落点分流）。
+        //（材料组页上区是材料、下面是题目，按落点分流；分屏时左栏材料 / 右栏整组题）。
         // 与答题页同一套手感：条顶让过写画工具条，条本身竖屏也画出来
-        binding.inkOverlay.scrollTargetResolver = { _, y -> inkScrollTarget(y) }
+        binding.inkOverlay.scrollTargetResolver = { x, y ->
+            if (splitPane.isOpen) splitPane.scrollTargetForInk(x) else inkScrollTarget(y)
+        }
         binding.inkOverlay.scrollBarTopInset =
             resources.getDimensionPixelSize(R.dimen.fb_ink_bar_h)
         binding.inkOverlay.scrollBarBottomInset = 0
@@ -566,8 +899,17 @@ class QuestionReviewActivity : AppCompatActivity() {
      * 题目锚点的原点取题干顶边（带表格时在 `stemRich` 里）、命中区放宽到整张卡——
      * 与答题页同一套算法，同一道题在两处圈画才落在同一个位置。
      */
-    private fun inkAnchors(): List<InkOverlay.Anchor> =
-        if (multiBrowse) listAnchors() else pageAnchors()
+    private fun inkAnchors(): List<InkOverlay.Anchor> {
+        // 分屏：左栏材料一个锚点、右栏每张卡一个（与答题页同一份算法）
+        if (splitPane.isOpen) {
+            val out = ArrayList<InkOverlay.Anchor>(8)
+            val base = IntArray(2)
+            binding.inkOverlay.getLocationOnScreen(base)
+            splitPane.collectAnchors(out, base)
+            return out
+        }
+        return if (multiBrowse) listAnchors() else pageAnchors()
+    }
 
     /** 多题连续卷面：列表里每张可见卡 = 一道题 */
     private fun listAnchors(): List<InkOverlay.Anchor> {
@@ -714,18 +1056,25 @@ class QuestionReviewActivity : AppCompatActivity() {
     /**
      * 点题目卡上的「笔」直接进写画。
      *
-     * 先把这题带到眼前（多题滚列表 / 单题翻到那一页），再铺遮盖纸；
-     * 落位交给下一帧——那时卡片已经排好版，遮罩才是对着这张卡铺的。
+     * 口径与答题页完全一致（见 [ExamActivity.startInkFor]）：
+     * - **多题通铺不把这题顶到内容区最上面**：手指点的是眼前这一题，一进写画整卷往上跳一屏，
+     *   题目前后的上下文全丢了，想补一笔还得先回想「刚才在看哪段」。卡片顶部本来就预留了
+     *   一条工具条的高度（[QuestionCardBinder.bindInkBarReserve]），工具条盖的是那条空白；
+     *   只有卡片顶边已经被工具条压住几十 dp 时补一点（[nudgeCardOutOfInkBar]），不做整题落位。
+     *   以前这里走 `scrollToPositionWithOffset(idx, 0)`，点笔就等于跳题，题卡被顶到最上面、
+     *   大半压在写画工具条底下。
+     * - **单题仍要落位**：那边只是把这一页切出来，不是把卷面挪走。
+     *
      * 材料组页一页多题，绑笔按**点的这一题**来（不跟着页首题走）。
      */
     private fun startInkFor(q: Question) {
         val idx = questions.indexOfFirst { it.id == q.id }
-        if (idx >= 0 && idx != currentPos) {
+        if (idx >= 0) {
             currentPos = idx
-            if (multiBrowse) {
-                (binding.questionList.layoutManager as? LinearLayoutManager)
-                    ?.scrollToPositionWithOffset(idx, 0)
-            } else {
+            if (splitPane.isOpen) {
+                // 分屏右栏是一条卷面：滚到这道题，别的容器都是隐藏的
+                splitPane.showQuestion(idx)
+            } else if (!multiBrowse) {
                 val page = pagerAdapter?.pageOfQuestion(idx) ?: 0
                 binding.pager.setCurrentItem(page, false)
                 // 组页一页多题：落点就是点的这一题，别被翻页回调改成组首
@@ -733,7 +1082,16 @@ class QuestionReviewActivity : AppCompatActivity() {
             }
             syncChrome()
         }
+        // 落位要等下一帧：那时卡片已经排好版，遮罩才是对着这张卡铺的
         binding.inkOverlay.post {
+            if (idx >= 0) {
+                currentPos = idx
+                when {
+                    splitPane.isOpen -> splitPane.scrollTo(idx)
+                    // 通铺：不整题落位，只把被工具条压住的那几十 dp 补回来
+                    multiBrowse -> nudgeCardOutOfInkBar(idx)
+                }
+            }
             binding.inkOverlay.bindQuestion(q.id)
             inkToolbar.setInkMode(true)
             if (!inkHintShown) {
@@ -741,6 +1099,25 @@ class QuestionReviewActivity : AppCompatActivity() {
                 Toast.makeText(this, R.string.ink_enter_hint, Toast.LENGTH_SHORT).show()
             }
         }
+    }
+
+    /**
+     * 通铺里的「最小让位」：这道题的卡片顶边已经滑到工具条底下一点点时，把那一点补回来。
+     *
+     * 卡片顶边到第一行字之间正好留了一条工具条的高度（见 [QuestionCardBinder.bindInkBarReserve]），
+     * 所以「题号不被压住」等价于「卡片顶边 ≥ 内容区顶边」。滑过头（卡片顶边早就在上面很远）就
+     * 一点不动——那说明用户正在看题目中间，为了露出题号把内容往下拉一屏反而更烦。
+     *
+     * 补的距离最多一条工具条（32dp / 平板 36dp），而且是直接跳、不做动画：马上要落笔，
+     * 让内容在手指底下滑半秒，笔迹会跟着卡片一起飘。与答题页同一份算法。
+     */
+    private fun nudgeCardOutOfInkBar(idx: Int) {
+        val rv = binding.questionList
+        val barH = resources.getDimensionPixelSize(R.dimen.fb_ink_bar_h)
+        val card = (rv.layoutManager as? LinearLayoutManager)
+            ?.findViewByPosition(idx) ?: return
+        val top = card.top
+        if (top < 0 && top >= -barH) rv.scrollBy(0, top)   // top < 0 → dy 取负，内容整块往下回来
     }
 
     /** 与答题页共用同一份字号偏好：复习时字号跟着用户在答题页调过的档位 */
