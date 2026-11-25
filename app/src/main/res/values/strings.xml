@@ -326,7 +326,6 @@
     <string name="mode_night">夜间</string>
     <string name="mode_multi_browse">多题浏览</string>
     <string name="mode_single_browse">单题浏览</string>
-    <string name="mode_auto_next">自动展示下一题</string>
     <string name="action_download">下载</string>
     <string name="font_small">小</string>
     <string name="font_medium">中</string>

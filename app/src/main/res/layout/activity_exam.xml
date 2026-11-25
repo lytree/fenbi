@@ -310,7 +310,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/topBar" />
 
-    <!-- ===== 更多面板（字号 / 日夜 / 浏览模式 / 自动下一题） ===== -->
+    <!-- ===== 更多面板（字号 / 日夜 / 浏览模式） ===== -->
     <LinearLayout
         android:id="@+id/morePanel"
         android:layout_width="178dp"
@@ -396,27 +396,6 @@
                 android:id="@+id/btnSingleBrowse"
                 style="@style/FbSegmentPill"
                 android:text="@string/mode_single_browse" />
-        </LinearLayout>
-
-        <!-- 自动展示下一题 -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/fb_space_12"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <TextView
-                android:id="@+id/tvAutoNextLabel"
-                style="@style/FbCaption"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:text="@string/mode_auto_next"
-                android:textColor="@color/fb_text_primary" />
-
-            <com.lytree.qbank.ui.FbSwitchView
-                android:id="@+id/switchAutoNext"
-                style="@style/FbSwitch" />
         </LinearLayout>
 
         <!-- 手写标注（遮盖层）：进入后在题目上写字 / 圈画 -->

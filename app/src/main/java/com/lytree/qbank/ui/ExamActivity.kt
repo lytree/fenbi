@@ -72,7 +72,6 @@ class ExamActivity : AppCompatActivity() {
         private const val KEY_TABLET_SPLIT_SEEN = "tablet_split_seen"
         /** 就地分屏「材料 / 题目」上下占比（0.2～0.8，默认材料 45%） */
         private const val KEY_SPLIT_RATIO = "split_material_ratio"
-        private const val KEY_AUTO_NEXT = "auto_next"
         private const val KEY_PRACTICE = "practice_mode"
 
         /**
@@ -161,8 +160,6 @@ class ExamActivity : AppCompatActivity() {
     private var multiBrowse = true
     /** 夜间模式 */
     private var nightMode = false
-    /** 单选题作答后自动滚到下一题 */
-    private var autoNext = true
     /** 当前最靠上的题目位置（答题卡高亮「当前题」用） */
     private var currentPos = 0
     /**
@@ -446,7 +443,6 @@ class ExamActivity : AppCompatActivity() {
             revealed.add(q.id)
             refreshCard(q)
         }
-        if (!autoNext) return
         if (q.type != com.lytree.qbank.data.model.QuestionType.SINGLE) return
         val next = currentPos + 1
         if (next >= questions.size) return
@@ -516,12 +512,6 @@ class ExamActivity : AppCompatActivity() {
         binding.btnMultiBrowse.setOnClickListener { setBrowseMode(true) }
         binding.btnSingleBrowse.setOnClickListener { setBrowseMode(false) }
 
-        // 开关：参考应用风格的小号胶囊开关（自绘，避免 Material Switch 被拉大）
-        binding.switchAutoNext.setChecked(autoNext, animate = false)
-        binding.switchAutoNext.onCheckedChange = { checked ->
-            autoNext = checked
-            savePrefs()
-        }
         // 练习模式：作答后立即判对错并展开解析（参考应用「练习」作答口径）
         binding.switchPracticeMode.setChecked(practiceMode, animate = false)
         binding.switchPracticeMode.onCheckedChange = { on ->
@@ -669,6 +659,8 @@ class ExamActivity : AppCompatActivity() {
         splitGroup = splitPages.getOrNull(page)?.questions.orEmpty()
         splitGroupOffset = splitPages.getOrNull(page)?.startIndex ?: 0
         currentPos = questions.indexOfFirst { it.id == q.id }.takeIf { it >= 0 } ?: currentPos
+        // 分屏左右两栏各滚各的：写画（笔记）模式下左边缘也放一条拖拽条
+        binding.inkOverlay.leftRailEnabled = true
         renderSplitMaterial()
         setupSplitPager(page)
         applySplitVisibility()
@@ -967,7 +959,12 @@ class ExamActivity : AppCompatActivity() {
         }
     }
 
-    /** 分屏里作答后的联动：与主容器 onAnswered 一致，练习模式即时判分、单选题自动翻到下一题 */
+    /**
+     * 分屏里作答后的联动：练习模式即时判分、刷新进度，单选题自动滚到下一题。
+     *
+     * 自动滚只限**组内**：右栏整组小题连排，下一题滚出来就行；做完组内最后一道
+     * 不翻到下一组——换组翻页（左栏材料整块换掉）是用户自己的动作，不替他做。
+     */
     private fun onSplitAnswered(q: Question) {
         currentPos = questions.indexOfFirst { it.id == q.id }.takeIf { it >= 0 } ?: currentPos
         if (practiceMode && !submitted && q.id !in revealed) {
@@ -977,10 +974,11 @@ class ExamActivity : AppCompatActivity() {
         }
         refreshSplitProgress()
         syncLiveRecord()
-        if (!autoNext) return
         if (q.type != com.lytree.qbank.data.model.QuestionType.SINGLE) return
         val next = currentPos + 1
         if (next >= questions.size) return
+        // 下一题不在这组里 = 刚做完的是组尾最后一题：留在原地
+        if (next !in splitGroupOffset until splitGroupOffset + splitGroup.size) return
         binding.splitQuestionPane.postDelayed({ showInSplit(next) }, 220)
     }
 
@@ -998,6 +996,8 @@ class ExamActivity : AppCompatActivity() {
         splitPager = null
         splitPagerAdapter = null
         splitCards.clear()
+        // 退出分屏就收掉左边缘那条拖拽条：普通页面左边缘是书写区，只留右边一条
+        binding.inkOverlay.leftRailEnabled = false
         applySplitVisibility()
         refreshCards()
         syncInkQuestion()
@@ -1876,14 +1876,12 @@ class ExamActivity : AppCompatActivity() {
             if (night) R.drawable.bg_fb_segment_track_night else R.drawable.bg_fb_segment_track
         binding.rowDayNight.setBackgroundResource(trackRes)
         binding.rowBrowseMode.setBackgroundResource(trackRes)
-        binding.tvAutoNextLabel.setTextColor(titleColor)
         binding.tvPracticeModeLabel.setTextColor(titleColor)
         binding.tvInkModeLabel.setTextColor(titleColor)
         binding.switchInkMode.setNightMode(night)
         binding.tvImportAnswerLabel.setTextColor(titleColor)
         binding.answerDivider.setBackgroundColor(dividerColor)
         binding.icAnswerArrow.setColorFilter(metaColor)
-        binding.switchAutoNext.setNightMode(night)
 
         // 写画工具条：底色跟着日夜走，图标（含笔/橡皮选中态）由控制器算
         binding.inkBar.root.setBackgroundColor(color(if (night) R.color.fb_night_bar else R.color.fb_bar_bg))
@@ -1942,7 +1940,6 @@ class ExamActivity : AppCompatActivity() {
             multiBrowse = false
             p.edit().putBoolean(KEY_TABLET_SPLIT_SEEN, true).apply()
         }
-        autoNext = p.getBoolean(KEY_AUTO_NEXT, true)
         practiceMode = p.getBoolean(KEY_PRACTICE, false)
     }
 
@@ -1951,7 +1948,6 @@ class ExamActivity : AppCompatActivity() {
             putInt(KEY_FONT_SCALE, FONT_SCALES.indexOfFirst { it == fontScale }.let { if (it < 0) 1 else it })
             putBoolean(KEY_NIGHT, nightMode)
             putBoolean(KEY_MULTI_BROWSE, multiBrowse)
-            putBoolean(KEY_AUTO_NEXT, autoNext)
             putBoolean(KEY_PRACTICE, practiceMode)
         }.apply()
     }
